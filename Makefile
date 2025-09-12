@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-watch lint format type-check clean pre-commit
+.PHONY: help install install-dev test test-watch lint format type-check clean
 
 help:  ## Show this help message
 	@echo "Usage: make [target]"
@@ -11,7 +11,6 @@ install:  ## Install production dependencies
 
 install-dev:  ## Install development dependencies
 	uv sync --dev
-	uv run pre-commit install
 
 test:  ## Run tests with coverage
 	uv run pytest
@@ -29,8 +28,5 @@ clean:  ## Clean build artifacts
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	rm -rf dist/ build/ *.egg-info/ .coverage htmlcov/ .pytest_cache/ .ruff_cache/
-
-pre-commit:  ## Run pre-commit hooks on all files
-	uv run pre-commit run --all-files
 
 all: format lint test  ## Run all checks

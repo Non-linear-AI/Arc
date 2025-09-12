@@ -56,37 +56,6 @@ uv run ruff format .
 
 ```
 
-### Pre-commit Hooks
-
-This project uses pre-commit hooks to ensure code quality. Install them with:
-
-```bash
-uv run pre-commit install
-```
-
-Now checks will run automatically on `git commit`. You can also run them manually:
-
-```bash
-uv run pre-commit run --all-files
-```
-
-## Project Structure
-
-```
-arc/
-├── src/
-│   └── arc/
-│       └── __init__.py
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py        # Pytest configuration
-│   └── test_*.py          # Test files
-├── docs/                  # Documentation
-├── pyproject.toml         # Project configuration
-├── README.md              # This file
-└── .pre-commit-config.yaml # Pre-commit configuration
-```
-
 ## Configuration
 
 Project configuration is managed through `pyproject.toml`. Key sections include:

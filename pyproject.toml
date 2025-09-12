@@ -3,9 +3,6 @@ name = "arc"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Shen Zhu", email = "shen.zhu@instacart.com" }
-]
 requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -29,7 +26,6 @@ dev-dependencies = [
     "pytest-cov>=5.0.0",
     "pytest-asyncio>=0.24.0",
     "ruff>=0.6.0",
-    "pre-commit>=3.8.0",
 ]
 
 [tool.ruff]
