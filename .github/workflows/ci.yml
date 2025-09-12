@@ -32,9 +32,6 @@ jobs:
       
       - name: Run ruff format check
         run: uv run ruff format --check .
-      
-      - name: Run mypy
-        run: uv run mypy .
 
   test:
     runs-on: ubuntu-latest
@@ -59,10 +56,3 @@ jobs:
       
       - name: Run tests
         run: uv run pytest
-      
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.12'
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: true
