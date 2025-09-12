@@ -191,9 +191,7 @@ async def run_interactive_mode(
                         console.print("👋 Goodbye!", style="cyan")
                         break
                     elif cmd == "help":
-                        ui.show_welcome(
-                            agent.get_current_model(), agent.get_current_directory()
-                        )
+                        ui.show_commands()
                         continue
                     elif cmd == "stats":
                         # Show editing statistics if available

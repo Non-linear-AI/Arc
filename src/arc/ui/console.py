@@ -114,7 +114,7 @@ class InteractiveInterface:
 
         # Single concise hint
         self.console.print(
-            "\n Ask questions, or run Arc commands with /arc. Use /help for more information.\n"
+            "\n Use /help for more information.\n"
         )
 
     def show_typing_indicator(self, message: str = "Arc is thinking"):
@@ -122,6 +122,24 @@ class InteractiveInterface:
         return Live(
             f"[dim]{message}...[/dim]", refresh_per_second=4, console=self.console
         )
+
+    def show_commands(self) -> None:
+        """Display available slash commands in a concise list."""
+        self.console.print("\n[bold]System Commands[/bold]")
+        self.console.print(
+            "  [dim]Commands require '/' prefix. Regular text without '/' is sent to the AI.[/dim]"
+        )
+        commands = [
+            ("/help", "Show available commands and features"),
+            ("/stats", "Show editing strategy statistics"),
+            ("/performance", "Show performance metrics and cache statistics"),
+            ("/tree", "Show directory structure"),
+            ("/config", "View current configuration"),
+            ("/clear", "Clear the screen"),
+            ("/exit or /quit", "Exit the application"),
+        ]
+        for cmd, desc in commands:
+            self.console.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
