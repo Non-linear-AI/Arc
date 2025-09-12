@@ -1,4 +1,50 @@
-# Arc
+```
+    ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗
+   ▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝
+   ▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║
+   ▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║
+   ▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗
+   ╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝
+   From Question to Prediction
+```
+
+Arc is a AI-native machine learning tool to enable machine learning accessible to everyone, from data analysts to seasoned ML engineers. It bridges the gap between natural language questions and predictive models, transforming how you work with data.
+
+**For Business Users & Analysts:** Have you ever wanted to predict customer churn or forecast sales without writing complex code? With Arc, you can. Use plain English to explore data, build models, and get predictions. Arc's AI handles the complexity for you.
+
+**For Machine Learning Engineers & Data Scientists:** Arc streamlines your ML workflow. Instead of boilerplate PyTorch, TensorFlow, or JAX, you use a declarative, AI-native approach. Arc translates your intent into a portable and declarative ML schema, letting you focus on high-level architecture and rapid iteration.
+
+## 💡 How It Works
+
+Arc uses a declarative schema called `Arc-Graph` as its foundation. When you give a command in natural language, Arc's AI engine generates a complete, self-contained model definition in this schema, which is then translated and executed across different ML frameworks and computing environments.
+
+This approach provides the best of both worlds:
+
+  * **Simplicity:** A simple, conversational interface for creating models.
+  * **Power & Portability:** A declarative, explicit, and human-readable definition of your entire ML workflow, from data prep to prediction, that can run anywhere.
+
+## ✨ Key Features
+
+  - 🤖 **Natural Language to Model** - Go from a question in plain English to a trained predictive model without writing a single line of ML code.
+  - 📜 **Declarative & AI-Native** - Leverages the `Arc-Graph` schema to define models with high-level concepts. The AI handles the implementation; you verify the logic.
+  - 🗄️ **Unified Data & ML with SQL** - Connect your data sources via standard SQL. Arc manages your ML assets (models, features, results) in a dedicated database that you can query using standard SQL.
+  - ⚡ **End-to-End & Portable** - The `Arc-Graph` files contain your ML workflow, ensuring train/serve parity and making your models easy to version, share, and reproduce.
+  - 🎯 **Smart & Interactive** - AI-powered guidance and a user-friendly interactive mode are enabled by default to help you get started quickly.
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+# Clone and install the project
+git clone https://github.com/non-linear-ai/arc
+cd arc
+pip install -e .
+```
+
+### Your First Model
+
+TODO: Update along the development progress
 
 ## Development
 

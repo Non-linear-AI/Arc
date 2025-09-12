@@ -33,6 +33,7 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+*projectsar.txt
 
 # Unit test / coverage reports
 htmlcov/
@@ -147,3 +148,4 @@ cython_debug/
 
 # uv
 .uv/
+.aider*

@@ -1,2 +1,5 @@
 def main() -> None:
-    print("Hello from arc!")
+    """Entry point for Arc CLI."""
+    from .ui.cli import cli
+
+    cli()
