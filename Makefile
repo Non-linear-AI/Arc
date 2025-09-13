@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-watch lint format type-check clean
+.PHONY: help install install-dev test test-watch lint format clean
 
 help:  ## Show this help message
 	@echo "Usage: make [target]"
