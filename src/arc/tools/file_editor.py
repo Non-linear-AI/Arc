@@ -1,0 +1,177 @@
+"""File editing and viewing tools."""
+
+from pathlib import Path
+
+from ..editing import EditInstruction, EditorManager
+from ..utils.performance import cached, performance_manager, timed
+from .base import BaseTool, ToolResult
+
+
+class FileEditorTool(BaseTool):
+    """Tool for file operations: view, create, and edit files."""
+
+    def __init__(self):
+        super().__init__()
+        self.editor_manager = EditorManager()
+
+    async def execute(self, **kwargs) -> ToolResult:
+        """Execute file operation based on action."""
+        action = kwargs.get("action")
+
+        # Track file operations
+        performance_manager.metrics["file_operations"] += 1
+
+        if action == "view":
+            return await self.view_file(
+                kwargs["path"], kwargs.get("start_line"), kwargs.get("end_line")
+            )
+        elif action == "create":
+            return await self.create_file(kwargs["path"], kwargs["content"])
+        elif action == "str_replace":
+            return await self.str_replace_editor(
+                kwargs["path"],
+                kwargs["old_str"],
+                kwargs["new_str"],
+                kwargs.get("replace_all", False),
+            )
+        else:
+            return ToolResult.error_result(f"Unknown action: {action}")
+
+    @cached(ttl=60, use_file_cache=False)  # Cache for 1 minute
+    @timed("file_view_time")
+    async def view_file(
+        self, path: str, start_line: int | None = None, end_line: int | None = None
+    ) -> ToolResult:
+        """View file contents or list directory."""
+        try:
+            file_path = Path(path)
+
+            if not file_path.exists():
+                return ToolResult.error_result(f"Path does not exist: {path}")
+
+            # If it's a directory, list contents (no emojis, concise header)
+            if file_path.is_dir():
+                try:
+                    items = []
+                    for item in sorted(file_path.iterdir()):
+                        if item.is_dir():
+                            items.append(f"{item.name}/")
+                        else:
+                            size = item.stat().st_size
+                            items.append(f"{item.name} ({size} bytes)")
+
+                    if not items:
+                        return ToolResult.success_result(f"Directory '{path}' is empty")
+
+                    header = f"Directory contents of {path}:"
+                    return ToolResult.success_result(header + "\n" + "\n".join(items))
+                except PermissionError:
+                    return ToolResult.error_result(
+                        f"Permission denied accessing directory: {path}"
+                    )
+
+            # If it's a file, read contents
+            if file_path.is_file():
+                try:
+                    with open(file_path, encoding="utf-8", errors="replace") as f:
+                        lines = f.readlines()
+
+                    # Apply line range if specified
+                    if start_line is not None or end_line is not None:
+                        start_idx = (start_line - 1) if start_line is not None else 0
+                        end_idx = end_line if end_line is not None else len(lines)
+
+                        start_idx = max(0, start_idx)
+                        end_idx = min(len(lines), end_idx)
+
+                        lines = lines[start_idx:end_idx]
+
+                        # Add line numbers
+                        numbered_lines = []
+                        for i, line in enumerate(lines, start=start_idx + 1):
+                            numbered_lines.append(f"{i:4d}: {line.rstrip()}")
+
+                        content = "\n".join(numbered_lines)
+                        return ToolResult.success_result(
+                            f"File '{path}' (lines {start_idx + 1}-{end_idx}):\n"
+                            f"{content}"
+                        )
+                    else:
+                        # Show full file with line numbers
+                        numbered_lines = []
+                        for i, line in enumerate(lines, start=1):
+                            numbered_lines.append(f"{i:4d}: {line.rstrip()}")
+
+                        content = "\n".join(numbered_lines)
+                        return ToolResult.success_result(f"File '{path}':\n{content}")
+
+                except (UnicodeDecodeError, PermissionError) as e:
+                    return ToolResult.error_result(
+                        f"Cannot read file '{path}': {str(e)}"
+                    )
+
+            return ToolResult.error_result(
+                f"'{path}' is not a regular file or directory"
+            )
+
+        except Exception as e:
+            return ToolResult.error_result(f"Error accessing '{path}': {str(e)}")
+
+    @timed("file_create_time")
+    async def create_file(self, path: str, content: str) -> ToolResult:
+        """Create a new file with given content using multi-strategy editing."""
+        try:
+            # Check if file already exists
+            if Path(path).exists():
+                return ToolResult.error_result(
+                    f"File already exists: {path}. Use str_replace_editor to modify "
+                    "existing files."
+                )
+
+            # Create edit instruction for new file
+            instruction = EditInstruction(
+                file_path=path, new_content=content, create_if_missing=True
+            )
+
+            # Apply edit using strategy manager
+            result = await self.editor_manager.apply_edit(instruction)
+
+            if result.success:
+                strategy_info = f" (strategy: {result.strategy_used})"
+                return ToolResult.success_result(f"{result.message}{strategy_info}")
+            else:
+                return ToolResult.error_result(
+                    f"File creation failed: {result.message}"
+                )
+
+        except Exception as e:
+            return ToolResult.error_result(f"Failed to create file '{path}': {str(e)}")
+
+    @timed("file_edit_time")
+    async def str_replace_editor(
+        self, path: str, old_str: str, new_str: str, replace_all: bool = False
+    ) -> ToolResult:
+        """Replace text in an existing file using multi-strategy editing."""
+        try:
+            # Create edit instruction
+            instruction = EditInstruction(
+                file_path=path,
+                search_text=old_str,
+                replacement_text=new_str,
+                replace_all=replace_all,
+            )
+
+            # Apply edit using strategy manager
+            result = await self.editor_manager.apply_edit(instruction)
+
+            if result.success:
+                strategy_info = f" (strategy: {result.strategy_used})"
+                if result.fallback_used:
+                    strategy_info += " [fallback]"
+
+                return ToolResult.success_result(f"{result.message}{strategy_info}")
+            else:
+                return ToolResult.error_result(f"Edit failed: {result.message}")
+
+        except Exception as e:
+            return ToolResult.error_result(f"Failed to edit file '{path}': {str(e)}")
