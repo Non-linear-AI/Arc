@@ -30,4 +30,4 @@ clean:  ## Clean build artifacts
 	find . -type f -name "*.pyc" -delete
 	rm -rf dist/ build/ *.egg-info/ .coverage htmlcov/ .pytest_cache/ .ruff_cache/
 
-all: format lint test  ## Run all checks (format will auto-fix issues)
+all: format lint test  ## Run all checks
