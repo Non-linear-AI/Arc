@@ -77,16 +77,6 @@ class InteractiveInterface:
         self._spinner_stop = False
         self._spinner_frames = ["/", "-", "\\", "|"]
         self._spinner_frame_index = 0
-        self._working_messages = [
-            "Thinking...",
-            "Computing...",
-            "Analyzing...",
-            "Processing...",
-            "Calculating...",
-            "Working...",
-            "Optimizing...",
-            "Synthesizing...",
-        ]
 
     def show_welcome(self, _model: str, _directory: str):
         """Display a centered ASCII banner in an 80-char panel."""
@@ -144,12 +134,8 @@ class InteractiveInterface:
             "str_replace_editor": "Update",
             "bash": "Bash",
             "search": "Search",
-            "create_todo_list": "Created Todo",
-            "update_todo_list": "Updated Todo",
-            "show_todo_list": "Todos",
-            "start_todo": "Started",
-            "complete_todo": "Completed",
-            "advance_todo": "Advanced",
+            "start_todo": "Started Todo",
+            "update_todo": "Updated Todo",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -183,7 +169,22 @@ class InteractiveInterface:
 
         # Show details if there's content
         if content.strip():
-            self._print_details_block(content)
+            # Special handling for todo operations - show full content
+            if tool_name in ["start_todo", "update_todo"]:
+                self._print_todo_content(content)
+            else:
+                self._print_details_block(content)
+
+    def _print_todo_content(self, content: str) -> None:
+        """Print todo content with progress bar format."""
+        lines = content.splitlines()
+        if not lines:
+            return
+
+        # Print the todo content directly without modification
+        for line in lines:
+            if line.strip():
+                self.console.print(f"  {line}")
 
     def _print_details_block(self, content: str, _max_lines: int = 5) -> None:
         """Print details block matching the exact format from the example."""

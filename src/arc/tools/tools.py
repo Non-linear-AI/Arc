@@ -169,8 +169,22 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="create_todo_list",
-            description="Create a new todo list for planning and tracking tasks",
+            name="start_todo",
+            description="Start working on a todo item",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "todo_id": {
+                        "type": "string",
+                        "description": "ID of the todo item to start",
+                    },
+                },
+                "required": ["todo_id"],
+            },
+        ),
+        ArcTool(
+            name="update_todo",
+            description="Update todo items in the list",
             parameters={
                 "type": "object",
                 "properties": {
@@ -180,12 +194,6 @@ def get_base_tools() -> list[ArcTool]:
                         "items": {
                             "type": "object",
                             "properties": {
-                                "id": {
-                                    "type": "string",
-                                    "description": (
-                                        "Unique identifier for the todo item"
-                                    ),
-                                },
                                 "content": {
                                     "type": "string",
                                     "description": "Description of the todo item",
@@ -195,55 +203,12 @@ def get_base_tools() -> list[ArcTool]:
                                     "enum": ["pending", "in_progress", "completed"],
                                     "description": "Current status of the todo item",
                                 },
-                                "priority": {
-                                    "type": "string",
-                                    "enum": ["high", "medium", "low"],
-                                    "description": "Priority level of the todo item",
-                                },
                             },
-                            "required": ["id", "content", "status", "priority"],
+                            "required": ["content", "status"],
                         },
                     },
                 },
                 "required": ["todos"],
-            },
-        ),
-        ArcTool(
-            name="update_todo_list",
-            description="Update existing todos in the todo list",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "updates": {
-                        "type": "array",
-                        "description": "Array of todo updates",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {
-                                    "type": "string",
-                                    "description": "ID of the todo item to update",
-                                },
-                                "status": {
-                                    "type": "string",
-                                    "enum": ["pending", "in_progress", "completed"],
-                                    "description": "New status for the todo item",
-                                },
-                                "content": {
-                                    "type": "string",
-                                    "description": "New content for the todo item",
-                                },
-                                "priority": {
-                                    "type": "string",
-                                    "enum": ["high", "medium", "low"],
-                                    "description": "New priority for the todo item",
-                                },
-                            },
-                            "required": ["id"],
-                        },
-                    },
-                },
-                "required": ["updates"],
             },
         ),
     ]

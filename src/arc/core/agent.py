@@ -124,13 +124,8 @@ class ArcAgent:
               navigation, and system operations)
             - search: Unified search tool for finding text content or files
               (similar to Cursor's search functionality)
-            - create_todo_list: Create a visual todo list for planning and
-              tracking tasks
-            - update_todo_list: Update existing todos in your todo list
-            - show_todo_list: Display current todos with summary and focus
-            - start_todo: Start a specific todo (or first pending)
-            - complete_todo: Complete a specific todo (or current)
-            - advance_todo: Complete current and start the next pending
+            - start_todo: Start working on a todo item 
+            - update_todo: Update todo items in your list
 
             IMPORTANT TOOL USAGE RULES:
             - NEVER use create_file on files that already exist - this will overwrite
@@ -158,21 +153,10 @@ class ArcAgent:
             1. Use create_file with the full content
 
             TASK PLANNING WITH TODO LISTS:
-            - For complex requests with multiple steps, ALWAYS create a todo list
-              first to plan your approach
-            - Use create_todo_list to break down tasks into manageable items with
-              priorities
-            - Use show_todo_list to keep the plan visible
-            - Mark tasks as 'in_progress' when you start working (use start_todo) —
-              only one at a time
-            - Mark tasks as 'completed' immediately when finished (use complete_todo)
-            - Prefer advance_todo to complete the current and automatically start
-              the next
-            - Use update_todo_list for bulk edits (renames, priorities)
-            - Todo lists provide visual feedback with colors: ✅ Green (completed),
-              🔄 Cyan (in progress), ⏳ Yellow (pending)
-            - Always create todos with priorities: 'high' (🔴), 'medium' (🟡),
-              'low' (🟢)
+            - For complex requests with multiple steps, use todo system for tracking
+            - Use start_todo to begin working on a task
+            - Use update_todo to modify todo items as needed
+            - Todo items show status with colored dots: ✅ Completed, 🔄 In Progress, ⏳ Pending
 
             Be helpful, direct, and efficient. Always explain what you're doing and
             show the results.
@@ -515,13 +499,13 @@ class ArcAgent:
                     file_types=args.get("file_types"),
                     include_hidden=args.get("include_hidden", False),
                 )
-            elif tool_call.name == "create_todo_list":
+            elif tool_call.name == "start_todo":
                 return await self.todo_tool.execute(
-                    action="create", todos=args["todos"]
+                    action="start", todo_id=args["todo_id"]
                 )
-            elif tool_call.name == "update_todo_list":
+            elif tool_call.name == "update_todo":
                 return await self.todo_tool.execute(
-                    action="update", updates=args["updates"]
+                    action="update", todos=args["todos"]
                 )
             else:
                 return ToolResult.error_result(f"Unknown tool: {tool_call.name}")
