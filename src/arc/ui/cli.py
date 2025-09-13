@@ -12,6 +12,8 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ..core import ArcAgent, SettingsManager
+from ..database import DatabaseError, DatabaseManager, QueryValidationError
+from ..database.services import ServiceContainer
 from ..error_handling import error_handler
 from ..utils import ConfirmationService, performance_manager
 from .console import InteractiveInterface
@@ -95,13 +97,145 @@ def chat(
         settings_manager.update_user_setting("baseURL", base_url)
         console.print("✅ Base URL saved to ~/.arc/user-settings.json")
 
+    # Initialize database services (shared by both modes)
+    system_db_path = settings_manager.get_system_database_path()
+    user_db_path = settings_manager.get_user_database_path()
+    db_manager = DatabaseManager(system_db_path, user_db_path)
+    services = ServiceContainer(db_manager)
+
     # Run the appropriate mode
     if prompt:
         asyncio.run(
-            run_headless_mode(prompt, api_key, base_url, model, max_tool_rounds)
+            run_headless_mode(
+                prompt, api_key, base_url, model, max_tool_rounds, services
+            )
         )
     else:
-        asyncio.run(run_interactive_mode(api_key, base_url, model, max_tool_rounds))
+        asyncio.run(
+            run_interactive_mode(api_key, base_url, model, max_tool_rounds, services)
+        )
+
+
+async def handle_sql_command(query_service, ui, user_input: str) -> None:
+    """Handle SQL command execution using InteractiveQueryService."""
+    # Parse the command: /sql [system|user] <query>
+    parts = user_input.split(" ", 2)
+
+    if len(parts) < 2:
+        console.print(
+            "❌ SQL command requires a query. Usage: /sql [system|user] <query>"
+        )
+        return
+
+    # Determine target database and query
+    if len(parts) >= 3 and parts[1].lower() in ["system", "user"]:
+        target_db = parts[1].lower()
+        query = parts[2].strip()
+    else:
+        target_db = "system"  # Default to system database
+        query = " ".join(parts[1:]).strip()
+
+    if not query:
+        console.print("❌ Empty SQL query provided.")
+        return
+
+    try:
+        # Execute the query using the service - now returns QueryResult directly
+        result = query_service.execute_query(query, target_db)
+
+        # Display results using the UI formatter
+        # TimedQueryResult has execution_time in the execution_time property
+        execution_time = getattr(result, "query_execution_time", result.execution_time)
+        ui.show_sql_result(result, target_db, query, execution_time)
+
+    except QueryValidationError as e:
+        console.print(f"❌ Query Error: {str(e)}", style="red")
+    except DatabaseError as e:
+        console.print(f"❌ Database Error: {str(e)}", style="red")
+    except Exception as e:
+        console.print(f"❌ Unexpected error executing SQL: {str(e)}", style="red")
+
+
+async def handle_sql_command_headless(query_service, user_input: str) -> None:
+    """Handle SQL command execution in headless mode with JSON output."""
+    # Parse the command: /sql [system|user] <query>
+    parts = user_input.split(" ", 2)
+
+    if len(parts) < 2:
+        error_output = {
+            "role": "assistant",
+            "content": (
+                "❌ SQL command requires a query. Usage: /sql [system|user] <query>"
+            ),
+        }
+        print(json.dumps(error_output))
+        return
+
+    # Determine target database and query
+    if len(parts) >= 3 and parts[1].lower() in ["system", "user"]:
+        target_db = parts[1].lower()
+        query = parts[2].strip()
+    else:
+        target_db = "system"  # Default to system database
+        query = " ".join(parts[1:]).strip()
+
+    if not query:
+        error_output = {"role": "assistant", "content": "❌ Empty SQL query provided."}
+        print(json.dumps(error_output))
+        return
+
+    try:
+        # Execute the query using the service - now returns QueryResult directly
+        result = query_service.execute_query(query, target_db)
+
+        # Format results as JSON for headless consumption
+        execution_time = getattr(result, "query_execution_time", result.execution_time)
+        output = {
+            "role": "assistant",
+            "content": f"🗃️ SQL Query ({target_db.title()} DB) - {execution_time:.3f}s",
+            "sql_result": {
+                "query": query,
+                "target_database": target_db,
+                "execution_time": execution_time,
+                "row_count": result.count(),
+                "rows": result.to_list(),
+            },
+        }
+        print(json.dumps(output, default=str))  # default=str handles datetime objects
+
+    except QueryValidationError as e:
+        error_output = {
+            "role": "assistant",
+            "content": f"❌ Query Error: {str(e)}",
+            "sql_error": {
+                "query": query,
+                "target_database": target_db,
+                "error": str(e),
+            },
+        }
+        print(json.dumps(error_output))
+    except DatabaseError as e:
+        error_output = {
+            "role": "assistant",
+            "content": f"❌ Database Error: {str(e)}",
+            "sql_error": {
+                "query": query,
+                "target_database": target_db,
+                "error": str(e),
+            },
+        }
+        print(json.dumps(error_output))
+    except Exception as e:
+        error_output = {
+            "role": "assistant",
+            "content": f"❌ Unexpected error executing SQL: {str(e)}",
+            "sql_error": {
+                "query": query,
+                "target_database": target_db,
+                "error": str(e),
+            },
+        }
+        print(json.dumps(error_output))
 
 
 async def run_headless_mode(
@@ -110,6 +244,7 @@ async def run_headless_mode(
     base_url: str | None,
     model: str | None,
     max_tool_rounds: int,
+    services: ServiceContainer,
 ):
     """Run in headless mode - process prompt and exit."""
     try:
@@ -118,6 +253,11 @@ async def run_headless_mode(
         # Configure confirmation service for headless mode
         confirmation_service = ConfirmationService()
         confirmation_service.set_session_flag("allOperations", True)
+
+        # Check if this is a SQL command
+        if prompt.strip().startswith("/sql"):
+            await handle_sql_command_headless(services.query, prompt.strip())
+            return
 
         # Process the user message
         chat_entries = await agent.process_user_message(prompt)
@@ -167,6 +307,7 @@ async def run_interactive_mode(
     base_url: str | None,
     model: str | None,
     max_tool_rounds: int,
+    services: ServiceContainer,
 ):
     """Run in interactive mode with enhanced UX."""
     try:
@@ -238,6 +379,10 @@ async def run_interactive_mode(
                         metrics = performance_manager.get_metrics()
                         error_stats = error_handler.get_error_stats()
                         ui.show_performance_metrics(metrics, error_stats)
+                        continue
+                    elif cmd.startswith("sql"):
+                        # Handle SQL queries
+                        await handle_sql_command(services.query, ui, user_input)
                         continue
                     else:
                         console.print(f"❌ Unknown system command: /{cmd}")

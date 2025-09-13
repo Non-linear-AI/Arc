@@ -85,10 +85,10 @@ class SettingsManager:
         if db_path:
             return db_path
 
-        # Default to system database file in settings directory
-        return str(self.settings_dir / "arc_system.db")
+        # Default to system database file in current directory
+        return "system_db.db"
 
-    def get_user_database_path(self) -> str | None:
+    def get_user_database_path(self) -> str:
         """Get user database path from environment or settings."""
         # First check environment
         db_path = os.getenv("ARC_USER_DATABASE_PATH")
@@ -97,7 +97,12 @@ class SettingsManager:
 
         # Then check settings file
         settings = self.load_user_settings()
-        return settings.get("userDatabasePath")
+        db_path = settings.get("userDatabasePath")
+        if db_path:
+            return db_path
+
+        # Default to user database file in current directory
+        return "user_db.db"
 
     def set_user_database_path(self, db_path: str) -> None:
         """Set user database path in settings."""
