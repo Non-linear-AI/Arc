@@ -3,8 +3,9 @@
 import json
 import os
 from datetime import datetime
-from textwrap import dedent
+from pathlib import Path
 
+import jinja2
 from openai.types.chat import ChatCompletionMessageParam
 
 from ..tools import BashTool, FileEditorTool, SearchTool, TodoTool, ToolResult
@@ -101,93 +102,31 @@ class ArcAgent:
             else ""
         )
 
-        system_content = dedent(
-            f"""
-            You are Arc CLI, an AI assistant that EXCLUSIVELY helps with file editing,
-            coding tasks, and system operations. You do NOT provide information about
-            general life advice, or non-technical topics.{custom_instructions_section}
+        # Load system prompt from Jinja2 template
+        template_path = Path(__file__).parent.parent / "templates" / "system_prompt.j2"
 
-            SCOPE RESTRICTIONS:
-            - ONLY answer questions related to programming, file editing,
-              system operations, databases, data analysis, and software development
-            - For non-technical questions (cooking, general knowledge, etc.),
-              politely redirect to technical topics
-            - Always stay within your role as a coding and system operations assistant
+        try:
+            # Create Jinja2 environment
+            template_dir = template_path.parent
+            env = jinja2.Environment(
+                loader=jinja2.FileSystemLoader(template_dir),
+                trim_blocks=True,
+                lstrip_blocks=True,
+            )
 
-            You have access to these tools:
-            - view_file: View file contents or directory listings
-            - create_file: Create new files with content
-              (ONLY use this for files that don't exist yet)
-            - str_replace_editor: Replace text in existing files
-              (ALWAYS use this to edit or update existing files)
-            - bash: Execute bash commands (use for searching, file discovery,
-              navigation, and system operations)
-            - search: Unified search tool for finding text content or files
-              (similar to Cursor's search functionality)
-            - create_todo_list: Create a visual todo list for planning and
-              tracking tasks
-            - update_todo_list: Update existing todos in your todo list
-            - show_todo_list: Display current todos with summary and focus
-            - start_todo: Start a specific todo (or first pending)
-            - complete_todo: Complete a specific todo (or current)
-            - advance_todo: Complete current and start the next pending
-
-            IMPORTANT TOOL USAGE RULES:
-            - NEVER use create_file on files that already exist - this will overwrite
-              them completely
-            - ALWAYS use str_replace_editor to modify existing files, even for
-              small changes
-            - Before editing a file, use view_file to see its current contents
-            - Use create_file ONLY when creating entirely new files that don't exist
-
-            SEARCHING AND EXPLORATION:
-            - Use search for fast, powerful text search across files or finding
-              files by name (unified search tool)
-            - Examples: search for text content like "import.*react", search for
-              files like "component.tsx"
-            - Use bash with commands like 'find', 'grep', 'rg', 'ls' for complex
-              file operations and navigation
-            - view_file is best for reading specific files you already know exist
-
-            When a user asks you to edit, update, modify, or change an existing file:
-            1. First use view_file to see the current contents
-            2. Then use str_replace_editor to make the specific changes
-            3. Never use create_file for existing files
-
-            When a user asks you to create a new file that doesn't exist:
-            1. Use create_file with the full content
-
-            TASK PLANNING WITH TODO LISTS:
-            - For complex requests with multiple steps, ALWAYS create a todo list
-              first to plan your approach
-            - Use create_todo_list to break down tasks into manageable items with
-              priorities
-            - Use show_todo_list to keep the plan visible
-            - Mark tasks as 'in_progress' when you start working (use start_todo) —
-              only one at a time
-            - Mark tasks as 'completed' immediately when finished (use complete_todo)
-            - Prefer advance_todo to complete the current and automatically start
-              the next
-            - Use update_todo_list for bulk edits (renames, priorities)
-            - Todo lists provide visual feedback with colors: ✅ Green (completed),
-              🔄 Cyan (in progress), ⏳ Yellow (pending)
-            - Always create todos with priorities: 'high' (🔴), 'medium' (🟡),
-              'low' (🟢)
-
-            Be helpful, direct, and efficient. Always explain what you're doing and
-            show the results.
-
-            IMPORTANT RESPONSE GUIDELINES:
-            - After using tools, do NOT respond with pleasantries like
-              "Thanks for..." or "Great!"
-            - Only provide necessary explanations or next steps if relevant to the task
-            - Keep responses concise and focused on the actual work being done
-            - If a tool execution completes the user's request, you can remain
-              silent or give a brief confirmation
-
-            Current working directory: {os.getcwd()}
-            """
-        )
+            # Load and render template
+            template = env.get_template("system_prompt.j2")
+            system_content = template.render(
+                custom_instructions_section=custom_instructions_section,
+                current_directory=os.getcwd(),
+            )
+        except Exception:
+            # Fallback to basic system prompt if template loading fails
+            system_content = (
+                f"You are Arc CLI, an AI assistant for file editing and "
+                f"system operations.{custom_instructions_section}\n\n"
+                f"Current working directory: {os.getcwd()}"
+            )
 
         self.messages.append({"role": "system", "content": system_content})
 
@@ -458,8 +397,10 @@ class ArcAgent:
             if tool_rounds >= self.max_tool_rounds:
                 warning_entry = ChatEntry(
                     type="assistant",
-                    content="Maximum tool execution rounds reached. "
-                    "Stopping to prevent infinite loops.",
+                    content=(
+                        "Maximum tool execution rounds reached. "
+                        "Stopping to prevent infinite loops."
+                    ),
                 )
                 self.chat_history.append(warning_entry)
                 new_entries.append(warning_entry)

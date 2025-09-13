@@ -77,16 +77,6 @@ class InteractiveInterface:
         self._spinner_stop = False
         self._spinner_frames = ["/", "-", "\\", "|"]
         self._spinner_frame_index = 0
-        self._working_messages = [
-            "Thinking...",
-            "Computing...",
-            "Analyzing...",
-            "Processing...",
-            "Calculating...",
-            "Working...",
-            "Optimizing...",
-            "Synthesizing...",
-        ]
 
     def show_welcome(self, _model: str, _directory: str):
         """Display a centered ASCII banner in an 80-char panel."""
@@ -122,8 +112,8 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         self.console.print("\n[bold]System Commands[/bold]")
         self.console.print(
-            "  [dim]Commands require '/' prefix. Regular text without '/' is sent "
-            "to the AI.[/dim]"
+            "  [dim]Commands require '/' prefix. "
+            "Regular text without '/' is sent to the AI.[/dim]"
         )
         commands = [
             ("/help", "Show available commands and features"),
@@ -144,12 +134,8 @@ class InteractiveInterface:
             "str_replace_editor": "Update",
             "bash": "Bash",
             "search": "Search",
-            "create_todo_list": "Created Todo",
-            "update_todo_list": "Updated Todo",
-            "show_todo_list": "Todos",
-            "start_todo": "Started",
-            "complete_todo": "Completed",
-            "advance_todo": "Advanced",
+            "create_todo_list": "Create Plan",
+            "update_todo_list": "Update Plan",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -159,6 +145,19 @@ class InteractiveInterface:
                 actual = " ".join(parts[2:]).replace("_", " ")
                 return f"{server.title()}({actual})"
         return mapping.get(tool_name, tool_name)
+
+    def _get_dot_color(self, tool_name: str) -> str:
+        """Get color for the dot based on action type."""
+        if tool_name in ["create_todo_list", "update_todo_list"]:
+            return "blue"  # Plan operations
+        elif tool_name in ["bash"]:
+            return "red"  # System operations
+        elif tool_name in ["search"]:
+            return "yellow"  # Search operations
+        elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
+            return "magenta"  # File operations
+        else:
+            return "cyan"  # Default/messages
 
     def show_tool_execution(self, _tool_name: str, _args: dict[str, Any]):
         """Show tool execution line that will be replaced with result."""
@@ -173,17 +172,74 @@ class InteractiveInterface:
         if self._working_active:
             self._working_active = False
 
-        # Header line as a step - just cyan dot and tool name
-        self.console.print(f"[cyan]⏺[/cyan] [white]{label}[/white]")
-
         # Format the result content
         content = result.output if result.success else result.error
         if content is None:
             content = ""
 
-        # Show details if there's content
-        if content.strip():
-            self._print_details_block(content)
+        # Add spacing before every action
+        self.console.print()
+
+        # Get color for this action type
+        dot_color = self._get_dot_color(tool_name)
+
+        # Special handling for todo operations - show progress bar inline
+        if tool_name in ["create_todo_list", "update_todo_list"] and content.strip():
+            self._print_todo_with_inline_progress(label, content, dot_color)
+        else:
+            # Header line as a step - colored dot and tool name
+            self.console.print(f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white]")
+
+            # Show details if there's content
+            if content.strip():
+                self._print_details_block(content)
+
+    def _print_todo_with_inline_progress(
+        self, label: str, content: str, dot_color: str = "blue"
+    ) -> None:
+        """Print todo with progress bar inline with the action label."""
+        lines = content.splitlines()
+        if not lines:
+            return
+
+        # Find the progress bar line and extract it
+        progress_line = None
+        todo_items = []
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith("📋"):
+                # Extract just the progress bar part
+                if "[" in line and "]" in line:
+                    start = line.find("[")
+                    end = line.find("]") + 1
+                    progress_part = line[start:end]
+                    # Also get the ratio part
+                    ratio_part = line.split("]")[-1].strip()
+                    progress_line = f"{progress_part} {ratio_part}"
+            elif line.startswith("└"):
+                todo_items.append(line)
+
+        # Print header with inline progress
+        if progress_line:
+            self.console.print(
+                f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white] {progress_line}"
+            )
+
+        # Print todo items
+        for item in todo_items:
+            self.console.print(f"  {item}")
+
+    def _print_todo_content(self, content: str) -> None:
+        """Print todo content with progress bar format."""
+        lines = content.splitlines()
+        if not lines:
+            return
+
+        # Print the todo content directly without modification
+        for line in lines:
+            if line.strip():
+                self.console.print(f"  {line}")
 
     def _print_details_block(self, content: str, _max_lines: int = 5) -> None:
         """Print details block matching the exact format from the example."""
@@ -208,15 +264,53 @@ class InteractiveInterface:
                 f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]"
             )
 
+    def show_user_message(self, content: str):
+        """Clear the input line and redisplay user message in light gray."""
+        text = content.strip()
+        if not text:
+            return
+
+        # Calculate how many lines to clear (prompt + any multiline input)
+        lines = text.split("\n")
+        lines_to_clear = len(lines)
+
+        # Use ANSI escape sequences to move cursor and clear lines
+        # Move cursor up to the beginning of the prompt line
+        print(f"\033[{lines_to_clear}A\r", end="", flush=True)
+
+        # Clear each line from current position to end of line
+        for i in range(lines_to_clear):
+            print("\033[K", end="", flush=True)  # Clear to end of line
+            if i < lines_to_clear - 1:
+                print(
+                    "\033[1B\r", end="", flush=True
+                )  # Move down one line and to start
+
+        # Move cursor back to the start position
+        if lines_to_clear > 1:
+            print(f"\033[{lines_to_clear - 1}A\r", end="", flush=True)
+
+        # Render the user message in soft purple-gray
+        if lines:
+            self.console.print(
+                f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]"
+            )
+            for ln in lines[1:]:
+                self.console.print(f"  [color(245)]{ln}[/color(245)]")
+
     def show_assistant_step(self, content: str):
         """Render assistant thoughts as a cyan dot step with the content."""
         text = content.strip()
         if not text:
             return
+
+        # Add spacing before assistant messages
+        self.console.print()
+
         # Render each line with a single cyan dot header once, then plain lines
         lines = text.split("\n")
         if lines:
-            self.console.print(f"[cyan]⏺[/] [white]{lines[0]}[/white]")
+            self.console.print(f"[cyan]⏺[/cyan] [white]{lines[0]}[/white]")
             for ln in lines[1:]:
                 self.console.print(f"  [white]{ln}[/white]")
 

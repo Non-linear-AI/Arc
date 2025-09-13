@@ -135,8 +135,8 @@ class ArcError(Exception):
             )
         elif self.category == ErrorCategory.NETWORK:
             return (
-                f"Network error: {base_message}\n💡 Check your internet "
-                "connection and try again."
+                f"Network error: {base_message}\n"
+                "💡 Check your internet connection and try again."
             )
         elif self.category == ErrorCategory.FILE_SYSTEM:
             return (
@@ -145,8 +145,8 @@ class ArcError(Exception):
             )
         elif self.category == ErrorCategory.API:
             return (
-                f"API error: {base_message}\n💡 Check your API credentials "
-                "and network connection."
+                f"API error: {base_message}\n"
+                "💡 Check your API credentials and network connection."
             )
         elif self.category == ErrorCategory.TIMEOUT:
             return (
@@ -155,8 +155,8 @@ class ArcError(Exception):
             )
         elif self.category == ErrorCategory.VALIDATION:
             return (
-                f"Validation error: {base_message}\n💡 Please check your input "
-                "parameters."
+                f"Validation error: {base_message}\n"
+                "💡 Please check your input parameters."
             )
         else:
             return f"Error: {base_message}"

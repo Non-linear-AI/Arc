@@ -284,7 +284,7 @@ class SearchTool(BaseTool):
         if len(results) > max_results:
             formatted.append(
                 f"\n... and {len(results) - max_results} more results "
-                "(use max_results to see more)"
+                f"(use max_results to see more)"
             )
 
         return "\n".join(formatted)

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from ..editing import EditInstruction, EditorManager
+from ..utils.confirmation import ConfirmationService
 from ..utils.performance import cached, performance_manager, timed
 from .base import BaseTool, ToolResult
 
@@ -13,6 +14,7 @@ class FileEditorTool(BaseTool):
     def __init__(self):
         super().__init__()
         self.editor_manager = EditorManager()
+        self.confirmation_service = ConfirmationService.get_instance()
 
     async def execute(self, **kwargs) -> ToolResult:
         """Execute file operation based on action."""
@@ -124,9 +126,34 @@ class FileEditorTool(BaseTool):
             # Check if file already exists
             if Path(path).exists():
                 return ToolResult.error_result(
-                    f"File already exists: {path}. Use str_replace_editor to modify "
-                    "existing files."
+                    f"File already exists: {path}. "
+                    f"Use str_replace_editor to modify existing files."
                 )
+
+            # Request confirmation from user
+            session_flags = self.confirmation_service.get_session_flags()
+            if (
+                not session_flags["file_operations"]
+                and not session_flags["all_operations"]
+            ):
+                # Preview content for confirmation (first few lines)
+                content_lines = content.split("\n")
+                preview = "\n".join(content_lines[:10])
+                if len(content_lines) > 10:
+                    preview += f"\n... +{len(content_lines) - 10} more lines"
+
+                confirmation_result = await self.confirmation_service.request_confirmation(  # noqa
+                    operation="Create file",
+                    target=path,
+                    operation_type="file",
+                    content=f"Creating new file: {path}\nContent preview:\n{preview}",
+                )
+
+                if not confirmation_result.confirmed:
+                    return ToolResult.error_result(
+                        confirmation_result.feedback
+                        or "File creation cancelled by user"
+                    )
 
             # Create edit instruction for new file
             instruction = EditInstruction(
@@ -153,6 +180,29 @@ class FileEditorTool(BaseTool):
     ) -> ToolResult:
         """Replace text in an existing file using multi-strategy editing."""
         try:
+            # Request confirmation from user
+            session_flags = self.confirmation_service.get_session_flags()
+            if (
+                not session_flags["file_operations"]
+                and not session_flags["all_operations"]
+            ):
+                confirmation_result = await self.confirmation_service.request_confirmation(  # noqa
+                    operation="Edit file",
+                    target=path,
+                    operation_type="file",
+                    content=(
+                        f"Editing file: {path}\n"
+                        f"Replace: {old_str[:100]}"
+                        f"{'...' if len(old_str) > 100 else ''}\n"
+                        f"With: {new_str[:100]}{'...' if len(new_str) > 100 else ''}\n"
+                        f"Replace all: {replace_all}"
+                    ),
+                )
+
+                if not confirmation_result.confirmed:
+                    return ToolResult.error_result(
+                        confirmation_result.feedback or "File edit cancelled by user"
+                    )
             # Create edit instruction
             instruction = EditInstruction(
                 file_path=path,

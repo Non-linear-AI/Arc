@@ -179,7 +179,10 @@ async def run_interactive_mode(
         while True:
             try:
                 # Get user input with styled prompt
-                user_input = console.input("\n[bold blue]❯[/bold blue] ").strip()
+                user_input = console.input("\n[bold green]>[/bold green] ").strip()
+
+                # Display the user message in chat history with different coloring
+                ui.show_user_message(user_input)
 
                 # Handle system commands (only with / prefix)
                 if user_input.startswith("/"):
@@ -263,7 +266,6 @@ async def run_interactive_mode(
                         if current_content.strip():
                             ui.show_assistant_step(current_content)
                             current_content = ""
-                        console.print()  # blank line before tool execution
                         args = {}
                         if chunk.tool_call and chunk.tool_call.arguments:
                             try:

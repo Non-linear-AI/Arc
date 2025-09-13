@@ -20,13 +20,13 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "integer",
                         "description": (
                             "Starting line number for partial file view (optional)"
-                        ),
+                        ),  # noqa
                     },
                     "end_line": {
                         "type": "integer",
                         "description": (
                             "Ending line number for partial file view (optional)"
-                        ),
+                        ),  # noqa
                     },
                 },
                 "required": ["path"],
@@ -54,7 +54,7 @@ def get_base_tools() -> list[ArcTool]:
             name="str_replace_editor",
             description=(
                 "Replace specific text in a file. Use this for single line edits only"
-            ),
+            ),  # noqa
             parameters={
                 "type": "object",
                 "properties": {
@@ -65,8 +65,7 @@ def get_base_tools() -> list[ArcTool]:
                     "old_str": {
                         "type": "string",
                         "description": (
-                            "Text to replace (must match exactly, or will use "
-                            "fuzzy matching for multi-line strings)"
+                            "Text to replace (must match exactly, or will use fuzzy matching for multi-line strings)"  # noqa: E501
                         ),
                     },
                     "new_str": {
@@ -76,9 +75,9 @@ def get_base_tools() -> list[ArcTool]:
                     "replace_all": {
                         "type": "boolean",
                         "description": (
-                            "Replace all occurrences (default: false, only replaces "
-                            "first occurrence)"
-                        ),
+                            "Replace all occurrences (default: false, "
+                            "only replaces first occurrence)"
+                        ),  # noqa
                     },
                 },
                 "required": ["path", "old_str", "new_str"],
@@ -120,38 +119,38 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "string",
                         "description": (
                             "Glob pattern for files to include (e.g. '*.ts', '*.js')"
-                        ),
+                        ),  # noqa
                     },
                     "exclude_pattern": {
                         "type": "string",
                         "description": (
                             "Glob pattern for files to exclude "
                             "(e.g. '*.log', 'node_modules')"
-                        ),
+                        ),  # noqa
                     },
                     "case_sensitive": {
                         "type": "boolean",
                         "description": (
                             "Whether search should be case sensitive (default: false)"
-                        ),
+                        ),  # noqa
                     },
                     "whole_word": {
                         "type": "boolean",
                         "description": (
                             "Whether to match whole words only (default: false)"
-                        ),
+                        ),  # noqa
                     },
                     "regex": {
                         "type": "boolean",
                         "description": (
                             "Whether query is a regex pattern (default: false)"
-                        ),
+                        ),  # noqa
                     },
                     "max_results": {
                         "type": "integer",
                         "description": (
                             "Maximum number of results to return (default: 50)"
-                        ),
+                        ),  # noqa
                     },
                     "file_types": {
                         "type": "array",
@@ -162,7 +161,7 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "boolean",
                         "description": (
                             "Whether to include hidden files (default: false)"
-                        ),
+                        ),  # noqa
                     },
                 },
                 "required": ["query"],
@@ -176,7 +175,7 @@ def get_base_tools() -> list[ArcTool]:
                 "properties": {
                     "todos": {
                         "type": "array",
-                        "description": "Array of todo items",
+                        "description": "Array of todo items to create",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -184,7 +183,7 @@ def get_base_tools() -> list[ArcTool]:
                                     "type": "string",
                                     "description": (
                                         "Unique identifier for the todo item"
-                                    ),
+                                    ),  # noqa
                                 },
                                 "content": {
                                     "type": "string",
@@ -193,15 +192,13 @@ def get_base_tools() -> list[ArcTool]:
                                 "status": {
                                     "type": "string",
                                     "enum": ["pending", "in_progress", "completed"],
-                                    "description": "Current status of the todo item",
-                                },
-                                "priority": {
-                                    "type": "string",
-                                    "enum": ["high", "medium", "low"],
-                                    "description": "Priority level of the todo item",
+                                    "description": (
+                                        "Current status of the todo item "
+                                        "(default: pending)"
+                                    ),  # noqa
                                 },
                             },
-                            "required": ["id", "content", "status", "priority"],
+                            "required": ["id", "content", "status"],
                         },
                     },
                 },
@@ -210,7 +207,7 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="update_todo_list",
-            description="Update existing todos in the todo list",
+            description="Update existing todos in the todo list by ID",
             parameters={
                 "type": "object",
                 "properties": {
