@@ -1,7 +1,6 @@
 """Interactive query service for Arc query processing."""
 
 import time
-from typing import Any
 
 from ..base import DatabaseError, QueryResult, QueryValidationError, TimedQueryResult
 from .base import BaseService
@@ -103,83 +102,3 @@ class InteractiveQueryService(BaseService):
             # We could add specific validations here if needed in the future
             # For now, allow all SQL operations on user database
             pass
-
-    def get_available_tables(self, target_db: str = "system") -> list[dict[str, str]]:
-        """Get list of available tables in the specified database.
-
-        Args:
-            target_db: Target database ("system" or "user")
-
-        Returns:
-            List of tables with name and type
-
-        Raises:
-            QueryValidationError: If target database is invalid or not configured
-            DatabaseError: If database operation fails
-        """
-        if target_db not in ["system", "user"]:
-            raise QueryValidationError(f"Invalid target database: {target_db}")
-
-        if target_db == "user" and not self.db_manager.has_user_database():
-            raise QueryValidationError("User database is not configured.")
-
-        if target_db == "system":
-            result = self._system_query("""
-                SELECT name, type FROM sqlite_master
-                WHERE type='table' AND name NOT LIKE 'sqlite_%'
-                ORDER BY name
-            """)
-        else:  # user
-            result = self._user_query("""
-                SELECT name, type FROM sqlite_master
-                WHERE type='table' AND name NOT LIKE 'sqlite_%'
-                ORDER BY name
-            """)
-
-        return [{"name": row["name"], "type": row["type"]} for row in result]
-
-    def get_table_schema(
-        self, table_name: str, target_db: str = "system"
-    ) -> list[dict[str, Any]]:
-        """Get schema information for a specific table.
-
-        Args:
-            table_name: Name of the table
-            target_db: Target database ("system" or "user")
-
-        Returns:
-            List of column information dictionaries
-
-        Raises:
-            QueryValidationError: If target database is invalid, not configured,
-                or table not found
-            DatabaseError: If database operation fails
-        """
-        if target_db not in ["system", "user"]:
-            raise QueryValidationError(f"Invalid target database: {target_db}")
-
-        if target_db == "user" and not self.db_manager.has_user_database():
-            raise QueryValidationError("User database is not configured.")
-
-        if target_db == "system":
-            result = self._system_query(f"PRAGMA table_info({table_name})")
-        else:  # user
-            result = self._user_query(f"PRAGMA table_info({table_name})")
-
-        if result.empty():
-            raise QueryValidationError(
-                f"Table '{table_name}' not found in {target_db} database."
-            )
-
-        columns = []
-        for row in result:
-            columns.append(
-                {
-                    "name": row["name"],
-                    "type": row["type"],
-                    "nullable": not row["notnull"],
-                    "primary_key": bool(row["pk"]),
-                }
-            )
-
-        return columns
