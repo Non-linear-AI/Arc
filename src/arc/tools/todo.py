@@ -8,9 +8,7 @@ from .base import BaseTool, ToolResult
 class TodoItem:
     """Represents a single TODO item."""
 
-    def __init__(
-        self, id: str, content: str, status: str = "pending"
-    ):
+    def __init__(self, id: str, content: str, status: str = "pending"):
         self.id = id
         self.content = content
         self.status = status  # pending, in_progress, completed
@@ -58,11 +56,11 @@ class TodoTool(BaseTool):
             for todo_data in todos:
                 # Auto-generate ID if not provided
                 todo_id = todo_data.get("id", f"todo_{len(new_todos) + 1}")
-                
+
                 todo = TodoItem(
                     id=todo_id,
                     content=todo_data["content"],
-                    status=todo_data.get("status", "pending")
+                    status=todo_data.get("status", "pending"),
                 )
                 new_todos.append(todo)
 
@@ -101,7 +99,9 @@ class TodoTool(BaseTool):
                 updated_count += 1
 
             formatted = self._format_todo_list()
-            return ToolResult.success_result(f"Updated {updated_count} TODO item(s):\n{formatted}")
+            return ToolResult.success_result(
+                f"Updated {updated_count} TODO item(s):\n{formatted}"
+            )
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to update todo list: {str(e)}")
@@ -119,15 +119,15 @@ class TodoTool(BaseTool):
         # Calculate progress
         completed = sum(1 for todo in self.todos if todo.status == "completed")
         total = len(self.todos)
-        
+
         # Create progress bar (10 blocks)
         progress_ratio = completed / total if total > 0 else 0
         filled_blocks = int(progress_ratio * 10)
         progress_bar = "█" * filled_blocks + "░" * (10 - filled_blocks)
-        
+
         # Header with progress - simpler title
         lines = [f"📋 [{progress_bar}] {completed}/{total}"]
-        
+
         # Add todo items with IDs shown for reference
         for todo in self.todos:
             if todo.status == "completed":
@@ -139,7 +139,7 @@ class TodoTool(BaseTool):
             else:
                 marker = "○"
                 line_text = f"  └ {marker} {todo.content}"
-            
+
             lines.append(line_text)
 
         return "\n".join(lines)

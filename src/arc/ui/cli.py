@@ -180,7 +180,7 @@ async def run_interactive_mode(
             try:
                 # Get user input with styled prompt
                 user_input = console.input("\n[bold green]>[/bold green] ").strip()
-                
+
                 # Display the user message in chat history with different coloring
                 ui.show_user_message(user_input)
 

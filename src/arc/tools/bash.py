@@ -3,8 +3,8 @@
 import asyncio
 import os
 
-from .base import BaseTool, ToolResult
 from ..utils.confirmation import ConfirmationService
+from .base import BaseTool, ToolResult
 
 
 class BashTool(BaseTool):
@@ -23,17 +23,24 @@ class BashTool(BaseTool):
         try:
             # Request confirmation from user
             session_flags = self.confirmation_service.get_session_flags()
-            if not session_flags["bash_commands"] and not session_flags["all_operations"]:
-                confirmation_result = await self.confirmation_service.request_confirmation(
-                    operation="Run bash command",
-                    target=command,
-                    operation_type="bash",
-                    content=f"Command: {command}\nWorking directory: {self._current_directory}"
+            if (
+                not session_flags["bash_commands"]
+                and not session_flags["all_operations"]
+            ):
+                confirmation_result = (
+                    await self.confirmation_service.request_confirmation(
+                        operation="Run bash command",
+                        target=command,
+                        operation_type="bash",
+                        content=f"Command: {command}\n"
+                        f"Working directory: {self._current_directory}",
+                    )
                 )
-                
+
                 if not confirmation_result.confirmed:
                     return ToolResult.error_result(
-                        confirmation_result.feedback or "Command execution cancelled by user"
+                        confirmation_result.feedback
+                        or "Command execution cancelled by user"
                     )
             # Create the process
             process = await asyncio.create_subprocess_shell(

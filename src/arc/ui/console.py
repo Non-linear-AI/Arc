@@ -112,8 +112,8 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         self.console.print("\n[bold]System Commands[/bold]")
         self.console.print(
-            "  [dim]Commands require '/' prefix. Regular text without '/' is sent "
-            "to the AI.[/dim]"
+            "  [dim]Commands require '/' prefix. "
+            "Regular text without '/' is sent to the AI.[/dim]"
         )
         commands = [
             ("/help", "Show available commands and features"),
@@ -130,7 +130,7 @@ class InteractiveInterface:
     def _action_label(self, tool_name: str) -> str:
         mapping = {
             "view_file": "Read",
-            "create_file": "Create", 
+            "create_file": "Create",
             "str_replace_editor": "Update",
             "bash": "Bash",
             "search": "Search",
@@ -179,22 +179,24 @@ class InteractiveInterface:
 
         # Add spacing before every action
         self.console.print()
-        
+
         # Get color for this action type
         dot_color = self._get_dot_color(tool_name)
-        
+
         # Special handling for todo operations - show progress bar inline
         if tool_name in ["create_todo_list", "update_todo_list"] and content.strip():
             self._print_todo_with_inline_progress(label, content, dot_color)
         else:
             # Header line as a step - colored dot and tool name
             self.console.print(f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white]")
-            
+
             # Show details if there's content
             if content.strip():
                 self._print_details_block(content)
 
-    def _print_todo_with_inline_progress(self, label: str, content: str, dot_color: str = "blue") -> None:
+    def _print_todo_with_inline_progress(
+        self, label: str, content: str, dot_color: str = "blue"
+    ) -> None:
         """Print todo with progress bar inline with the action label."""
         lines = content.splitlines()
         if not lines:
@@ -203,7 +205,7 @@ class InteractiveInterface:
         # Find the progress bar line and extract it
         progress_line = None
         todo_items = []
-        
+
         for line in lines:
             line = line.strip()
             if line.startswith("📋"):
@@ -217,11 +219,13 @@ class InteractiveInterface:
                     progress_line = f"{progress_part} {ratio_part}"
             elif line.startswith("└"):
                 todo_items.append(line)
-        
+
         # Print header with inline progress
         if progress_line:
-            self.console.print(f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white] {progress_line}")
-        
+            self.console.print(
+                f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white] {progress_line}"
+            )
+
         # Print todo items
         for item in todo_items:
             self.console.print(f"  {item}")
@@ -265,28 +269,32 @@ class InteractiveInterface:
         text = content.strip()
         if not text:
             return
-        
+
         # Calculate how many lines to clear (prompt + any multiline input)
         lines = text.split("\n")
         lines_to_clear = len(lines)
-        
+
         # Use ANSI escape sequences to move cursor and clear lines
         # Move cursor up to the beginning of the prompt line
         print(f"\033[{lines_to_clear}A\r", end="", flush=True)
-        
+
         # Clear each line from current position to end of line
         for i in range(lines_to_clear):
             print("\033[K", end="", flush=True)  # Clear to end of line
             if i < lines_to_clear - 1:
-                print("\033[1B\r", end="", flush=True)  # Move down one line and to start
-        
+                print(
+                    "\033[1B\r", end="", flush=True
+                )  # Move down one line and to start
+
         # Move cursor back to the start position
         if lines_to_clear > 1:
             print(f"\033[{lines_to_clear - 1}A\r", end="", flush=True)
-        
+
         # Render the user message in soft purple-gray
         if lines:
-            self.console.print(f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]")
+            self.console.print(
+                f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]"
+            )
             for ln in lines[1:]:
                 self.console.print(f"  [color(245)]{ln}[/color(245)]")
 
@@ -295,10 +303,10 @@ class InteractiveInterface:
         text = content.strip()
         if not text:
             return
-        
+
         # Add spacing before assistant messages
         self.console.print()
-        
+
         # Render each line with a single cyan dot header once, then plain lines
         lines = text.split("\n")
         if lines:
