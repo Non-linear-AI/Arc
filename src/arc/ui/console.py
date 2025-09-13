@@ -134,8 +134,8 @@ class InteractiveInterface:
             "str_replace_editor": "Update",
             "bash": "Bash",
             "search": "Search",
-            "start_todo": "Started Todo",
-            "update_todo": "Updated Todo",
+            "create_todo_list": "Create Plan",
+            "update_todo_list": "Update Plan",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -159,21 +159,53 @@ class InteractiveInterface:
         if self._working_active:
             self._working_active = False
 
-        # Header line as a step - just cyan dot and tool name
-        self.console.print(f"[cyan]⏺[/cyan] [white]{label}[/white]")
-
         # Format the result content
         content = result.output if result.success else result.error
         if content is None:
             content = ""
 
-        # Show details if there's content
-        if content.strip():
-            # Special handling for todo operations - show full content
-            if tool_name in ["start_todo", "update_todo"]:
-                self._print_todo_content(content)
-            else:
+        # Special handling for todo operations - show progress bar inline
+        if tool_name in ["create_todo_list", "update_todo_list"] and content.strip():
+            self._print_todo_with_inline_progress(label, content)
+        else:
+            # Header line as a step - just cyan dot and tool name
+            self.console.print(f"[cyan]⏺[/cyan] [white]{label}[/white]")
+            
+            # Show details if there's content
+            if content.strip():
                 self._print_details_block(content)
+
+    def _print_todo_with_inline_progress(self, label: str, content: str) -> None:
+        """Print todo with progress bar inline with the action label."""
+        lines = content.splitlines()
+        if not lines:
+            return
+
+        # Find the progress bar line and extract it
+        progress_line = None
+        todo_items = []
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith("📋"):
+                # Extract just the progress bar part
+                if "[" in line and "]" in line:
+                    start = line.find("[")
+                    end = line.find("]") + 1
+                    progress_part = line[start:end]
+                    # Also get the ratio part
+                    ratio_part = line.split("]")[-1].strip()
+                    progress_line = f"{progress_part} {ratio_part}"
+            elif line.startswith("└"):
+                todo_items.append(line)
+        
+        # Print header with inline progress
+        if progress_line:
+            self.console.print(f"[cyan]⏺[/cyan] [white]{label}[/white] {progress_line}")
+        
+        # Print todo items
+        for item in todo_items:
+            self.console.print(f"  {item}")
 
     def _print_todo_content(self, content: str) -> None:
         """Print todo content with progress bar format."""

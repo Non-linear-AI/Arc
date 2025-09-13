@@ -9,12 +9,11 @@ class TodoItem:
     """Represents a single TODO item."""
 
     def __init__(
-        self, id: str, content: str, status: str = "pending", priority: str = "medium"
+        self, id: str, content: str, status: str = "pending"
     ):
         self.id = id
         self.content = content
         self.status = status  # pending, in_progress, completed
-        self.priority = priority  # high, medium, low
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -22,7 +21,6 @@ class TodoItem:
             "id": self.id,
             "content": self.content,
             "status": self.status,
-            "priority": self.priority,
         }
 
     @classmethod
@@ -32,7 +30,6 @@ class TodoItem:
             id=data["id"],
             content=data["content"],
             status=data.get("status", "pending"),
-            priority=data.get("priority", "medium"),
         )
 
 
@@ -44,56 +41,75 @@ class TodoTool(BaseTool):
 
     async def execute(self, action: str, **kwargs) -> ToolResult:
         """Execute TODO operation."""
-        if action == "start":
-            return await self.start_todo(kwargs["todo_id"])
+        if action == "create":
+            return await self.create_todo_list(kwargs["todos"])
         elif action == "update":
-            return await self.update_todos(kwargs["todos"])
+            return await self.update_todo_list(kwargs["updates"])
+        elif action == "view":
+            return await self.view_todo_list()
         else:
             return ToolResult.error_result(f"Unknown TODO action: {action}")
 
-    async def start_todo(self, todo_id: str) -> ToolResult:
-        """Start working on a specific todo item."""
+    async def create_todo_list(self, todos: list[dict[str, Any]]) -> ToolResult:
+        """Create a new TODO list with items."""
         try:
-            # Find the TODO item
-            todo = None
-            for t in self.todos:
-                if t.id == todo_id:
-                    todo = t
-                    break
-
-            if not todo:
-                return ToolResult.error_result(f"Todo item '{todo_id}' not found")
-
-            # Set status to in_progress
-            todo.status = "in_progress"
-
-            formatted = self._format_todo_list()
-            return ToolResult.success_result(f"Started todo:\n{formatted}")
-
-        except Exception as e:
-            return ToolResult.error_result(f"Failed to start todo: {str(e)}")
-
-    async def update_todos(self, todos: list[dict[str, Any]]) -> ToolResult:
-        """Update the entire todo list."""
-        try:
-            # Clear existing todos
-            self.todos.clear()
-
-            # Add new todos with auto-generated IDs
-            for i, todo_data in enumerate(todos):
-                todo_id = f"todo_{i+1}"
+            # Validate and create todos
+            new_todos = []
+            for todo_data in todos:
+                # Auto-generate ID if not provided
+                todo_id = todo_data.get("id", f"todo_{len(new_todos) + 1}")
+                
                 todo = TodoItem(
                     id=todo_id,
                     content=todo_data["content"],
-                    status=todo_data["status"]
+                    status=todo_data.get("status", "pending")
                 )
-                self.todos.append(todo)
+                new_todos.append(todo)
 
+            # Replace existing todos
+            self.todos = new_todos
             formatted = self._format_todo_list()
-            return ToolResult.success_result(f"Todo list updated:\n{formatted}")
+            return ToolResult.success_result(f"Todo list created:\n{formatted}")
 
         except Exception as e:
-            return ToolResult.error_result(f"Failed to update todos: {str(e)}")
+            return ToolResult.error_result(f"Failed to create todo list: {str(e)}")
+
+    async def update_todo_list(self, updates: list[dict[str, Any]]) -> ToolResult:
+        """Update existing TODO items by ID."""
+        try:
+            updated_count = 0
+
+            for update in updates:
+                todo_id = update["id"]
+
+                # Find the TODO item
+                todo = None
+                for t in self.todos:
+                    if t.id == todo_id:
+                        todo = t
+                        break
+
+                if not todo:
+                    return ToolResult.error_result(f"Todo item '{todo_id}' not found")
+
+                # Apply updates
+                if "status" in update:
+                    todo.status = update["status"]
+                if "content" in update:
+                    todo.content = update["content"]
+
+                updated_count += 1
+
+            formatted = self._format_todo_list()
+            return ToolResult.success_result(f"Updated {updated_count} TODO item(s):\n{formatted}")
+
+        except Exception as e:
+            return ToolResult.error_result(f"Failed to update todo list: {str(e)}")
+
+    async def view_todo_list(self) -> ToolResult:
+        """View the current TODO list."""
+        formatted = self._format_todo_list()
+        return ToolResult.success_result(formatted)
 
     def _format_todo_list(self) -> str:
         """Format TODO list with progress bar style."""
@@ -109,8 +125,8 @@ class TodoTool(BaseTool):
         filled_blocks = int(progress_ratio * 10)
         progress_bar = "█" * filled_blocks + "░" * (10 - filled_blocks)
         
-        # Header with progress
-        lines = [f"📋 Update plan [{progress_bar}] {completed}/{total}"]
+        # Header with progress - simpler title
+        lines = [f"📋 [{progress_bar}] {completed}/{total}"]
         
         # Add todo items
         for todo in self.todos:
@@ -121,7 +137,7 @@ class TodoTool(BaseTool):
                 marker = "◐"
                 line_text = f"  └ {marker} {todo.content}"
             else:
-                marker = "○"  # empty
+                marker = "○"
                 line_text = f"  └ {marker} {todo.content}"
             
             lines.append(line_text)

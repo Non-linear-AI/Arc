@@ -124,8 +124,8 @@ class ArcAgent:
               navigation, and system operations)
             - search: Unified search tool for finding text content or files
               (similar to Cursor's search functionality)
-            - start_todo: Start working on a todo item 
-            - update_todo: Update todo items in your list
+            - create_todo_list: Create a visual todo list for planning and tracking tasks
+            - update_todo_list: Update existing todos in your todo list
 
             IMPORTANT TOOL USAGE RULES:
             - NEVER use create_file on files that already exist - this will overwrite
@@ -153,10 +153,12 @@ class ArcAgent:
             1. Use create_file with the full content
 
             TASK PLANNING WITH TODO LISTS:
-            - For complex requests with multiple steps, use todo system for tracking
-            - Use start_todo to begin working on a task
-            - Use update_todo to modify todo items as needed
-            - Todo items show status with colored dots: ✅ Completed, 🔄 In Progress, ⏳ Pending
+            - For complex requests with multiple steps, ALWAYS create a todo list first to plan your approach
+            - Use create_todo_list to break down tasks into manageable items
+            - Mark tasks as 'in_progress' when you start working on them (only one at a time)
+            - Mark tasks as 'completed' immediately when finished
+            - Use update_todo_list to track your progress throughout the task
+            - Todo items show status: ● Completed (with strikethrough), ◐ In Progress, ○ Pending
 
             Be helpful, direct, and efficient. Always explain what you're doing and
             show the results.
@@ -167,7 +169,7 @@ class ArcAgent:
             - Only provide necessary explanations or next steps if relevant to the task
             - Keep responses concise and focused on the actual work being done
             - If a tool execution completes the user's request, you can remain
-              silent or give a brief confirmation
+              silent or give a brief confirmationan" before tool calls - let the tool result show the action
 
             Current working directory: {os.getcwd()}
             """
@@ -499,13 +501,13 @@ class ArcAgent:
                     file_types=args.get("file_types"),
                     include_hidden=args.get("include_hidden", False),
                 )
-            elif tool_call.name == "start_todo":
+            elif tool_call.name == "create_todo_list":
                 return await self.todo_tool.execute(
-                    action="start", todo_id=args["todo_id"]
+                    action="create", todos=args["todos"]
                 )
-            elif tool_call.name == "update_todo":
+            elif tool_call.name == "update_todo_list":
                 return await self.todo_tool.execute(
-                    action="update", todos=args["todos"]
+                    action="update", updates=args["updates"]
                 )
             else:
                 return ToolResult.error_result(f"Unknown tool: {tool_call.name}")

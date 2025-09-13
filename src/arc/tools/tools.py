@@ -169,28 +169,14 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="start_todo",
-            description="Start working on a todo item",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "todo_id": {
-                        "type": "string",
-                        "description": "ID of the todo item to start",
-                    },
-                },
-                "required": ["todo_id"],
-            },
-        ),
-        ArcTool(
-            name="update_todo",
-            description="Update todo items in the list",
+            name="create_todo_list",
+            description="Create a new todo list for planning and tracking tasks",
             parameters={
                 "type": "object",
                 "properties": {
                     "todos": {
                         "type": "array",
-                        "description": "Array of todo items",
+                        "description": "Array of todo items to create",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -201,14 +187,47 @@ def get_base_tools() -> list[ArcTool]:
                                 "status": {
                                     "type": "string",
                                     "enum": ["pending", "in_progress", "completed"],
-                                    "description": "Current status of the todo item",
+                                    "description": "Current status of the todo item (default: pending)",
                                 },
                             },
-                            "required": ["content", "status"],
+                            "required": ["content"],
                         },
                     },
                 },
                 "required": ["todos"],
+            },
+        ),
+        ArcTool(
+            name="update_todo_list",
+            description="Update existing todos in the todo list by ID",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "updates": {
+                        "type": "array",
+                        "description": "Array of todo updates",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "ID of the todo item to update",
+                                },
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["pending", "in_progress", "completed"],
+                                    "description": "New status for the todo item",
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "New content for the todo item",
+                                },
+                            },
+                            "required": ["id"],
+                        },
+                    },
+                },
+                "required": ["updates"],
             },
         ),
     ]
