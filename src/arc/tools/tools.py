@@ -180,6 +180,12 @@ def get_base_tools() -> list[ArcTool]:
                         "items": {
                             "type": "object",
                             "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": (
+                                        "Unique identifier for the todo item"
+                                    ),
+                                },
                                 "content": {
                                     "type": "string",
                                     "description": "Description of the todo item",
@@ -190,7 +196,7 @@ def get_base_tools() -> list[ArcTool]:
                                     "description": "Current status of the todo item (default: pending)",
                                 },
                             },
-                            "required": ["content"],
+                            "required": ["id", "content", "status"],
                         },
                     },
                 },
@@ -221,6 +227,11 @@ def get_base_tools() -> list[ArcTool]:
                                 "content": {
                                     "type": "string",
                                     "description": "New content for the todo item",
+                                },
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["high", "medium", "low"],
+                                    "description": "New priority for the todo item",
                                 },
                             },
                             "required": ["id"],

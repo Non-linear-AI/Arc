@@ -128,7 +128,7 @@ class TodoTool(BaseTool):
         # Header with progress - simpler title
         lines = [f"📋 [{progress_bar}] {completed}/{total}"]
         
-        # Add todo items
+        # Add todo items with IDs shown for reference
         for todo in self.todos:
             if todo.status == "completed":
                 marker = "●"

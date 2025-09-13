@@ -130,7 +130,7 @@ class InteractiveInterface:
     def _action_label(self, tool_name: str) -> str:
         mapping = {
             "view_file": "Read",
-            "create_file": "Create",
+            "create_file": "Create", 
             "str_replace_editor": "Update",
             "bash": "Bash",
             "search": "Search",
@@ -145,6 +145,19 @@ class InteractiveInterface:
                 actual = " ".join(parts[2:]).replace("_", " ")
                 return f"{server.title()}({actual})"
         return mapping.get(tool_name, tool_name)
+
+    def _get_dot_color(self, tool_name: str) -> str:
+        """Get color for the dot based on action type."""
+        if tool_name in ["create_todo_list", "update_todo_list"]:
+            return "blue"  # Plan operations
+        elif tool_name in ["bash"]:
+            return "green"  # System operations
+        elif tool_name in ["search"]:
+            return "yellow"  # Search operations
+        elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
+            return "magenta"  # File operations
+        else:
+            return "cyan"  # Default/messages
 
     def show_tool_execution(self, _tool_name: str, _args: dict[str, Any]):
         """Show tool execution line that will be replaced with result."""
@@ -164,18 +177,24 @@ class InteractiveInterface:
         if content is None:
             content = ""
 
+        # Add spacing before every action
+        self.console.print()
+        
+        # Get color for this action type
+        dot_color = self._get_dot_color(tool_name)
+        
         # Special handling for todo operations - show progress bar inline
         if tool_name in ["create_todo_list", "update_todo_list"] and content.strip():
-            self._print_todo_with_inline_progress(label, content)
+            self._print_todo_with_inline_progress(label, content, dot_color)
         else:
-            # Header line as a step - just cyan dot and tool name
-            self.console.print(f"[cyan]⏺[/cyan] [white]{label}[/white]")
+            # Header line as a step - colored dot and tool name
+            self.console.print(f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white]")
             
             # Show details if there's content
             if content.strip():
                 self._print_details_block(content)
 
-    def _print_todo_with_inline_progress(self, label: str, content: str) -> None:
+    def _print_todo_with_inline_progress(self, label: str, content: str, dot_color: str = "blue") -> None:
         """Print todo with progress bar inline with the action label."""
         lines = content.splitlines()
         if not lines:
@@ -201,7 +220,7 @@ class InteractiveInterface:
         
         # Print header with inline progress
         if progress_line:
-            self.console.print(f"[cyan]⏺[/cyan] [white]{label}[/white] {progress_line}")
+            self.console.print(f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white] {progress_line}")
         
         # Print todo items
         for item in todo_items:
@@ -246,10 +265,14 @@ class InteractiveInterface:
         text = content.strip()
         if not text:
             return
+        
+        # Add spacing before assistant messages
+        self.console.print()
+        
         # Render each line with a single cyan dot header once, then plain lines
         lines = text.split("\n")
         if lines:
-            self.console.print(f"[cyan]⏺[/] [white]{lines[0]}[/white]")
+            self.console.print(f"[cyan]⏺[/cyan] [white]{lines[0]}[/white]")
             for ln in lines[1:]:
                 self.console.print(f"  [white]{ln}[/white]")
 

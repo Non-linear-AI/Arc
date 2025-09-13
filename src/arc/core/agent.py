@@ -157,7 +157,6 @@ class ArcAgent:
             - Use create_todo_list to break down tasks into manageable items
             - Mark tasks as 'in_progress' when you start working on them (only one at a time)
             - Mark tasks as 'completed' immediately when finished
-            - Use update_todo_list to track your progress throughout the task
             - Todo items show status: ● Completed (with strikethrough), ◐ In Progress, ○ Pending
 
             Be helpful, direct, and efficient. Always explain what you're doing and
@@ -169,7 +168,7 @@ class ArcAgent:
             - Only provide necessary explanations or next steps if relevant to the task
             - Keep responses concise and focused on the actual work being done
             - If a tool execution completes the user's request, you can remain
-              silent or give a brief confirmationan" before tool calls - let the tool result show the action
+              silent or give a brief confirmation
 
             Current working directory: {os.getcwd()}
             """

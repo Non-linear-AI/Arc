@@ -263,7 +263,6 @@ async def run_interactive_mode(
                         if current_content.strip():
                             ui.show_assistant_step(current_content)
                             current_content = ""
-                        console.print()  # blank line before tool execution
                         args = {}
                         if chunk.tool_call and chunk.tool_call.arguments:
                             try:
