@@ -18,11 +18,15 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "start_line": {
                         "type": "integer",
-                        "description": "Starting line number for partial file view (optional)",
+                        "description": (
+                            "Starting line number for partial file view (optional)"
+                        ),
                     },
                     "end_line": {
                         "type": "integer",
-                        "description": "Ending line number for partial file view (optional)",
+                        "description": (
+                            "Ending line number for partial file view (optional)"
+                        ),
                     },
                 },
                 "required": ["path"],
@@ -48,7 +52,9 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="str_replace_editor",
-            description="Replace specific text in a file. Use this for single line edits only",
+            description=(
+                "Replace specific text in a file. Use this for single line edits only"
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -58,7 +64,10 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "old_str": {
                         "type": "string",
-                        "description": "Text to replace (must match exactly, or will use fuzzy matching for multi-line strings)",
+                        "description": (
+                            "Text to replace (must match exactly, or will use "
+                            "fuzzy matching for multi-line strings)"
+                        ),
                     },
                     "new_str": {
                         "type": "string",
@@ -66,7 +75,10 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "replace_all": {
                         "type": "boolean",
-                        "description": "Replace all occurrences (default: false, only replaces first occurrence)",
+                        "description": (
+                            "Replace all occurrences (default: false, only replaces "
+                            "first occurrence)"
+                        ),
                     },
                 },
                 "required": ["path", "old_str", "new_str"],
@@ -99,31 +111,47 @@ def get_base_tools() -> list[ArcTool]:
                     "search_type": {
                         "type": "string",
                         "enum": ["text", "files", "both"],
-                        "description": "Type of search: 'text' for content search, 'files' for file names, 'both' for both (default: 'both')",
+                        "description": (
+                            "Type of search: 'text' for content search, 'files' for "
+                            "file names, 'both' for both (default: 'both')"
+                        ),
                     },
                     "include_pattern": {
                         "type": "string",
-                        "description": "Glob pattern for files to include (e.g. '*.ts', '*.js')",
+                        "description": (
+                            "Glob pattern for files to include (e.g. '*.ts', '*.js')"
+                        ),
                     },
                     "exclude_pattern": {
                         "type": "string",
-                        "description": "Glob pattern for files to exclude (e.g. '*.log', 'node_modules')",
+                        "description": (
+                            "Glob pattern for files to exclude "
+                            "(e.g. '*.log', 'node_modules')"
+                        ),
                     },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": "Whether search should be case sensitive (default: false)",
+                        "description": (
+                            "Whether search should be case sensitive (default: false)"
+                        ),
                     },
                     "whole_word": {
                         "type": "boolean",
-                        "description": "Whether to match whole words only (default: false)",
+                        "description": (
+                            "Whether to match whole words only (default: false)"
+                        ),
                     },
                     "regex": {
                         "type": "boolean",
-                        "description": "Whether query is a regex pattern (default: false)",
+                        "description": (
+                            "Whether query is a regex pattern (default: false)"
+                        ),
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "Maximum number of results to return (default: 50)",
+                        "description": (
+                            "Maximum number of results to return (default: 50)"
+                        ),
                     },
                     "file_types": {
                         "type": "array",
@@ -132,7 +160,9 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "include_hidden": {
                         "type": "boolean",
-                        "description": "Whether to include hidden files (default: false)",
+                        "description": (
+                            "Whether to include hidden files (default: false)"
+                        ),
                     },
                 },
                 "required": ["query"],
@@ -152,7 +182,9 @@ def get_base_tools() -> list[ArcTool]:
                             "properties": {
                                 "id": {
                                     "type": "string",
-                                    "description": "Unique identifier for the todo item",
+                                    "description": (
+                                        "Unique identifier for the todo item"
+                                    ),
                                 },
                                 "content": {
                                     "type": "string",

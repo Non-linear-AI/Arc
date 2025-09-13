@@ -93,7 +93,8 @@ class FileEditorTool(BaseTool):
 
                         content = "\n".join(numbered_lines)
                         return ToolResult.success_result(
-                            f"File '{path}' (lines {start_idx + 1}-{end_idx}):\n{content}"
+                            f"File '{path}' (lines {start_idx + 1}-{end_idx}):\n"
+                            f"{content}"
                         )
                     else:
                         # Show full file with line numbers
@@ -123,7 +124,8 @@ class FileEditorTool(BaseTool):
             # Check if file already exists
             if Path(path).exists():
                 return ToolResult.error_result(
-                    f"File already exists: {path}. Use str_replace_editor to modify existing files."
+                    f"File already exists: {path}. Use str_replace_editor to modify "
+                    "existing files."
                 )
 
             # Create edit instruction for new file

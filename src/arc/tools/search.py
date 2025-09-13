@@ -23,7 +23,7 @@ class SearchTool(BaseTool):
         max_results: int = 50,
         file_types: list[str] | None = None,
         include_hidden: bool = False,
-        **kwargs,
+        **_kwargs,
     ) -> ToolResult:
         """Execute search based on parameters."""
         try:
@@ -164,10 +164,7 @@ class SearchTool(BaseTool):
                 flags = 0 if case_sensitive else re.IGNORECASE
                 pattern = re.compile(rf"\b{escaped_query}\b", flags)
             else:
-                if case_sensitive:
-                    pattern = query
-                else:
-                    pattern = query.lower()
+                pattern = query if case_sensitive else query.lower()
         except re.error as e:
             return [{"type": "error", "message": f"Invalid regex pattern: {str(e)}"}]
 
@@ -286,7 +283,8 @@ class SearchTool(BaseTool):
 
         if len(results) > max_results:
             formatted.append(
-                f"\n... and {len(results) - max_results} more results (use max_results to see more)"
+                f"\n... and {len(results) - max_results} more results "
+                "(use max_results to see more)"
             )
 
         return "\n".join(formatted)

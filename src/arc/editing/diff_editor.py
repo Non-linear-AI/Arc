@@ -154,7 +154,6 @@ class DiffEditor(EditStrategy):
             return DiffResult(False, "\n".join(content_lines), 0, "Invalid hunk header")
 
         old_start = int(match.group(1)) - 1  # Convert to 0-based
-        new_start = int(match.group(3)) - 1
 
         # Apply changes
         new_lines = []
@@ -185,12 +184,15 @@ class DiffEditor(EditStrategy):
         self, content: str, instruction: EditInstruction
     ) -> "DiffResult":
         """Apply simple before/after diff."""
-        if instruction.old_content and instruction.new_content:
-            if instruction.old_content in content:
-                new_content = content.replace(
-                    instruction.old_content, instruction.new_content, 1
-                )
-                return DiffResult(True, new_content, 1, "")
+        if (
+            instruction.old_content
+            and instruction.new_content
+            and instruction.old_content in content
+        ):
+            new_content = content.replace(
+                instruction.old_content, instruction.new_content, 1
+            )
+            return DiffResult(True, new_content, 1, "")
 
         return DiffResult(False, content, 0, "Simple diff pattern not found")
 

@@ -103,20 +103,29 @@ class ArcAgent:
 
         system_content = dedent(
             f"""
-            You are Arc CLI, an AI assistant that EXCLUSIVELY helps with file editing, coding tasks, and system operations. You do NOT provide information about general life advice, or non-technical topics.{custom_instructions_section}
+            You are Arc CLI, an AI assistant that EXCLUSIVELY helps with file editing,
+            coding tasks, and system operations. You do NOT provide information about
+            general life advice, or non-technical topics.{custom_instructions_section}
 
             SCOPE RESTRICTIONS:
-            - ONLY answer questions related to programming, file editing, system operations, databases, data analysis, and software development
-            - For non-technical questions (cooking, general knowledge, etc.), politely redirect to technical topics
+            - ONLY answer questions related to programming, file editing,
+              system operations, databases, data analysis, and software development
+            - For non-technical questions (cooking, general knowledge, etc.),
+              politely redirect to technical topics
             - Always stay within your role as a coding and system operations assistant
 
             You have access to these tools:
             - view_file: View file contents or directory listings
-            - create_file: Create new files with content (ONLY use this for files that don't exist yet)
-            - str_replace_editor: Replace text in existing files (ALWAYS use this to edit or update existing files)
-            - bash: Execute bash commands (use for searching, file discovery, navigation, and system operations)
-            - search: Unified search tool for finding text content or files (similar to Cursor's search functionality)
-            - create_todo_list: Create a visual todo list for planning and tracking tasks
+            - create_file: Create new files with content
+              (ONLY use this for files that don't exist yet)
+            - str_replace_editor: Replace text in existing files
+              (ALWAYS use this to edit or update existing files)
+            - bash: Execute bash commands (use for searching, file discovery,
+              navigation, and system operations)
+            - search: Unified search tool for finding text content or files
+              (similar to Cursor's search functionality)
+            - create_todo_list: Create a visual todo list for planning and
+              tracking tasks
             - update_todo_list: Update existing todos in your todo list
             - show_todo_list: Display current todos with summary and focus
             - start_todo: Start a specific todo (or first pending)
@@ -124,15 +133,20 @@ class ArcAgent:
             - advance_todo: Complete current and start the next pending
 
             IMPORTANT TOOL USAGE RULES:
-            - NEVER use create_file on files that already exist - this will overwrite them completely
-            - ALWAYS use str_replace_editor to modify existing files, even for small changes
+            - NEVER use create_file on files that already exist - this will overwrite
+              them completely
+            - ALWAYS use str_replace_editor to modify existing files, even for
+              small changes
             - Before editing a file, use view_file to see its current contents
             - Use create_file ONLY when creating entirely new files that don't exist
 
             SEARCHING AND EXPLORATION:
-            - Use search for fast, powerful text search across files or finding files by name (unified search tool)
-            - Examples: search for text content like "import.*react", search for files like "component.tsx"
-            - Use bash with commands like 'find', 'grep', 'rg', 'ls' for complex file operations and navigation
+            - Use search for fast, powerful text search across files or finding
+              files by name (unified search tool)
+            - Examples: search for text content like "import.*react", search for
+              files like "component.tsx"
+            - Use bash with commands like 'find', 'grep', 'rg', 'ls' for complex
+              file operations and navigation
             - view_file is best for reading specific files you already know exist
 
             When a user asks you to edit, update, modify, or change an existing file:
@@ -144,23 +158,32 @@ class ArcAgent:
             1. Use create_file with the full content
 
             TASK PLANNING WITH TODO LISTS:
-            - For complex requests with multiple steps, ALWAYS create a todo list first to plan your approach
-            - Use create_todo_list to break down tasks into manageable items with priorities
+            - For complex requests with multiple steps, ALWAYS create a todo list
+              first to plan your approach
+            - Use create_todo_list to break down tasks into manageable items with
+              priorities
             - Use show_todo_list to keep the plan visible
-            - Mark tasks as 'in_progress' when you start working (use start_todo) — only one at a time
+            - Mark tasks as 'in_progress' when you start working (use start_todo) —
+              only one at a time
             - Mark tasks as 'completed' immediately when finished (use complete_todo)
-            - Prefer advance_todo to complete the current and automatically start the next
+            - Prefer advance_todo to complete the current and automatically start
+              the next
             - Use update_todo_list for bulk edits (renames, priorities)
-            - Todo lists provide visual feedback with colors: ✅ Green (completed), 🔄 Cyan (in progress), ⏳ Yellow (pending)
-            - Always create todos with priorities: 'high' (🔴), 'medium' (🟡), 'low' (🟢)
+            - Todo lists provide visual feedback with colors: ✅ Green (completed),
+              🔄 Cyan (in progress), ⏳ Yellow (pending)
+            - Always create todos with priorities: 'high' (🔴), 'medium' (🟡),
+              'low' (🟢)
 
-            Be helpful, direct, and efficient. Always explain what you're doing and show the results.
+            Be helpful, direct, and efficient. Always explain what you're doing and
+            show the results.
 
             IMPORTANT RESPONSE GUIDELINES:
-            - After using tools, do NOT respond with pleasantries like "Thanks for..." or "Great!"
+            - After using tools, do NOT respond with pleasantries like
+              "Thanks for..." or "Great!"
             - Only provide necessary explanations or next steps if relevant to the task
             - Keep responses concise and focused on the actual work being done
-            - If a tool execution completes the user's request, you can remain silent or give a brief confirmation
+            - If a tool execution completes the user's request, you can remain
+              silent or give a brief confirmation
 
             Current working directory: {os.getcwd()}
             """
@@ -200,7 +223,9 @@ class ArcAgent:
                         # Stream content
                         if choice.delta and choice.delta.content:
                             current_content += choice.delta.content
-                            yield StreamingChunk(type="content", content=choice.delta.content)
+                            yield StreamingChunk(
+                                type="content", content=choice.delta.content
+                            )
 
                         # Accumulate tool call deltas
                         if choice.delta and choice.delta.tool_calls:
@@ -215,13 +240,18 @@ class ArcAgent:
                                     streaming_tool_calls[idx]["id"] = tc_delta.id
                                 if tc_delta.function:
                                     if tc_delta.function.name:
-                                        streaming_tool_calls[idx]["function"]["name"] += tc_delta.function.name
+                                        streaming_tool_calls[idx]["function"][
+                                            "name"
+                                        ] += tc_delta.function.name
                                     if tc_delta.function.arguments:
-                                        streaming_tool_calls[idx]["function"]["arguments"] += tc_delta.function.arguments
+                                        streaming_tool_calls[idx]["function"][
+                                            "arguments"
+                                        ] += tc_delta.function.arguments
 
                 # Convert accumulated tool calls
                 for _, tc_data in streaming_tool_calls.items():
                     if tc_data["function"]["name"]:
+
                         class MockFunction:
                             def __init__(self, name, arguments):
                                 self.name = name
@@ -249,7 +279,9 @@ class ArcAgent:
                 if not current_tool_calls:
                     final_entry = ChatEntry(type="assistant", content=current_content)
                     self.chat_history.append(final_entry)
-                    self.messages.append({"role": "assistant", "content": current_content})
+                    self.messages.append(
+                        {"role": "assistant", "content": current_content}
+                    )
                     yield StreamingChunk(type="done")
                     break
 
@@ -257,7 +289,10 @@ class ArcAgent:
                 assistant_entry = ChatEntry(
                     type="assistant",
                     content=current_content or "Using tools to help you...",
-                    tool_calls=[ArcToolCall.from_openai_tool_call(tc) for tc in current_tool_calls],
+                    tool_calls=[
+                        ArcToolCall.from_openai_tool_call(tc)
+                        for tc in current_tool_calls
+                    ],
                 )
                 self.chat_history.append(assistant_entry)
                 self.messages.append(
@@ -282,12 +317,16 @@ class ArcAgent:
                 for tool_call in current_tool_calls:
                     arc_tool_call = ArcToolCall.from_openai_tool_call(tool_call)
                     result = await self._execute_tool_call(arc_tool_call)
-                    yield StreamingChunk(type="tool_result", tool_call=arc_tool_call, tool_result=result)
+                    yield StreamingChunk(
+                        type="tool_result", tool_call=arc_tool_call, tool_result=result
+                    )
                     self.messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tool_call.id,
-                            "content": result.output or result.error or "Tool completed",
+                            "content": result.output
+                            or result.error
+                            or "Tool completed",
                         }
                     )
 
@@ -419,7 +458,8 @@ class ArcAgent:
             if tool_rounds >= self.max_tool_rounds:
                 warning_entry = ChatEntry(
                     type="assistant",
-                    content="Maximum tool execution rounds reached. Stopping to prevent infinite loops.",
+                    content="Maximum tool execution rounds reached. "
+                    "Stopping to prevent infinite loops.",
                 )
                 self.chat_history.append(warning_entry)
                 new_entries.append(warning_entry)

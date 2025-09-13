@@ -104,7 +104,7 @@ class ArcClient:
             return response.choices[0].message
 
         except Exception as e:
-            raise Exception(f"Arc API error: {str(e)}")
+            raise Exception(f"Arc API error: {str(e)}") from e
 
     async def chat_stream(
         self,
@@ -132,4 +132,4 @@ class ArcClient:
                 yield chunk
 
         except Exception as e:
-            raise Exception(f"Arc API error: {str(e)}")
+            raise Exception(f"Arc API error: {str(e)}") from e

@@ -1,6 +1,7 @@
 """Performance optimizations for Arc CLI."""
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import threading
@@ -193,11 +194,8 @@ class PerformanceManager:
                     self.file_cache.cleanup_expired()
 
             # Only create task if we're in an event loop
-            try:
+            with contextlib.suppress(RuntimeError):
                 self._cleanup_task = asyncio.create_task(cleanup_loop())
-            except RuntimeError:
-                # No event loop running, cleanup will be manual
-                pass
         except Exception:
             # Silently ignore cleanup task creation failures
             pass
@@ -345,10 +343,8 @@ class StreamingResponseHandler:
 
         # Trigger callbacks
         for callback in self.callbacks:
-            try:
+            with contextlib.suppress(Exception):
                 callback(chunk)
-            except Exception:
-                pass
 
         # Flush buffer if it gets too large
         if len(self.buffer) > 100:

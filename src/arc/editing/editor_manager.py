@@ -28,12 +28,11 @@ class EditorManager:
 
         # Strategy 1: Try cached strategy first (if we've seen this pattern before)
         cached_strategy = self._get_cached_strategy(instruction)
-        if cached_strategy:
-            if await cached_strategy.can_handle(instruction):
-                result = await cached_strategy.apply_edit(instruction)
-                cached_strategy.record_result(result)
-                if result.success:
-                    return result
+        if cached_strategy and await cached_strategy.can_handle(instruction):
+            result = await cached_strategy.apply_edit(instruction)
+            cached_strategy.record_result(result)
+            if result.success:
+                return result
 
         # Strategy 2: Try strategies in order of capability
         capable_strategies = []
@@ -124,7 +123,8 @@ class EditorManager:
         return max(strategy_scores.keys(), key=lambda s: strategy_scores[s])
 
     async def _is_major_change(self, instruction: EditInstruction) -> bool:
-        """Determine if this is a major change that benefits from whole file replacement."""
+        """Determine if this is a major change that benefits from whole file
+        replacement."""
         try:
             file_path = Path(instruction.file_path)
             if not file_path.exists() or not instruction.new_content:
@@ -188,7 +188,7 @@ class EditorManager:
         results = []
 
         # Process each file's edits together
-        for file_path, file_instructions in file_groups.items():
+        for _file_path, file_instructions in file_groups.items():
             if len(file_instructions) == 1:
                 # Single edit - use normal process
                 result = await self.apply_edit(file_instructions[0])
@@ -210,9 +210,7 @@ class EditorManager:
         whole_file_edits = [
             i for i in instructions if i.new_content and not i.search_text
         ]
-        search_replace_edits = [
-            i for i in instructions if i.search_text and i.replacement_text
-        ]
+        [i for i in instructions if i.search_text and i.replacement_text]
 
         if whole_file_edits:
             # If any whole file edit, use the last one (most complete)

@@ -1,19 +1,16 @@
 """Enhanced UX components for Arc CLI."""
 
 import time
-import sys
-import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from rich import box
+from rich.align import Align
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.align import Align
-from rich import box
-from rich import box
 from rich.progress import (
     BarColumn,
     Progress,
@@ -82,7 +79,7 @@ class InteractiveInterface:
         self._spinner_frame_index = 0
         self._working_messages = [
             "Thinking...",
-            "Computing...", 
+            "Computing...",
             "Analyzing...",
             "Processing...",
             "Calculating...",
@@ -91,7 +88,7 @@ class InteractiveInterface:
             "Synthesizing...",
         ]
 
-    def show_welcome(self, model: str, directory: str):
+    def show_welcome(self, _model: str, _directory: str):
         """Display a centered ASCII banner in an 80-char panel."""
         banner = (
             " ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗\n"
@@ -113,9 +110,7 @@ class InteractiveInterface:
         self.console.print(Align.left(panel))
 
         # Single concise hint
-        self.console.print(
-            "\n Use /help for more information.\n"
-        )
+        self.console.print("\n Use /help for more information.\n")
 
     def show_typing_indicator(self, message: str = "Arc is thinking"):
         """Show typing indicator for AI responses."""
@@ -127,7 +122,8 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         self.console.print("\n[bold]System Commands[/bold]")
         self.console.print(
-            "  [dim]Commands require '/' prefix. Regular text without '/' is sent to the AI.[/dim]"
+            "  [dim]Commands require '/' prefix. Regular text without '/' is sent "
+            "to the AI.[/dim]"
         )
         commands = [
             ("/help", "Show available commands and features"),
@@ -164,15 +160,15 @@ class InteractiveInterface:
                 return f"{server.title()}({actual})"
         return mapping.get(tool_name, tool_name)
 
-    def show_tool_execution(self, tool_name: str, args: dict[str, Any]):
+    def show_tool_execution(self, _tool_name: str, _args: dict[str, Any]):
         """Show tool execution line that will be replaced with result."""
         # Don't show anything here - we'll show the result directly
         self._working_active = True
 
-    def show_tool_result(self, tool_name: str, result, execution_time: float):
+    def show_tool_result(self, tool_name: str, result, _execution_time: float):
         """Clean tool result display matching the example format."""
         label = self._action_label(tool_name)
-        
+
         # Clear working active flag
         if self._working_active:
             self._working_active = False
@@ -189,26 +185,28 @@ class InteractiveInterface:
         if content.strip():
             self._print_details_block(content)
 
-    def _print_details_block(self, content: str, max_lines: int = 5) -> None:
+    def _print_details_block(self, content: str, _max_lines: int = 5) -> None:
         """Print details block matching the exact format from the example."""
         lines = content.splitlines()
         if not lines:
             return
-        
+
         # Show first line with ⎿ marker
         first = lines[0].rstrip()
         self.console.print(f"  [dim]⎿ {first}[/dim]")
-        
+
         # Show up to 2 more lines with proper indentation
         rest = lines[1:3]  # Only show 2 more lines max
         for ln in rest:
             if ln.strip():  # Skip empty lines
                 self.console.print(f"     [dim]{ln.rstrip()}[/dim]")
-        
+
         # Show ellipsis if there are more lines
         if len(lines) > 3:
             remaining = len(lines) - 3
-            self.console.print(f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]")
+            self.console.print(
+                f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]"
+            )
 
     def show_assistant_step(self, content: str):
         """Render assistant thoughts as a cyan dot step with the content."""

@@ -129,17 +129,35 @@ class ArcError(Exception):
         base_message = self.message
 
         if self.category == ErrorCategory.PERMISSION:
-            return f"Permission denied: {base_message}\n💡 Try running with appropriate permissions or check file ownership."
+            return (
+                f"Permission denied: {base_message}\n💡 Try running with "
+                "appropriate permissions or check file ownership."
+            )
         elif self.category == ErrorCategory.NETWORK:
-            return f"Network error: {base_message}\n💡 Check your internet connection and try again."
+            return (
+                f"Network error: {base_message}\n💡 Check your internet "
+                "connection and try again."
+            )
         elif self.category == ErrorCategory.FILE_SYSTEM:
-            return f"File system error: {base_message}\n💡 Check if the file/directory exists and you have the right permissions."
+            return (
+                f"File system error: {base_message}\n💡 Check if the "
+                "file/directory exists and you have the right permissions."
+            )
         elif self.category == ErrorCategory.API:
-            return f"API error: {base_message}\n💡 Check your API credentials and network connection."
+            return (
+                f"API error: {base_message}\n💡 Check your API credentials "
+                "and network connection."
+            )
         elif self.category == ErrorCategory.TIMEOUT:
-            return f"Operation timed out: {base_message}\n💡 The operation took too long. Try again or check system resources."
+            return (
+                f"Operation timed out: {base_message}\n💡 The operation took too "
+                "long. Try again or check system resources."
+            )
         elif self.category == ErrorCategory.VALIDATION:
-            return f"Validation error: {base_message}\n💡 Please check your input parameters."
+            return (
+                f"Validation error: {base_message}\n💡 Please check your input "
+                "parameters."
+            )
         else:
             return f"Error: {base_message}"
 
@@ -260,7 +278,7 @@ class ErrorHandler:
         return formatted
 
     # Recovery strategy implementations
-    def _retry_with_backoff(self, error: ArcError) -> RecoveryAction | None:
+    def _retry_with_backoff(self, _error: ArcError) -> RecoveryAction | None:
         """Generate retry action with exponential backoff."""
 
         async def retry_action():
@@ -301,7 +319,7 @@ class ErrorHandler:
 
         return None
 
-    def _check_permissions(self, error: ArcError) -> RecoveryAction | None:
+    def _check_permissions(self, _error: ArcError) -> RecoveryAction | None:
         """Generate action to check and suggest permission fixes."""
 
         def check_perms():
@@ -316,7 +334,7 @@ class ErrorHandler:
             confidence=0.7,
         )
 
-    def _suggest_permission_fix(self, error: ArcError) -> RecoveryAction | None:
+    def _suggest_permission_fix(self, _error: ArcError) -> RecoveryAction | None:
         """Suggest permission fix commands."""
 
         def suggest_fix():
@@ -331,7 +349,7 @@ class ErrorHandler:
             confidence=0.5,
         )
 
-    def _check_connectivity(self, error: ArcError) -> RecoveryAction | None:
+    def _check_connectivity(self, _error: ArcError) -> RecoveryAction | None:
         """Check network connectivity."""
 
         def check_network():
@@ -346,7 +364,7 @@ class ErrorHandler:
             confidence=0.6,
         )
 
-    def _check_api_key(self, error: ArcError) -> RecoveryAction | None:
+    def _check_api_key(self, _error: ArcError) -> RecoveryAction | None:
         """Check API key validity."""
 
         def check_key():
@@ -361,7 +379,7 @@ class ErrorHandler:
             confidence=0.8,
         )
 
-    def _increase_timeout_and_retry(self, error: ArcError) -> RecoveryAction | None:
+    def _increase_timeout_and_retry(self, _error: ArcError) -> RecoveryAction | None:
         """Increase timeout and retry operation."""
 
         async def timeout_retry():
@@ -412,7 +430,7 @@ class ErrorHandler:
             "total_errors": len(self.error_history),
             "by_category": {},
             "by_severity": {},
-            "recent_errors": len([e for e in self.error_history[-10:]]),  # Last 10
+            "recent_errors": len(list(self.error_history[-10:])),  # Last 10
         }
 
         for error in self.error_history:

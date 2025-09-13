@@ -33,7 +33,8 @@ class WholeFileEditor(EditStrategy):
             else:
                 if not instruction.create_if_missing:
                     return EditResult.failure_result(
-                        f"File does not exist and create_if_missing is False: {instruction.file_path}",
+                        f"File does not exist and create_if_missing is False: "
+                        f"{instruction.file_path}",
                         strategy=self.name,
                     )
                 old_size = 0
@@ -101,10 +102,7 @@ class WholeFileEditor(EditStrategy):
 
             similarity = difflib.SequenceMatcher(None, old_content, new_content).ratio()
 
-            if similarity < 0.5:  # More than 50% different
-                return True
-
-            return False
+            return similarity < 0.5  # More than 50% different
 
         except Exception:
             return False  # Default to search/replace if we can't analyze

@@ -31,7 +31,6 @@ class SearchReplaceEditor(EditStrategy):
 
             # Read file content
             content = file_path.read_text(encoding="utf-8", errors="replace")
-            original_content = content
 
             # Strategy 1: Exact match
             if instruction.search_text in content:
