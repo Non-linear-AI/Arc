@@ -4,6 +4,7 @@ import asyncio
 import os
 
 from .base import BaseTool, ToolResult
+from ..utils.confirmation import ConfirmationService
 
 
 class BashTool(BaseTool):
@@ -11,6 +12,7 @@ class BashTool(BaseTool):
 
     def __init__(self):
         self._current_directory = os.getcwd()
+        self.confirmation_service = ConfirmationService.get_instance()
 
     def get_current_directory(self) -> str:
         """Get the current working directory."""
@@ -19,6 +21,20 @@ class BashTool(BaseTool):
     async def execute(self, command: str, timeout: int = 60) -> ToolResult:
         """Execute a bash command."""
         try:
+            # Request confirmation from user
+            session_flags = self.confirmation_service.get_session_flags()
+            if not session_flags["bash_commands"] and not session_flags["all_operations"]:
+                confirmation_result = await self.confirmation_service.request_confirmation(
+                    operation="Run bash command",
+                    target=command,
+                    operation_type="bash",
+                    content=f"Command: {command}\nWorking directory: {self._current_directory}"
+                )
+                
+                if not confirmation_result.confirmed:
+                    return ToolResult.error_result(
+                        confirmation_result.feedback or "Command execution cancelled by user"
+                    )
             # Create the process
             process = await asyncio.create_subprocess_shell(
                 command,

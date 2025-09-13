@@ -151,7 +151,7 @@ class InteractiveInterface:
         if tool_name in ["create_todo_list", "update_todo_list"]:
             return "blue"  # Plan operations
         elif tool_name in ["bash"]:
-            return "green"  # System operations
+            return "red"  # System operations
         elif tool_name in ["search"]:
             return "yellow"  # Search operations
         elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
