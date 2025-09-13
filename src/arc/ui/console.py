@@ -260,6 +260,36 @@ class InteractiveInterface:
                 f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]"
             )
 
+    def show_user_message(self, content: str):
+        """Clear the input line and redisplay user message in light gray."""
+        text = content.strip()
+        if not text:
+            return
+        
+        # Calculate how many lines to clear (prompt + any multiline input)
+        lines = text.split("\n")
+        lines_to_clear = len(lines)
+        
+        # Use ANSI escape sequences to move cursor and clear lines
+        # Move cursor up to the beginning of the prompt line
+        print(f"\033[{lines_to_clear}A\r", end="", flush=True)
+        
+        # Clear each line from current position to end of line
+        for i in range(lines_to_clear):
+            print("\033[K", end="", flush=True)  # Clear to end of line
+            if i < lines_to_clear - 1:
+                print("\033[1B\r", end="", flush=True)  # Move down one line and to start
+        
+        # Move cursor back to the start position
+        if lines_to_clear > 1:
+            print(f"\033[{lines_to_clear - 1}A\r", end="", flush=True)
+        
+        # Render the user message in soft purple-gray
+        if lines:
+            self.console.print(f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]")
+            for ln in lines[1:]:
+                self.console.print(f"  [color(245)]{ln}[/color(245)]")
+
     def show_assistant_step(self, content: str):
         """Render assistant thoughts as a cyan dot step with the content."""
         text = content.strip()
