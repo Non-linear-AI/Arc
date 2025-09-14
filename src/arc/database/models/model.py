@@ -4,10 +4,7 @@ from datetime import datetime
 
 @dataclass
 class Model:
-    """Data class representing a model in the Arc system.
-
-    Mirrors the C++ Model struct with exact field mapping.
-    """
+    """Data class representing a model in the Arc system."""
 
     id: str
     type: str

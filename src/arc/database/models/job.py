@@ -46,10 +46,7 @@ class JobStatus(Enum):
 
 @dataclass
 class Job:
-    """Data class representing a job in the Arc system.
-
-    Mirrors the C++ JobRecord struct with exact field mapping.
-    """
+    """Data class representing a job in the Arc system."""
 
     job_id: str
     model_id: int | None
