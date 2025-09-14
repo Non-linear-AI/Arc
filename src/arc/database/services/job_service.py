@@ -139,7 +139,8 @@ class JobService(BaseService):
         try:
             status_str = JobStatus.job_status_to_string(status)
             escaped_status = self._escape_string(status_str)
-            sql = f"SELECT * FROM jobs WHERE status = '{escaped_status}' ORDER BY created_at DESC"
+            sql = f"""SELECT * FROM jobs WHERE status = '{escaped_status}'
+                ORDER BY created_at DESC"""
             result = self._system_query(sql)
             return self._results_to_jobs(result)
         except Exception as e:
@@ -312,7 +313,9 @@ class JobService(BaseService):
 
             # Handle optional sql_query
             sql_query_sql = (
-                f"'{self._escape_string(job.sql_query)}'" if job.sql_query is not None else "NULL"
+                f"'{self._escape_string(job.sql_query)}'"
+                if job.sql_query is not None
+                else "NULL"
             )
 
             sql = f"""INSERT INTO jobs (
@@ -333,7 +336,9 @@ class JobService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to build insert SQL: {e}") from e
 
-    def _build_job_update_sql(self, job_id: str, status: JobStatus, message: str) -> str:
+    def _build_job_update_sql(
+        self, job_id: str, status: JobStatus, message: str
+    ) -> str:
         """Build UPDATE SQL statement for job status.
 
         Args:
@@ -351,8 +356,9 @@ class JobService(BaseService):
             # Current timestamp for updated_at
             updated_at_str = datetime.now(UTC).isoformat()
 
+            status_str = JobStatus.job_status_to_string(status)
             sql = f"""UPDATE jobs SET
-                status = '{self._escape_string(JobStatus.job_status_to_string(status))}',
+                status = '{self._escape_string(status_str)}',
                 message = '{self._escape_string(message)}',
                 updated_at = '{updated_at_str}'
             WHERE job_id = '{self._escape_string(job_id)}'"""

@@ -90,7 +90,9 @@ class PluginService(BaseService):
             plugin_id = self._get_plugin_id(name, version)
             if plugin_id is not None:
                 # Delete all components for this plugin
-                comp_sql = f"DELETE FROM plugin_components WHERE plugin_id = {plugin_id}"
+                comp_sql = (
+                    f"DELETE FROM plugin_components WHERE plugin_id = {plugin_id}"
+                )
                 self._system_execute(comp_sql)
 
             # Delete the plugin itself
@@ -100,7 +102,9 @@ class PluginService(BaseService):
             )
             self._system_execute(plugin_sql)
         except Exception as e:
-            raise DatabaseError(f"Failed to unregister plugin {name} v{version}: {e}") from e
+            raise DatabaseError(
+                f"Failed to unregister plugin {name} v{version}: {e}"
+            ) from e
 
     def list_plugins(self) -> list[PluginMetadata]:
         """List all registered plugins.
@@ -159,7 +163,8 @@ class PluginService(BaseService):
             plugin_id = self._get_plugin_id_for_component(component.plugin_name)
             if plugin_id is None:
                 raise DatabaseError(
-                    f"Plugin {component.plugin_name} not found for component registration"
+                    f"Plugin {component.plugin_name} not found "
+                    "for component registration"
                 )
 
             sql = self._build_component_insert_sql(component, plugin_id)
@@ -356,7 +361,9 @@ class PluginService(BaseService):
                 return None
             return result.first().get("id")
         except Exception as e:
-            raise DatabaseError(f"Failed to get plugin ID for {name} v{version}: {e}") from e
+            raise DatabaseError(
+                f"Failed to get plugin ID for {name} v{version}: {e}"
+            ) from e
 
     def _get_plugin_id_for_component(self, plugin_name: str) -> int | None:
         """Get plugin ID for component registration (latest version).
@@ -381,7 +388,9 @@ class PluginService(BaseService):
                 return None
             return result.first().get("id")
         except Exception as e:
-            msg = f"Failed to get plugin ID for component registration {plugin_name}: {e}"
+            msg = (
+                f"Failed to get plugin ID for component registration {plugin_name}: {e}"
+            )
             raise DatabaseError(msg) from e
 
     def _result_to_plugin(self, row: dict[str, Any]) -> PluginMetadata:
@@ -466,7 +475,9 @@ class PluginService(BaseService):
                 description=str(row["description"]),
             )
         except (KeyError, ValueError, TypeError) as e:
-            raise DatabaseError(f"Failed to convert row to ComponentMetadata: {e}") from e
+            raise DatabaseError(
+                f"Failed to convert row to ComponentMetadata: {e}"
+            ) from e
 
     def _results_to_components(self, result) -> list[ComponentMetadata]:
         """Convert query results to list of ComponentMetadata objects.
@@ -516,7 +527,9 @@ class PluginService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to build plugin insert SQL: {e}") from e
 
-    def _build_component_insert_sql(self, component: ComponentMetadata, plugin_id: int) -> str:
+    def _build_component_insert_sql(
+        self, component: ComponentMetadata, plugin_id: int
+    ) -> str:
         """Build INSERT SQL statement for a component.
 
         Args:

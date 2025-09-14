@@ -84,15 +84,22 @@ class TestPluginServiceBasic:
         plugin_service.register_plugin(sample_plugin)
 
         # Verify it exists
-        assert plugin_service.get_plugin(sample_plugin.name, sample_plugin.version) is not None
+        assert (
+            plugin_service.get_plugin(sample_plugin.name, sample_plugin.version)
+            is not None
+        )
 
         # Unregister plugin
         plugin_service.unregister_plugin(sample_plugin.name, sample_plugin.version)
 
         # Verify it's gone
-        assert plugin_service.get_plugin(sample_plugin.name, sample_plugin.version) is None
+        assert (
+            plugin_service.get_plugin(sample_plugin.name, sample_plugin.version) is None
+        )
 
-    def test_register_and_list_components(self, plugin_service, sample_plugin, sample_component):
+    def test_register_and_list_components(
+        self, plugin_service, sample_plugin, sample_component
+    ):
         """Test registering and listing components."""
         # Register plugin first
         plugin_service.register_plugin(sample_plugin)

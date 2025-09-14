@@ -68,7 +68,9 @@ class FileEditorTool(BaseTool):
                     header = f"Directory contents of {path}:"
                     return ToolResult.success_result(header + "\n" + "\n".join(items))
                 except PermissionError:
-                    return ToolResult.error_result(f"Permission denied accessing directory: {path}")
+                    return ToolResult.error_result(
+                        f"Permission denied accessing directory: {path}"
+                    )
 
             # If it's a file, read contents
             if file_path.is_file():
@@ -93,7 +95,8 @@ class FileEditorTool(BaseTool):
 
                         content = "\n".join(numbered_lines)
                         return ToolResult.success_result(
-                            f"File '{path}' (lines {start_idx + 1}-{end_idx}):\n{content}"
+                            f"File '{path}' (lines {start_idx + 1}-{end_idx}):\n"
+                            f"{content}"
                         )
                     else:
                         # Show full file with line numbers
@@ -105,9 +108,13 @@ class FileEditorTool(BaseTool):
                         return ToolResult.success_result(f"File '{path}':\n{content}")
 
                 except (UnicodeDecodeError, PermissionError) as e:
-                    return ToolResult.error_result(f"Cannot read file '{path}': {str(e)}")
+                    return ToolResult.error_result(
+                        f"Cannot read file '{path}': {str(e)}"
+                    )
 
-            return ToolResult.error_result(f"'{path}' is not a regular file or directory")
+            return ToolResult.error_result(
+                f"'{path}' is not a regular file or directory"
+            )
 
         except Exception as e:
             return ToolResult.error_result(f"Error accessing '{path}': {str(e)}")
@@ -119,12 +126,16 @@ class FileEditorTool(BaseTool):
             # Check if file already exists
             if Path(path).exists():
                 return ToolResult.error_result(
-                    f"File already exists: {path}. Use str_replace_editor to modify existing files."
+                    f"File already exists: {path}. "
+                    f"Use str_replace_editor to modify existing files."
                 )
 
             # Request confirmation from user
             session_flags = self.confirmation_service.get_session_flags()
-            if not session_flags["file_operations"] and not session_flags["all_operations"]:
+            if (
+                not session_flags["file_operations"]
+                and not session_flags["all_operations"]
+            ):
                 # Preview content for confirmation (first few lines)
                 content_lines = content.split("\n")
                 preview = "\n".join(content_lines[:10])
@@ -140,7 +151,8 @@ class FileEditorTool(BaseTool):
 
                 if not confirmation_result.confirmed:
                     return ToolResult.error_result(
-                        confirmation_result.feedback or "File creation cancelled by user"
+                        confirmation_result.feedback
+                        or "File creation cancelled by user"
                     )
 
             # Create edit instruction for new file
@@ -155,7 +167,9 @@ class FileEditorTool(BaseTool):
                 strategy_info = f" (strategy: {result.strategy_used})"
                 return ToolResult.success_result(f"{result.message}{strategy_info}")
             else:
-                return ToolResult.error_result(f"File creation failed: {result.message}")
+                return ToolResult.error_result(
+                    f"File creation failed: {result.message}"
+                )
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to create file '{path}': {str(e)}")
@@ -168,7 +182,10 @@ class FileEditorTool(BaseTool):
         try:
             # Request confirmation from user
             session_flags = self.confirmation_service.get_session_flags()
-            if not session_flags["file_operations"] and not session_flags["all_operations"]:
+            if (
+                not session_flags["file_operations"]
+                and not session_flags["all_operations"]
+            ):
                 confirmation_result = await self.confirmation_service.request_confirmation(  # noqa
                     operation="Edit file",
                     target=path,

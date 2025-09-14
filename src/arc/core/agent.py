@@ -49,7 +49,9 @@ class StreamingChunk:
         tool_result: ToolResult | None = None,
         token_count: int | None = None,
     ):
-        self.type = type  # "content", "tool_calls", "tool_result", "done", "token_count"
+        self.type = (
+            type  # "content", "tool_calls", "tool_result", "done", "token_count"
+        )
         self.content = content
         self.tool_calls = tool_calls or []
         self.tool_call = tool_call
@@ -160,7 +162,9 @@ class ArcAgent:
                         # Stream content
                         if choice.delta and choice.delta.content:
                             current_content += choice.delta.content
-                            yield StreamingChunk(type="content", content=choice.delta.content)
+                            yield StreamingChunk(
+                                type="content", content=choice.delta.content
+                            )
 
                         # Accumulate tool call deltas
                         if choice.delta and choice.delta.tool_calls:
@@ -175,13 +179,13 @@ class ArcAgent:
                                     streaming_tool_calls[idx]["id"] = tc_delta.id
                                 if tc_delta.function:
                                     if tc_delta.function.name:
-                                        streaming_tool_calls[idx]["function"]["name"] += (
-                                            tc_delta.function.name
-                                        )
+                                        streaming_tool_calls[idx]["function"][
+                                            "name"
+                                        ] += tc_delta.function.name
                                     if tc_delta.function.arguments:
-                                        streaming_tool_calls[idx]["function"]["arguments"] += (
-                                            tc_delta.function.arguments
-                                        )
+                                        streaming_tool_calls[idx]["function"][
+                                            "arguments"
+                                        ] += tc_delta.function.arguments
 
                 # Convert accumulated tool calls
                 for _, tc_data in streaming_tool_calls.items():
@@ -214,7 +218,9 @@ class ArcAgent:
                 if not current_tool_calls:
                     final_entry = ChatEntry(type="assistant", content=current_content)
                     self.chat_history.append(final_entry)
-                    self.messages.append({"role": "assistant", "content": current_content})
+                    self.messages.append(
+                        {"role": "assistant", "content": current_content}
+                    )
                     yield StreamingChunk(type="done")
                     break
 
@@ -222,7 +228,10 @@ class ArcAgent:
                 assistant_entry = ChatEntry(
                     type="assistant",
                     content=current_content or "Using tools to help you...",
-                    tool_calls=[ArcToolCall.from_openai_tool_call(tc) for tc in current_tool_calls],
+                    tool_calls=[
+                        ArcToolCall.from_openai_tool_call(tc)
+                        for tc in current_tool_calls
+                    ],
                 )
                 self.chat_history.append(assistant_entry)
                 self.messages.append(
@@ -254,7 +263,9 @@ class ArcAgent:
                         {
                             "role": "tool",
                             "tool_call_id": tool_call.id,
-                            "content": result.output or result.error or "Tool completed",
+                            "content": result.output
+                            or result.error
+                            or "Tool completed",
                         }
                     )
 
@@ -296,7 +307,8 @@ class ArcAgent:
                     # Add assistant message with tool calls
                     assistant_entry = ChatEntry(
                         type="assistant",
-                        content=current_response.content or "Using tools to help you...",
+                        content=current_response.content
+                        or "Using tools to help you...",
                         tool_calls=[
                             ArcToolCall.from_openai_tool_call(tc)
                             for tc in current_response.tool_calls
@@ -343,7 +355,9 @@ class ArcAgent:
                         # Update the tool call entry to tool result
                         tool_call_entry.type = "tool_result"
                         tool_call_entry.content = (
-                            result.output if result.success else result.error or "Error occurred"
+                            result.output
+                            if result.success
+                            else result.error or "Error occurred"
                         )
                         tool_call_entry.tool_result = result
 
@@ -384,7 +398,8 @@ class ArcAgent:
                 warning_entry = ChatEntry(
                     type="assistant",
                     content=(
-                        "Maximum tool execution rounds reached. Stopping to prevent infinite loops."
+                        "Maximum tool execution rounds reached. "
+                        "Stopping to prevent infinite loops."
                     ),
                 )
                 self.chat_history.append(warning_entry)
@@ -442,9 +457,13 @@ class ArcAgent:
                     include_hidden=args.get("include_hidden", False),
                 )
             elif tool_call.name == "create_todo_list":
-                return await self.todo_tool.execute(action="create", todos=args["todos"])
+                return await self.todo_tool.execute(
+                    action="create", todos=args["todos"]
+                )
             elif tool_call.name == "update_todo_list":
-                return await self.todo_tool.execute(action="update", updates=args["updates"])
+                return await self.todo_tool.execute(
+                    action="update", updates=args["updates"]
+                )
             else:
                 return ToolResult.error_result(f"Unknown tool: {tool_call.name}")
 

@@ -11,7 +11,9 @@ console = Console()
 class ConfirmationResult:
     """Result of a confirmation request."""
 
-    def __init__(self, confirmed: bool, dont_ask_again: bool = False, feedback: str = ""):
+    def __init__(
+        self, confirmed: bool, dont_ask_again: bool = False, feedback: str = ""
+    ):
         self.confirmed = confirmed
         self.dont_ask_again = dont_ask_again
         self.feedback = feedback
@@ -141,6 +143,6 @@ class ConfirmationService:
 
     def should_auto_approve(self, operation_type: str) -> bool:
         """Check if operation should be auto-approved."""
-        return self.session_flags.get("all_operations", False) or self.session_flags.get(
-            operation_type, False
-        )
+        return self.session_flags.get(
+            "all_operations", False
+        ) or self.session_flags.get(operation_type, False)

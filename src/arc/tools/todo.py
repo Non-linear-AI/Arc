@@ -99,7 +99,9 @@ class TodoTool(BaseTool):
                 updated_count += 1
 
             formatted = self._format_todo_list()
-            return ToolResult.success_result(f"Updated {updated_count} TODO item(s):\n{formatted}")
+            return ToolResult.success_result(
+                f"Updated {updated_count} TODO item(s):\n{formatted}"
+            )
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to update todo list: {str(e)}")

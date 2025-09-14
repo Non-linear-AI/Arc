@@ -77,7 +77,8 @@ class ModelService(BaseService):
         """
         try:
             escaped_name = self._escape_string(name)
-            sql = f"SELECT * FROM models WHERE name = '{escaped_name}' AND version = {version}"
+            sql = f"""SELECT * FROM models WHERE name = '{escaped_name}'
+                AND version = {version}"""
             result = self._system_query(sql)
             if result.empty():
                 return None
@@ -100,9 +101,8 @@ class ModelService(BaseService):
         """
         try:
             escaped_name = self._escape_string(name)
-            sql = (
-                f"SELECT * FROM models WHERE name = '{escaped_name}' ORDER BY version DESC LIMIT 1"
-            )
+            sql = f"""SELECT * FROM models WHERE name = '{escaped_name}'
+                ORDER BY version DESC LIMIT 1"""
             result = self._system_query(sql)
             if result.empty():
                 return None
@@ -124,7 +124,8 @@ class ModelService(BaseService):
         """
         try:
             escaped_name = self._escape_string(name)
-            sql = f"SELECT * FROM models WHERE name = '{escaped_name}' ORDER BY version DESC"
+            sql = f"""SELECT * FROM models WHERE name = '{escaped_name}'
+                ORDER BY version DESC"""
             result = self._system_query(sql)
             return self._results_to_models(result)
         except Exception as e:
@@ -214,7 +215,8 @@ class ModelService(BaseService):
             DatabaseError: If ID generation fails
         """
         try:
-            sql = "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM models"
+            sql = """SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id
+                FROM models"""
             result = self._system_query(sql)
             if result.empty():
                 return "1"

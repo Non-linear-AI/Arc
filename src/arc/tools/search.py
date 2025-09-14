@@ -56,12 +56,16 @@ class SearchTool(BaseTool):
                 results.extend(text_results)
 
             if not results:
-                return ToolResult.success_result(f"No results found for query: '{query}'")
+                return ToolResult.success_result(
+                    f"No results found for query: '{query}'"
+                )
 
             # Format results
             formatted_results = self._format_results(results, max_results)
 
-            return ToolResult.success_result(f"Search results for '{query}':\n{formatted_results}")
+            return ToolResult.success_result(
+                f"Search results for '{query}':\n{formatted_results}"
+            )
 
         except Exception as e:
             return ToolResult.error_result(f"Search failed: {str(e)}")
@@ -88,7 +92,9 @@ class SearchTool(BaseTool):
 
                 # Skip excluded patterns in directories
                 if exclude_pattern:
-                    dirs[:] = [d for d in dirs if not self._matches_pattern(d, exclude_pattern)]
+                    dirs[:] = [
+                        d for d in dirs if not self._matches_pattern(d, exclude_pattern)
+                    ]
 
                 for file in files:
                     # Skip hidden files if not included
@@ -99,7 +105,9 @@ class SearchTool(BaseTool):
                     relative_path = os.path.relpath(file_path, ".")
 
                     # Apply include/exclude patterns
-                    if include_pattern and not self._matches_pattern(file, include_pattern):
+                    if include_pattern and not self._matches_pattern(
+                        file, include_pattern
+                    ):
                         continue
                     if exclude_pattern and self._matches_pattern(file, exclude_pattern):
                         continue
@@ -168,7 +176,9 @@ class SearchTool(BaseTool):
 
                 # Skip excluded patterns in directories
                 if exclude_pattern:
-                    dirs[:] = [d for d in dirs if not self._matches_pattern(d, exclude_pattern)]
+                    dirs[:] = [
+                        d for d in dirs if not self._matches_pattern(d, exclude_pattern)
+                    ]
 
                 for file in files:
                     # Skip hidden files if not included
@@ -179,7 +189,9 @@ class SearchTool(BaseTool):
                     relative_path = os.path.relpath(file_path, ".")
 
                     # Apply include/exclude patterns
-                    if include_pattern and not self._matches_pattern(file, include_pattern):
+                    if include_pattern and not self._matches_pattern(
+                        file, include_pattern
+                    ):
                         continue
                     if exclude_pattern and self._matches_pattern(file, exclude_pattern):
                         continue
@@ -206,7 +218,9 @@ class SearchTool(BaseTool):
                                         match_text = line_content.strip()
                                 else:
                                     search_line = (
-                                        line_content if case_sensitive else line_content.lower()
+                                        line_content
+                                        if case_sensitive
+                                        else line_content.lower()
                                     )
                                     if pattern in search_line:
                                         match_found = True
@@ -263,11 +277,14 @@ class SearchTool(BaseTool):
                 formatted.append("")
             formatted.append("📝 Text matches:")
             for result in text_results:
-                formatted.append(f"  • {result['path']}:{result['line']} - {result['match']}")
+                formatted.append(
+                    f"  • {result['path']}:{result['line']} - {result['match']}"
+                )
 
         if len(results) > max_results:
             formatted.append(
-                f"\n... and {len(results) - max_results} more results (use max_results to see more)"
+                f"\n... and {len(results) - max_results} more results "
+                f"(use max_results to see more)"
             )
 
         return "\n".join(formatted)

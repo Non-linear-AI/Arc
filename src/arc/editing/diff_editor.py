@@ -85,7 +85,9 @@ class DiffEditor(EditStrategy):
                 total_changes += 1
             else:
                 # Try fuzzy matching
-                fuzzy_result = await self._fuzzy_replace_in_content(new_content, search, replace)
+                fuzzy_result = await self._fuzzy_replace_in_content(
+                    new_content, search, replace
+                )
                 if fuzzy_result.success:
                     new_content = fuzzy_result.new_content
                     total_changes += fuzzy_result.changes
@@ -95,7 +97,9 @@ class DiffEditor(EditStrategy):
             success, new_content, total_changes, "" if success else "No matches found"
         )
 
-    async def _apply_unified_diff(self, content: str, instruction: EditInstruction) -> "DiffResult":
+    async def _apply_unified_diff(
+        self, content: str, instruction: EditInstruction
+    ) -> "DiffResult":
         """Apply unified diff format patches."""
         diff_text = instruction.search_text
 
@@ -136,7 +140,9 @@ class DiffEditor(EditStrategy):
             "" if success else "No hunks applied",
         )
 
-    def _apply_hunk(self, content_lines: list[str], hunk_lines: list[str]) -> "DiffResult":
+    def _apply_hunk(
+        self, content_lines: list[str], hunk_lines: list[str]
+    ) -> "DiffResult":
         """Apply a single diff hunk."""
         if not hunk_lines or not hunk_lines[0].startswith("@@"):
             return DiffResult(False, "\n".join(content_lines), 0, "Invalid hunk format")
@@ -174,14 +180,18 @@ class DiffEditor(EditStrategy):
 
         return DiffResult(True, "\n".join(new_lines), 1, "")
 
-    async def _apply_simple_diff(self, content: str, instruction: EditInstruction) -> "DiffResult":
+    async def _apply_simple_diff(
+        self, content: str, instruction: EditInstruction
+    ) -> "DiffResult":
         """Apply simple before/after diff."""
         if (
             instruction.old_content
             and instruction.new_content
             and instruction.old_content in content
         ):
-            new_content = content.replace(instruction.old_content, instruction.new_content, 1)
+            new_content = content.replace(
+                instruction.old_content, instruction.new_content, 1
+            )
             return DiffResult(True, new_content, 1, "")
 
         return DiffResult(False, content, 0, "Simple diff pattern not found")
@@ -199,7 +209,9 @@ class DiffEditor(EditStrategy):
 
         for i in range(len(lines) - len(search_lines) + 1):
             segment = lines[i : i + len(search_lines)]
-            ratio = self._calculate_similarity("\n".join(search_lines), "\n".join(segment))
+            ratio = self._calculate_similarity(
+                "\n".join(search_lines), "\n".join(segment)
+            )
 
             if ratio > best_ratio and ratio >= 0.75:  # 75% similarity threshold
                 best_ratio = ratio

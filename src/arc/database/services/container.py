@@ -32,7 +32,6 @@ class ServiceContainer:
         self._model_service = None
         self._job_service = None
         self._plugin_service = None
-        self._ml_data_service = None
 
     @property
     def query(self) -> InteractiveQueryService:

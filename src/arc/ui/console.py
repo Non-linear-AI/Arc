@@ -58,7 +58,8 @@ class ProgressTracker:
                     self.progress.update(
                         self.task_id,
                         advance=advance,
-                        description=description or self.progress.tasks[self.task_id].description,
+                        description=description
+                        or self.progress.tasks[self.task_id].description,
                     )
 
                 def complete(self):
@@ -105,13 +106,16 @@ class InteractiveInterface:
 
     def show_typing_indicator(self, message: str = "Arc is thinking"):
         """Show typing indicator for AI responses."""
-        return Live(f"[dim]{message}...[/dim]", refresh_per_second=4, console=self.console)
+        return Live(
+            f"[dim]{message}...[/dim]", refresh_per_second=4, console=self.console
+        )
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
         self.console.print("\n[bold]System Commands[/bold]")
         self.console.print(
-            "  [dim]Commands require '/' prefix. Regular text without '/' is sent to the AI.[/dim]"
+            "  [dim]Commands require '/' prefix. "
+            "Regular text without '/' is sent to the AI.[/dim]"
         )
         commands = [
             ("/help", "Show available commands and features"),
@@ -262,7 +266,9 @@ class InteractiveInterface:
         # Show ellipsis if there are more lines
         if len(lines) > 3:
             remaining = len(lines) - 3
-            self.console.print(f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]")
+            self.console.print(
+                f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]"
+            )
 
     def show_user_message(self, content: str):
         """Clear the input line and redisplay user message in light gray."""
@@ -282,7 +288,9 @@ class InteractiveInterface:
         for i in range(lines_to_clear):
             print("\033[K", end="", flush=True)  # Clear to end of line
             if i < lines_to_clear - 1:
-                print("\033[1B\r", end="", flush=True)  # Move down one line and to start
+                print(
+                    "\033[1B\r", end="", flush=True
+                )  # Move down one line and to start
 
         # Move cursor back to the start position
         if lines_to_clear > 1:
@@ -290,7 +298,9 @@ class InteractiveInterface:
 
         # Render the user message in soft purple-gray
         if lines:
-            self.console.print(f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]")
+            self.console.print(
+                f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]"
+            )
             for ln in lines[1:]:
                 self.console.print(f"  [color(245)]{ln}[/color(245)]")
 
@@ -405,7 +415,9 @@ class InteractiveInterface:
             tree = Tree(f"📁 {directory}")
             self._build_tree(Path(directory), tree, max_depth, 0)
 
-            self.console.print(Panel(tree, title="📁 Directory Structure", border_style="blue"))
+            self.console.print(
+                Panel(tree, title="📁 Directory Structure", border_style="blue")
+            )
         except Exception as e:
             self.console.print(f"❌ Error building file tree: {e}")
 
@@ -518,7 +530,9 @@ class InteractiveInterface:
 
         if result.empty():
             self.console.print(
-                Panel("[dim]No results found[/dim]", border_style="yellow", padding=(0, 1))
+                Panel(
+                    "[dim]No results found[/dim]", border_style="yellow", padding=(0, 1)
+                )
             )
             return
 
@@ -548,7 +562,9 @@ class InteractiveInterface:
                     import json
 
                     try:
-                        row_values.append(json.dumps(value, indent=None, separators=(",", ":")))
+                        row_values.append(
+                            json.dumps(value, indent=None, separators=(",", ":"))
+                        )
                     except (TypeError, ValueError):
                         row_values.append(str(value))
                 else:

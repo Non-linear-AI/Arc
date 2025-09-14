@@ -18,11 +18,15 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "start_line": {
                         "type": "integer",
-                        "description": ("Starting line number for partial file view (optional)"),  # noqa
+                        "description": (
+                            "Starting line number for partial file view (optional)"
+                        ),  # noqa
                     },
                     "end_line": {
                         "type": "integer",
-                        "description": ("Ending line number for partial file view (optional)"),  # noqa
+                        "description": (
+                            "Ending line number for partial file view (optional)"
+                        ),  # noqa
                     },
                 },
                 "required": ["path"],
@@ -48,7 +52,9 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="str_replace_editor",
-            description=("Replace specific text in a file. Use this for single line edits only"),  # noqa
+            description=(
+                "Replace specific text in a file. Use this for single line edits only"
+            ),  # noqa
             parameters={
                 "type": "object",
                 "properties": {
@@ -111,29 +117,40 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "include_pattern": {
                         "type": "string",
-                        "description": ("Glob pattern for files to include (e.g. '*.ts', '*.js')"),  # noqa
+                        "description": (
+                            "Glob pattern for files to include (e.g. '*.ts', '*.js')"
+                        ),  # noqa
                     },
                     "exclude_pattern": {
                         "type": "string",
                         "description": (
-                            "Glob pattern for files to exclude (e.g. '*.log', 'node_modules')"
+                            "Glob pattern for files to exclude "
+                            "(e.g. '*.log', 'node_modules')"
                         ),  # noqa
                     },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": ("Whether search should be case sensitive (default: false)"),  # noqa
+                        "description": (
+                            "Whether search should be case sensitive (default: false)"
+                        ),  # noqa
                     },
                     "whole_word": {
                         "type": "boolean",
-                        "description": ("Whether to match whole words only (default: false)"),  # noqa
+                        "description": (
+                            "Whether to match whole words only (default: false)"
+                        ),  # noqa
                     },
                     "regex": {
                         "type": "boolean",
-                        "description": ("Whether query is a regex pattern (default: false)"),  # noqa
+                        "description": (
+                            "Whether query is a regex pattern (default: false)"
+                        ),  # noqa
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": ("Maximum number of results to return (default: 50)"),  # noqa
+                        "description": (
+                            "Maximum number of results to return (default: 50)"
+                        ),  # noqa
                     },
                     "file_types": {
                         "type": "array",
@@ -142,7 +159,9 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "include_hidden": {
                         "type": "boolean",
-                        "description": ("Whether to include hidden files (default: false)"),  # noqa
+                        "description": (
+                            "Whether to include hidden files (default: false)"
+                        ),  # noqa
                     },
                 },
                 "required": ["query"],
@@ -162,7 +181,9 @@ def get_base_tools() -> list[ArcTool]:
                             "properties": {
                                 "id": {
                                     "type": "string",
-                                    "description": ("Unique identifier for the todo item"),  # noqa
+                                    "description": (
+                                        "Unique identifier for the todo item"
+                                    ),  # noqa
                                 },
                                 "content": {
                                     "type": "string",
@@ -172,7 +193,8 @@ def get_base_tools() -> list[ArcTool]:
                                     "type": "string",
                                     "enum": ["pending", "in_progress", "completed"],
                                     "description": (
-                                        "Current status of the todo item (default: pending)"
+                                        "Current status of the todo item "
+                                        "(default: pending)"
                                     ),  # noqa
                                 },
                             },

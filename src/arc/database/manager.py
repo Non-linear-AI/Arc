@@ -17,7 +17,9 @@ class DatabaseManager:
     from core system components.
     """
 
-    def __init__(self, system_db_path: str | Path, user_db_path: str | Path | None = None):
+    def __init__(
+        self, system_db_path: str | Path, user_db_path: str | Path | None = None
+    ):
         """Initialize database manager with system and optional user database paths.
 
         Args:
