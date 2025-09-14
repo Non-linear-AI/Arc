@@ -85,31 +85,17 @@ class ArcError(Exception):
         error_str = str(error).lower()
         error_type = type(error).__name__.lower()
 
-        if (
-            "network" in error_str
-            or "connection" in error_str
-            or "timeout" in error_str
-        ):
+        if "network" in error_str or "connection" in error_str or "timeout" in error_str:
             return ErrorCategory.NETWORK
-        elif (
-            "permission" in error_str or "access" in error_str or "denied" in error_str
-        ):
+        elif "permission" in error_str or "access" in error_str or "denied" in error_str:
             return ErrorCategory.PERMISSION
         elif "file" in error_str or "directory" in error_str or "path" in error_str:
             return ErrorCategory.FILE_SYSTEM
-        elif (
-            "api" in error_str
-            or "http" in error_str
-            or error_type in ["httperror", "apierror"]
-        ):
+        elif "api" in error_str or "http" in error_str or error_type in ["httperror", "apierror"]:
             return ErrorCategory.API
         elif "timeout" in error_str or error_type == "timeouterror":
             return ErrorCategory.TIMEOUT
-        elif (
-            "memory" in error_str
-            or "resource" in error_str
-            or error_type == "memoryerror"
-        ):
+        elif "memory" in error_str or "resource" in error_str or error_type == "memoryerror":
             return ErrorCategory.RESOURCE
         elif (
             "validation" in error_str
@@ -135,8 +121,7 @@ class ArcError(Exception):
             )
         elif self.category == ErrorCategory.NETWORK:
             return (
-                f"Network error: {base_message}\n"
-                "💡 Check your internet connection and try again."
+                f"Network error: {base_message}\n💡 Check your internet connection and try again."
             )
         elif self.category == ErrorCategory.FILE_SYSTEM:
             return (
@@ -145,8 +130,7 @@ class ArcError(Exception):
             )
         elif self.category == ErrorCategory.API:
             return (
-                f"API error: {base_message}\n"
-                "💡 Check your API credentials and network connection."
+                f"API error: {base_message}\n💡 Check your API credentials and network connection."
             )
         elif self.category == ErrorCategory.TIMEOUT:
             return (
@@ -154,10 +138,7 @@ class ArcError(Exception):
                 "long. Try again or check system resources."
             )
         elif self.category == ErrorCategory.VALIDATION:
-            return (
-                f"Validation error: {base_message}\n"
-                "💡 Please check your input parameters."
-            )
+            return f"Validation error: {base_message}\n💡 Please check your input parameters."
         else:
             return f"Error: {base_message}"
 
@@ -191,9 +172,7 @@ class ErrorHandler:
         if isinstance(error, ArcError):
             arc_error = error
         else:
-            arc_error = ArcError(
-                message=str(error), context=context, original_error=error
-            )
+            arc_error = ArcError(message=str(error), context=context, original_error=error)
 
         # Log the error
         self._log_error(arc_error)
@@ -250,9 +229,7 @@ class ErrorHandler:
                 try:
                     result = action.action()
                     if result and isinstance(result, ToolResult) and result.success:
-                        self.logger.info(
-                            f"Auto-recovery successful using: {action.name}"
-                        )
+                        self.logger.info(f"Auto-recovery successful using: {action.name}")
                         return result
                 except Exception as e:
                     self.logger.debug(f"Recovery action {action.name} failed: {e}")
@@ -267,11 +244,7 @@ class ErrorHandler:
         formatted = "\n\n🔧 Suggested fixes:\n"
         for i, action in enumerate(actions, 1):
             confidence_indicator = (
-                "🟢"
-                if action.confidence > 0.8
-                else "🟡"
-                if action.confidence > 0.5
-                else "🟠"
+                "🟢" if action.confidence > 0.8 else "🟡" if action.confidence > 0.5 else "🟠"
             )
             formatted += f"  {i}. {confidence_indicator} {action.description}\n"
 
@@ -302,9 +275,7 @@ class ErrorHandler:
 
             def create_dirs():
                 try:
-                    Path(error.context.file_path).parent.mkdir(
-                        parents=True, exist_ok=True
-                    )
+                    Path(error.context.file_path).parent.mkdir(parents=True, exist_ok=True)
                     return ToolResult.success_result("Created missing directories")
                 except Exception as e:
                     return ToolResult.error_result(f"Failed to create directories: {e}")
@@ -409,9 +380,7 @@ class ErrorHandler:
             if "type" in error_msg:
                 suggestions.append("Check data types of input parameters")
 
-            return ToolResult.success_result(
-                f"Input suggestions: {'; '.join(suggestions)}"
-            )
+            return ToolResult.success_result(f"Input suggestions: {'; '.join(suggestions)}")
 
         return RecoveryAction(
             name="suggest_input_correction",

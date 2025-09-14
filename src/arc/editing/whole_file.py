@@ -13,10 +13,7 @@ class WholeFileEditor(EditStrategy):
 
     async def can_handle(self, instruction: EditInstruction) -> bool:
         """Check if this strategy can handle the instruction."""
-        return (
-            instruction.new_content is not None
-            and len(instruction.new_content.strip()) > 0
-        )
+        return instruction.new_content is not None and len(instruction.new_content.strip()) > 0
 
     async def apply_edit(self, instruction: EditInstruction) -> EditResult:
         """Replace entire file content."""
@@ -77,9 +74,7 @@ class WholeFileEditor(EditStrategy):
         else:
             return 0  # Not efficient for small changes
 
-    async def should_use_over_search_replace(
-        self, instruction: EditInstruction
-    ) -> bool:
+    async def should_use_over_search_replace(self, instruction: EditInstruction) -> bool:
         """Determine if whole file replacement is better than search/replace."""
         if not Path(instruction.file_path).exists():
             return True

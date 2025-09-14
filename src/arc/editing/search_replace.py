@@ -91,9 +91,7 @@ class SearchReplaceEditor(EditStrategy):
             new_content = content.replace(search_text, replacement_text, 1)
             changes = 1 if search_text in content else 0
 
-        return ReplacementResult(
-            success=changes > 0, new_content=new_content, changes=changes
-        )
+        return ReplacementResult(success=changes > 0, new_content=new_content, changes=changes)
 
     async def _apply_fuzzy_replacement(
         self, content: str, instruction: EditInstruction
@@ -122,9 +120,7 @@ class SearchReplaceEditor(EditStrategy):
                 + lines[best_match_start + len(search_lines) :]
             )
 
-            return ReplacementResult(
-                success=True, new_content="\n".join(new_lines), changes=1
-            )
+            return ReplacementResult(success=True, new_content="\n".join(new_lines), changes=1)
 
         return ReplacementResult(success=False, new_content=content, changes=0)
 
@@ -143,17 +139,13 @@ class SearchReplaceEditor(EditStrategy):
 
             for i, line in enumerate(lines):
                 ratio = self._calculate_line_similarity(search_line, line.strip())
-                if (
-                    ratio > best_ratio and ratio >= 0.8
-                ):  # 80% similarity for single line
+                if ratio > best_ratio and ratio >= 0.8:  # 80% similarity for single line
                     best_ratio = ratio
                     best_match_idx = i
 
             if best_match_idx is not None:
                 lines[best_match_idx] = instruction.replacement_text
-                return ReplacementResult(
-                    success=True, new_content="\n".join(lines), changes=1
-                )
+                return ReplacementResult(success=True, new_content="\n".join(lines), changes=1)
 
         return ReplacementResult(success=False, new_content=content, changes=0)
 

@@ -57,10 +57,7 @@ class InteractiveQueryService(BaseService):
 
         try:
             # Execute query based on target database
-            if target_db == "system":
-                result = self._system_query(query)
-            else:  # user
-                result = self._user_query(query)
+            result = self._system_query(query) if target_db == "system" else self._user_query(query)
 
             execution_time = time.time() - start_time
 

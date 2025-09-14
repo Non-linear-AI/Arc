@@ -20,9 +20,7 @@ class ToolResult:
         return cls(success=True, output=output)
 
     @classmethod
-    def error_result(
-        cls, error: str, recovery_actions: str | None = None
-    ) -> "ToolResult":
+    def error_result(cls, error: str, recovery_actions: str | None = None) -> "ToolResult":
         """Create an error result."""
         return cls(success=False, error=error, recovery_actions=recovery_actions)
 

@@ -28,9 +28,7 @@ class DuckDBDatabase(Database):
         try:
             self._connection = duckdb.connect(self.db_path)
         except Exception as e:
-            raise DatabaseError(
-                f"Failed to connect to DuckDB at {self.db_path}: {e}"
-            ) from e
+            raise DatabaseError(f"Failed to connect to DuckDB at {self.db_path}: {e}") from e
 
     def _ensure_connected(self) -> duckdb.DuckDBPyConnection:
         """Ensure we have a valid database connection."""

@@ -19,9 +19,7 @@ class Cache:
     """Simple in-memory cache with TTL support."""
 
     def __init__(self, default_ttl: int = 300):  # 5 minutes default
-        self.cache: dict[
-            str, tuple[Any, float, int]
-        ] = {}  # key -> (value, timestamp, ttl)
+        self.cache: dict[str, tuple[Any, float, int]] = {}  # key -> (value, timestamp, ttl)
         self.default_ttl = default_ttl
         self._lock = threading.RLock()
 
@@ -281,12 +279,8 @@ class PerformanceManager:
     def _update_response_time(self, new_time: float) -> None:
         """Update average response time metric."""
         self.metrics["total_requests"] += 1
-        total_time = self.metrics["avg_response_time"] * (
-            self.metrics["total_requests"] - 1
-        )
-        self.metrics["avg_response_time"] = (total_time + new_time) / self.metrics[
-            "total_requests"
-        ]
+        total_time = self.metrics["avg_response_time"] * (self.metrics["total_requests"] - 1)
+        self.metrics["avg_response_time"] = (total_time + new_time) / self.metrics["total_requests"]
 
     async def parallel_execute(self, tasks: list) -> list:
         """Execute multiple async tasks in parallel."""
@@ -395,9 +389,7 @@ class BatchProcessor:
                     else:
                         # Wrap sync function in async
                         tasks.append(
-                            asyncio.create_task(
-                                asyncio.to_thread(operation, *args, **kwargs)
-                            )
+                            asyncio.create_task(asyncio.to_thread(operation, *args, **kwargs))
                         )
 
                 if tasks:

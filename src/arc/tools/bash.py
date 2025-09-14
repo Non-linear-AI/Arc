@@ -23,24 +23,17 @@ class BashTool(BaseTool):
         try:
             # Request confirmation from user
             session_flags = self.confirmation_service.get_session_flags()
-            if (
-                not session_flags["bash_commands"]
-                and not session_flags["all_operations"]
-            ):
-                confirmation_result = (
-                    await self.confirmation_service.request_confirmation(
-                        operation="Run bash command",
-                        target=command,
-                        operation_type="bash",
-                        content=f"Command: {command}\n"
-                        f"Working directory: {self._current_directory}",
-                    )
+            if not session_flags["bash_commands"] and not session_flags["all_operations"]:
+                confirmation_result = await self.confirmation_service.request_confirmation(
+                    operation="Run bash command",
+                    target=command,
+                    operation_type="bash",
+                    content=f"Command: {command}\nWorking directory: {self._current_directory}",
                 )
 
                 if not confirmation_result.confirmed:
                     return ToolResult.error_result(
-                        confirmation_result.feedback
-                        or "Command execution cancelled by user"
+                        confirmation_result.feedback or "Command execution cancelled by user"
                     )
             # Create the process
             process = await asyncio.create_subprocess_shell(
@@ -52,15 +45,11 @@ class BashTool(BaseTool):
 
             # Wait for completion with timeout
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), timeout=timeout
-                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except TimeoutError:
                 process.kill()
                 await process.wait()
-                return ToolResult.error_result(
-                    f"Command timed out after {timeout} seconds"
-                )
+                return ToolResult.error_result(f"Command timed out after {timeout} seconds")
 
             # Decode output
             stdout_str = stdout.decode("utf-8", errors="replace").strip()

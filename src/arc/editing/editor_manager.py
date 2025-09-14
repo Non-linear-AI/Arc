@@ -47,9 +47,7 @@ class EditorManager:
             )
 
         # Strategy 3: Select best strategy based on context
-        best_strategy = await self._select_best_strategy(
-            instruction, capable_strategies
-        )
+        best_strategy = await self._select_best_strategy(instruction, capable_strategies)
         result = await best_strategy.apply_edit(instruction)
         best_strategy.record_result(result)
 
@@ -59,9 +57,7 @@ class EditorManager:
 
         # Strategy 4: Fallback to other strategies if primary fails
         if not result.success and len(capable_strategies) > 1:
-            logger.info(
-                f"Primary strategy {best_strategy.name} failed, trying fallbacks"
-            )
+            logger.info(f"Primary strategy {best_strategy.name} failed, trying fallbacks")
 
             for fallback_strategy in capable_strategies:
                 if fallback_strategy == best_strategy:
@@ -97,19 +93,14 @@ class EditorManager:
             if isinstance(strategy, DiffEditor):
                 # Prefer for diff-like content
                 content = instruction.search_text or instruction.new_content or ""
-                if any(
-                    marker in content
-                    for marker in ["@@", "<<<<<<< SEARCH", "---", "+++"]
-                ):
+                if any(marker in content for marker in ["@@", "<<<<<<< SEARCH", "---", "+++"]):
                     score += 0.5
 
             elif isinstance(strategy, WholeFileEditor):
                 # Prefer for new files or major changes
                 if instruction.create_if_missing:
                     score += 0.4
-                elif instruction.new_content and await self._is_major_change(
-                    instruction
-                ):
+                elif instruction.new_content and await self._is_major_change(instruction):
                     score += 0.3
 
             elif isinstance(strategy, SearchReplaceEditor):
@@ -136,9 +127,7 @@ class EditorManager:
             # Use difflib to calculate change ratio
             import difflib
 
-            similarity = difflib.SequenceMatcher(
-                None, current_content, new_content
-            ).ratio()
+            similarity = difflib.SequenceMatcher(None, current_content, new_content).ratio()
 
             # Consider it major if less than 50% similar or file is small
             return similarity < 0.5 or len(current_content) < 1024
@@ -153,9 +142,7 @@ class EditorManager:
         cache_key = f"{file_path.suffix}_{self._get_edit_type(instruction)}"
         return self._strategy_cache.get(cache_key)
 
-    def _cache_strategy(
-        self, instruction: EditInstruction, strategy: EditStrategy
-    ) -> None:
+    def _cache_strategy(self, instruction: EditInstruction, strategy: EditStrategy) -> None:
         """Cache successful strategy for future similar edits."""
         file_path = Path(instruction.file_path)
         cache_key = f"{file_path.suffix}_{self._get_edit_type(instruction)}"
@@ -174,9 +161,7 @@ class EditorManager:
         else:
             return "unknown"
 
-    async def apply_multiple_edits(
-        self, instructions: list[EditInstruction]
-    ) -> list[EditResult]:
+    async def apply_multiple_edits(self, instructions: list[EditInstruction]) -> list[EditResult]:
         """Apply multiple edits efficiently."""
         # Group by file to optimize file I/O
         file_groups = {}
@@ -200,16 +185,12 @@ class EditorManager:
 
         return results
 
-    async def _apply_batched_edits(
-        self, instructions: list[EditInstruction]
-    ) -> list[EditResult]:
+    async def _apply_batched_edits(self, instructions: list[EditInstruction]) -> list[EditResult]:
         """Apply multiple edits to the same file efficiently."""
         results = []
 
         # Try to batch compatible edits
-        whole_file_edits = [
-            i for i in instructions if i.new_content and not i.search_text
-        ]
+        whole_file_edits = [i for i in instructions if i.new_content and not i.search_text]
         [i for i in instructions if i.search_text and i.replacement_text]
 
         if whole_file_edits:

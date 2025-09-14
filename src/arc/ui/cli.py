@@ -33,27 +33,21 @@ def cli():
 
 @cli.command()
 @click.option("-d", "--directory", default=None, help="Set working directory")
-@click.option(
-    "-k", "--api-key", default=None, help="Arc API key (or set ARC_API_KEY env var)"
-)
+@click.option("-k", "--api-key", default=None, help="Arc API key (or set ARC_API_KEY env var)")
 @click.option(
     "-u",
     "--base-url",
     default=None,
     help="Arc API base URL (or set ARC_BASE_URL env var)",
 )
-@click.option(
-    "-m", "--model", default=None, help="AI model to use (e.g., gpt-4, claude-3-sonnet)"
-)
+@click.option("-m", "--model", default=None, help="AI model to use (e.g., gpt-4, claude-3-sonnet)")
 @click.option(
     "-p",
     "--prompt",
     default=None,
     help="Process a single prompt and exit (headless mode)",
 )
-@click.option(
-    "--max-tool-rounds", default=400, help="Maximum number of tool execution rounds"
-)
+@click.option("--max-tool-rounds", default=400, help="Maximum number of tool execution rounds")
 def chat(
     directory: str | None,
     api_key: str | None,
@@ -68,9 +62,7 @@ def chat(
         try:
             os.chdir(directory)
         except OSError as e:
-            console.print(
-                f"❌ Error changing directory to {directory}: {e}", style="red"
-            )
+            console.print(f"❌ Error changing directory to {directory}: {e}", style="red")
             sys.exit(1)
 
     # Get configuration
@@ -105,15 +97,9 @@ def chat(
 
     # Run the appropriate mode
     if prompt:
-        asyncio.run(
-            run_headless_mode(
-                prompt, api_key, base_url, model, max_tool_rounds, services
-            )
-        )
+        asyncio.run(run_headless_mode(prompt, api_key, base_url, model, max_tool_rounds, services))
     else:
-        asyncio.run(
-            run_interactive_mode(api_key, base_url, model, max_tool_rounds, services)
-        )
+        asyncio.run(run_interactive_mode(api_key, base_url, model, max_tool_rounds, services))
 
 
 async def handle_sql_command(query_service, ui, user_input: str) -> None:
@@ -122,9 +108,7 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
     parts = user_input.split(" ", 2)
 
     if len(parts) < 2:
-        console.print(
-            "❌ SQL command requires a query. Usage: /sql [system|user] <query>"
-        )
+        console.print("❌ SQL command requires a query. Usage: /sql [system|user] <query>")
         return
 
     # Determine target database and query
@@ -164,9 +148,7 @@ async def handle_sql_command_headless(query_service, user_input: str) -> None:
     if len(parts) < 2:
         error_output = {
             "role": "assistant",
-            "content": (
-                "❌ SQL command requires a query. Usage: /sql [system|user] <query>"
-            ),
+            "content": ("❌ SQL command requires a query. Usage: /sql [system|user] <query>"),
         }
         print(json.dumps(error_output))
         return
@@ -327,9 +309,7 @@ async def run_interactive_mode(
 
                 # Handle system commands (only with / prefix)
                 if user_input.startswith("/"):
-                    cmd = user_input[
-                        1:
-                    ].lower()  # Remove the / prefix and convert to lowercase
+                    cmd = user_input[1:].lower()  # Remove the / prefix and convert to lowercase
 
                     if cmd in ["exit", "quit", "bye"]:
                         console.print("👋 Goodbye!", style="cyan")
@@ -340,9 +320,7 @@ async def run_interactive_mode(
                     elif cmd == "stats":
                         # Show editing statistics if available
                         if hasattr(agent.file_editor, "editor_manager"):
-                            stats = (
-                                agent.file_editor.editor_manager.get_strategy_stats()
-                            )
+                            stats = agent.file_editor.editor_manager.get_strategy_stats()
                             ui.show_edit_summary(stats)
                         else:
                             console.print("📊 No editing statistics available yet.")
@@ -418,21 +396,13 @@ async def run_interactive_mode(
                             except json.JSONDecodeError:
                                 args = {"raw_arguments": chunk.tool_call.arguments}
 
-                        tool_name = (
-                            chunk.tool_call.name if chunk.tool_call else "Unknown Tool"
-                        )
+                        tool_name = chunk.tool_call.name if chunk.tool_call else "Unknown Tool"
                         ui.show_tool_execution(tool_name, args)
 
-                    elif (
-                        chunk.type == "tool_result"
-                        and chunk.tool_result
-                        and chunk.tool_call
-                    ):
+                    elif chunk.type == "tool_result" and chunk.tool_result and chunk.tool_call:
                         # Show tool result
                         tool_time = time.time() - start_time
-                        ui.show_tool_result(
-                            chunk.tool_call.name, chunk.tool_result, tool_time
-                        )
+                        ui.show_tool_result(chunk.tool_call.name, chunk.tool_result, tool_time)
 
                     elif chunk.type == "error":
                         console.print(f"\n❌ Error: {chunk.content}")

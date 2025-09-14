@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 from .interactive_query_service import InteractiveQueryService
 from .job_service import JobService
-from .ml_data_service import MLDataService
 from .model_service import ModelService
 from .plugin_service import PluginService
 
@@ -62,13 +61,6 @@ class ServiceContainer:
         if self._plugin_service is None:
             self._plugin_service = PluginService(self.db_manager)
         return self._plugin_service
-
-    @property
-    def ml_data(self) -> MLDataService:
-        """Get the ML data service."""
-        if self._ml_data_service is None:
-            self._ml_data_service = MLDataService(self.db_manager)
-        return self._ml_data_service
 
     def close(self) -> None:
         """Clean up resources and close database connections."""

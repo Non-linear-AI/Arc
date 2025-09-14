@@ -62,9 +62,7 @@ class ArcClient:
         base_url: str | None = None,
     ):
         self.current_model = model
-        self.base_url = base_url or os.getenv(
-            "ARC_BASE_URL", "https://api.openai.com/v1"
-        )
+        self.base_url = base_url or os.getenv("ARC_BASE_URL", "https://api.openai.com/v1")
 
         self.client = AsyncOpenAI(
             api_key=api_key,

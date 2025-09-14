@@ -16,22 +16,14 @@ class EditResult:
     error_details: str | None = None
 
     @classmethod
-    def success_result(
-        cls, message: str, changes: int = 1, strategy: str = ""
-    ) -> "EditResult":
+    def success_result(cls, message: str, changes: int = 1, strategy: str = "") -> "EditResult":
         """Create a successful edit result."""
-        return cls(
-            success=True, message=message, changes_made=changes, strategy_used=strategy
-        )
+        return cls(success=True, message=message, changes_made=changes, strategy_used=strategy)
 
     @classmethod
-    def failure_result(
-        cls, message: str, error: str = "", strategy: str = ""
-    ) -> "EditResult":
+    def failure_result(cls, message: str, error: str = "", strategy: str = "") -> "EditResult":
         """Create a failed edit result."""
-        return cls(
-            success=False, message=message, strategy_used=strategy, error_details=error
-        )
+        return cls(success=False, message=message, strategy_used=strategy, error_details=error)
 
 
 @dataclass
@@ -83,9 +75,7 @@ class FuzzyMatcher:
     """Fuzzy matching utilities for fallback strategies."""
 
     @staticmethod
-    def find_best_match(
-        target: str, candidates: list[str], threshold: float = 0.8
-    ) -> str | None:
+    def find_best_match(target: str, candidates: list[str], threshold: float = 0.8) -> str | None:
         """Find the best fuzzy match from candidates."""
         import difflib
 
@@ -93,9 +83,7 @@ class FuzzyMatcher:
         best_ratio = threshold
 
         for candidate in candidates:
-            ratio = difflib.SequenceMatcher(
-                None, target.lower(), candidate.lower()
-            ).ratio()
+            ratio = difflib.SequenceMatcher(None, target.lower(), candidate.lower()).ratio()
             if ratio > best_ratio:
                 best_match = candidate
                 best_ratio = ratio
@@ -122,7 +110,4 @@ class FuzzyMatcher:
         """Check if two lines are similar enough."""
         import difflib
 
-        return (
-            difflib.SequenceMatcher(None, line1.strip(), line2.strip()).ratio()
-            >= threshold
-        )
+        return difflib.SequenceMatcher(None, line1.strip(), line2.strip()).ratio() >= threshold
