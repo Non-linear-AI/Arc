@@ -1,84 +1,26 @@
 """Enhanced UX components for Arc CLI."""
 
-import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 from rich import box
 from rich.align import Align
-from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.tree import Tree
 
 from ..database import QueryResult
-
-console = Console()
-
-
-class ProgressTracker:
-    """Track and display progress for various operations."""
-
-    def __init__(self):
-        self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            console=console,
-        )
-        self.tasks = {}
-
-    @contextmanager
-    def track(self, description: str, total: int | None = None):
-        """Context manager for tracking progress."""
-        with self.progress:
-            task_id = self.progress.add_task(description, total=total or 100)
-            self.tasks[description] = task_id
-
-            class TaskUpdater:
-                def __init__(self, progress, task_id):
-                    self.progress = progress
-                    self.task_id = task_id
-
-                def update(self, advance: int = 1, description: str | None = None):
-                    self.progress.update(
-                        self.task_id,
-                        advance=advance,
-                        description=description
-                        or self.progress.tasks[self.task_id].description,
-                    )
-
-                def complete(self):
-                    self.progress.update(self.task_id, completed=True)
-
-            yield TaskUpdater(self.progress, task_id)
+from .printer import Printer
 
 
 class InteractiveInterface:
-    """Enhanced interactive interface for Arc CLI."""
+    """Console facade: formats content; delegates printing/streaming to Printer."""
 
     def __init__(self):
-        self.console = console
-        self.progress_tracker = ProgressTracker()
-        self._working_active = False
-        self._spinner_thread = None
-        self._spinner_stop = False
-        self._spinner_frames = ["/", "-", "\\", "|"]
-        self._spinner_frame_index = 0
+        self._printer = Printer()
 
     def show_welcome(self, _model: str, _directory: str):
         """Display a centered ASCII banner in an 80-char panel."""
@@ -99,39 +41,35 @@ class InteractiveInterface:
             padding=(1, 0, 0, 0),
             width=80,
         )
-        self.console.print(Align.left(panel))
+        self._printer.print(Align.left(panel))
 
         # Single concise hint
-        self.console.print("\n Use /help for more information.\n")
-
-    def show_typing_indicator(self, message: str = "Arc is thinking"):
-        """Show typing indicator for AI responses."""
-        return Live(
-            f"[dim]{message}...[/dim]", refresh_per_second=4, console=self.console
-        )
+        self._printer.print(" Use /help for more information.")
+        self._printer.add_separator()
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
-        self.console.print("\n[bold]System Commands[/bold]")
-        self.console.print(
-            "  [dim]Commands require '/' prefix. "
-            "Regular text without '/' is sent to the AI.[/dim]"
-        )
-        commands = [
-            ("/help", "Show available commands and features"),
-            ("/stats", "Show editing strategy statistics"),
-            ("/performance", "Show performance metrics and cache statistics"),
-            ("/tree", "Show directory structure"),
-            ("/config", "View current configuration"),
-            (
-                "/sql [system|user] <query>",
-                "Execute SQL query (system: read-only, user: full access)",
-            ),
-            ("/clear", "Clear the screen"),
-            ("/exit or /quit", "Exit the application"),
-        ]
-        for cmd, desc in commands:
-            self.console.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
+        with self._printer.section(color="blue") as p:
+            p.print("[bold]System Commands[/bold]")
+            p.print(
+                "  [dim]Commands require '/' prefix. "
+                "Regular text without '/' is sent to the AI.[/dim]"
+            )
+            commands = [
+                ("/help", "Show available commands and features"),
+                ("/stats", "Show editing strategy statistics"),
+                ("/performance", "Show performance metrics and cache statistics"),
+                ("/tree", "Show directory structure"),
+                ("/config", "View current configuration"),
+                (
+                    "/sql [system|user] <query>",
+                    "Execute SQL query (system: read-only, user: full access)",
+                ),
+                ("/clear", "Clear the screen"),
+                ("/exit or /quit", "Exit the application"),
+            ]
+            for cmd, desc in commands:
+                p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
@@ -171,37 +109,32 @@ class InteractiveInterface:
         self._working_active = True
 
     def show_tool_result(self, tool_name: str, result, _execution_time: float):
-        """Clean tool result display matching the example format."""
+        """Print one tool result as a single output section."""
         label = self._action_label(tool_name)
 
-        # Clear working active flag
         if self._working_active:
             self._working_active = False
 
-        # Format the result content
         content = result.output if result.success else result.error
-        if content is None:
-            content = ""
+        content = content or ""
 
-        # Add spacing before every action
-        self.console.print()
-
-        # Get color for this action type
         dot_color = self._get_dot_color(tool_name)
-
-        # Special handling for todo operations - show progress bar inline
-        if tool_name in ["create_todo_list", "update_todo_list"] and content.strip():
-            self._print_todo_with_inline_progress(label, content, dot_color)
-        else:
-            # Header line as a step - colored dot and tool name
-            self.console.print(f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white]")
-
-            # Show details if there's content
-            if content.strip():
-                self._print_details_block(content)
+        with self._printer.section(color=dot_color) as p:
+            if (
+                tool_name in ["create_todo_list", "update_todo_list"]
+                and content.strip()
+            ):
+                self._print_todo_with_inline_progress(label, content, printer=p)
+            else:
+                p.print(f"{label}")
+                if content.strip():
+                    self._print_details_block(content, printer=p)
 
     def _print_todo_with_inline_progress(
-        self, label: str, content: str, dot_color: str = "blue"
+        self,
+        label: str,
+        content: str,
+        printer: Any | None = None,
     ) -> None:
         """Print todo with progress bar inline with the action label."""
         lines = content.splitlines()
@@ -226,15 +159,11 @@ class InteractiveInterface:
             elif line.startswith("└"):
                 todo_items.append(line)
 
-        # Print header with inline progress
+        target = printer if printer else self._printer
         if progress_line:
-            self.console.print(
-                f"[{dot_color}]⏺[/{dot_color}] [white]{label}[/white] {progress_line}"
-            )
-
-        # Print todo items
+            target.print(f"{label} {progress_line}")
         for item in todo_items:
-            self.console.print(f"  {item}")
+            target.print(f"  {item}")
 
     def _print_todo_content(self, content: str) -> None:
         """Print todo content with progress bar format."""
@@ -245,9 +174,12 @@ class InteractiveInterface:
         # Print the todo content directly without modification
         for line in lines:
             if line.strip():
-                self.console.print(f"  {line}")
+                with self._printer.section(add_dot=False) as p:
+                    p.print(f"  {line}")
 
-    def _print_details_block(self, content: str, _max_lines: int = 5) -> None:
+    def _print_details_block(
+        self, content: str, _max_lines: int = 8, printer: Any | None = None
+    ) -> None:
         """Print details block matching the exact format from the example."""
         lines = content.splitlines()
         if not lines:
@@ -255,23 +187,22 @@ class InteractiveInterface:
 
         # Show first line with ⎿ marker
         first = lines[0].rstrip()
-        self.console.print(f"  [dim]⎿ {first}[/dim]")
+        target = printer if printer else self._printer
+        target.print(f"  [dim]⎿ {first}[/dim]")
 
         # Show up to 2 more lines with proper indentation
         rest = lines[1:3]  # Only show 2 more lines max
         for ln in rest:
             if ln.strip():  # Skip empty lines
-                self.console.print(f"     [dim]{ln.rstrip()}[/dim]")
+                target.print(f"     [dim]{ln.rstrip()}[/dim]")
 
         # Show ellipsis if there are more lines
         if len(lines) > 3:
             remaining = len(lines) - 3
-            self.console.print(
-                f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]"
-            )
+            target.print(f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]")
 
     def show_user_message(self, content: str):
-        """Clear the input line and redisplay user message in light gray."""
+        """Clear the input line and show user message inside a light border."""
         text = content.strip()
         if not text:
             return
@@ -296,13 +227,14 @@ class InteractiveInterface:
         if lines_to_clear > 1:
             print(f"\033[{lines_to_clear - 1}A\r", end="", flush=True)
 
-        # Render the user message in soft purple-gray
+        # Render the user message in soft purple-gray (no border)
         if lines:
-            self.console.print(
+            self._printer.print(
                 f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]"
             )
             for ln in lines[1:]:
-                self.console.print(f"  [color(245)]{ln}[/color(245)]")
+                self._printer.print(f"  [color(245)]{ln}[/color(245)]")
+            self._printer.add_separator()
 
     def show_assistant_step(self, content: str):
         """Render assistant thoughts as a cyan dot step with the content."""
@@ -310,15 +242,124 @@ class InteractiveInterface:
         if not text:
             return
 
-        # Add spacing before assistant messages
-        self.console.print()
-
         # Render each line with a single cyan dot header once, then plain lines
         lines = text.split("\n")
         if lines:
-            self.console.print(f"[cyan]⏺[/cyan] [white]{lines[0]}[/white]")
-            for ln in lines[1:]:
-                self.console.print(f"  [white]{ln}[/white]")
+            with self._printer.section(color="cyan") as p:
+                p.print(f"{lines[0]}")
+                for ln in lines[1:]:
+                    p.print(f"  {ln}")
+
+    @contextmanager
+    def assistant_response(self):
+        """Context manager for streaming assistant responses.
+
+        Usage:
+            with ui.assistant_response() as stream:
+                stream.stream_text("Hello ")
+                stream.stream_text("world!")
+        """
+        streaming_context = self._printer.section(color="cyan", streaming=True)
+        stream_printer = streaming_context.__enter__()
+        try:
+            yield stream_printer
+        finally:
+            streaming_context.__exit__(None, None, None)
+
+    @contextmanager
+    def stream_response(self, start_time):
+        """Context manager for handling an entire streaming response workflow.
+
+        Usage:
+            with ui.stream_response(start_time) as handler:
+                async for chunk in agent.process_user_message_stream(user_input):
+                    handler.handle_chunk(chunk)
+        """
+        import json
+        import time
+
+        class StreamResponseHandler:
+            def __init__(self, ui, start_time):
+                self.ui = ui
+                self.start_time = start_time
+                self.assistant_context = None
+                self.stream = None
+                self._buffer = ""
+
+            def handle_chunk(self, chunk):
+                if chunk.type == "content" and chunk.content:
+                    # Start streaming context on first content chunk
+                    if self.assistant_context is None:
+                        self.assistant_context = self.ui.assistant_response()
+                        self.stream = self.assistant_context.__enter__()
+                    # Accumulate for final markdown rendering
+                    self._buffer += chunk.content
+                    # Stream content immediately as it arrives
+                    self.stream.stream_text(chunk.content)
+
+                elif chunk.type == "tool_calls" and chunk.tool_call:
+                    # Finish any ongoing assistant streaming before tool execution
+                    self._finish_assistant_streaming(final=False)
+
+                    args = {}
+                    if chunk.tool_call and chunk.tool_call.arguments:
+                        try:
+                            args = json.loads(chunk.tool_call.arguments)
+                        except json.JSONDecodeError:
+                            args = {"raw_arguments": chunk.tool_call.arguments}
+
+                    tool_name = (
+                        chunk.tool_call.name if chunk.tool_call else "Unknown Tool"
+                    )
+                    self.ui.show_tool_execution(tool_name, args)
+
+                elif (
+                    chunk.type == "tool_result"
+                    and chunk.tool_result
+                    and chunk.tool_call
+                ):
+                    # Show tool result as one output section
+                    tool_time = time.time() - self.start_time
+                    self.ui.show_tool_result(
+                        chunk.tool_call.name, chunk.tool_result, tool_time
+                    )
+
+                elif chunk.type == "error":
+                    # Finish any ongoing assistant streaming before showing error
+                    self._finish_assistant_streaming(final=False)
+                    self.ui.show_system_error(chunk.content)
+
+                elif chunk.type == "done":
+                    # Finish any ongoing assistant streaming
+                    self._finish_assistant_streaming(final=True)
+
+            def _finish_assistant_streaming(self, final: bool = False):
+                """Finish streaming; if final=True, clear and markdown-render it.
+
+                When final=False (e.g., before a tool call), we simply close the
+                streaming context and keep what was streamed as-is, without
+                clearing or re-rendering.
+                """
+                if self.assistant_context is not None:
+                    # If final, replace the live region with markdown panel before exit
+                    if final and self._buffer and self.stream is not None:
+                        with suppress(Exception):
+                            self.stream.finalize_to_markdown_panel(self._buffer)
+
+                    # Close the streaming section context
+                    self.assistant_context.__exit__(None, None, None)
+
+                    # Reset state; only keep buffer if not final (but we don't use it)
+                    self.assistant_context = None
+                    self.stream = None
+                    self._buffer = "" if final else ""
+
+        handler = StreamResponseHandler(self, start_time)
+        try:
+            yield handler
+        finally:
+            # Ensure cleanup even if an exception occurs (no final rendering here)
+            handler._finish_assistant_streaming(final=False)
 
     def show_edit_summary(self, strategy_stats: dict[str, dict[str, Any]]):
         """Show editing strategy statistics."""
@@ -339,7 +380,8 @@ class InteractiveInterface:
                 str(stats["total_operations"]),
             )
 
-        self.console.print(stats_table)
+        with self._printer.section(color="blue") as p:
+            p.print(stats_table)
 
     def show_performance_metrics(
         self, metrics: dict[str, Any], error_stats: dict[str, Any] | None = None
@@ -396,7 +438,8 @@ class InteractiveInterface:
             "Number of items in persistent cache",
         )
 
-        self.console.print(perf_table)
+        with self._printer.section(color="green") as p:
+            p.print(perf_table)
 
         # Show error statistics if available
         if error_stats and error_stats.get("total_errors", 0) > 0:
@@ -407,7 +450,8 @@ class InteractiveInterface:
             for category, count in error_stats.get("by_category", {}).items():
                 error_table.add_row(category.replace("_", " ").title(), str(count))
 
-            self.console.print(error_table)
+            with self._printer.section(color="red") as p:
+                p.print(error_table)
 
     def show_file_tree(self, directory: str, max_depth: int = 3):
         """Display file tree for current directory."""
@@ -415,11 +459,11 @@ class InteractiveInterface:
             tree = Tree(f"📁 {directory}")
             self._build_tree(Path(directory), tree, max_depth, 0)
 
-            self.console.print(
-                Panel(tree, title="📁 Directory Structure", border_style="blue")
-            )
+            with self._printer.section(color="blue") as p:
+                p.print_panel(Panel(tree))
         except Exception as e:
-            self.console.print(f"❌ Error building file tree: {e}")
+            with self._printer.section(color="red") as p:
+                p.print(f"❌ Error building file tree: {e}")
 
     def _build_tree(self, path: Path, tree: Tree, max_depth: int, current_depth: int):
         """Recursively build file tree."""
@@ -473,34 +517,36 @@ class InteractiveInterface:
 
     def show_code_diff(self, old_code: str, new_code: str, language: str = "python"):
         """Show code diff with syntax highlighting."""
-        self.console.print("\n📝 [bold]Code Changes:[/bold]")
+        with self._printer.section(color="yellow") as p:
+            p.print("📝 [bold]Code Changes:[/bold]")
 
         # Show old code
         if old_code:
-            self.console.print(
-                Panel(
-                    Syntax(old_code, language, theme="monokai", line_numbers=True),
-                    title="🔴 Before",
-                    border_style="red",
+            with self._printer.section(color="red") as p:
+                p.print_panel(
+                    Panel(
+                        Syntax(old_code, language, theme="monokai", line_numbers=True),
+                        title="🔴 Before",
+                        border_style="red",
+                    )
                 )
-            )
 
         # Show new code
         if new_code:
-            self.console.print(
-                Panel(
-                    Syntax(new_code, language, theme="monokai", line_numbers=True),
-                    title="🟢 After",
-                    border_style="green",
+            with self._printer.section(color="green") as p:
+                p.print_panel(
+                    Panel(
+                        Syntax(new_code, language, theme="monokai", line_numbers=True),
+                        title="🟢 After",
+                        border_style="green",
+                    )
                 )
-            )
 
     def show_streaming_response(self, content: str):
         """Show streaming response with typing effect."""
-        for char in content:
-            self.console.print(char, end="")
-            time.sleep(0.01)  # Simulate typing
-        self.console.print()  # New line at end
+        with self._printer.section(color="cyan", streaming=True) as stream:
+            for char in content:
+                stream.stream_text(char, end="")
 
     def show_sql_result(
         self,
@@ -510,166 +556,104 @@ class InteractiveInterface:
         execution_time: float | None = None,
     ) -> None:
         """Display SQL query results in a formatted table."""
-        # Show query header
         db_label = "System DB" if target_db == "system" else "User DB"
         header = f"🗃️ SQL Query ({db_label})"
         if execution_time is not None:
             header += f" - {execution_time:.3f}s"
 
-        self.console.print(f"\n[bold cyan]{header}[/bold cyan]")
+        with self._printer.section(color="blue") as p:
+            # Header
+            p.print(f"{header}")
 
-        # Show the query in a code block
-        self.console.print(
-            Panel(
-                Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
-                title="Query",
-                border_style="blue",
-                padding=(0, 1),
-            )
-        )
-
-        if result.empty():
-            self.console.print(
+            # Query panel
+            p.print_panel(
                 Panel(
-                    "[dim]No results found[/dim]", border_style="yellow", padding=(0, 1)
+                    Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
+                    title="Query",
+                    border_style="blue",
+                    padding=(0, 1),
                 )
             )
-            return
 
-        # Create Rich table
-        table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+            if result.empty():
+                p.print_panel(
+                    Panel(
+                        "[dim]No results found[/dim]",
+                        border_style="yellow",
+                        padding=(0, 1),
+                    )
+                )
+                return
 
-        # Add columns from first row
-        first_row = result.first()
-        if first_row:
-            for column_name in first_row:
-                table.add_column(str(column_name), style="cyan", no_wrap=False)
+            # Create table
+            table = Table(
+                show_header=True, header_style="bold magenta", box=box.ROUNDED
+            )
 
-        # Add data rows (limit to avoid overwhelming output)
-        max_rows = 100
-        for row_count, row in enumerate(result):
-            if row_count >= max_rows:
-                table.add_row(*["..." for _ in first_row], style="dim")
-                break
+            # Add columns from first row
+            first_row = result.first()
+            if first_row:
+                for column_name in first_row:
+                    table.add_column(str(column_name), style="cyan", no_wrap=False)
 
-            # Convert all values to strings and handle None
-            row_values = []
-            for value in row.values():
-                if value is None:
-                    row_values.append("[dim]NULL[/dim]")
-                elif isinstance(value, (dict, list)):
-                    # Format JSON-like objects
-                    import json
+            # Add data rows (limit to avoid overwhelming output)
+            max_rows = 100
+            for row_count, row in enumerate(result):
+                if row_count >= max_rows:
+                    table.add_row(*["..." for _ in first_row], style="dim")
+                    break
 
-                    try:
-                        row_values.append(
-                            json.dumps(value, indent=None, separators=(",", ":"))
-                        )
-                    except (TypeError, ValueError):
+                # Convert all values to strings and handle None
+                row_values = []
+                for value in row.values():
+                    if value is None:
+                        row_values.append("[dim]NULL[/dim]")
+                    elif isinstance(value, (dict, list)):
+                        # Format JSON-like objects
+                        import json
+
+                        try:
+                            row_values.append(
+                                json.dumps(value, indent=None, separators=(",", ":"))
+                            )
+                        except (TypeError, ValueError):
+                            row_values.append(str(value))
+                    else:
                         row_values.append(str(value))
-                else:
-                    row_values.append(str(value))
 
-            table.add_row(*row_values)
+                table.add_row(*row_values)
 
-        # Show the table
-        self.console.print(table)
+            # Show the table and summary
+            p.print(table)
+            total_rows = result.count()
+            if total_rows > max_rows:
+                p.print(f"\n[dim]Showing {max_rows} of {total_rows} rows[/dim]")
+            else:
+                row_text = "row" if total_rows == 1 else "rows"
+                p.print(f"\n[dim]{total_rows} {row_text} returned[/dim]")
 
-        # Show result summary
-        total_rows = result.count()
-        if total_rows > max_rows:
-            self.console.print(f"\n[dim]Showing {max_rows} of {total_rows} rows[/dim]")
-        else:
-            row_text = "row" if total_rows == 1 else "rows"
-            self.console.print(f"\n[dim]{total_rows} {row_text} returned[/dim]")
+    # System and misc helpers using Printer
+    def show_system_error(self, message: str) -> None:
+        self._printer.show_message(f"❌ {message}", style="red", use_section=False)
 
+    def show_system_success(self, message: str) -> None:
+        self._printer.show_message(f"✅ {message}", use_section=False)
 
-class SmartOutputFormatter:
-    """Intelligently format different types of content."""
+    def show_goodbye(self) -> None:
+        self._printer.show_message("👋 Goodbye!", style="cyan", use_section=False)
 
-    @staticmethod
-    def format_content(content: str, content_type: str | None = None) -> Any:
-        """Smart content formatting based on content type detection."""
-        if not content:
-            return content
+    def show_info(self, message: str) -> None:
+        self._printer.show_message(message, use_section=False)
 
-        # Detect content type if not provided
-        if content_type is None:
-            content_type = SmartOutputFormatter._detect_content_type(content)
+    def clear_screen(self) -> None:
+        self._printer.clear()
 
-        if content_type == "code":
-            language = SmartOutputFormatter._detect_language(content)
-            return Syntax(content, language, theme="monokai", line_numbers=True)
-        elif content_type == "markdown":
-            return Markdown(content)
-        elif content_type == "json":
-            import json
+    def show_config_panel(self, config_text: str) -> None:
+        with self._printer.section(color="blue") as p:
+            p.print_panel(Panel(config_text))
 
-            try:
-                parsed = json.loads(content)
-                formatted = json.dumps(parsed, indent=2)
-                return Syntax(formatted, "json", theme="monokai")
-            except (json.JSONDecodeError, ValueError):
-                return content
-        elif content_type == "table":
-            return SmartOutputFormatter._create_table_from_text(content)
-        else:
-            return content
+    def get_user_input(self, prompt: str = "\n[bold green]>[/bold green] ") -> str:
+        return self._printer.get_input(prompt).strip()
 
-    @staticmethod
-    def _detect_content_type(content: str) -> str:
-        """Detect content type from content."""
-        content_lower = content.lower().strip()
-
-        if content.startswith("```") or any(
-            keyword in content_lower
-            for keyword in ["def ", "class ", "import ", "function", "var ", "const "]
-        ):
-            return "code"
-        elif content.startswith("#") or "**" in content or "*" in content[:10]:
-            return "markdown"
-        elif content.strip().startswith("{") or content.strip().startswith("["):
-            return "json"
-        elif "|" in content and content.count("|") > 2:
-            return "table"
-        else:
-            return "text"
-
-    @staticmethod
-    def _detect_language(content: str) -> str:
-        """Detect programming language from code content."""
-        if "def " in content or "import " in content or "class " in content:
-            return "python"
-        elif "function" in content or "const " in content or "let " in content:
-            return "javascript"
-        elif "#include" in content or "int main" in content:
-            return "c"
-        elif "public class" in content or "System.out" in content:
-            return "java"
-        else:
-            return "text"
-
-    @staticmethod
-    def _create_table_from_text(content: str) -> Table:
-        """Create Rich table from text content."""
-        lines = content.strip().split("\n")
-        if len(lines) < 2:
-            return content
-
-        # Try to parse as table
-        table = Table()
-
-        # Use first line as headers
-        headers = [col.strip() for col in lines[0].split("|")]
-        for header in headers:
-            if header:  # Skip empty columns
-                table.add_column(header)
-
-        # Add rows
-        for line in lines[1:]:
-            if "|" in line:
-                columns = [col.strip() for col in line.split("|")]
-                if len(columns) >= len(headers):
-                    table.add_row(*columns[: len(headers)])
-
-        return table
+    def cleanup(self) -> None:
+        self._printer.cleanup()

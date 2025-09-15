@@ -8,8 +8,6 @@ import time
 
 import click
 from dotenv import load_dotenv
-from rich.console import Console
-from rich.panel import Panel
 
 from ..core import ArcAgent, SettingsManager
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
@@ -20,8 +18,6 @@ from .console import InteractiveInterface
 
 # Load environment variables
 load_dotenv()
-
-console = Console()
 
 
 @click.group()
@@ -63,14 +59,14 @@ def chat(
     max_tool_rounds: int,
 ):
     """Start an interactive chat session with Arc CLI."""
+    ui = InteractiveInterface()
+
     # Change directory if specified
     if directory:
         try:
             os.chdir(directory)
         except OSError as e:
-            console.print(
-                f"❌ Error changing directory to {directory}: {e}", style="red"
-            )
+            ui.show_system_error(f"Error changing directory to {directory}: {e}")
             sys.exit(1)
 
     # Get configuration
@@ -78,10 +74,9 @@ def chat(
 
     api_key = api_key or settings_manager.get_api_key()
     if not api_key:
-        console.print(
-            "❌ Error: API key required. Set ARC_API_KEY environment variable, "
-            "use --api-key flag, or save to ~/.arc/user-settings.json",
-            style="red",
+        ui.show_system_error(
+            "API key required. Set ARC_API_KEY environment variable, "
+            "use --api-key flag, or save to ~/.arc/user-settings.json"
         )
         sys.exit(1)
 
@@ -91,11 +86,11 @@ def chat(
     # Save command line settings if provided
     if api_key and click.get_current_context().params.get("api_key"):
         settings_manager.update_user_setting("apiKey", api_key)
-        console.print("✅ API key saved to ~/.arc/user-settings.json")
+        ui.show_system_success("API key saved to ~/.arc/user-settings.json")
 
     if base_url and click.get_current_context().params.get("base_url"):
         settings_manager.update_user_setting("baseURL", base_url)
-        console.print("✅ Base URL saved to ~/.arc/user-settings.json")
+        ui.show_system_success("Base URL saved to ~/.arc/user-settings.json")
 
     # Initialize database services (shared by both modes)
     system_db_path = settings_manager.get_system_database_path()
@@ -122,8 +117,8 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
     parts = user_input.split(" ", 2)
 
     if len(parts) < 2:
-        console.print(
-            "❌ SQL command requires a query. Usage: /sql [system|user] <query>"
+        ui.show_system_error(
+            "SQL command requires a query. Usage: /sql [system|user] <query>"
         )
         return
 
@@ -136,7 +131,7 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
         query = " ".join(parts[1:]).strip()
 
     if not query:
-        console.print("❌ Empty SQL query provided.")
+        ui.show_system_error("Empty SQL query provided.")
         return
 
     try:
@@ -149,11 +144,11 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
         ui.show_sql_result(result, target_db, query, execution_time)
 
     except QueryValidationError as e:
-        console.print(f"❌ Query Error: {str(e)}", style="red")
+        ui.show_system_error(f"Query Error: {str(e)}")
     except DatabaseError as e:
-        console.print(f"❌ Database Error: {str(e)}", style="red")
+        ui.show_system_error(f"Database Error: {str(e)}")
     except Exception as e:
-        console.print(f"❌ Unexpected error executing SQL: {str(e)}", style="red")
+        ui.show_system_error(f"Unexpected error executing SQL: {str(e)}")
 
 
 async def run_headless_mode(
@@ -233,7 +228,7 @@ async def run_interactive_mode(
         while True:
             try:
                 # Get user input with styled prompt
-                user_input = console.input("\n[bold green]>[/bold green] ").strip()
+                user_input = ui.get_user_input()
 
                 # Display the user message in chat history with different coloring
                 ui.show_user_message(user_input)
@@ -245,7 +240,7 @@ async def run_interactive_mode(
                     ].lower()  # Remove the / prefix and convert to lowercase
 
                     if cmd in ["exit", "quit", "bye"]:
-                        console.print("👋 Goodbye!", style="cyan")
+                        ui.show_goodbye()
                         break
                     elif cmd == "help":
                         ui.show_commands()
@@ -258,13 +253,13 @@ async def run_interactive_mode(
                             )
                             ui.show_edit_summary(stats)
                         else:
-                            console.print("📊 No editing statistics available yet.")
+                            ui.show_info("📊 No editing statistics available yet.")
                         continue
                     elif cmd == "tree":
                         ui.show_file_tree(agent.get_current_directory())
                         continue
                     elif cmd == "clear":
-                        console.clear()
+                        ui.clear_screen()
                         continue
                     elif cmd == "config":
                         # Show current configuration with fresh settings
@@ -279,13 +274,7 @@ async def run_interactive_mode(
                             f"Model: {current_model or 'Not set'}\n"
                             f"Max Tool Rounds: {max_tool_rounds}"
                         )
-                        console.print(
-                            Panel(
-                                config_text,
-                                title="⚙️ Current Configuration",
-                                border_style="blue",
-                            )
-                        )
+                        ui.show_config_panel(config_text)
                         continue
                     elif cmd == "performance":
                         # Show performance metrics
@@ -298,77 +287,36 @@ async def run_interactive_mode(
                         await handle_sql_command(services.query, ui, user_input)
                         continue
                     else:
-                        console.print(f"❌ Unknown system command: /{cmd}")
-                        console.print("Type /help to see available commands")
+                        ui.show_system_error(f"Unknown system command: /{cmd}")
                         continue
 
                 # Handle special exit commands without prefix (for convenience)
                 elif user_input.lower() in ["exit", "quit", "bye"]:
-                    console.print("👋 Goodbye!", style="cyan")
+                    ui.show_goodbye()
                     break
 
                 if not user_input:
                     continue
 
-                # Process streaming response with proper spacing
+                # Process streaming response with clean context management
                 start_time = time.time()
-                current_content = ""
 
-                async for chunk in agent.process_user_message_stream(user_input):
-                    if chunk.type == "content" and chunk.content:
-                        # Accumulate assistant thoughts to render as a step later
-                        current_content += chunk.content
-
-                    elif chunk.type == "tool_calls" and chunk.tool_call:
-                        # Flush any pending assistant thoughts before tool execution
-                        if current_content.strip():
-                            ui.show_assistant_step(current_content)
-                            current_content = ""
-                        args = {}
-                        if chunk.tool_call and chunk.tool_call.arguments:
-                            try:
-                                args = json.loads(chunk.tool_call.arguments)
-                            except json.JSONDecodeError:
-                                args = {"raw_arguments": chunk.tool_call.arguments}
-
-                        tool_name = (
-                            chunk.tool_call.name if chunk.tool_call else "Unknown Tool"
-                        )
-                        ui.show_tool_execution(tool_name, args)
-
-                    elif (
-                        chunk.type == "tool_result"
-                        and chunk.tool_result
-                        and chunk.tool_call
-                    ):
-                        # Show tool result
-                        tool_time = time.time() - start_time
-                        ui.show_tool_result(
-                            chunk.tool_call.name, chunk.tool_result, tool_time
-                        )
-
-                    elif chunk.type == "error":
-                        console.print(f"\n❌ Error: {chunk.content}")
-
-                    elif chunk.type == "done":
-                        # Flush any remaining assistant thoughts at end
-                        if current_content.strip():
-                            ui.show_assistant_step(current_content)
-                            current_content = ""
-                        console.print()  # blank line after completion
-                        break
+                with ui.stream_response(start_time) as handler:
+                    async for chunk in agent.process_user_message_stream(user_input):
+                        handler.handle_chunk(chunk)
 
             except KeyboardInterrupt:
-                console.print("\n👋 Goodbye!", style="cyan")
+                ui.show_goodbye()
                 break
             except EOFError:
-                console.print("\n👋 Goodbye!", style="cyan")
+                ui.show_goodbye()
                 break
             except Exception as e:
-                console.print(f"\n❌ Error: {str(e)}", style="red")
+                ui.show_system_error(str(e))
 
     except Exception as e:
-        console.print(f"❌ Error initializing Arc CLI: {str(e)}", style="red")
+        ui = InteractiveInterface()
+        ui.show_system_error(f"Error initializing Arc CLI: {str(e)}")
         sys.exit(1)
 
 
