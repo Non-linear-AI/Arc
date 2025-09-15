@@ -130,7 +130,7 @@ async def handle_sql_command(
 
     if len(parts) < 2:
         ui.show_system_error(
-            "❌ SQL command requires arguments. "
+            "SQL command requires arguments. "
             "Usage: /sql use [system|user] OR /sql <query>"
         )
         return current_database
@@ -139,10 +139,10 @@ async def handle_sql_command(
     if len(parts) >= 3 and parts[1].lower() == "use":
         db_name = parts[2].lower()
         if db_name in ["system", "user"]:
-            console.print(f"✅ Switched to {db_name} database")
+            ui.show_system_success(f"Switched to {db_name} database")
             return db_name
         else:
-            console.print("❌ Invalid database. Use 'system' or 'user'")
+            ui.show_system_error("Invalid database. Use 'system' or 'user'")
             return current_database
 
     # Otherwise, treat as a query to execute against current database
