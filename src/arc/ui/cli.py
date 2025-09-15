@@ -117,8 +117,8 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
     parts = user_input.split(" ", 2)
 
     if len(parts) < 2:
-        console.print(
-            "❌ SQL command requires a query. Usage: /sql [system|user] <query>"
+        ui.show_system_error(
+            "SQL command requires a query. Usage: /sql [system|user] <query>"
         )
         return
 
@@ -131,7 +131,7 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
         query = " ".join(parts[1:]).strip()
 
     if not query:
-        console.print("❌ Empty SQL query provided.")
+        ui.show_system_error("Empty SQL query provided.")
         return
 
     try:
@@ -144,11 +144,11 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
         ui.show_sql_result(result, target_db, query, execution_time)
 
     except QueryValidationError as e:
-        console.print(f"❌ Query Error: {str(e)}", style="red")
+        ui.show_system_error(f"Query Error: {str(e)}")
     except DatabaseError as e:
-        console.print(f"❌ Database Error: {str(e)}", style="red")
+        ui.show_system_error(f"Database Error: {str(e)}")
     except Exception as e:
-        console.print(f"❌ Unexpected error executing SQL: {str(e)}", style="red")
+        ui.show_system_error(f"Unexpected error executing SQL: {str(e)}")
 
 
 async def run_headless_mode(
