@@ -117,19 +117,8 @@ class DuckDBDatabase(Database):
             DatabaseError: If schema creation fails
         """
         try:
-            # Helper to tolerate concurrent DDL creation conflicts in tests
-            def _exec_ddl(sql: str) -> None:
-                try:
-                    self.execute(sql)
-                except DatabaseError as e:
-                    msg = str(e)
-                    if "write-write conflict on" in msg:
-                        # Harmless when another connection initialized concurrently
-                        return
-                    raise
-
             # Main registry for versioned model definitions with inheritance support
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS models(
                     id TEXT PRIMARY KEY,
                     type TEXT,
@@ -148,17 +137,17 @@ class DuckDBDatabase(Database):
             """)
 
             # Create indexes for common lookups
-            _exec_ddl("""
+            self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
             """)
 
-            _exec_ddl("""
+            self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_models_name_version
                 ON models(name, version);
             """)
 
             # Tracks long-running processes like training
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS jobs(
                     job_id TEXT PRIMARY KEY,
                     model_id INTEGER,
@@ -172,7 +161,7 @@ class DuckDBDatabase(Database):
             """)
 
             # Catalogs the immutable artifacts produced by successful training jobs
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS trained_models(
                     artifact_id TEXT PRIMARY KEY,
                     job_id TEXT NOT NULL,
@@ -184,7 +173,7 @@ class DuckDBDatabase(Database):
             """)
 
             # Tracks models served for real-time inference
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS deployments(
                     deployment_id TEXT PRIMARY KEY,
                     artifact_id TEXT NOT NULL REFERENCES trained_models(artifact_id),
@@ -195,7 +184,7 @@ class DuckDBDatabase(Database):
             """)
 
             # Stores plugin schema metadata for validation and documentation
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS plugin_schemas(
                     algorithm_type TEXT NOT NULL,
                     version TEXT NOT NULL,
@@ -208,11 +197,11 @@ class DuckDBDatabase(Database):
 
             # New plugin system with graph components
             # Stores metadata for each plugin version
-            _exec_ddl("""
+            self.execute("""
                 CREATE SEQUENCE IF NOT EXISTS plugins_seq;
             """)
 
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS plugins(
                     id BIGINT PRIMARY KEY DEFAULT nextval('plugins_seq'),
                     name VARCHAR(255) NOT NULL,
@@ -225,11 +214,11 @@ class DuckDBDatabase(Database):
             """)
 
             # Stores detailed specification for each component
-            _exec_ddl("""
+            self.execute("""
                 CREATE SEQUENCE IF NOT EXISTS plugin_components_seq;
             """)
 
-            _exec_ddl("""
+            self.execute("""
                 CREATE TABLE IF NOT EXISTS plugin_components(
                     id BIGINT PRIMARY KEY DEFAULT nextval('plugin_components_seq'),
                     plugin_id BIGINT NOT NULL,
@@ -242,11 +231,11 @@ class DuckDBDatabase(Database):
             """)
 
             # Create indexes for component lookup performance
-            _exec_ddl("""
+            self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
             """)
 
-            _exec_ddl("""
+            self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_plugin_components_name
                 ON plugin_components(component_name);
             """)
