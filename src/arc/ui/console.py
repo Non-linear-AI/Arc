@@ -62,8 +62,9 @@ class InteractiveInterface:
                 ("/tree", "Show directory structure"),
                 ("/config", "View current configuration"),
                 (
-                    "/sql [system|user] <query>",
-                    "Execute SQL query (system: read-only, user: full access)",
+                    "/sql use [system|user] | /sql <query>",
+                    "Switch database or execute SQL query "
+                    "(system: read-only, user: full access)",
                 ),
                 ("/clear", "Clear the screen"),
                 ("/exit or /quit", "Exit the application"),
@@ -557,7 +558,7 @@ class InteractiveInterface:
     ) -> None:
         """Display SQL query results in a formatted table."""
         db_label = "System DB" if target_db == "system" else "User DB"
-        header = f"🗃️ SQL Query ({db_label})"
+        header = f"SQL Query ({db_label})"
         if execution_time is not None:
             header += f" - {execution_time:.3f}s"
 
