@@ -23,6 +23,8 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.tree import Tree
 
+from ..database import QueryResult
+
 console = Console()
 
 
@@ -121,6 +123,10 @@ class InteractiveInterface:
             ("/performance", "Show performance metrics and cache statistics"),
             ("/tree", "Show directory structure"),
             ("/config", "View current configuration"),
+            (
+                "/sql [system|user] <query>",
+                "Execute SQL query (system: read-only, user: full access)",
+            ),
             ("/clear", "Clear the screen"),
             ("/exit or /quit", "Exit the application"),
         ]
@@ -495,6 +501,87 @@ class InteractiveInterface:
             self.console.print(char, end="")
             time.sleep(0.01)  # Simulate typing
         self.console.print()  # New line at end
+
+    def show_sql_result(
+        self,
+        result: QueryResult,
+        target_db: str,
+        query: str,
+        execution_time: float | None = None,
+    ) -> None:
+        """Display SQL query results in a formatted table."""
+        # Show query header
+        db_label = "System DB" if target_db == "system" else "User DB"
+        header = f"🗃️ SQL Query ({db_label})"
+        if execution_time is not None:
+            header += f" - {execution_time:.3f}s"
+
+        self.console.print(f"\n[bold cyan]{header}[/bold cyan]")
+
+        # Show the query in a code block
+        self.console.print(
+            Panel(
+                Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
+                title="Query",
+                border_style="blue",
+                padding=(0, 1),
+            )
+        )
+
+        if result.empty():
+            self.console.print(
+                Panel(
+                    "[dim]No results found[/dim]", border_style="yellow", padding=(0, 1)
+                )
+            )
+            return
+
+        # Create Rich table
+        table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+
+        # Add columns from first row
+        first_row = result.first()
+        if first_row:
+            for column_name in first_row:
+                table.add_column(str(column_name), style="cyan", no_wrap=False)
+
+        # Add data rows (limit to avoid overwhelming output)
+        max_rows = 100
+        for row_count, row in enumerate(result):
+            if row_count >= max_rows:
+                table.add_row(*["..." for _ in first_row], style="dim")
+                break
+
+            # Convert all values to strings and handle None
+            row_values = []
+            for value in row.values():
+                if value is None:
+                    row_values.append("[dim]NULL[/dim]")
+                elif isinstance(value, (dict, list)):
+                    # Format JSON-like objects
+                    import json
+
+                    try:
+                        row_values.append(
+                            json.dumps(value, indent=None, separators=(",", ":"))
+                        )
+                    except (TypeError, ValueError):
+                        row_values.append(str(value))
+                else:
+                    row_values.append(str(value))
+
+            table.add_row(*row_values)
+
+        # Show the table
+        self.console.print(table)
+
+        # Show result summary
+        total_rows = result.count()
+        if total_rows > max_rows:
+            self.console.print(f"\n[dim]Showing {max_rows} of {total_rows} rows[/dim]")
+        else:
+            row_text = "row" if total_rows == 1 else "rows"
+            self.console.print(f"\n[dim]{total_rows} {row_text} returned[/dim]")
 
 
 class SmartOutputFormatter:

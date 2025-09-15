@@ -46,6 +46,18 @@ class QueryResult:
         return not self.empty()
 
 
+class TimedQueryResult(QueryResult):
+    """QueryResult with execution time tracking.
+
+    Extends QueryResult to include execution time information for
+    performance monitoring and optimization purposes.
+    """
+
+    def __init__(self, rows: list[dict[str, Any]], execution_time: float):
+        super().__init__(rows, execution_time)
+        self.query_execution_time = execution_time
+
+
 class Database(ABC):
     """Abstract base class for database implementations."""
 
@@ -104,5 +116,11 @@ class Database(ABC):
 
 class DatabaseError(Exception):
     """Base exception for database-related errors."""
+
+    pass
+
+
+class QueryValidationError(DatabaseError):
+    """Exception raised for invalid SQL queries."""
 
     pass

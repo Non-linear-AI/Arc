@@ -21,8 +21,9 @@ test-watch:  ## Run tests in watch mode
 lint:  ## Run linting checks
 	uv run ruff check .
 
-format:  ## Format code
+format:  ## Format code and fix linting issues
 	uv run ruff format .
+	uv run ruff check . --fix
 
 clean:  ## Clean build artifacts
 	find . -type d -name "__pycache__" -exec rm -rf {} +
