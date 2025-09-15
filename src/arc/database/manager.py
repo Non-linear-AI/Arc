@@ -54,11 +54,12 @@ class DatabaseManager:
             # User database doesn't need Arc system schema
         return self._user_db
 
-    def system_query(self, sql: str) -> QueryResult:
+    def system_query(self, sql: str, params: list | None = None) -> QueryResult:
         """Execute a query against the system database.
 
         Args:
             sql: SQL SELECT statement
+            params: Optional list of parameters for the query
 
         Returns:
             QueryResult containing the results
@@ -66,18 +67,19 @@ class DatabaseManager:
         Raises:
             DatabaseError: If query execution fails
         """
-        return self._get_system_db().query(sql)
+        return self._get_system_db().query(sql, params)
 
-    def system_execute(self, sql: str) -> None:
+    def system_execute(self, sql: str, params: list | None = None) -> None:
         """Execute a statement against the system database.
 
         Args:
             sql: SQL statement (DDL/DML)
+            params: Optional list of parameters for the statement
 
         Raises:
             DatabaseError: If statement execution fails
         """
-        self._get_system_db().execute(sql)
+        self._get_system_db().execute(sql, params)
 
     def user_query(self, sql: str) -> QueryResult:
         """Execute a query against the user database.

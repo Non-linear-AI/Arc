@@ -42,11 +42,12 @@ class DuckDBDatabase(Database):
 
         return self._connection
 
-    def query(self, sql: str) -> QueryResult:
+    def query(self, sql: str, params: list | None = None) -> QueryResult:
         """Execute a SELECT query and return results.
 
         Args:
             sql: SQL SELECT statement to execute
+            params: Optional list of parameters for the query
 
         Returns:
             QueryResult containing the query results
@@ -60,7 +61,8 @@ class DuckDBDatabase(Database):
             conn = self._ensure_connected()
 
             # Execute query and fetch results
-            cursor = conn.execute(sql)
+            cursor = conn.execute(sql, params) if params else conn.execute(sql)
+
             rows = cursor.fetchall()
             columns = [desc[0] for desc in cursor.description or []]
 
@@ -74,18 +76,22 @@ class DuckDBDatabase(Database):
         except Exception as e:
             raise DatabaseError(f"Query execution failed: {e}") from e
 
-    def execute(self, sql: str) -> None:
+    def execute(self, sql: str, params: list | None = None) -> None:
         """Execute a DDL or DML statement (CREATE, INSERT, UPDATE, DELETE).
 
         Args:
             sql: SQL statement to execute
+            params: Optional list of parameters for the statement
 
         Raises:
             DatabaseError: If statement execution fails
         """
         try:
             conn = self._ensure_connected()
-            conn.execute(sql)
+            if params:
+                conn.execute(sql, params)
+            else:
+                conn.execute(sql)
 
         except Exception as e:
             raise DatabaseError(f"Statement execution failed: {e}") from e
@@ -111,8 +117,19 @@ class DuckDBDatabase(Database):
             DatabaseError: If schema creation fails
         """
         try:
+            # Helper to tolerate concurrent DDL creation conflicts in tests
+            def _exec_ddl(sql: str) -> None:
+                try:
+                    self.execute(sql)
+                except DatabaseError as e:
+                    msg = str(e)
+                    if "write-write conflict on" in msg:
+                        # Harmless when another connection initialized concurrently
+                        return
+                    raise
+
             # Main registry for versioned model definitions with inheritance support
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS models(
                     id TEXT PRIMARY KEY,
                     type TEXT,
@@ -131,17 +148,17 @@ class DuckDBDatabase(Database):
             """)
 
             # Create indexes for common lookups
-            self.execute("""
+            _exec_ddl("""
                 CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
             """)
 
-            self.execute("""
+            _exec_ddl("""
                 CREATE INDEX IF NOT EXISTS idx_models_name_version
                 ON models(name, version);
             """)
 
             # Tracks long-running processes like training
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS jobs(
                     job_id TEXT PRIMARY KEY,
                     model_id INTEGER,
@@ -155,7 +172,7 @@ class DuckDBDatabase(Database):
             """)
 
             # Catalogs the immutable artifacts produced by successful training jobs
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS trained_models(
                     artifact_id TEXT PRIMARY KEY,
                     job_id TEXT NOT NULL,
@@ -167,7 +184,7 @@ class DuckDBDatabase(Database):
             """)
 
             # Tracks models served for real-time inference
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS deployments(
                     deployment_id TEXT PRIMARY KEY,
                     artifact_id TEXT NOT NULL REFERENCES trained_models(artifact_id),
@@ -178,7 +195,7 @@ class DuckDBDatabase(Database):
             """)
 
             # Stores plugin schema metadata for validation and documentation
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS plugin_schemas(
                     algorithm_type TEXT NOT NULL,
                     version TEXT NOT NULL,
@@ -191,11 +208,11 @@ class DuckDBDatabase(Database):
 
             # New plugin system with graph components
             # Stores metadata for each plugin version
-            self.execute("""
+            _exec_ddl("""
                 CREATE SEQUENCE IF NOT EXISTS plugins_seq;
             """)
 
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS plugins(
                     id BIGINT PRIMARY KEY DEFAULT nextval('plugins_seq'),
                     name VARCHAR(255) NOT NULL,
@@ -208,11 +225,11 @@ class DuckDBDatabase(Database):
             """)
 
             # Stores detailed specification for each component
-            self.execute("""
+            _exec_ddl("""
                 CREATE SEQUENCE IF NOT EXISTS plugin_components_seq;
             """)
 
-            self.execute("""
+            _exec_ddl("""
                 CREATE TABLE IF NOT EXISTS plugin_components(
                     id BIGINT PRIMARY KEY DEFAULT nextval('plugin_components_seq'),
                     plugin_id BIGINT NOT NULL,
@@ -225,11 +242,11 @@ class DuckDBDatabase(Database):
             """)
 
             # Create indexes for component lookup performance
-            self.execute("""
+            _exec_ddl("""
                 CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
             """)
 
-            self.execute("""
+            _exec_ddl("""
                 CREATE INDEX IF NOT EXISTS idx_plugin_components_name
                 ON plugin_components(component_name);
             """)
