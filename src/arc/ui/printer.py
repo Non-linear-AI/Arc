@@ -65,6 +65,8 @@ class Printer:
                 self._streaming_started = False
                 self.live: Live | None = None
                 self._current_text: str = ""
+                self._finalized: bool = False
+                self._cursor_markup: str = "[dim]█[/dim]"
 
             def print(self, *args, **kwargs):
                 # Check if we're printing a Rich object (Table, Panel, etc.)
@@ -132,7 +134,7 @@ class Printer:
                 self._current_text += text + end
                 if self.live:
                     prefix = f"[{self.color}]⏺[/{self.color}] {self.prefix}"
-                    update_str = f"{prefix}{self._current_text}"
+                    update_str = f"{prefix}{self._current_text}{self._cursor_markup}"
                     self.live.update(update_str)
 
             def _start_streaming(self):
@@ -156,6 +158,7 @@ class Printer:
                     with suppress(Exception):
                         self.live.update(panel)
                         self.live.stop()
+                        self._finalized = True
                 else:
                     # If live wasn't started, just print the panel once
                     self.printer.console.print(panel)
@@ -167,13 +170,21 @@ class Printer:
             yield section_printer
         finally:
             try:
-                # For streaming sections, ensure live is stopped
+                # For streaming sections, ensure live is stopped and cursor removed
                 if (
                     streaming
                     and section_printer._streaming_started
                     and getattr(section_printer, "live", None) is not None
                 ):
                     with suppress(Exception):
+                        if not section_printer._finalized:
+                            # Update one last time without the cursor
+                            prefix = (
+                                f"[{section_printer.color}]⏺[/{section_printer.color}] "
+                                f"{section_printer.prefix}"
+                            )
+                            final_text = f"{prefix}{section_printer._current_text}"
+                            section_printer.live.update(final_text)
                         section_printer.live.stop()
                 # Add a separator after section using the configurable style
                 self.add_separator(separator_style)
