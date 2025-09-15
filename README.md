@@ -39,7 +39,6 @@ This approach provides the best of both worlds:
 # Clone and install the project
 git clone https://github.com/non-linear-ai/arc
 cd arc
-pip install -e .
 ```
 
 ### Your First Model
@@ -72,7 +71,14 @@ uv sync --dev
 ### Running the Application
 
 ```bash
-uv run arc
+# Start interactive chat session
+uv run arc chat
+
+# Or use the Makefile
+make run
+
+# Show available commands
+uv run arc --help
 ```
 
 ### Running Tests
@@ -84,8 +90,28 @@ uv run pytest
 # Run tests with coverage
 uv run pytest --cov
 
-# Run tests in watch mode
-uv run pytest-watch
+# Run tests in watch mode (automatically reruns tests when files change)
+uv run pytest-watcher .
+```
+
+### Using Make Commands (Alternative)
+
+For convenience, you can also use the provided Make targets:
+
+```bash
+# Install and run
+make install-dev          # Install development dependencies
+make run                  # Start Arc CLI in interactive mode
+
+# Testing and quality
+make test                 # Run tests with coverage
+make test-watch          # Run tests in watch mode
+make lint                # Run linting checks
+make format              # Format code and fix linting issues
+make clean               # Clean build artifacts
+
+# Run all quality checks
+make all                 # Equivalent to: make format lint test
 ```
 
 ### Code Quality

@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-watch lint format clean
+.PHONY: help install install-dev run test test-watch lint format clean
 
 help:  ## Show this help message
 	@echo "Usage: make [target]"
@@ -12,11 +12,14 @@ install:  ## Install production dependencies
 install-dev:  ## Install development dependencies
 	uv sync --dev
 
+run:  ## Run Arc CLI in interactive mode
+	uv run arc chat
+
 test:  ## Run tests with coverage
 	uv run pytest
 
 test-watch:  ## Run tests in watch mode
-	uv run pytest-watch
+	uv run pytest-watcher .
 
 lint:  ## Run linting checks
 	uv run ruff check .
