@@ -1,4 +1,5 @@
 """Enhanced UX components for Arc CLI."""
+
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,6 @@ class InteractiveInterface:
 
     def __init__(self):
         self._printer = Printer()
-        
 
     def show_welcome(self, _model: str, _directory: str):
         """Display a centered ASCII banner in an 80-char panel."""
@@ -120,15 +120,23 @@ class InteractiveInterface:
 
         dot_color = self._get_dot_color(tool_name)
         with self._printer.section(color=dot_color) as p:
-            if tool_name in ["create_todo_list", "update_todo_list"] and content.strip():
-                self._print_todo_with_inline_progress(label, content, dot_color, printer=p)
+            if (
+                tool_name in ["create_todo_list", "update_todo_list"]
+                and content.strip()
+            ):
+                self._print_todo_with_inline_progress(
+                    label, content, dot_color, printer=p
+                )
             else:
                 p.print(f"{label}")
                 if content.strip():
                     self._print_details_block(content, printer=p)
 
     def _print_todo_with_inline_progress(
-        self, label: str, content: str, dot_color: str = "blue", printer: Any | None = None
+        self,
+        label: str,
+        content: str,
+        printer: Any | None = None,
     ) -> None:
         """Print todo with progress bar inline with the action label."""
         lines = content.splitlines()
@@ -171,7 +179,9 @@ class InteractiveInterface:
                 with self._printer.section(add_dot=False) as p:
                     p.print(f"  {line}")
 
-    def _print_details_block(self, content: str, _max_lines: int = 8, printer: Any | None = None) -> None:
+    def _print_details_block(
+        self, content: str, _max_lines: int = 8, printer: Any | None = None
+    ) -> None:
         """Print details block matching the exact format from the example."""
         lines = content.splitlines()
         if not lines:
@@ -241,7 +251,6 @@ class InteractiveInterface:
                 p.print(f"{lines[0]}")
                 for ln in lines[1:]:
                     p.print(f"  {ln}")
-
 
     @contextmanager
     def assistant_response(self):
@@ -436,9 +445,7 @@ class InteractiveInterface:
             self._build_tree(Path(directory), tree, max_depth, 0)
 
             with self._printer.section(color="blue") as p:
-                p.print_panel(
-                    Panel(tree)
-                )
+                p.print_panel(Panel(tree))
         except Exception as e:
             with self._printer.section(color="red") as p:
                 p.print(f"❌ Error building file tree: {e}")
@@ -625,11 +632,7 @@ class InteractiveInterface:
 
     def show_config_panel(self, config_text: str) -> None:
         with self._printer.section(color="blue") as p:
-            p.print_panel(
-                Panel(
-                    config_text
-                )
-            )
+            p.print_panel(Panel(config_text))
 
     def get_user_input(self, prompt: str = "\n[bold green]>[/bold green] ") -> str:
         return self._printer.get_input(prompt).strip()

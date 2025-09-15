@@ -8,7 +8,6 @@ import time
 
 import click
 from dotenv import load_dotenv
- 
 
 from ..core import ArcAgent, SettingsManager
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
@@ -19,8 +18,6 @@ from .console import InteractiveInterface
 
 # Load environment variables
 load_dotenv()
-
- 
 
 
 @click.group()

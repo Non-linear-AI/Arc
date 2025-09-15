@@ -7,7 +7,7 @@
 """
 
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
 from rich.console import Console
 
@@ -24,26 +24,36 @@ class Printer:
         try:
             yield self
         finally:
-            try:
+            with suppress(Exception):
                 self.add_separator(separator_style)
-            except Exception:
-                pass
 
     @contextmanager
-    def section(self, color: str = "cyan", add_dot: bool = True, streaming: bool = False, prefix: str = "", separator_style: str = "blank"):
-        """Unified context manager for both regular and streaming output with automatic dot prefix and line separation.
+    def section(
+        self,
+        color: str = "cyan",
+        add_dot: bool = True,
+        streaming: bool = False,
+        prefix: str = "",
+        separator_style: str = "blank",
+    ):
+        """Unified context manager for both regular and streaming output with
+        automatic dot prefix and line separation.
 
         Args:
             color: Color for the dot prefix
             add_dot: Whether to add a dot prefix (can be disabled for welcome messages)
             streaming: Whether this section supports streaming output
-            prefix: Optional prefix text (like for assistant responses, only used when streaming=True)
-            separator_style: Style of separator after section ("blank", "line", "dots", "space")
+            prefix: Optional prefix text (like for assistant responses, only used
+                when streaming=True)
+            separator_style: Style of separator after section ("blank", "line",
+                "dots", "space")
         """
         self._section_started = False
 
         class UnifiedSectionPrinter:
-            def __init__(self, printer, color, add_dot, streaming, prefix, separator_style):
+            def __init__(
+                self, printer, color, add_dot, streaming, prefix, separator_style
+            ):
                 self.printer = printer
                 self.color = color
                 self.add_dot = add_dot
@@ -54,21 +64,30 @@ class Printer:
 
             def print(self, *args, **kwargs):
                 # Check if we're printing a Rich object (Table, Panel, etc.)
-                is_rich_object = args and hasattr(args[0], '__rich_console__')
+                is_rich_object = args and hasattr(args[0], "__rich_console__")
 
-                # Add dot prefix on first print call within this section (but not for Rich objects)
-                if not self.printer._section_started and self.add_dot and not is_rich_object:
+                # Add dot prefix on first print call within this section
+                # (but not for Rich objects)
+                if (
+                    not self.printer._section_started
+                    and self.add_dot
+                    and not is_rich_object
+                ):
                     # Extract first line and add dot prefix
                     if args:
                         first_arg = str(args[0])
-                        lines = first_arg.split('\n')
+                        lines = first_arg.split("\n")
                         if lines:
                             # Add dot prefix to first line
-                            prefixed_first = f"[{self.color}]⏺[/{self.color}] {lines[0]}"
+                            prefixed_first = (
+                                f"[{self.color}]⏺[/{self.color}] {lines[0]}"
+                            )
                             if len(lines) > 1:
                                 # Reconstruct with remaining lines
-                                remaining_lines = '\n'.join(lines[1:])
-                                new_args = (prefixed_first + '\n' + remaining_lines,) + args[1:]
+                                remaining_lines = "\n".join(lines[1:])
+                                new_args = (
+                                    prefixed_first + "\n" + remaining_lines,
+                                ) + args[1:]
                             else:
                                 new_args = (prefixed_first,) + args[1:]
                             self.printer.console.print(*new_args, **kwargs)
@@ -78,7 +97,8 @@ class Printer:
                         self.printer.console.print(*args, **kwargs)
                     self.printer._section_started = True
                 else:
-                    # Regular print for subsequent calls or Rich objects (which handle their own formatting)
+                    # Regular print for subsequent calls or Rich objects
+                    # (which handle their own formatting)
                     if not self.printer._section_started:
                         self.printer._section_started = True
                     self.printer.console.print(*args, **kwargs)
@@ -104,7 +124,8 @@ class Printer:
                 if not self._streaming_started:
                     self._start_streaming()
 
-                # Use sys.stdout.write for raw text streaming (avoids Rich markup parsing issues)
+                # Use sys.stdout.write for raw text streaming
+                # (avoids Rich markup parsing issues)
                 sys.stdout.write(text + end)
                 if flush:
                     sys.stdout.flush()
@@ -117,12 +138,15 @@ class Printer:
                     self._streaming_started = True
                     self.printer._section_started = True
 
-        section_printer = UnifiedSectionPrinter(self, color, add_dot, streaming, prefix, separator_style)
+        section_printer = UnifiedSectionPrinter(
+            self, color, add_dot, streaming, prefix, separator_style
+        )
         try:
             yield section_printer
         finally:
             try:
-                # For streaming sections, ensure we end the current line before adding separator
+                # For streaming sections, ensure we end the current line
+                # before adding separator
                 if streaming and section_printer._streaming_started:
                     # End the current streaming line
                     sys.stdout.write("\n")
@@ -162,13 +186,13 @@ class Printer:
         # No spinner; just return input via rich console
         return self.console.input(prompt)
 
-
-
     def clear(self) -> None:
         """Clear the screen without any section management."""
         self.console.clear()
 
-    def show_message(self, message: str, style: str | None = None, use_section: bool = True) -> None:
+    def show_message(
+        self, message: str, style: str | None = None, use_section: bool = True
+    ) -> None:
         """Show a message, optionally with section management.
 
         Args:
