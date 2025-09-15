@@ -1,12 +1,13 @@
 """Enhanced UX components for Arc CLI."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 from rich import box
 from rich.align import Align
 from rich.panel import Panel
+from rich.markdown import Markdown
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
@@ -125,7 +126,7 @@ class InteractiveInterface:
                 and content.strip()
             ):
                 self._print_todo_with_inline_progress(
-                    label, content, dot_color, printer=p
+                    label, content, printer=p
                 )
             else:
                 p.print(f"{label}")
@@ -204,7 +205,7 @@ class InteractiveInterface:
             target.print(f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]")
 
     def show_user_message(self, content: str):
-        """Clear the input line and redisplay user message in light gray."""
+        """Clear the input line and show user message inside a light border."""
         text = content.strip()
         if not text:
             return
@@ -229,7 +230,7 @@ class InteractiveInterface:
         if lines_to_clear > 1:
             print(f"\033[{lines_to_clear - 1}A\r", end="", flush=True)
 
-        # Render the user message in soft purple-gray
+        # Render the user message in soft purple-gray (no border)
         if lines:
             self._printer.print(
                 f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]"
@@ -286,6 +287,7 @@ class InteractiveInterface:
                 self.start_time = start_time
                 self.assistant_context = None
                 self.stream = None
+                self._buffer = ""
 
             def handle_chunk(self, chunk):
                 if chunk.type == "content" and chunk.content:
@@ -293,12 +295,14 @@ class InteractiveInterface:
                     if self.assistant_context is None:
                         self.assistant_context = self.ui.assistant_response()
                         self.stream = self.assistant_context.__enter__()
+                    # Accumulate for final markdown rendering
+                    self._buffer += chunk.content
                     # Stream content immediately as it arrives
                     self.stream.stream_text(chunk.content)
 
                 elif chunk.type == "tool_calls" and chunk.tool_call:
                     # Finish any ongoing assistant streaming before tool execution
-                    self._finish_assistant_streaming()
+                    self._finish_assistant_streaming(final=False)
 
                     args = {}
                     if chunk.tool_call and chunk.tool_call.arguments:
@@ -325,26 +329,40 @@ class InteractiveInterface:
 
                 elif chunk.type == "error":
                     # Finish any ongoing assistant streaming before showing error
-                    self._finish_assistant_streaming()
+                    self._finish_assistant_streaming(final=False)
                     self.ui.show_system_error(chunk.content)
 
                 elif chunk.type == "done":
                     # Finish any ongoing assistant streaming
-                    self._finish_assistant_streaming()
+                    self._finish_assistant_streaming(final=True)
 
-            def _finish_assistant_streaming(self):
-                """Helper to finish assistant streaming context."""
+            def _finish_assistant_streaming(self, final: bool = False):
+                """Finish streaming; if final=True, clear and markdown-render it.
+
+                When final=False (e.g., before a tool call), we simply close the
+                streaming context and keep what was streamed as-is, without
+                clearing or re-rendering.
+                """
                 if self.assistant_context is not None:
+                    # If final, replace the live region with markdown panel before exit
+                    if final and self._buffer and self.stream is not None:
+                        with suppress(Exception):
+                            self.stream.finalize_to_markdown_panel(self._buffer)
+
+                    # Close the streaming section context
                     self.assistant_context.__exit__(None, None, None)
+
+                    # Reset state; only keep buffer if not final (but we don't use it)
                     self.assistant_context = None
                     self.stream = None
+                    self._buffer = "" if final else ""
 
         handler = StreamResponseHandler(self, start_time)
         try:
             yield handler
         finally:
-            # Ensure cleanup even if an exception occurs
-            handler._finish_assistant_streaming()
+            # Ensure cleanup even if an exception occurs (no final rendering here)
+            handler._finish_assistant_streaming(final=False)
 
     def show_edit_summary(self, strategy_stats: dict[str, dict[str, Any]]):
         """Show editing strategy statistics."""

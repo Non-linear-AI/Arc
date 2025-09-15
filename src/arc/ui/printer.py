@@ -10,6 +10,9 @@ import sys
 from contextlib import contextmanager, suppress
 
 from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.panel import Panel
 
 
 class Printer:
@@ -61,6 +64,8 @@ class Printer:
                 self.prefix = prefix
                 self.separator_style = separator_style
                 self._streaming_started = False
+                self.live: Live | None = None
+                self._current_text: str = ""
 
             def print(self, *args, **kwargs):
                 # Check if we're printing a Rich object (Table, Panel, etc.)
@@ -117,26 +122,43 @@ class Printer:
                 self.printer.console.print(panel, **kwargs)
 
             def stream_text(self, text: str, end: str = "", flush: bool = True):
-                """Stream text output (only available when streaming=True)"""
+                """Stream text output (only available when streaming=True)."""
                 if not self.streaming:
                     raise ValueError("stream_text() only available when streaming=True")
 
                 if not self._streaming_started:
                     self._start_streaming()
 
-                # Use sys.stdout.write for raw text streaming
-                # (avoids Rich markup parsing issues)
-                sys.stdout.write(text + end)
-                if flush:
-                    sys.stdout.flush()
+                # Accumulate and update the live render inline with the dot prefix
+                self._current_text += text + end
+                if self.live:
+                    update_str = f"[{self.color}]⏺[/{self.color}] {self.prefix}{self._current_text}"
+                    self.live.update(update_str)
 
             def _start_streaming(self):
                 if not self._streaming_started and self.add_dot:
-                    # Add dot prefix and any initial content
+                    # Create a live region so we can replace content later cleanly
                     initial = f"[{self.color}]⏺[/{self.color}] {self.prefix}"
-                    self.printer.console.print(initial, end="")
+                    self.live = Live(
+                        initial,
+                        console=self.printer.console,
+                        refresh_per_second=24,
+                        transient=False,
+                    )
+                    self.live.start()
                     self._streaming_started = True
                     self.printer._section_started = True
+
+            def finalize_to_markdown_panel(self, full_text: str):
+                """Replace live content with markdown inside a light border panel."""
+                panel = Panel(Markdown(full_text), border_style="color(245)")
+                if self.live is not None:
+                    with suppress(Exception):
+                        self.live.update(panel)
+                        self.live.stop()
+                else:
+                    # If live wasn't started, just print the panel once
+                    self.printer.console.print(panel)
 
         section_printer = UnifiedSectionPrinter(
             self, color, add_dot, streaming, prefix, separator_style
@@ -145,12 +167,11 @@ class Printer:
             yield section_printer
         finally:
             try:
-                # For streaming sections, ensure we end the current line
-                # before adding separator
+                # For streaming sections, ensure live is stopped
                 if streaming and section_printer._streaming_started:
-                    # End the current streaming line
-                    sys.stdout.write("\n")
-                    sys.stdout.flush()
+                    if getattr(section_printer, "live", None) is not None:
+                        with suppress(Exception):
+                            section_printer.live.stop()
                 # Add a separator after section using the configurable style
                 self.add_separator(separator_style)
             except Exception:
@@ -189,7 +210,7 @@ class Printer:
     def clear(self) -> None:
         """Clear the screen without any section management."""
         self.console.clear()
-
+        
     def show_message(
         self, message: str, style: str | None = None, use_section: bool = True
     ) -> None:
