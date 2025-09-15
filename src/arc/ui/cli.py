@@ -111,37 +111,54 @@ def chat(
         )
 
 
-async def handle_sql_command(query_service, ui, user_input: str) -> None:
-    """Handle SQL command execution using InteractiveQueryService."""
-    # Parse the command: /sql [system|user] <query>
+async def handle_sql_command(
+    query_service, ui, user_input: str, current_database: str
+) -> str:
+    """Handle SQL command execution using InteractiveQueryService.
+
+    Args:
+        query_service: InteractiveQueryService instance
+        ui: InteractiveInterface instance
+        user_input: Raw user input starting with /sql
+        current_database: Current database context ("system" or "user")
+
+    Returns:
+        Updated current_database after processing the command
+    """
+    # Parse the command: /sql use [system|user] OR /sql <query>
     parts = user_input.split(" ", 2)
 
     if len(parts) < 2:
         ui.show_system_error(
-            "SQL command requires a query. Usage: /sql [system|user] <query>"
+            "❌ SQL command requires arguments. "
+            "Usage: /sql use [system|user] OR /sql <query>"
         )
-        return
+        return current_database
 
-    # Determine target database and query
-    if len(parts) >= 3 and parts[1].lower() in ["system", "user"]:
-        target_db = parts[1].lower()
-        query = parts[2].strip()
-    else:
-        target_db = "system"  # Default to system database
-        query = " ".join(parts[1:]).strip()
+    # Check if this is a database switch command
+    if len(parts) >= 3 and parts[1].lower() == "use":
+        db_name = parts[2].lower()
+        if db_name in ["system", "user"]:
+            console.print(f"✅ Switched to {db_name} database")
+            return db_name
+        else:
+            console.print("❌ Invalid database. Use 'system' or 'user'")
+            return current_database
+
+    # Otherwise, treat as a query to execute against current database
+    query = " ".join(parts[1:]).strip()
 
     if not query:
-        ui.show_system_error("Empty SQL query provided.")
-        return
+        ui.show_system_error("❌ Empty SQL query provided.")
+        return current_database
 
     try:
-        # Execute the query using the service - now returns QueryResult directly
-        result = query_service.execute_query(query, target_db)
+        # Execute the query using the current database context
+        result = query_service.execute_query(query, current_database)
 
         # Display results using the UI formatter
-        # TimedQueryResult has execution_time in the execution_time property
         execution_time = getattr(result, "query_execution_time", result.execution_time)
-        ui.show_sql_result(result, target_db, query, execution_time)
+        ui.show_sql_result(result, current_database, query, execution_time)
 
     except QueryValidationError as e:
         ui.show_system_error(f"Query Error: {str(e)}")
@@ -149,6 +166,8 @@ async def handle_sql_command(query_service, ui, user_input: str) -> None:
         ui.show_system_error(f"Database Error: {str(e)}")
     except Exception as e:
         ui.show_system_error(f"Unexpected error executing SQL: {str(e)}")
+
+    return current_database
 
 
 async def run_headless_mode(
@@ -222,6 +241,9 @@ async def run_interactive_mode(
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds)
         ui = InteractiveInterface()
 
+        # Database context for SQL commands - defaults to system database
+        current_database = "system"
+
         # Show enhanced welcome screen
         ui.show_welcome(agent.get_current_model(), agent.get_current_directory())
 
@@ -283,8 +305,10 @@ async def run_interactive_mode(
                         ui.show_performance_metrics(metrics, error_stats)
                         continue
                     elif cmd.startswith("sql"):
-                        # Handle SQL queries
-                        await handle_sql_command(services.query, ui, user_input)
+                        # Handle SQL queries and update current database context
+                        current_database = await handle_sql_command(
+                            services.query, ui, user_input, current_database
+                        )
                         continue
                     else:
                         ui.show_system_error(f"Unknown system command: /{cmd}")

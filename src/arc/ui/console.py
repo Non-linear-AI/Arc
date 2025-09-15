@@ -62,8 +62,9 @@ class InteractiveInterface:
                 ("/tree", "Show directory structure"),
                 ("/config", "View current configuration"),
                 (
-                    "/sql [system|user] <query>",
-                    "Execute SQL query (system: read-only, user: full access)",
+                "/sql use [system|user] | /sql <query>",
+                "Switch database or execute SQL query "
+                "(system: read-only, user: full access)",
                 ),
                 ("/clear", "Clear the screen"),
                 ("/exit or /quit", "Exit the application"),
