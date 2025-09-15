@@ -7,7 +7,6 @@ from typing import Any
 from rich import box
 from rich.align import Align
 from rich.panel import Panel
-from rich.markdown import Markdown
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
@@ -125,9 +124,7 @@ class InteractiveInterface:
                 tool_name in ["create_todo_list", "update_todo_list"]
                 and content.strip()
             ):
-                self._print_todo_with_inline_progress(
-                    label, content, printer=p
-                )
+                self._print_todo_with_inline_progress(label, content, printer=p)
             else:
                 p.print(f"{label}")
                 if content.strip():

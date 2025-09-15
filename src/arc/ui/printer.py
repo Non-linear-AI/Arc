@@ -6,7 +6,6 @@
   decisions out of CLI business logic.
 """
 
-import sys
 from contextlib import contextmanager, suppress
 
 from rich.console import Console
@@ -121,7 +120,7 @@ class Printer:
                     self.printer._section_started = True
                 self.printer.console.print(panel, **kwargs)
 
-            def stream_text(self, text: str, end: str = "", flush: bool = True):
+            def stream_text(self, text: str, end: str = ""):
                 """Stream text output (only available when streaming=True)."""
                 if not self.streaming:
                     raise ValueError("stream_text() only available when streaming=True")
@@ -132,7 +131,8 @@ class Printer:
                 # Accumulate and update the live render inline with the dot prefix
                 self._current_text += text + end
                 if self.live:
-                    update_str = f"[{self.color}]⏺[/{self.color}] {self.prefix}{self._current_text}"
+                    prefix = f"[{self.color}]⏺[/{self.color}] {self.prefix}"
+                    update_str = f"{prefix}{self._current_text}"
                     self.live.update(update_str)
 
             def _start_streaming(self):
@@ -168,10 +168,13 @@ class Printer:
         finally:
             try:
                 # For streaming sections, ensure live is stopped
-                if streaming and section_printer._streaming_started:
-                    if getattr(section_printer, "live", None) is not None:
-                        with suppress(Exception):
-                            section_printer.live.stop()
+                if (
+                    streaming
+                    and section_printer._streaming_started
+                    and getattr(section_printer, "live", None) is not None
+                ):
+                    with suppress(Exception):
+                        section_printer.live.stop()
                 # Add a separator after section using the configurable style
                 self.add_separator(separator_style)
             except Exception:
@@ -210,7 +213,7 @@ class Printer:
     def clear(self) -> None:
         """Clear the screen without any section management."""
         self.console.clear()
-        
+
     def show_message(
         self, message: str, style: str | None = None, use_section: bool = True
     ) -> None:
