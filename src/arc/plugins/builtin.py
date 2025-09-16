@@ -197,3 +197,73 @@ class BuiltinLossPlugin:
             pass
 
         return True
+
+
+class BuiltinProcessorPlugin:
+    """Plugin that registers Arc Graph's built-in data processors."""
+
+    __plugin_metadata__ = {
+        "name": "builtin_processors",
+        "version": "1.0.0",
+        "description": "Built-in data processors for Arc Graph",
+        "namespace": "core",
+    }
+
+    @hookimpl
+    def register_processors(self) -> dict[str, type]:
+        """Register built-in processor implementations."""
+        from ..ml.processors.builtin import (
+            CategoricalEncodingProcessor,
+            MinMaxNormalizationProcessor,
+            RobustNormalizationProcessor,
+            StandardNormalizationProcessor,
+        )
+
+        return {
+            # Standard normalization processors
+            "StandardNormalization": StandardNormalizationProcessor,
+            "MinMaxNormalization": MinMaxNormalizationProcessor,
+            "RobustNormalization": RobustNormalizationProcessor,
+            "CategoricalEncoding": CategoricalEncodingProcessor,
+            # Aliases with descriptive names
+            "ZScoreNormalization": StandardNormalizationProcessor,
+            "OneHotEncoding": CategoricalEncodingProcessor,
+        }
+
+    @hookimpl
+    def validate_processor_config(self, op_name: str, config: dict[str, Any]) -> bool:
+        """Validate processor configuration."""
+        processors = self.register_processors()
+        if op_name not in processors:
+            return True  # Not our processor
+
+        try:
+            # Basic validation
+            if "table_name" not in config or "columns" not in config:
+                return False
+
+            columns = config["columns"]
+            if not isinstance(columns, list) or not columns:
+                return False
+
+            # Processor-specific validation
+            processor_class = processors[op_name]
+
+            if processor_class.__name__ == "MinMaxNormalizationProcessor":
+                feature_range = config.get("feature_range", (0.0, 1.0))
+                if (
+                    not isinstance(feature_range, (list, tuple))
+                    or len(feature_range) != 2
+                    or feature_range[0] >= feature_range[1]
+                ):
+                    return False
+
+            elif processor_class.__name__ == "CategoricalEncodingProcessor":
+                handle_unknown = config.get("handle_unknown", "ignore")
+                if handle_unknown not in ("ignore", "error"):
+                    return False
+
+            return True
+
+        except Exception:
+            return False

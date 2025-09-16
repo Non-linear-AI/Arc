@@ -327,12 +327,14 @@ class PluginManager:
             BuiltinLayerPlugin,
             BuiltinLossPlugin,
             BuiltinOptimizerPlugin,
+            BuiltinProcessorPlugin,
         )
 
         # Register built-in plugins
         self.register_plugin(BuiltinLayerPlugin(), "builtin_layers")
         self.register_plugin(BuiltinOptimizerPlugin(), "builtin_optimizers")
         self.register_plugin(BuiltinLossPlugin(), "builtin_losses")
+        self.register_plugin(BuiltinProcessorPlugin(), "builtin_processors")
 
     # Public API methods
 
