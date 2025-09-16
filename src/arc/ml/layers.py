@@ -380,30 +380,6 @@ class GRULayer(ArcLayerBase):
         return output
 
 
-# Registry mapping Arc-Graph layer types to implementation classes
-LAYER_REGISTRY: dict[str, type[ArcLayerBase]] = {
-    # Basic layers
-    "core.Linear": LinearLayer,
-    "core.ReLU": ReLULayer,
-    "core.Sigmoid": SigmoidLayer,
-    "core.Dropout": DropoutLayer,
-    "core.BatchNorm1d": BatchNorm1dLayer,
-    "core.LayerNorm": LayerNormLayer,
-    # Embedding layers
-    "core.Embedding": EmbeddingLayer,
-    # Attention and transformer layers
-    "core.MultiHeadAttention": MultiHeadAttentionLayer,
-    "core.TransformerEncoderLayer": TransformerEncoderLayerCustom,
-    "core.PositionalEncoding": PositionalEncodingLayer,
-    # Sequence modeling layers
-    "core.LSTM": LSTMLayer,
-    "core.GRU": GRULayer,
-    # Routing and combination layers
-    "core.Concatenate": ConcatenateLayer,
-    "core.Add": AddLayer,
-}
-
-
 def get_layer_class(layer_type: str) -> type[ArcLayerBase]:
     """Get layer class by Arc-Graph type name.
 
@@ -416,47 +392,17 @@ def get_layer_class(layer_type: str) -> type[ArcLayerBase]:
     Raises:
         ValueError: If layer type is not registered
     """
-    # First try the legacy registry for backward compatibility
-    if layer_type in LAYER_REGISTRY:
-        return LAYER_REGISTRY[layer_type]
+    # Resolve via plugin system only; core layers provided by builtin plugin
+    from ..plugins import get_plugin_manager
 
-    # Try the plugin system
-    try:
-        from ..plugins import get_plugin_manager
+    plugin_manager = get_plugin_manager()
+    layer_class = plugin_manager.get_layer(layer_type)
+    if layer_class is not None:
+        return layer_class
 
-        plugin_manager = get_plugin_manager()
-        layer_class = plugin_manager.get_layer(layer_type)
-        if layer_class is not None:
-            return layer_class
-    except ImportError:
-        # Plugin system not available, fall back to legacy registry
-        pass
-
-    # Not found in either system
-    available_types = list(LAYER_REGISTRY.keys())
-    try:
-        from ..plugins import get_plugin_manager
-
-        plugin_manager = get_plugin_manager()
-        available_types.extend(plugin_manager.get_layers().keys())
-    except ImportError:
-        pass
-
-    available_types_str = ", ".join(set(available_types))
+    # Not found: list all available types from plugin manager
+    available_types = list(plugin_manager.get_layers().keys())
+    available_types_str = ", ".join(sorted(set(available_types)))
     raise ValueError(
         f"Unknown layer type '{layer_type}'. Available types: {available_types_str}"
     )
-
-
-def register_layer(layer_type: str, layer_class: type[ArcLayerBase]) -> None:
-    """Register a new layer type.
-
-    Args:
-        layer_type: Arc-Graph layer type name
-        layer_class: Layer implementation class
-
-    Note:
-        This function registers to the legacy registry for backward compatibility.
-        For new plugins, use the plugin system instead by implementing LayerHookSpec.
-    """
-    LAYER_REGISTRY[layer_type] = layer_class

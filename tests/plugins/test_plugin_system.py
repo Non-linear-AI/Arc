@@ -32,17 +32,12 @@ class TestPluginSystem:
         # Get all registered layers
         layers = pm.get_layers()
 
-        # Check that some core layers are present
+        # Check that some core layers are present under core namespace
         assert "core.Linear" in layers
         assert "core.ReLU" in layers
         assert "core.Dropout" in layers
         assert "core.Embedding" in layers
         assert "core.LSTM" in layers
-
-        # Check aliases are present
-        assert "Linear" in layers
-        assert "ReLU" in layers
-        assert "Dropout" in layers
 
     def test_optimizer_registration(self):
         """Test that optimizers are registered through plugins."""
@@ -77,10 +72,8 @@ class TestPluginSystem:
         linear_layer = pm.get_layer("core.Linear")
         assert linear_layer is not None
 
-        # Test alias retrieval
-        linear_alias = pm.get_layer("Linear")
-        assert linear_alias is not None
-        assert linear_alias is linear_layer  # Should be the same class
+        # Default namespace resolves to core plugin
+        assert pm.get_layer("Linear") is linear_layer
 
         # Test non-existent layer
         nonexistent = pm.get_layer("NonExistent")
@@ -92,9 +85,8 @@ class TestPluginSystem:
         linear_class = get_layer_class("core.Linear")
         assert linear_class.__name__ == "LinearLayer"
 
-        # Test alias
-        linear_alias_class = get_layer_class("Linear")
-        assert linear_alias_class is linear_class
+        # Unqualified name defaults to core
+        assert get_layer_class("Linear") is linear_class
 
         # Test error for unknown layer
         with pytest.raises(ValueError, match="Unknown layer type"):

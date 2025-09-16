@@ -2,14 +2,13 @@ import pytest
 import torch
 
 from src.arc.ml.layers import (
-    LAYER_REGISTRY,
     DropoutLayer,
     LinearLayer,
     ReLULayer,
     SigmoidLayer,
     get_layer_class,
-    register_layer,
 )
+from src.arc.plugins import get_plugin_manager
 
 
 class TestLayerImplementations:
@@ -90,19 +89,30 @@ class TestLayerRegistry:
         with pytest.raises(ValueError, match="Unknown layer type"):
             get_layer_class("invalid.Layer")
 
-    def test_register_new_layer(self):
-        """Test registering a new layer type."""
+    def test_register_new_layer_via_plugin(self):
+        """Test registering a new layer via plugin system."""
+
+        import pluggy
 
         class CustomLayer(torch.nn.Module):
             pass
 
-        register_layer("custom.Layer", CustomLayer)
+        hookimpl = pluggy.HookimplMarker("arc")
 
-        assert "custom.Layer" in LAYER_REGISTRY
-        assert get_layer_class("custom.Layer") == CustomLayer
+        class TestPlugin:
+            @hookimpl
+            def register_layers(self):
+                return {"custom.Layer": CustomLayer}
+
+        pm = get_plugin_manager()
+        pm.register_plugin(TestPlugin(), name="test_custom_layer_plugin")
+        pm.refresh_registries()
+
+        assert pm.get_layer("custom.Layer") is CustomLayer
+        assert get_layer_class("custom.Layer") is CustomLayer
 
     def test_layer_registry_contents(self):
-        """Test that registry contains expected layers."""
+        """Test that core plugin exposes expected layers."""
         expected_layers = [
             "core.Linear",
             "core.ReLU",
@@ -111,5 +121,7 @@ class TestLayerRegistry:
             "core.BatchNorm1d",
         ]
 
+        pm = get_plugin_manager()
+        available = pm.get_layers().keys()
         for layer_type in expected_layers:
-            assert layer_type in LAYER_REGISTRY
+            assert layer_type in available

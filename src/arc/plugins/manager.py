@@ -194,81 +194,132 @@ class PluginManager:
             raise
 
     def _collect_layers(self) -> None:
-        """Collect layer implementations from all plugins."""
-        results = self.pm.hook.register_layers()
-        for layer_dict in results:
-            if layer_dict:
-                for name, layer_class in layer_dict.items():
-                    if name in self._layers:
-                        logger.warning(f"Duplicate layer registration: {name}")
-                    self._layers[name] = layer_class
-                    logger.debug(f"Registered layer: {name}")
+        """Collect layer implementations from all plugins with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_layers", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, layer_class in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._layers:
+                        logger.warning(f"Duplicate layer registration: {full_key}")
+                    self._layers[full_key] = layer_class
+                    logger.debug(f"Registered layer: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting layers from {plugin}: {e}")
 
     def _collect_processors(self) -> None:
-        """Collect processor implementations from all plugins."""
-        results = self.pm.hook.register_processors()
-        for processor_dict in results:
-            if processor_dict:
-                for name, processor_class in processor_dict.items():
-                    if name in self._processors:
-                        logger.warning(f"Duplicate processor registration: {name}")
-                    self._processors[name] = processor_class
-                    logger.debug(f"Registered processor: {name}")
+        """Collect processor implementations with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_processors", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, cls in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._processors:
+                        logger.warning(f"Duplicate processor registration: {full_key}")
+                    self._processors[full_key] = cls
+                    logger.debug(f"Registered processor: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting processors from {plugin}: {e}")
 
     def _collect_optimizers(self) -> None:
-        """Collect optimizer implementations from all plugins."""
-        results = self.pm.hook.register_optimizers()
-        for optimizer_dict in results:
-            if optimizer_dict:
-                for name, optimizer_class in optimizer_dict.items():
-                    if name in self._optimizers:
-                        logger.warning(f"Duplicate optimizer registration: {name}")
-                    self._optimizers[name] = optimizer_class
-                    logger.debug(f"Registered optimizer: {name}")
+        """Collect optimizer implementations with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_optimizers", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, cls in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._optimizers:
+                        logger.warning(f"Duplicate optimizer registration: {full_key}")
+                    self._optimizers[full_key] = cls
+                    logger.debug(f"Registered optimizer: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting optimizers from {plugin}: {e}")
 
     def _collect_losses(self) -> None:
-        """Collect loss function implementations from all plugins."""
-        results = self.pm.hook.register_losses()
-        for loss_dict in results:
-            if loss_dict:
-                for name, loss_class in loss_dict.items():
-                    if name in self._losses:
-                        logger.warning(f"Duplicate loss registration: {name}")
-                    self._losses[name] = loss_class
-                    logger.debug(f"Registered loss: {name}")
+        """Collect loss function implementations with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_losses", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, cls in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._losses:
+                        logger.warning(f"Duplicate loss registration: {full_key}")
+                    self._losses[full_key] = cls
+                    logger.debug(f"Registered loss: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting losses from {plugin}: {e}")
 
     def _collect_validators(self) -> None:
-        """Collect validator implementations from all plugins."""
-        results = self.pm.hook.register_validators()
-        for validator_dict in results:
-            if validator_dict:
-                for name, validator_class in validator_dict.items():
-                    if name in self._validators:
-                        logger.warning(f"Duplicate validator registration: {name}")
-                    self._validators[name] = validator_class
-                    logger.debug(f"Registered validator: {name}")
+        """Collect validator implementations with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_validators", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, cls in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._validators:
+                        logger.warning(f"Duplicate validator registration: {full_key}")
+                    self._validators[full_key] = cls
+                    logger.debug(f"Registered validator: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting validators from {plugin}: {e}")
 
     def _collect_data_sources(self) -> None:
-        """Collect data source implementations from all plugins."""
-        results = self.pm.hook.register_data_sources()
-        for data_source_dict in results:
-            if data_source_dict:
-                for name, data_source_class in data_source_dict.items():
-                    if name in self._data_sources:
-                        logger.warning(f"Duplicate data source registration: {name}")
-                    self._data_sources[name] = data_source_class
-                    logger.debug(f"Registered data source: {name}")
+        """Collect data source implementations with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_data_sources", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, cls in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._data_sources:
+                        logger.warning(
+                            f"Duplicate data source registration: {full_key}"
+                        )
+                    self._data_sources[full_key] = cls
+                    logger.debug(f"Registered data source: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting data sources from {plugin}: {e}")
 
     def _collect_exporters(self) -> None:
-        """Collect exporter implementations from all plugins."""
-        results = self.pm.hook.register_exporters()
-        for exporter_dict in results:
-            if exporter_dict:
-                for name, exporter_class in exporter_dict.items():
-                    if name in self._exporters:
-                        logger.warning(f"Duplicate exporter registration: {name}")
-                    self._exporters[name] = exporter_class
-                    logger.debug(f"Registered exporter: {name}")
+        """Collect exporter implementations with namespace context."""
+        for plugin in self.pm.get_plugins():
+            register = getattr(plugin, "register_exporters", None)
+            if not callable(register):
+                continue
+            try:
+                ns = getattr(plugin, "__plugin_metadata__", {}).get("namespace", "core")
+                mapping = register() or {}
+                for key, cls in mapping.items():
+                    full_key = key if "." in key else f"{ns}.{key}"
+                    if full_key in self._exporters:
+                        logger.warning(f"Duplicate exporter registration: {full_key}")
+                    self._exporters[full_key] = cls
+                    logger.debug(f"Registered exporter: {full_key}")
+            except Exception as e:
+                logger.error(f"Failed collecting exporters from {plugin}: {e}")
 
     def _register_builtin_plugins(self) -> None:
         """Register built-in Arc Graph plugins."""
@@ -291,6 +342,9 @@ class PluginManager:
 
     def get_layer(self, name: str) -> type | None:
         """Get a specific layer implementation by name."""
+        # If no namespace specified, prefer core.<name> then plain name
+        if "." not in name:
+            return self._layers.get(f"core.{name}") or self._layers.get(name)
         return self._layers.get(name)
 
     def get_processors(self) -> dict[str, type]:
@@ -299,6 +353,8 @@ class PluginManager:
 
     def get_processor(self, name: str) -> type | None:
         """Get a specific processor implementation by name."""
+        if "." not in name:
+            return self._processors.get(f"core.{name}") or self._processors.get(name)
         return self._processors.get(name)
 
     def get_optimizers(self) -> dict[str, type]:
@@ -307,6 +363,8 @@ class PluginManager:
 
     def get_optimizer(self, name: str) -> type | None:
         """Get a specific optimizer implementation by name."""
+        if "." not in name:
+            return self._optimizers.get(f"core.{name}") or self._optimizers.get(name)
         return self._optimizers.get(name)
 
     def get_losses(self) -> dict[str, type]:
@@ -315,6 +373,8 @@ class PluginManager:
 
     def get_loss(self, name: str) -> type | None:
         """Get a specific loss function implementation by name."""
+        if "." not in name:
+            return self._losses.get(f"core.{name}") or self._losses.get(name)
         return self._losses.get(name)
 
     def get_validators(self) -> dict[str, type]:
@@ -323,6 +383,8 @@ class PluginManager:
 
     def get_validator(self, name: str) -> type | None:
         """Get a specific validator implementation by name."""
+        if "." not in name:
+            return self._validators.get(f"core.{name}") or self._validators.get(name)
         return self._validators.get(name)
 
     def get_data_sources(self) -> dict[str, type]:
@@ -331,6 +393,10 @@ class PluginManager:
 
     def get_data_source(self, name: str) -> type | None:
         """Get a specific data source implementation by name."""
+        if "." not in name:
+            return self._data_sources.get(f"core.{name}") or self._data_sources.get(
+                name
+            )
         return self._data_sources.get(name)
 
     def get_exporters(self) -> dict[str, type]:
@@ -339,6 +405,8 @@ class PluginManager:
 
     def get_exporter(self, name: str) -> type | None:
         """Get a specific exporter implementation by name."""
+        if "." not in name:
+            return self._exporters.get(f"core.{name}") or self._exporters.get(name)
         return self._exporters.get(name)
 
     def get_plugin_metadata(self, plugin_name: str) -> dict[str, Any]:

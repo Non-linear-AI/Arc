@@ -25,6 +25,7 @@ class BuiltinLayerPlugin:
         "name": "builtin_layers",
         "version": "1.0.0",
         "description": "Built-in Arc Graph layer types",
+        "namespace": "core",
     }
 
     @hookimpl
@@ -48,39 +49,24 @@ class BuiltinLayerPlugin:
         )
 
         return {
-            # Basic layers
-            "core.Linear": LinearLayer,
-            "core.ReLU": ReLULayer,
-            "core.Sigmoid": SigmoidLayer,
-            "core.Dropout": DropoutLayer,
-            "core.BatchNorm1d": BatchNorm1dLayer,
-            "core.LayerNorm": LayerNormLayer,
-            # Embedding layers
-            "core.Embedding": EmbeddingLayer,
-            # Attention and transformer layers
-            "core.MultiHeadAttention": MultiHeadAttentionLayer,
-            "core.TransformerEncoderLayer": TransformerEncoderLayerCustom,
-            "core.PositionalEncoding": PositionalEncodingLayer,
-            # Sequence modeling layers
-            "core.LSTM": LSTMLayer,
-            "core.GRU": GRULayer,
-            # Routing and combination layers
-            "core.Concatenate": ConcatenateLayer,
-            "core.Add": AddLayer,
-            # Aliases for common layer names
+            # Basic layers (suffix names; namespace provided via metadata)
             "Linear": LinearLayer,
             "ReLU": ReLULayer,
             "Sigmoid": SigmoidLayer,
             "Dropout": DropoutLayer,
-            "BatchNorm": BatchNorm1dLayer,
+            "BatchNorm1d": BatchNorm1dLayer,
             "LayerNorm": LayerNormLayer,
+            # Embedding layers
             "Embedding": EmbeddingLayer,
+            # Attention and transformer layers
             "MultiHeadAttention": MultiHeadAttentionLayer,
-            "TransformerLayer": TransformerEncoderLayerCustom,
+            "TransformerEncoderLayer": TransformerEncoderLayerCustom,
             "PositionalEncoding": PositionalEncodingLayer,
+            # Sequence modeling layers
             "LSTM": LSTMLayer,
             "GRU": GRULayer,
-            "Concat": ConcatenateLayer,
+            # Routing and combination layers
+            "Concatenate": ConcatenateLayer,
             "Add": AddLayer,
         }
 
@@ -124,6 +110,7 @@ class BuiltinOptimizerPlugin:
         "name": "builtin_optimizers",
         "version": "1.0.0",
         "description": "Built-in PyTorch optimizers",
+        "namespace": "core",
     }
 
     @hookimpl
@@ -167,6 +154,7 @@ class BuiltinLossPlugin:
         "name": "builtin_losses",
         "version": "1.0.0",
         "description": "Built-in PyTorch loss functions",
+        "namespace": "core",
     }
 
     @hookimpl

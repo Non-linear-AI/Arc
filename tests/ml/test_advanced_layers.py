@@ -229,7 +229,9 @@ class TestAdvancedLayerRegistry:
             "core.GRU",
         ]
 
-        from src.arc.ml.layers import LAYER_REGISTRY
+        from src.arc.plugins import get_plugin_manager
 
+        pm = get_plugin_manager()
+        available = pm.get_layers().keys()
         for layer_type in expected_advanced_layers:
-            assert layer_type in LAYER_REGISTRY, f"Missing layer type: {layer_type}"
+            assert layer_type in available, f"Missing layer type: {layer_type}"
