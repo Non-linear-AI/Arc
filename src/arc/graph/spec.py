@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 try:
@@ -72,9 +72,48 @@ class LossSpec:
 
 
 @dataclass
+class TrainingConfig:
+    """Configuration for model training."""
+
+    # Core training parameters
+    epochs: int = 10
+    batch_size: int = 32
+    learning_rate: float = 0.001
+
+    # Optimizer configuration
+    optimizer: str = "adam"
+    optimizer_params: dict[str, Any] = field(default_factory=dict)
+
+    # Loss function configuration
+    loss_function: str = "cross_entropy"
+    loss_params: dict[str, Any] = field(default_factory=dict)
+
+    # Training behavior
+    validation_split: float = 0.2
+    shuffle: bool = True
+    drop_last: bool = False
+
+    # Checkpointing
+    checkpoint_every: int = 5  # epochs
+    save_best_only: bool = True
+
+    # Early stopping
+    early_stopping_patience: int | None = None
+    early_stopping_min_delta: float = 0.001
+
+    # Hardware
+    device: str = "auto"  # "auto", "cpu", "cuda", "mps"
+
+    # Logging
+    log_every: int = 10  # batches
+    verbose: bool = True
+
+
+@dataclass
 class TrainerSpec:
     optimizer: OptimizerSpec
     loss: LossSpec
+    config: TrainingConfig | None = None
 
 
 @dataclass
@@ -197,7 +236,36 @@ class ArcGraph:
         loss_spec = LossSpec(
             type=str(loss.get("type")), inputs=loss.get("inputs") or {}
         )
-        trainer = TrainerSpec(optimizer=optimizer, loss=loss_spec)
+
+        # Parse training config section
+        trainer_config = None
+        if "config" in t:
+            config_data = t["config"]
+            trainer_config = TrainingConfig(
+                epochs=config_data.get("epochs", 10),
+                batch_size=config_data.get("batch_size", 32),
+                learning_rate=config_data.get("learning_rate", 0.001),
+                optimizer=optimizer.type.lower(),
+                optimizer_params=optimizer.config or {},
+                loss_function=loss_spec.type.lower(),
+                loss_params={},
+                validation_split=config_data.get("validation_split", 0.2),
+                shuffle=config_data.get("shuffle", True),
+                drop_last=config_data.get("drop_last", False),
+                checkpoint_every=config_data.get("checkpoint_every", 5),
+                save_best_only=config_data.get("save_best_only", True),
+                early_stopping_patience=config_data.get("early_stopping_patience"),
+                early_stopping_min_delta=config_data.get(
+                    "early_stopping_min_delta", 0.001
+                ),
+                device=config_data.get("device", "auto"),
+                log_every=config_data.get("log_every", 10),
+                verbose=config_data.get("verbose", True),
+            )
+
+        trainer = TrainerSpec(
+            optimizer=optimizer, loss=loss_spec, config=trainer_config
+        )
 
         # Predictor (optional)
         pred = data.get("predictor")
@@ -214,3 +282,70 @@ class ArcGraph:
             trainer=trainer,
             predictor=predictor,
         )
+
+    def to_training_config(
+        self, override_params: dict[str, Any] | None = None
+    ) -> TrainingConfig:
+        """Get training configuration from Arc-Graph specification.
+
+        Args:
+            override_params: Optional parameters to override defaults
+
+        Returns:
+            TrainingConfig: Training configuration for PyTorch trainer
+        """
+        # Use the structured config if available, otherwise create defaults
+        if self.trainer.config:
+            base_config = self.trainer.config
+        else:
+            # Create default config with parsed optimizer and loss
+            base_config = TrainingConfig(
+                optimizer=self.trainer.optimizer.type.lower(),
+                optimizer_params=self.trainer.optimizer.config or {},
+                loss_function=self.trainer.loss.type.lower(),
+                loss_params={},
+            )
+
+        # Apply overrides if provided
+        if override_params:
+            # Create a new config with overrides
+            config_dict = {
+                "epochs": override_params.get("epochs", base_config.epochs),
+                "batch_size": override_params.get("batch_size", base_config.batch_size),
+                "learning_rate": override_params.get(
+                    "learning_rate", base_config.learning_rate
+                ),
+                "optimizer": override_params.get("optimizer", base_config.optimizer),
+                "optimizer_params": override_params.get(
+                    "optimizer_params", base_config.optimizer_params
+                ),
+                "loss_function": override_params.get(
+                    "loss_function", base_config.loss_function
+                ),
+                "loss_params": override_params.get(
+                    "loss_params", base_config.loss_params
+                ),
+                "validation_split": override_params.get(
+                    "validation_split", base_config.validation_split
+                ),
+                "shuffle": override_params.get("shuffle", base_config.shuffle),
+                "drop_last": override_params.get("drop_last", base_config.drop_last),
+                "checkpoint_every": override_params.get(
+                    "checkpoint_every", base_config.checkpoint_every
+                ),
+                "save_best_only": override_params.get(
+                    "save_best_only", base_config.save_best_only
+                ),
+                "early_stopping_patience": override_params.get(
+                    "early_stopping_patience", base_config.early_stopping_patience
+                ),
+                "early_stopping_min_delta": override_params.get(
+                    "early_stopping_min_delta", base_config.early_stopping_min_delta
+                ),
+                "device": override_params.get("device", base_config.device),
+                "log_every": override_params.get("log_every", base_config.log_every),
+                "verbose": override_params.get("verbose", base_config.verbose),
+            }
+            return TrainingConfig(**config_dict)
+
+        return base_config
