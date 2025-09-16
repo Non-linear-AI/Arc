@@ -1,5 +1,7 @@
 """Enhanced job service for managing Arc job system."""
 
+from dataclasses import asdict
+from datetime import UTC
 from typing import Any
 
 from ...jobs.models import Job, JobStatus, JobType
@@ -42,12 +44,16 @@ class JobService(BaseService):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """
 
-            job_data = job.to_dict()
+            job_data = asdict(job)
             params = [
                 job_data["job_id"],
                 job_data["model_id"],
-                job_data["type"],
-                job_data["status"],
+                job_data["type"].value
+                if hasattr(job_data["type"], "value")
+                else job_data["type"],
+                job_data["status"].value
+                if hasattr(job_data["status"], "value")
+                else job_data["status"],
                 job_data["message"],
                 job_data["sql_query"],
                 job_data["created_at"],
@@ -98,11 +104,15 @@ class JobService(BaseService):
             WHERE job_id = ?
             """
 
-            job_data = job.to_dict()
+            job_data = asdict(job)
             params = [
                 job_data["model_id"],
-                job_data["type"],
-                job_data["status"],
+                job_data["type"].value
+                if hasattr(job_data["type"], "value")
+                else job_data["type"],
+                job_data["status"].value
+                if hasattr(job_data["status"], "value")
+                else job_data["status"],
                 job_data["message"],
                 job_data["sql_query"],
                 job_data["created_at"],
@@ -113,6 +123,38 @@ class JobService(BaseService):
             self.db_manager.system_execute(sql, params)
         except Exception as e:
             raise DatabaseError(f"Failed to update job {job.job_id}: {e}") from e
+
+    def update_job_status(
+        self, job_id: str, status: JobStatus, message: str = ""
+    ) -> None:
+        """Update job status and message.
+
+        Args:
+            job_id: Job identifier
+            status: New job status
+            message: Optional status message
+
+        Raises:
+            DatabaseError: If update fails
+        """
+        try:
+            from datetime import datetime
+
+            sql = """
+            UPDATE jobs SET status = ?, message = ?, updated_at = ?
+            WHERE job_id = ?
+            """
+
+            params = [
+                status.value,
+                message,
+                datetime.now(UTC),
+                job_id,
+            ]
+
+            self.db_manager.system_execute(sql, params)
+        except Exception as e:
+            raise DatabaseError(f"Failed to update job status {job_id}: {e}") from e
 
     def delete_job(self, job_id: str) -> bool:
         """Delete a job by ID.

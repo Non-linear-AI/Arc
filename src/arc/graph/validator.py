@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..database.base import Database
-from .models import ArcGraph
+from .spec import ArcGraph
 
 
 class GraphValidationError(ValueError):

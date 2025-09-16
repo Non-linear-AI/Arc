@@ -1,6 +1,6 @@
 """Arc-Graph parsing and validation package."""
 
-from .models import (
+from .spec import (
     ArcGraph,
     Features,
     GraphNode,
@@ -11,6 +11,7 @@ from .models import (
     PredictorSpec,
     Processor,
     TrainerSpec,
+    TrainingConfig,
 )
 from .validator import ArcGraphValidator, GraphValidationError, validate_graph_dict
 
@@ -24,6 +25,7 @@ __all__ = [
     "LossSpec",
     "Processor",
     "TrainerSpec",
+    "TrainingConfig",
     "PredictorSpec",
     "validate_graph_dict",
     "ArcGraphValidator",

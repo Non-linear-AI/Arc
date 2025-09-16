@@ -7,7 +7,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ..graph.models import ArcGraph, GraphNode, ModelSpec
+from ..graph.spec import ArcGraph, GraphNode, ModelSpec
 from .layers import get_layer_class
 from .utils import ShapeInferenceError, ShapeValidator, resolve_variable_references
 
