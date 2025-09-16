@@ -206,46 +206,6 @@ class JobService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to get jobs by type {job_type}: {e}") from e
 
-    def cancel_job(self, job_id: str) -> bool:
-        """Cancel a job by ID.
-
-        Args:
-            job_id: Job ID to cancel
-
-        Returns:
-            True if job was cancelled, False if not found or not cancellable
-
-        Raises:
-            DatabaseError: If operation fails
-        """
-        try:
-            job = self.get_job_by_id(job_id)
-            if not job:
-                return False
-
-            if not job.is_active:
-                return False
-
-            job.cancel()
-            self.update_job(job)
-            return True
-        except Exception as e:
-            raise DatabaseError(f"Failed to cancel job {job_id}: {e}") from e
-
-    def job_exists(self, job_id: str) -> bool:
-        """Check if a job exists by ID.
-
-        Args:
-            job_id: Job ID to check
-
-        Returns:
-            True if job exists, False otherwise
-
-        Raises:
-            DatabaseError: If query execution fails
-        """
-        return self.get_job_by_id(job_id) is not None
-
     def get_job_counts_by_status(self) -> dict[str, int]:
         """Get count of jobs by status.
 

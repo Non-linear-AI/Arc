@@ -179,54 +179,7 @@ class TestJobServiceCRUD:
         # updated_at should be more recent
         assert updated_job.updated_at >= sample_job.updated_at
 
-    def test_cancel_job_success(self, job_service, sample_job):
-        """Test successfully cancelling a job."""
-        # Create job with PENDING status
-        sample_job.status = JobStatus.PENDING
-        job_service.create_job(sample_job)
-
-        # Cancel job
-        result = job_service.cancel_job(sample_job.job_id)
-        assert result is True
-
-        # Verify cancellation
-        cancelled_job = job_service.get_job_by_id(sample_job.job_id)
-        assert cancelled_job is not None
-        assert cancelled_job.status == JobStatus.CANCELLED
-        assert cancelled_job.message == "Cancelled by user"
-
-    def test_cancel_job_running(self, job_service, sample_job):
-        """Test cancelling a running job."""
-        # Create job with RUNNING status
-        sample_job.status = JobStatus.RUNNING
-        job_service.create_job(sample_job)
-
-        # Cancel job
-        result = job_service.cancel_job(sample_job.job_id)
-        assert result is True
-
-        # Verify cancellation
-        cancelled_job = job_service.get_job_by_id(sample_job.job_id)
-        assert cancelled_job.status == JobStatus.CANCELLED
-
-    def test_cancel_job_not_cancellable(self, job_service, sample_job):
-        """Test cancelling a job that cannot be cancelled."""
-        # Create job with COMPLETED status
-        sample_job.status = JobStatus.COMPLETED
-        job_service.create_job(sample_job)
-
-        # Try to cancel job
-        result = job_service.cancel_job(sample_job.job_id)
-        assert result is False
-
-        # Verify job status unchanged
-        job = job_service.get_job_by_id(sample_job.job_id)
-        assert job.status == JobStatus.COMPLETED
-
-    def test_cancel_job_not_found(self, job_service):
-        """Test cancelling a non-existent job."""
-        result = job_service.cancel_job("nonexistent-job")
-        assert result is False
+    # cancel_job moved to JobManager; covered in tests/jobs/test_manager.py
 
 
 class TestJobServiceQueries:
@@ -303,13 +256,13 @@ class TestJobServiceUtilities:
     def test_job_exists(self, job_service, sample_job):
         """Test checking if a job exists."""
         # Job doesn't exist initially
-        assert not job_service.job_exists(sample_job.job_id)
+        assert job_service.get_job_by_id(sample_job.job_id) is None
 
         # Create job
         job_service.create_job(sample_job)
 
         # Job now exists
-        assert job_service.job_exists(sample_job.job_id)
+        assert job_service.get_job_by_id(sample_job.job_id) is not None
 
     def test_cleanup_old_jobs(self, job_service, sample_jobs):
         """Test cleaning up old jobs."""
@@ -365,9 +318,9 @@ class TestJobServiceUtilities:
 
         deleted = job_service.cleanup_old_jobs(days_old=3)
         assert deleted >= 1
-        assert not job_service.job_exists("old-completed")
-        assert job_service.job_exists("recent-completed")
-        assert job_service.job_exists("old-running")
+        assert job_service.get_job_by_id("old-completed") is None
+        assert job_service.get_job_by_id("recent-completed") is not None
+        assert job_service.get_job_by_id("old-running") is not None
 
 
 class TestJobServiceHelpers:
@@ -447,8 +400,7 @@ class TestJobServiceEdgeCases:
         assert job_service.get_jobs_by_status(JobStatus.PENDING) == []
 
         # Utility methods on empty database
-        assert not job_service.job_exists("nonexistent")
-        assert not job_service.cancel_job("nonexistent")
+        assert job_service.get_job_by_id("nonexistent") is None
 
         # Cleanup on empty database should not error
         assert job_service.cleanup_old_jobs(days_old=7) >= 0

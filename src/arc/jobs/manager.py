@@ -113,10 +113,16 @@ class JobManager:
         Raises:
             DatabaseError: If operation fails
         """
-        result = self.job_service.cancel_job(job_id)
-        if result:
-            logger.info(f"Cancelled job {job_id}")
-        return result
+        job = self.job_service.get_job_by_id(job_id)
+        if not job:
+            return False
+
+        if not job.is_active:
+            return False
+
+        job.cancel()
+        self.job_service.update_job(job)
+        return True
 
     def get_active_jobs(self) -> list[Job]:
         """Get all active (pending or running) jobs.
