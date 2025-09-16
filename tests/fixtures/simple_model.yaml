@@ -1,0 +1,32 @@
+version: "0.1"
+model_name: "simple_classifier"
+
+features:
+  feature_columns: [x1, x2, x3]
+  processors:
+    - name: assemble
+      op: transform.assemble_vector
+      inputs: { columns: feature_columns }
+      outputs: { tensors.features: output }
+
+model:
+  inputs:
+    features: { dtype: float32, shape: [null, 3] }
+  graph:
+    - name: linear_layer
+      type: core.Linear
+      params: { in_features: 3, out_features: 1 }
+      inputs: { input: features }
+    - name: sigmoid
+      type: core.Sigmoid
+      inputs: { input: linear_layer.output }
+  outputs:
+    probability: sigmoid.output
+
+trainer:
+  optimizer:
+    type: AdamW
+    config: { learning_rate: 0.001 }
+  loss:
+    type: core.BCELoss
+    inputs: { pred: model.probability, target: target_columns.outcome }
