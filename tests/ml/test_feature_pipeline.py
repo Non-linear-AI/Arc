@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
 import torch
 
 from src.arc.database.base import Database, QueryResult
 from src.arc.ml.data import DataProcessor
+from src.arc.ml.processors.base import ProcessorError
 
 
 @dataclass
@@ -130,3 +132,102 @@ def test_run_feature_pipeline_numeric_and_hash_ops():
     assert y_pred is not None and torch.allclose(y_train, y_pred)
     assert X_pred is not None and torch.allclose(X_train, X_pred)
     assert torch.equal(ctx_pred["tensors"]["country_id"], country_id)
+
+
+def test_inspect_fit_train_only_and_prediction_requires_state():
+    # Simple numeric rows
+    rows = [
+        {"f1": 1.0, "f2": 2.0},
+        {"f1": 3.0, "f2": 4.0},
+    ]
+    db = _FakeDB(rows=rows)
+    dp = DataProcessor(database=db)
+
+    spec = {
+        "feature_columns": ["f1", "f2"],
+        "processors": [
+            {
+                "name": "assemble",
+                "op": "transform.assemble_vector",
+                "inputs": {"columns": "feature_columns"},
+                "outputs": {"tensors.raw": "output"},
+            },
+            {
+                "name": "inspect_features",
+                "op": "inspect.feature_stats",
+                "train_only": True,
+                "inputs": {"tensor": "tensors.raw"},
+                "outputs": {"vars.n": "n_features"},
+            },
+            {
+                "name": "fit_scaler",
+                "op": "fit.standard_scaler",
+                "train_only": True,
+                "inputs": {"x": "tensors.raw"},
+                "outputs": {"states.scaler": "state"},
+            },
+            {
+                "name": "scale",
+                "op": "transform.standard_scaler",
+                "inputs": {"x": "tensors.raw", "state": "states.scaler"},
+                "outputs": {"tensors.features": "output"},
+            },
+        ],
+    }
+
+    # Training executes inspect/fit and produces vars/states
+    ctx_train, X_train, _ = dp.run_feature_pipeline("t", spec, training=True)
+    assert ctx_train["vars"]["n"] == 2
+    assert set(ctx_train["states"]["scaler"].keys()) == {"mean", "std"}
+    assert isinstance(X_train, torch.Tensor)
+
+    # Prediction without providing state should fail (transform depends on it)
+    with pytest.raises(ProcessorError):
+        dp.run_feature_pipeline("t", spec, training=False)
+
+    # Provide saved state/vars -> should succeed and match training output
+    init_ctx = {
+        "vars": {"n": ctx_train["vars"]["n"]},
+        "states": {"scaler": ctx_train["states"]["scaler"]},
+    }
+    ctx_pred, X_pred, _ = dp.run_feature_pipeline(
+        "t", spec, training=False, initial_context=init_ctx
+    )
+    assert torch.allclose(X_pred, X_train)
+    # inspect/fit not executed in prediction; provided values remain unchanged
+    assert ctx_pred["vars"]["n"] == 2
+    assert set(ctx_pred["states"]["scaler"].keys()) == {"mean", "std"}
+
+
+def test_sequence_shift_and_hash_and_pad_ops():
+    db = _FakeDB(rows=[{"dummy": 1}])
+    dp = DataProcessor(database=db)
+
+    # sequence_shift on 2D tensor
+    x = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=torch.long)
+    out_left = dp._op_transform_sequence_shift(
+        {"x": x, "direction": "left", "fill_value": 0}
+    )["output"]
+    out_right = dp._op_transform_sequence_shift(
+        {"x": x, "direction": "right", "fill_value": 9}
+    )["output"]
+    assert torch.equal(out_left, torch.tensor([[2, 3, 0], [5, 6, 0]], dtype=torch.long))
+    assert torch.equal(
+        out_right, torch.tensor([[9, 1, 2], [9, 4, 5]], dtype=torch.long)
+    )
+
+    # hash_and_pad on list of lists of strings
+    seqs = [["a", "b", "c"], ["x"], []]
+    r1 = dp._op_transform_hash_and_pad(
+        {"x": seqs, "num_buckets": 10, "max_length": 4, "fill_value": 0}
+    )["output"]
+    r2 = dp._op_transform_hash_and_pad(
+        {"x": seqs, "num_buckets": 10, "max_length": 4, "fill_value": 0}
+    )["output"]
+    assert r1.shape == (3, 4)
+    assert r1.dtype == torch.long
+    # Deterministic hashing
+    assert torch.equal(r1, r2)
+    # Padded positions are equal to fill_value
+    assert r1[1, 1:].tolist() == [0, 0, 0]
+    assert r1[2].tolist() == [0, 0, 0, 0]

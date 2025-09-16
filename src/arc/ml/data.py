@@ -639,11 +639,20 @@ class DataProcessor:
 
         # String token
         if token.startswith("tensors."):
-            return context["tensors"][token.split(".", 1)[1]]
+            k = token.split(".", 1)[1]
+            if k not in context["tensors"]:
+                raise ProcessorError(f"Missing tensor '{k}' in context")
+            return context["tensors"][k]
         if token.startswith("vars."):
-            return context["vars"][token.split(".", 1)[1]]
+            k = token.split(".", 1)[1]
+            if k not in context["vars"]:
+                raise ProcessorError(f"Missing var '{k}' in context")
+            return context["vars"][k]
         if token.startswith("states."):
-            return context["states"][token.split(".", 1)[1]]
+            k = token.split(".", 1)[1]
+            if k not in context["states"]:
+                raise ProcessorError(f"Missing state '{k}' in context")
+            return context["states"][k]
         if token == "feature_columns" or token == "target_columns":
             cols = top_level[token]
             return [self._resolve_input_value(c, context, top_level, df) for c in cols]
