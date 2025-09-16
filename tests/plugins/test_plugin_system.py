@@ -46,11 +46,11 @@ class TestPluginSystem:
         # Get all registered optimizers
         optimizers = pm.get_optimizers()
 
-        # Check that common optimizers are present
-        assert "SGD" in optimizers
-        assert "Adam" in optimizers
-        assert "AdamW" in optimizers
-        assert "RMSprop" in optimizers
+        # Check that common optimizers are present (with core prefix)
+        assert "core.SGD" in optimizers
+        assert "core.Adam" in optimizers
+        assert "core.AdamW" in optimizers
+        assert "core.RMSprop" in optimizers
 
     def test_loss_registration(self):
         """Test that loss functions are registered through plugins."""
@@ -59,10 +59,10 @@ class TestPluginSystem:
         # Get all registered losses
         losses = pm.get_losses()
 
-        # Check that common losses are present
-        assert "MSELoss" in losses
-        assert "CrossEntropyLoss" in losses
-        assert "BCELoss" in losses
+        # Check that common losses are present (with core prefix)
+        assert "core.MSELoss" in losses
+        assert "core.CrossEntropyLoss" in losses
+        assert "core.BCELoss" in losses
 
     def test_layer_retrieval(self):
         """Test that layers can be retrieved by name."""

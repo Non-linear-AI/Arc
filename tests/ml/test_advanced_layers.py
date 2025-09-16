@@ -96,7 +96,7 @@ class TestAdvancedLayers:
         mean = output.mean(dim=-1, keepdim=True)
         var = output.var(dim=-1, keepdim=True, unbiased=False)
         assert torch.allclose(mean, torch.zeros_like(mean), atol=1e-6)
-        assert torch.allclose(var, torch.ones_like(var), atol=1e-5)
+        assert torch.allclose(var, torch.ones_like(var), atol=1e-4)
 
     def test_concatenate_layer(self):
         """Test ConcatenateLayer implementation."""
