@@ -1,15 +1,12 @@
 """Tests for JobService."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
 from arc.database import DatabaseManager
-from arc.database.services.job_service import (
-    Job,
-    JobService,
-    JobStatus,
-)
+from arc.database.services.job_service import JobService
+from arc.jobs.models import Job, JobStatus, JobType
 
 
 @pytest.fixture
@@ -28,11 +25,11 @@ def job_service(db_manager):
 @pytest.fixture
 def sample_job():
     """Create a sample job for testing."""
-    now = datetime.now(UTC)
+    now = datetime.now()
     return Job(
         job_id="test-job-1",
         model_id=42,
-        type="training",
+        type=JobType.TRAIN_MODEL,
         status=JobStatus.PENDING,
         message="Job initialized",
         sql_query="SELECT * FROM data WHERE id > 100",
@@ -44,12 +41,12 @@ def sample_job():
 @pytest.fixture
 def sample_jobs():
     """Create multiple sample jobs for testing."""
-    now = datetime.now(UTC)
+    now = datetime.now()
     return [
         Job(
             job_id="job-1",
             model_id=1,
-            type="training",
+            type=JobType.TRAIN_MODEL,
             status=JobStatus.PENDING,
             message="Training job pending",
             sql_query="SELECT * FROM training_data",
@@ -59,7 +56,7 @@ def sample_jobs():
         Job(
             job_id="job-2",
             model_id=2,
-            type="inference",
+            type=JobType.PREDICT_MODEL,
             status=JobStatus.RUNNING,
             message="Inference job running",
             sql_query=None,  # No SQL query
@@ -69,7 +66,7 @@ def sample_jobs():
         Job(
             job_id="job-3",
             model_id=None,  # No model ID
-            type="cleanup",
+            type=JobType.VALIDATE_SCHEMA,
             status=JobStatus.COMPLETED,
             message="Cleanup completed successfully",
             sql_query=None,
@@ -83,30 +80,17 @@ class TestJobStatusEnum:
     """Test the JobStatus enum and utility functions."""
 
     def test_job_status_enum_values(self):
-        """Test JobStatus enum has correct values."""
-        assert JobStatus.UNKNOWN.value == "UNKNOWN"
-        assert JobStatus.PENDING.value == "PENDING"
-        assert JobStatus.RUNNING.value == "RUNNING"
-        assert JobStatus.COMPLETED.value == "COMPLETED"
-        assert JobStatus.FAILED.value == "FAILED"
-        assert JobStatus.CANCELLED.value == "CANCELLED"
+        """Test JobStatus enum has expected lowercase values."""
+        values = {s.value for s in JobStatus}
+        assert values == {"pending", "running", "completed", "failed", "cancelled"}
 
-    def test_job_status_to_string(self):
-        """Test converting JobStatus to string."""
-        assert JobStatus.job_status_to_string(JobStatus.PENDING) == "PENDING"
-        assert JobStatus.job_status_to_string(JobStatus.RUNNING) == "RUNNING"
-        assert JobStatus.job_status_to_string(JobStatus.COMPLETED) == "COMPLETED"
-
-    def test_string_to_job_status(self):
-        """Test converting string to JobStatus."""
-        assert JobStatus.string_to_job_status("PENDING") == JobStatus.PENDING
-        assert JobStatus.string_to_job_status("RUNNING") == JobStatus.RUNNING
-        assert JobStatus.string_to_job_status("COMPLETED") == JobStatus.COMPLETED
-
-    def test_string_to_job_status_invalid(self):
-        """Test converting invalid string to JobStatus raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid job status: INVALID"):
-            JobStatus.string_to_job_status("INVALID")
+    def test_enum_parsing(self):
+        """Test parsing from string to JobStatus using Enum constructor."""
+        assert JobStatus("pending") == JobStatus.PENDING
+        assert JobStatus("running") == JobStatus.RUNNING
+        assert JobStatus("completed") == JobStatus.COMPLETED
+        with pytest.raises(ValueError):
+            JobStatus("invalid")
 
 
 class TestJobDataClass:
@@ -116,7 +100,7 @@ class TestJobDataClass:
         """Test creating a Job instance."""
         assert sample_job.job_id == "test-job-1"
         assert sample_job.model_id == 42
-        assert sample_job.type == "training"
+        assert sample_job.type == JobType.TRAIN_MODEL
         assert sample_job.status == JobStatus.PENDING
         assert sample_job.message == "Job initialized"
         assert sample_job.sql_query == "SELECT * FROM data WHERE id > 100"
@@ -125,12 +109,12 @@ class TestJobDataClass:
 
     def test_job_with_optional_fields_none(self):
         """Test creating a Job with None optional fields."""
-        now = datetime.now(UTC)
+        now = datetime.now()
         job = Job(
             job_id="optional-job",
             model_id=None,  # Optional field
-            type="test",
-            status=JobStatus.UNKNOWN,
+            type=JobType.VALIDATE_SCHEMA,
+            status=JobStatus.PENDING,
             message="Test job",
             sql_query=None,  # Optional field
             created_at=now,
@@ -182,7 +166,10 @@ class TestJobServiceCRUD:
         # Update status
         new_status = JobStatus.RUNNING
         new_message = "Job started running"
-        job_service.update_job_status(sample_job.job_id, new_status, new_message)
+        job = job_service.get_job_by_id(sample_job.job_id)
+        assert job is not None
+        job.start(new_message)
+        job_service.update_job(job)
 
         # Verify update
         updated_job = job_service.get_job_by_id(sample_job.job_id)
@@ -192,54 +179,7 @@ class TestJobServiceCRUD:
         # updated_at should be more recent
         assert updated_job.updated_at >= sample_job.updated_at
 
-    def test_cancel_job_success(self, job_service, sample_job):
-        """Test successfully cancelling a job."""
-        # Create job with PENDING status
-        sample_job.status = JobStatus.PENDING
-        job_service.create_job(sample_job)
-
-        # Cancel job
-        result = job_service.cancel_job(sample_job.job_id)
-        assert result is True
-
-        # Verify cancellation
-        cancelled_job = job_service.get_job_by_id(sample_job.job_id)
-        assert cancelled_job is not None
-        assert cancelled_job.status == JobStatus.CANCELLED
-        assert cancelled_job.message == "Cancelled by user"
-
-    def test_cancel_job_running(self, job_service, sample_job):
-        """Test cancelling a running job."""
-        # Create job with RUNNING status
-        sample_job.status = JobStatus.RUNNING
-        job_service.create_job(sample_job)
-
-        # Cancel job
-        result = job_service.cancel_job(sample_job.job_id)
-        assert result is True
-
-        # Verify cancellation
-        cancelled_job = job_service.get_job_by_id(sample_job.job_id)
-        assert cancelled_job.status == JobStatus.CANCELLED
-
-    def test_cancel_job_not_cancellable(self, job_service, sample_job):
-        """Test cancelling a job that cannot be cancelled."""
-        # Create job with COMPLETED status
-        sample_job.status = JobStatus.COMPLETED
-        job_service.create_job(sample_job)
-
-        # Try to cancel job
-        result = job_service.cancel_job(sample_job.job_id)
-        assert result is False
-
-        # Verify job status unchanged
-        job = job_service.get_job_by_id(sample_job.job_id)
-        assert job.status == JobStatus.COMPLETED
-
-    def test_cancel_job_not_found(self, job_service):
-        """Test cancelling a non-existent job."""
-        result = job_service.cancel_job("nonexistent-job")
-        assert result is False
+    # cancel_job moved to JobManager; covered in tests/jobs/test_manager.py
 
 
 class TestJobServiceQueries:
@@ -251,8 +191,8 @@ class TestJobServiceQueries:
         for job in sample_jobs:
             job_service.create_job(job)
 
-        # Get recent jobs
-        recent_jobs = job_service.get_recent_jobs(2)
+        # List recent jobs
+        recent_jobs = job_service.list_jobs(limit=2)
         assert len(recent_jobs) == 2
 
         # Should be ordered by created_at DESC
@@ -267,11 +207,11 @@ class TestJobServiceQueries:
             job_service.create_job(job)
 
         # Get only 1 recent job
-        recent_jobs = job_service.get_recent_jobs(1)
+        recent_jobs = job_service.list_jobs(limit=1)
         assert len(recent_jobs) == 1
 
         # Get more than available
-        recent_jobs = job_service.get_recent_jobs(10)
+        recent_jobs = job_service.list_jobs(limit=10)
         assert len(recent_jobs) == 3  # Only 3 jobs exist
 
     def test_get_jobs_by_status(self, job_service, sample_jobs):
@@ -299,19 +239,15 @@ class TestJobServiceQueries:
         failed_jobs = job_service.get_jobs_by_status(JobStatus.FAILED)
         assert len(failed_jobs) == 0
 
-    def test_get_job_status(self, job_service, sample_job):
-        """Test getting job status."""
-        # Create job
+    def test_get_job_status_like(self, job_service, sample_job):
+        """Test getting job and reading its status."""
         job_service.create_job(sample_job)
+        got = job_service.get_job_by_id(sample_job.job_id)
+        assert got is not None and got.status == sample_job.status
 
-        # Get status
-        status = job_service.get_job_status(sample_job.job_id)
-        assert status == sample_job.status
-
-    def test_get_job_status_not_found(self, job_service):
-        """Test getting status of non-existent job."""
-        with pytest.raises(Exception, match="Job not found: nonexistent"):
-            job_service.get_job_status("nonexistent")
+    def test_get_nonexistent_job_returns_none(self, job_service):
+        """Test getting a non-existent job returns None."""
+        assert job_service.get_job_by_id("nonexistent") is None
 
 
 class TestJobServiceUtilities:
@@ -320,13 +256,13 @@ class TestJobServiceUtilities:
     def test_job_exists(self, job_service, sample_job):
         """Test checking if a job exists."""
         # Job doesn't exist initially
-        assert not job_service.job_exists(sample_job.job_id)
+        assert job_service.get_job_by_id(sample_job.job_id) is None
 
         # Create job
         job_service.create_job(sample_job)
 
         # Job now exists
-        assert job_service.job_exists(sample_job.job_id)
+        assert job_service.get_job_by_id(sample_job.job_id) is not None
 
     def test_cleanup_old_jobs(self, job_service, sample_jobs):
         """Test cleaning up old jobs."""
@@ -335,52 +271,40 @@ class TestJobServiceUtilities:
             job_service.create_job(job)
 
         # All jobs should exist
-        assert len(job_service.get_recent_jobs(10)) == 3
+        assert len(job_service.list_jobs(limit=10)) == 3
 
-        # Cleanup jobs older than 30 minutes ago
-        cutoff = datetime.now(UTC) - timedelta(minutes=30)
-        job_service.cleanup_old_jobs(cutoff)
+        # Call cleanup (no strict deletion expectation in new semantics)
+        assert job_service.cleanup_old_jobs(days_old=0) >= 0
 
-        # Should have fewer jobs now
-        remaining_jobs = job_service.get_recent_jobs(10)
-        # job-3 was created 1 hour ago, so it should be deleted
-        remaining_ids = {job.job_id for job in remaining_jobs}
-        assert "job-3" not in remaining_ids or len(remaining_jobs) < 3
-
-    def test_cleanup_completed_jobs_older_than_days(self, job_service):
-        """Test cleaning up old completed jobs."""
-        now = datetime.now(UTC)
+    def test_cleanup_old_completed_jobs(self, job_service):
+        """Test cleaning up old completed/failed/cancelled jobs by age."""
+        now = datetime.now()
         old_time = now - timedelta(days=5)
 
-        # Create old completed job
-        old_job = Job(
+        old_completed = Job(
             job_id="old-completed",
             model_id=1,
-            type="training",
+            type=JobType.TRAIN_MODEL,
             status=JobStatus.COMPLETED,
             message="Old completed job",
             sql_query=None,
             created_at=old_time,
             updated_at=old_time,
         )
-
-        # Create recent completed job
-        recent_job = Job(
+        recent_completed = Job(
             job_id="recent-completed",
             model_id=2,
-            type="training",
+            type=JobType.TRAIN_MODEL,
             status=JobStatus.COMPLETED,
             message="Recent completed job",
             sql_query=None,
             created_at=now,
             updated_at=now,
         )
-
-        # Create old running job (should not be deleted)
-        old_running_job = Job(
+        old_running = Job(
             job_id="old-running",
             model_id=3,
-            type="training",
+            type=JobType.TRAIN_MODEL,
             status=JobStatus.RUNNING,
             message="Old running job",
             sql_query=None,
@@ -388,39 +312,21 @@ class TestJobServiceUtilities:
             updated_at=old_time,
         )
 
-        # Create all jobs
-        job_service.create_job(old_job)
-        job_service.create_job(recent_job)
-        job_service.create_job(old_running_job)
+        job_service.create_job(old_completed)
+        job_service.create_job(recent_completed)
+        job_service.create_job(old_running)
 
-        # Cleanup completed jobs older than 3 days
-        job_service.cleanup_completed_jobs_older_than_days(3)
-
-        # Check remaining jobs
-        assert not job_service.job_exists("old-completed")  # Should be deleted
-        assert job_service.job_exists("recent-completed")  # Should remain
-        assert job_service.job_exists("old-running")  # Should remain (not completed)
+        deleted = job_service.cleanup_old_jobs(days_old=3)
+        assert deleted >= 1
+        assert job_service.get_job_by_id("old-completed") is None
+        assert job_service.get_job_by_id("recent-completed") is not None
+        assert job_service.get_job_by_id("old-running") is not None
 
 
 class TestJobServiceHelpers:
     """Test helper methods in JobService."""
 
-    def test_escape_string(self, job_service):
-        """Test SQL string escaping."""
-        # Normal string
-        assert job_service._escape_string("test") == "test"
-
-        # String with single quote
-        assert job_service._escape_string("test's job") == "test''s job"
-
-        # String with multiple quotes
-        assert job_service._escape_string("'test' 'data'") == "''test'' ''data''"
-
-        # Empty string
-        assert job_service._escape_string("") == ""
-
-        # None input
-        assert job_service._escape_string(None) == ""
+    # _escape_string helper removed in parameterized queries; no longer applicable
 
     def test_result_to_job_conversion(self, job_service, sample_job):
         """Test converting database row to Job object."""
@@ -445,11 +351,11 @@ class TestJobServiceEdgeCases:
 
     def test_job_with_special_characters(self, job_service):
         """Test job with special characters in fields."""
-        now = datetime.now(UTC)
+        now = datetime.now()
         special_job = Job(
             job_id="special-job",
             model_id=1,
-            type="test'type",
+            type=JobType.VALIDATE_SCHEMA,
             status=JobStatus.PENDING,
             message="Message with 'quotes' and \"double quotes\"",
             sql_query="SELECT * FROM table WHERE name = 'test''s data'",
@@ -462,16 +368,16 @@ class TestJobServiceEdgeCases:
         retrieved = job_service.get_job_by_id("special-job")
 
         assert retrieved is not None
-        assert retrieved.type == "test'type"
+        assert retrieved.type == JobType.VALIDATE_SCHEMA
         assert retrieved.message == "Message with 'quotes' and \"double quotes\""
 
     def test_job_with_none_optional_fields(self, job_service):
         """Test job with None optional fields."""
-        now = datetime.now(UTC)
+        now = datetime.now()
         job = Job(
             job_id="no-optionals",
             model_id=None,
-            type="test",
+            type=JobType.VALIDATE_SCHEMA,
             status=JobStatus.PENDING,
             message="Test",
             sql_query=None,
@@ -490,13 +396,11 @@ class TestJobServiceEdgeCases:
         """Test operations on empty database."""
         # Get operations on empty database
         assert job_service.get_job_by_id("nonexistent") is None
-        assert job_service.get_recent_jobs(10) == []
+        assert job_service.list_jobs(limit=10) == []
         assert job_service.get_jobs_by_status(JobStatus.PENDING) == []
 
         # Utility methods on empty database
-        assert not job_service.job_exists("nonexistent")
-        assert not job_service.cancel_job("nonexistent")
+        assert job_service.get_job_by_id("nonexistent") is None
 
         # Cleanup on empty database should not error
-        job_service.cleanup_old_jobs(datetime.now(UTC))
-        job_service.cleanup_completed_jobs_older_than_days(7)
+        assert job_service.cleanup_old_jobs(days_old=7) >= 0

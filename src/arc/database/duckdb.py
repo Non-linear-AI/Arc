@@ -42,11 +42,12 @@ class DuckDBDatabase(Database):
 
         return self._connection
 
-    def query(self, sql: str) -> QueryResult:
+    def query(self, sql: str, params: list | None = None) -> QueryResult:
         """Execute a SELECT query and return results.
 
         Args:
             sql: SQL SELECT statement to execute
+            params: Optional list of parameters for the query
 
         Returns:
             QueryResult containing the query results
@@ -60,7 +61,8 @@ class DuckDBDatabase(Database):
             conn = self._ensure_connected()
 
             # Execute query and fetch results
-            cursor = conn.execute(sql)
+            cursor = conn.execute(sql, params) if params else conn.execute(sql)
+
             rows = cursor.fetchall()
             columns = [desc[0] for desc in cursor.description or []]
 
@@ -74,18 +76,22 @@ class DuckDBDatabase(Database):
         except Exception as e:
             raise DatabaseError(f"Query execution failed: {e}") from e
 
-    def execute(self, sql: str) -> None:
+    def execute(self, sql: str, params: list | None = None) -> None:
         """Execute a DDL or DML statement (CREATE, INSERT, UPDATE, DELETE).
 
         Args:
             sql: SQL statement to execute
+            params: Optional list of parameters for the statement
 
         Raises:
             DatabaseError: If statement execution fails
         """
         try:
             conn = self._ensure_connected()
-            conn.execute(sql)
+            if params:
+                conn.execute(sql, params)
+            else:
+                conn.execute(sql)
 
         except Exception as e:
             raise DatabaseError(f"Statement execution failed: {e}") from e
