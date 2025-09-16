@@ -134,7 +134,7 @@ class ArcModel(nn.Module):
         raise ValueError(f"Cannot resolve tensor reference: {reference}")
 
     def _sequential_input_fallback(
-        self, layer_name: str, tensor_cache: dict[str, torch.Tensor]
+        self, _layer_name: str, tensor_cache: dict[str, torch.Tensor]
     ) -> torch.Tensor:
         """Fallback for sequential execution when no explicit input mapping exists."""
         # Get all non-input tensors (layer outputs)
@@ -229,7 +229,7 @@ class ModelBuilder:
         )
 
     def _auto_detect_sizes(
-        self, model_spec: ModelSpec, sample_data: torch.Tensor
+        self, _model_spec: ModelSpec, sample_data: torch.Tensor
     ) -> None:
         """Auto-detect input sizes from sample data."""
         if sample_data.dim() != 2:
@@ -357,7 +357,7 @@ class ModelBuilder:
 
         # Topological sort
         execution_order = []
-        remaining = set(node.name for node in model_spec.graph)
+        remaining = {node.name for node in model_spec.graph}
         # Preserve original YAML declaration order when multiple nodes are ready
         declaration_index = {
             node.name: idx for idx, node in enumerate(model_spec.graph)
@@ -368,9 +368,11 @@ class ModelBuilder:
             ready = [node for node in remaining if not (dependencies[node] & remaining)]
 
             if not ready:
-                raise ValueError(
-                    f"Circular dependency detected in graph. Remaining nodes: {remaining}"
+                msg = (
+                    "Circular dependency detected in graph. Remaining nodes: "
+                    f"{remaining}"
                 )
+                raise ValueError(msg)
 
             # Pick the next node in original declaration order
             next_node = min(ready, key=lambda n: declaration_index.get(n, float("inf")))

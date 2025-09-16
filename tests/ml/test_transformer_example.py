@@ -33,7 +33,10 @@ model:
       inputs: {input: embedding.output}
     - name: transformer_layer
       type: core.TransformerEncoderLayer
-      params: {d_model: vars.d_model, nhead: vars.num_heads, dim_feedforward: vars.ff_dim}
+      params:
+        d_model: vars.d_model
+        nhead: vars.num_heads
+        dim_feedforward: vars.ff_dim
       inputs: {input: pos_encoding.output}
     - name: layer_norm
       type: core.LayerNorm
@@ -106,7 +109,10 @@ model:
     - name: cross_attention
       type: core.MultiHeadAttention
       params: {embed_dim: vars.d_model, num_heads: vars.num_heads}
-      inputs: {query: tgt_embedding.output, key: src_embedding.output, value: src_embedding.output}
+      inputs:
+        query: tgt_embedding.output
+        key: src_embedding.output
+        value: src_embedding.output
 
     - name: output_layer
       type: core.Linear
@@ -156,7 +162,8 @@ features:
 model:
   inputs:
     numerical_features: {dtype: float32, shape: [null, vars.num_features]}
-    categorical_features: {dtype: float32, shape: [null, vars.cat_features]}  # Simplified to float
+    # Simplified to float
+    categorical_features: {dtype: float32, shape: [null, vars.cat_features]}
   graph:
     # Process numerical features
     - name: num_linear1

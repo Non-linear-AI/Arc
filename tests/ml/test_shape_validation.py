@@ -205,7 +205,7 @@ trainer:
         builder.set_variable("vars.n_features", 10)
 
         # Build model with shape validation
-        model = builder.build_model(graph)
+        _ = builder.build_model(graph)
 
         # Check shape info
         shape_info = builder.get_shape_info()
@@ -254,7 +254,7 @@ trainer:
         sample_data = torch.randn(8, 16)  # [batch=8, features=16]
 
         # Build model with auto-detection
-        model = builder.build_model(graph, sample_data)
+        _ = builder.build_model(graph, sample_data)
 
         # Check inferred shapes
         shape_info = builder.get_shape_info()
@@ -290,8 +290,8 @@ trainer:
         graph = ArcGraph.from_yaml(yaml_content)
         builder = ModelBuilder(enable_shape_validation=True)
 
-        # This should fail during shape validation due to parameter mismatch
-        # The shape validation will detect that input features (10) != linear in_features (20)
+        # This should fail during shape validation due to parameter mismatch.
+        # Input features (10) != linear in_features (20).
         with pytest.raises(ValueError, match="Shape validation failed"):
             builder.build_model(graph)
 
@@ -385,7 +385,7 @@ trainer:
         builder = ModelBuilder(enable_shape_validation=False)
 
         # Should build without validation
-        model = builder.build_model(graph)
+        _ = builder.build_model(graph)
 
         # No shape info should be available
         shape_info = builder.get_shape_info()
@@ -418,7 +418,7 @@ trainer:
 
         graph = ArcGraph.from_yaml(yaml_content)
         builder = ModelBuilder(enable_shape_validation=True)
-        model = builder.build_model(graph)
+        _ = builder.build_model(graph)
 
         # Print shape summary
         builder.print_shape_summary()

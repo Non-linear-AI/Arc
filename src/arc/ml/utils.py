@@ -200,7 +200,7 @@ class ShapeValidator:
 
     def infer_layer_output_shape(
         self,
-        layer_name: str,
+        _layer_name: str,
         layer_type: str,
         layer_params: dict[str, Any],
         input_shapes: dict[str, list[int | None]],
@@ -305,7 +305,7 @@ class ShapeValidator:
         return output_shape
 
     def _infer_attention_shape(
-        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+        self, _params: dict[str, Any], input_shapes: dict[str, list[int | None]]
     ) -> list[int | None]:
         """Infer MultiHeadAttention output shape."""
         if len(input_shapes) == 1:
@@ -319,7 +319,7 @@ class ShapeValidator:
             return next(iter(input_shapes.values()))
 
     def _infer_transformer_shape(
-        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+        self, _params: dict[str, Any], input_shapes: dict[str, list[int | None]]
     ) -> list[int | None]:
         """Infer TransformerEncoderLayer output shape (same as input)."""
         return self._infer_activation_shape(input_shapes)
@@ -348,7 +348,7 @@ class ShapeValidator:
 
         # All shapes must have same number of dimensions
         first_shape = shapes[0]
-        for i, shape in enumerate(shapes[1:], 1):
+        for _i, shape in enumerate(shapes[1:], 1):
             if len(shape) != len(first_shape):
                 raise ShapeInferenceError(
                     f"Cannot concatenate tensors with different number of dimensions: "
@@ -369,9 +369,11 @@ class ShapeValidator:
                     if dim2 is not None:
                         concat_size += dim2
                 elif dim1 != dim2 and dim1 is not None and dim2 is not None:
-                    raise ShapeInferenceError(
-                        f"Cannot concatenate tensors: dimension {i} mismatch ({dim1} vs {dim2})"
+                    msg = (
+                        "Cannot concatenate tensors: dimension "
+                        f"{i} mismatch ({dim1} vs {dim2})"
                     )
+                    raise ShapeInferenceError(msg)
 
         # Set concatenated dimension size
         if concat_size > 0:
@@ -391,11 +393,13 @@ class ShapeValidator:
         shapes = list(input_shapes.values())
         first_shape = shapes[0]
 
-        for i, shape in enumerate(shapes[1:], 1):
+        for _i, shape in enumerate(shapes[1:], 1):
             if len(shape) != len(first_shape):
-                raise ShapeInferenceError(
-                    f"Cannot add tensors with different shapes: {first_shape} vs {shape}"
+                msg = (
+                    "Cannot add tensors with different shapes: "
+                    f"{first_shape} vs {shape}"
                 )
+                raise ShapeInferenceError(msg)
             for j, (dim1, dim2) in enumerate(zip(first_shape, shape, strict=True)):
                 if dim1 != dim2 and dim1 is not None and dim2 is not None:
                     raise ShapeInferenceError(

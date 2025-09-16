@@ -39,7 +39,8 @@ class TestLogisticRegressionExample:
         graph = ArcGraph.from_yaml_file(fixture_path)
         validator = ArcGraphValidator()
 
-        # Static validation should pass - the validator handles variable references gracefully
+        # Static validation should pass. The validator handles
+        # variable references gracefully
         # by checking if they're referenced but not requiring them to be resolved yet
         try:
             validator.validate_static(graph)
