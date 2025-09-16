@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from src.arc.database.manager import DatabaseManager
+from src.arc.database.services.job_service import JobService
 from src.arc.jobs.executor import JobExecutor
 from src.arc.jobs.manager import JobManager
 from src.arc.jobs.models import Job, JobStatus, JobType
@@ -18,7 +19,8 @@ def db_manager():
 
 @pytest.fixture
 def job_manager(db_manager):
-    return JobManager(db_manager)
+    service = JobService(db_manager)
+    return JobManager(service)
 
 
 @pytest.fixture

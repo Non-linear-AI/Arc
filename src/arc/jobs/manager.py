@@ -12,14 +12,13 @@ logger = logging.getLogger(__name__)
 class JobManager:
     """Manages job lifecycle using the service layer."""
 
-    def __init__(self, db_manager):
+    def __init__(self, job_service: JobService):
         """Initialize JobManager.
 
         Args:
-            db_manager: DatabaseManager instance for persistence
+            job_service: JobService instance for persistence operations
         """
-        self.db_manager = db_manager
-        self.job_service = JobService(db_manager)
+        self.job_service = job_service
 
     def create_job(
         self,
