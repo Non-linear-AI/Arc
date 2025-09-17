@@ -72,6 +72,20 @@ class InteractiveInterface:
             for cmd, desc in commands:
                 p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
 
+            p.print()
+            p.print("[bold]ML Commands[/bold]")
+            ml_commands = [
+                (
+                    "/ml create-model --name NAME --schema PATH",
+                    "Register an Arc-Graph model",
+                ),
+                ("/ml train --model NAME --data TABLE", "Launch a training job"),
+                ("/ml jobs list", "Show recent ML jobs"),
+                ("/ml jobs status <job_id>", "Inspect an individual job"),
+            ]
+            for cmd, desc in ml_commands:
+                p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
+
     def _action_label(self, tool_name: str) -> str:
         mapping = {
             "view_file": "Read",
@@ -656,6 +670,32 @@ class InteractiveInterface:
     def show_config_panel(self, config_text: str) -> None:
         with self._printer.section(color="blue") as p:
             p.print_panel(Panel(config_text))
+
+    def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+        table = Table(title=title, box=box.SIMPLE_HEAVY)
+        for col in columns:
+            table.add_column(col)
+
+        if not rows:
+            table.add_row(*(["-"] * len(columns)))
+        else:
+            for row in rows:
+                table.add_row(*row)
+
+        with self._printer.section(color="cyan") as p:
+            p.print(table)
+
+    def show_key_values(self, title: str, pairs: list[list[str]]) -> None:
+        table = Table(title=title, box=box.SIMPLE)
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+
+        for pair in pairs:
+            if len(pair) >= 2:
+                table.add_row(pair[0], pair[1])
+
+        with self._printer.section(color="cyan") as p:
+            p.print(table)
 
     def get_user_input(self, prompt: str = "\n[bold green]>[/bold green] ") -> str:
         return self._printer.get_input(prompt).strip()

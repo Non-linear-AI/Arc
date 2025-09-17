@@ -3,16 +3,26 @@
 import asyncio
 import json
 import os
+import re
+import shlex
 import sys
 import time
+from contextlib import suppress
+from dataclasses import asdict
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 import click
 from dotenv import load_dotenv
 
 from ..core import ArcAgent, SettingsManager
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
+from ..database.models.model import Model
 from ..database.services import ServiceContainer
 from ..error_handling import error_handler
+from ..graph.spec import ArcGraph
+from ..ml.training_service import TrainingJobConfig, TrainingService
 from ..utils import ConfirmationService, performance_manager
 from .console import InteractiveInterface
 
@@ -170,6 +180,368 @@ async def handle_sql_command(
     return current_database
 
 
+class CommandError(Exception):
+    """Raised when ML command parsing or validation fails."""
+
+
+class MLRuntime:
+    """Runtime utilities for ML CLI commands."""
+
+    def __init__(self, services: ServiceContainer, artifacts_dir: Path | None = None):
+        self.services = services
+        self.model_service = services.models
+        self.job_service = services.jobs
+        self.ml_data_service = services.ml_data
+        self.artifacts_root = Path(artifacts_dir or "artifacts")
+        self.artifacts_root.mkdir(parents=True, exist_ok=True)
+        self.training_service = TrainingService(
+            self.job_service, artifacts_dir=self.artifacts_root
+        )
+
+    def shutdown(self) -> None:
+        self.training_service.shutdown()
+
+
+def _slugify_name(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "model"
+
+
+def _parse_options(args: list[str], spec: dict[str, bool]) -> dict[str, str | bool]:
+    options: dict[str, str | bool] = {}
+    idx = 0
+    while idx < len(args):
+        token = args[idx]
+        if not token.startswith("--"):
+            raise CommandError(f"Unexpected argument '{token}'")
+        key = token[2:]
+        if key not in spec:
+            raise CommandError(f"Unknown option '--{key}'")
+        expects_value = spec[key]
+        if not expects_value:
+            options[key] = True
+            idx += 1
+            continue
+        idx += 1
+        if idx >= len(args):
+            raise CommandError(f"Option '--{key}' requires a value")
+        options[key] = args[idx]
+        idx += 1
+    return options
+
+
+async def handle_ml_command(
+    user_input: str, ui: InteractiveInterface, runtime: MLRuntime
+) -> None:
+    try:
+        tokens = shlex.split(user_input)
+    except ValueError as e:
+        ui.show_system_error(f"Failed to parse command: {e}")
+        return
+
+    if not tokens or tokens[0] != "/ml":
+        ui.show_system_error("Invalid ML command. Use /ml <subcommand> ...")
+        return
+
+    if len(tokens) < 2:
+        ui.show_system_error("Usage: /ml <create-model|train|jobs> ...")
+        return
+
+    subcommand = tokens[1]
+    args = tokens[2:]
+
+    try:
+        if subcommand == "create-model":
+            _ml_create_model(args, ui, runtime)
+        elif subcommand == "train":
+            _ml_train(args, ui, runtime)
+        elif subcommand == "jobs":
+            _ml_jobs(args, ui, runtime)
+        else:
+            raise CommandError(f"Unknown ML command: {subcommand}")
+    except CommandError as e:
+        ui.show_system_error(str(e))
+    except Exception as e:
+        ui.show_system_error(f"ML command failed: {e}")
+
+
+def _ml_create_model(
+    args: list[str], ui: InteractiveInterface, runtime: MLRuntime
+) -> None:
+    options = _parse_options(
+        args,
+        {
+            "name": True,
+            "schema": True,
+            "description": True,
+            "type": True,
+        },
+    )
+
+    name = options.get("name")
+    schema_path = options.get("schema")
+
+    if not name or not schema_path:
+        raise CommandError("/ml create-model requires --name and --schema")
+
+    schema_file = Path(str(schema_path)).expanduser()
+    if not schema_file.exists():
+        raise CommandError(f"Schema file not found: {schema_file}")
+
+    try:
+        schema_text = schema_file.read_text(encoding="utf-8")
+    except OSError as e:
+        raise CommandError(f"Failed to read schema file: {e}") from e
+
+    try:
+        arc_graph = ArcGraph.from_yaml(schema_text)
+    except Exception as e:
+        raise CommandError(f"Invalid Arc-Graph schema: {e}") from e
+
+    # Ensure graph is ready for training
+    arc_graph.to_training_config()
+
+    model_service = runtime.model_service
+    latest = model_service.get_latest_model_by_name(str(name))
+    version = 1 if latest is None else latest.version + 1
+
+    model_id = f"{_slugify_name(str(name))}-v{version}"
+    model_type = str(options.get("type") or "ml.arc_graph")
+    description = str(options.get("description") or arc_graph.description or "")
+
+    now = datetime.now(UTC)
+    arc_graph_payload = json.dumps(asdict(arc_graph), default=str)
+
+    model = Model(
+        id=model_id,
+        type=model_type,
+        name=str(name),
+        version=version,
+        description=description,
+        base_model_id=None,
+        spec=schema_text,
+        arc_graph=arc_graph_payload,
+        created_at=now,
+        updated_at=now,
+    )
+
+    try:
+        model_service.create_model(model)
+    except DatabaseError as e:
+        raise CommandError(f"Failed to register model: {e}") from e
+
+    ui.show_system_success(
+        f"Model '{name}' registered (version {version}, id={model_id})."
+    )
+
+
+def _ml_train(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
+    options = _parse_options(
+        args,
+        {
+            "model": True,
+            "data": True,
+            "target": True,
+            "validation-table": True,
+            "validation-split": True,
+            "epochs": True,
+            "batch-size": True,
+            "learning-rate": True,
+            "checkpoint-dir": True,
+            "description": True,
+            "tags": True,
+        },
+    )
+
+    model_name = options.get("model")
+    train_table = options.get("data")
+
+    if not model_name or not train_table:
+        raise CommandError("/ml train requires --model and --data")
+
+    model_record = runtime.model_service.get_latest_model_by_name(str(model_name))
+    if model_record is None:
+        raise CommandError(
+            f"Model '{model_name}' not found. Use /ml create-model first."
+        )
+
+    if not model_record.arc_graph:
+        raise CommandError(
+            "Stored model is missing arc graph specification; cannot train."
+        )
+
+    try:
+        arc_graph_dict = json.loads(model_record.arc_graph)
+        arc_graph = ArcGraph.from_dict(arc_graph_dict)
+    except Exception as e:
+        raise CommandError(f"Failed to load Arc-Graph from stored spec: {e}") from e
+
+    feature_columns = arc_graph.features.feature_columns
+    if not feature_columns:
+        raise CommandError(
+            "Arc-Graph must define features.feature_columns before training."
+        )
+
+    if not runtime.ml_data_service.dataset_exists(str(train_table)):
+        raise CommandError(f"Training table '{train_table}' does not exist in user DB")
+
+    target_column = options.get("target")
+    if not target_column:
+        targets = arc_graph.features.target_columns or []
+        if not targets:
+            raise CommandError(
+                "Unable to determine target column. Provide --target explicitly."
+            )
+        target_column = targets[0]
+
+    columns_to_check = list(feature_columns)
+    if target_column not in columns_to_check:
+        columns_to_check.append(target_column)
+
+    missing = [
+        col
+        for col, exists in runtime.ml_data_service.validate_columns(
+            str(train_table), columns_to_check
+        ).items()
+        if not exists
+    ]
+    if missing:
+        raise CommandError(
+            "Training table is missing required column(s): " + ", ".join(missing)
+        )
+
+    overrides: dict[str, Any] = {}
+    if "epochs" in options:
+        try:
+            overrides["epochs"] = int(options["epochs"])
+        except ValueError as e:
+            raise CommandError("Option --epochs must be an integer") from e
+    if "batch-size" in options:
+        try:
+            overrides["batch_size"] = int(options["batch-size"])
+        except ValueError as e:
+            raise CommandError("Option --batch-size must be an integer") from e
+    if "learning-rate" in options:
+        try:
+            overrides["learning_rate"] = float(options["learning-rate"])
+        except ValueError as e:
+            raise CommandError("Option --learning-rate must be a number") from e
+    if "validation-split" in options:
+        try:
+            overrides["validation_split"] = float(options["validation-split"])
+        except ValueError as e:
+            raise CommandError("Option --validation-split must be a number") from e
+
+    training_config = arc_graph.to_training_config(overrides or None)
+
+    validation_table = options.get("validation-table")
+    validation_split = overrides.get(
+        "validation_split", training_config.validation_split
+    )
+
+    if validation_table and not runtime.ml_data_service.dataset_exists(
+        str(validation_table)
+    ):
+        raise CommandError(
+            f"Validation table '{validation_table}' does not exist in user DB"
+        )
+
+    checkpoint_dir = options.get("checkpoint-dir")
+    checkpoint_path = None
+    if checkpoint_dir:
+        checkpoint_path = str(Path(str(checkpoint_dir)).expanduser())
+
+    tags_value = options.get("tags")
+    tags = None
+    if tags_value:
+        tags = [tag.strip() for tag in str(tags_value).split(",") if tag.strip()]
+        if not tags:
+            tags = None
+
+    job_config = TrainingJobConfig(
+        model_id=model_record.id,
+        model_name=model_record.name,
+        arc_graph=arc_graph,
+        train_table=str(train_table),
+        target_column=str(target_column),
+        feature_columns=list(feature_columns),
+        validation_table=str(validation_table) if validation_table else None,
+        validation_split=validation_split,
+        training_config=training_config,
+        artifacts_dir=str(runtime.artifacts_root),
+        checkpoint_dir=checkpoint_path,
+        description=str(options.get("description") or "Training job"),
+        tags=tags,
+    )
+
+    job_id = runtime.training_service.submit_training_job(job_config)
+    ui.show_system_success(
+        "Training job submitted. Use /ml jobs status <job_id> to monitor."
+    )
+    ui.show_info(f"Job ID: {job_id}")
+
+
+def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
+    if not args:
+        raise CommandError("Usage: /ml jobs <list|status <job_id>>")
+
+    sub = args[0]
+    if sub == "list":
+        jobs = runtime.job_service.list_jobs(limit=20)
+        rows = []
+        for job in jobs:
+            job_type = job.type.value if hasattr(job.type, "value") else str(job.type)
+            status = (
+                job.status.value if hasattr(job.status, "value") else str(job.status)
+            )
+            rows.append(
+                [
+                    job.job_id,
+                    job_type,
+                    status,
+                    job.message or "",
+                    job.updated_at.isoformat()
+                    if hasattr(job.updated_at, "isoformat")
+                    else str(job.updated_at),
+                ]
+            )
+        ui.show_table(
+            title="ML Jobs",
+            columns=["Job ID", "Type", "Status", "Message", "Updated"],
+            rows=rows,
+        )
+    elif sub == "status":
+        if len(args) < 2:
+            raise CommandError("Usage: /ml jobs status <job_id>")
+        job_id = args[1]
+        job = runtime.job_service.get_job_by_id(job_id)
+        if job is None:
+            raise CommandError(f"Job '{job_id}' not found")
+        job_type = job.type.value if hasattr(job.type, "value") else str(job.type)
+        status = job.status.value if hasattr(job.status, "value") else str(job.status)
+        rows = [
+            ["Job ID", job.job_id],
+            ["Type", job_type],
+            ["Status", status],
+            ["Message", job.message or ""],
+            [
+                "Created",
+                job.created_at.isoformat()
+                if hasattr(job.created_at, "isoformat")
+                else str(job.created_at),
+            ],
+            [
+                "Updated",
+                job.updated_at.isoformat()
+                if hasattr(job.updated_at, "isoformat")
+                else str(job.updated_at),
+            ],
+        ]
+        ui.show_key_values("Job Status", rows)
+    else:
+        raise CommandError(f"Unknown jobs subcommand: {sub}")
+
+
 async def run_headless_mode(
     prompt: str,
     api_key: str,
@@ -244,6 +616,8 @@ async def run_interactive_mode(
         # Database context for SQL commands - defaults to system database
         current_database = "system"
 
+        ml_runtime = MLRuntime(services)
+
         # Show enhanced welcome screen
         ui.show_welcome(agent.get_current_model(), agent.get_current_directory())
 
@@ -257,6 +631,10 @@ async def run_interactive_mode(
 
                 # Handle system commands (only with / prefix)
                 if user_input.startswith("/"):
+                    if user_input.startswith("/ml"):
+                        await handle_ml_command(user_input, ui, ml_runtime)
+                        continue
+
                     cmd = user_input[
                         1:
                     ].lower()  # Remove the / prefix and convert to lowercase
@@ -314,7 +692,7 @@ async def run_interactive_mode(
                         ui.show_system_error(f"Unknown system command: /{cmd}")
                         continue
 
-                # Handle special exit commands without prefix (for convenience)
+                    # Handle special exit commands without prefix (for convenience)
                 elif user_input.lower() in ["exit", "quit", "bye"]:
                     ui.show_goodbye()
                     break
@@ -342,6 +720,10 @@ async def run_interactive_mode(
         ui = InteractiveInterface()
         ui.show_system_error(f"Error initializing Arc CLI: {str(e)}")
         sys.exit(1)
+    finally:
+        with suppress(Exception):
+            if "ml_runtime" in locals():
+                ml_runtime.shutdown()
 
 
 if __name__ == "__main__":

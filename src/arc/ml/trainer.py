@@ -317,10 +317,19 @@ class ArcTrainer:
                 raise TrainingCancelledError("Training cancelled during batch")
 
             data, target = data.to(self.device), target.to(self.device)
+            if target.dim() == 1:
+                target = target.unsqueeze(1)
 
             # Forward pass
             self.optimizer.zero_grad()
             output = self.model(data)
+            if isinstance(output, dict):
+                try:
+                    output = next(iter(output.values()))
+                except StopIteration as exc:
+                    raise RuntimeError(
+                        "Model forward returned empty output dictionary"
+                    ) from exc
             loss = self.loss_fn(output, target)
 
             # Backward pass
@@ -349,7 +358,16 @@ class ArcTrainer:
                     raise TrainingCancelledError("Training cancelled during validation")
 
                 data, target = data.to(self.device), target.to(self.device)
+                if target.dim() == 1:
+                    target = target.unsqueeze(1)
                 output = self.model(data)
+                if isinstance(output, dict):
+                    try:
+                        output = next(iter(output.values()))
+                    except StopIteration as exc:
+                        raise RuntimeError(
+                            "Model forward returned empty output dictionary"
+                        ) from exc
                 loss = self.loss_fn(output, target)
                 total_loss += loss.item()
 

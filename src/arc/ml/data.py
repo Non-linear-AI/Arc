@@ -931,3 +931,83 @@ class DataProcessor:
             shuffle=shuffle,
             **dataloader_kwargs,
         )
+
+    def create_dataloader_from_table(
+        self,
+        table_name: str,
+        feature_columns: list[str],
+        target_columns: list[str] | None = None,
+        batch_size: int = 32,
+        shuffle: bool = True,
+        **dataloader_kwargs,
+    ) -> DataLoader:
+        """Create PyTorch DataLoader directly from database table (bypass MLDataService).
+
+        Args:
+            table_name: Name of the database table
+            feature_columns: List of feature column names
+            target_columns: Optional list of target column names
+            batch_size: Batch size for DataLoader
+            shuffle: Whether to shuffle data
+            **dataloader_kwargs: Additional arguments for DataLoader
+
+        Returns:
+            PyTorch DataLoader ready for training
+
+        Raises:
+            RuntimeError: If no database connection available
+            ValueError: If table or columns don't exist
+        """
+        # Force direct database access (bypass MLDataService)
+        if not self.database:
+            raise RuntimeError("Database connection required for direct table access")
+
+        # Use direct database query to load data
+        all_columns = list(feature_columns)
+        if target_columns:
+            all_columns.extend(target_columns)
+
+        try:
+            # Query data from table - use safe column and table names
+            # Note: DuckDB allows table/column names to be used directly if they're valid identifiers
+            sql = f"SELECT {', '.join(all_columns)} FROM {table_name}"
+            result = self.database.query(sql)
+
+            if result.empty():
+                raise ValueError(f"Table '{table_name}' is empty or doesn't exist")
+
+            # Convert to tensors directly from query result
+            import torch
+
+            # Extract feature data
+            feature_data = []
+            for row in result.rows:
+                row_dict = dict(zip(result.columns, row, strict=False))
+                feature_row = [row_dict[col] for col in feature_columns]
+                feature_data.append(feature_row)
+
+            features = torch.tensor(feature_data, dtype=torch.float32)
+
+            # Extract target data if specified
+            targets = None
+            if target_columns:
+                target_data = []
+                for row in result.rows:
+                    row_dict = dict(zip(result.columns, row, strict=False))
+                    target_row = [row_dict[col] for col in target_columns]
+                    target_data.append(target_row)
+                targets = torch.tensor(target_data, dtype=torch.float32)
+
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load data from table '{table_name}': {e}"
+            ) from e
+
+        # Create dataset and dataloader
+        return self.create_dataloader(
+            features=features,
+            targets=targets,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            **dataloader_kwargs,
+        )

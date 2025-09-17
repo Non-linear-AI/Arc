@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
 from typing import Any
 
+from ..database import DatabaseError
 from ..database.services.job_service import JobService
 from ..database.services.ml_data_service import MLDataService
 from ..graph.spec import ArcGraph, TrainingConfig
@@ -58,17 +58,27 @@ class TrainingJobConfig:
 class TrainingJobProgressCallback:
     """Progress callback that updates job status in database."""
 
-    def __init__(self, job_service: JobService, job_id: str):
+    def __init__(
+        self, job_service: JobService, job_id: str, max_training_time: float = 1800.0
+    ):
         self.job_service = job_service
         self.job_id = job_id
         self.total_epochs = 0
         self.current_epoch = 0
+        self.max_training_time = max_training_time  # 30 minutes default
+        self.training_start_time = None
 
     def on_training_start(self) -> None:
         """Called when training starts."""
-        self.job_service.update_job_status(
-            self.job_id, JobStatus.RUNNING, "Training started"
-        )
+        import time
+
+        self.training_start_time = time.time()
+        try:
+            self.job_service.update_job_status(
+                self.job_id, JobStatus.RUNNING, "Training started"
+            )
+        except DatabaseError:
+            logger.exception("Failed to update job %s status to RUNNING", self.job_id)
         logger.info(f"Training job {self.job_id} started")
 
     def on_epoch_start(self, epoch: int, total_epochs: int) -> None:
@@ -76,10 +86,43 @@ class TrainingJobProgressCallback:
         self.current_epoch = epoch
         self.total_epochs = total_epochs
 
-        progress_pct = int((epoch / total_epochs) * 100)
-        message = f"Epoch {epoch}/{total_epochs} ({progress_pct}%)"
+        # Check for timeout
+        if self.training_start_time:
+            import time
 
-        self.job_service.update_job_status(self.job_id, JobStatus.RUNNING, message)
+            elapsed_time = time.time() - self.training_start_time
+            if elapsed_time > self.max_training_time:
+                logger.error(
+                    f"Training job {self.job_id} exceeded timeout of {self.max_training_time}s"
+                )
+                try:
+                    self.job_service.update_job_status(
+                        self.job_id,
+                        JobStatus.FAILED,
+                        f"Training timeout after {elapsed_time:.1f}s",
+                    )
+                except DatabaseError:
+                    logger.exception(
+                        "Failed to update timeout status for job %s", self.job_id
+                    )
+                raise TimeoutError(
+                    f"Training exceeded maximum time limit of {self.max_training_time} seconds"
+                )
+
+        progress_pct = int((epoch / total_epochs) * 100)
+        elapsed_str = ""
+        if self.training_start_time:
+            elapsed_time = time.time() - self.training_start_time
+            elapsed_str = f" ({elapsed_time:.1f}s elapsed)"
+
+        message = f"Epoch {epoch}/{total_epochs} ({progress_pct}%){elapsed_str}"
+
+        try:
+            self.job_service.update_job_status(self.job_id, JobStatus.RUNNING, message)
+        except DatabaseError:
+            logger.exception(
+                "Failed to update job %s status at epoch start", self.job_id
+            )
 
     def on_epoch_end(self, epoch: int, metrics: dict[str, float]) -> None:
         """Called at the end of each epoch."""
@@ -94,7 +137,10 @@ class TrainingJobProgressCallback:
         progress_pct = int((epoch / self.total_epochs) * 100)
         message = f"Epoch {epoch}/{self.total_epochs} ({progress_pct}%) - {metrics_str}"
 
-        self.job_service.update_job_status(self.job_id, JobStatus.RUNNING, message)
+        try:
+            self.job_service.update_job_status(self.job_id, JobStatus.RUNNING, message)
+        except DatabaseError:
+            logger.exception("Failed to update job %s status at epoch end", self.job_id)
 
     def on_batch_end(self, batch: int, total_batches: int, loss: float) -> None:
         """Called at the end of each batch."""
@@ -108,7 +154,14 @@ class TrainingJobProgressCallback:
                 f"({batch_progress:.1f}%) - Loss: {loss:.4f}"
             )
 
-            self.job_service.update_job_status(self.job_id, JobStatus.RUNNING, message)
+            try:
+                self.job_service.update_job_status(
+                    self.job_id, JobStatus.RUNNING, message
+                )
+            except DatabaseError:
+                logger.exception(
+                    "Failed to update job %s status at batch end", self.job_id
+                )
 
     def on_training_end(self, final_metrics: dict[str, float]) -> None:
         """Called when training ends."""
@@ -121,7 +174,14 @@ class TrainingJobProgressCallback:
         )
 
         message = f"Training completed - {metrics_str}"
-        self.job_service.update_job_status(self.job_id, JobStatus.COMPLETED, message)
+        try:
+            self.job_service.update_job_status(
+                self.job_id, JobStatus.COMPLETED, message
+            )
+        except DatabaseError:
+            logger.exception(
+                "Failed to mark job %s completed in progress callback", self.job_id
+            )
         logger.info(f"Training job {self.job_id} completed")
 
 
@@ -145,9 +205,9 @@ class TrainingService:
         self.artifacts_dir = Path(artifacts_dir) if artifacts_dir else Path("artifacts")
         self.artifact_manager = ModelArtifactManager(self.artifacts_dir)
 
-        # Async execution
+        # Thread execution
         self.executor = ThreadPoolExecutor(max_workers=max_concurrent_jobs)
-        self.active_jobs: dict[str, asyncio.Task] = {}
+        self.active_jobs: dict[str, Future] = {}
         self._cancel_events: dict[str, Event] = {}
 
         logger.info(
@@ -181,27 +241,38 @@ class TrainingService:
         # Save job to database
         self.job_service.create_job(job)
 
-        # Start async training
+        # Start background training in thread pool
         cancel_event = Event()
         self._cancel_events[job_id] = cancel_event
 
-        task = asyncio.create_task(
-            self._execute_training_job(job_id, config, cancel_event)
+        # Transition job to running state immediately
+        try:
+            self.job_service.update_job_status(
+                job_id, JobStatus.RUNNING, "Training scheduled"
+            )
+        except DatabaseError:
+            logger.exception("Failed to mark job %s as running", job_id)
+
+        # Submit to thread pool executor for background execution
+        future = self.executor.submit(
+            self._run_training_thread_wrapper, job_id, config, cancel_event
         )
-        self.active_jobs[job_id] = task
+
+        # Store the future for tracking
+        self.active_jobs[job_id] = future
 
         logger.info(f"Training job {job_id} submitted for model {config.model_id}")
         return job_id
 
-    async def _execute_training_job(
+    def _run_training_thread_wrapper(
         self, job_id: str, config: TrainingJobConfig, cancel_event: Event
     ) -> TrainingResult:
-        """Execute training job asynchronously.
+        """Wrapper for running training in a thread with proper error handling.
 
         Args:
             job_id: Job identifier
             config: Training configuration
-            cancel_event: Cancellation event shared with executor task
+            cancel_event: Cancellation event
 
         Returns:
             Training result
@@ -210,32 +281,55 @@ class TrainingService:
             # Setup progress callback
             progress_callback = TrainingJobProgressCallback(self.job_service, job_id)
 
-            # Run training in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                self.executor,
-                self._run_training,
+            # Run training synchronously in this thread
+            result = self._run_training(
                 job_id,
                 config,
                 progress_callback,
                 cancel_event,
             )
 
+            # Handle final status update
+            if result.success:
+                try:
+                    self.job_service.update_job_status(
+                        job_id, JobStatus.COMPLETED, "Training completed successfully"
+                    )
+                except DatabaseError:
+                    logger.exception(
+                        "Failed to update completion status for job %s", job_id
+                    )
+            else:
+                error_msg = result.error_message or "Training failed with unknown error"
+                try:
+                    self.job_service.update_job_status(
+                        job_id, JobStatus.FAILED, f"Training failed: {error_msg}"
+                    )
+                except DatabaseError:
+                    logger.exception(
+                        "Failed to update failure status for job %s", job_id
+                    )
+
             return result
 
         except Exception as e:
             # Update job status on failure
             error_message = f"Training failed: {str(e)}"
-            self.job_service.update_job_status(job_id, JobStatus.FAILED, error_message)
+            try:
+                self.job_service.update_job_status(
+                    job_id, JobStatus.FAILED, error_message
+                )
+            except DatabaseError:
+                logger.exception("Failed to update error status for job %s", job_id)
             logger.error(f"Training job {job_id} failed: {e}")
             raise
 
         finally:
             # Clean up
-            if job_id in self.active_jobs:
-                del self.active_jobs[job_id]
             if job_id in self._cancel_events:
                 del self._cancel_events[job_id]
+            if job_id in self.active_jobs:
+                del self.active_jobs[job_id]
 
     def _run_training(
         self,
@@ -255,72 +349,206 @@ class TrainingService:
         Returns:
             Training result
         """
-        # Setup training configuration - extract from Arc-Graph or use provided config
-        if config.training_config:
-            training_config = config.training_config
-        else:
-            # Extract training configuration from Arc-Graph specification without
-            # overriding graph-defined parameters unless explicitly provided
-            training_config = config.arc_graph.to_training_config()
+        try:
+            logger.info(f"Starting training execution for job {job_id}")
 
-        # Persist the effective training configuration for downstream use
-        config.training_config = training_config
+            # Setup training configuration - extract from Arc-Graph or use provided config
+            if config.training_config:
+                training_config = config.training_config
+            else:
+                # Extract training configuration from Arc-Graph specification without
+                # overriding graph-defined parameters unless explicitly provided
+                training_config = config.arc_graph.to_training_config()
 
-        # Build model from Arc Graph
-        builder = ModelBuilder()
-        model = builder.build_model(config.arc_graph)
+            # Persist the effective training configuration for downstream use
+            config.training_config = training_config
+            logger.info(f"Training config ready for job {job_id}")
 
-        # Create data processor with ML data service
-        ml_data_service = MLDataService(self.job_service.db_manager)
-        data_processor = DataProcessor(ml_data_service=ml_data_service)
+            # Build model from Arc Graph
+            logger.info(f"Building model for job {job_id}")
+            builder = ModelBuilder()
+            model = builder.build_model(config.arc_graph)
+            logger.info(f"Model built successfully for job {job_id}")
 
-        # Create data loaders
-        train_loader = data_processor.create_dataloader_from_dataset(
-            dataset_name=config.train_table,
-            feature_columns=config.feature_columns,
-            target_columns=[config.target_column],
-            batch_size=training_config.batch_size,
-            shuffle=training_config.shuffle,
-        )
+            # Create data processor with ML data service and database access
+            logger.info(f"Setting up data processor for job {job_id}")
+            ml_data_service = MLDataService(self.job_service.db_manager)
+            data_processor = DataProcessor(
+                ml_data_service=ml_data_service,
+                database=self.job_service.db_manager._get_user_db(),
+            )
+
+            # Create data loaders - try dataset first, fallback to table
+            logger.info(
+                f"Creating data loader for dataset '{config.train_table}' job {job_id}"
+            )
+            try:
+                # First try as a registered dataset
+                train_loader = data_processor.create_dataloader_from_dataset(
+                    dataset_name=config.train_table,
+                    feature_columns=config.feature_columns,
+                    target_columns=[config.target_column],
+                    batch_size=training_config.batch_size,
+                    shuffle=training_config.shuffle,
+                )
+                logger.info(
+                    f"Train data loader created from dataset '{config.train_table}' for job {job_id}"
+                )
+            except ValueError:
+                # Fallback to direct table access
+                logger.info(
+                    f"Dataset '{config.train_table}' not found, trying as table name for job {job_id}"
+                )
+                train_loader = data_processor.create_dataloader_from_table(
+                    table_name=config.train_table,
+                    feature_columns=config.feature_columns,
+                    target_columns=[config.target_column],
+                    batch_size=training_config.batch_size,
+                    shuffle=training_config.shuffle,
+                )
+                logger.info(
+                    f"Train data loader created from table '{config.train_table}' for job {job_id}"
+                )
+
+        except Exception as e:
+            logger.error(f"Training setup failed for job {job_id}: {e}", exc_info=True)
+            # Update job status to reflect the failure
+            try:
+                self.job_service.update_job_status(
+                    job_id, JobStatus.FAILED, f"Setup failed: {str(e)}"
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update job status for {job_id}: {update_error}"
+                )
+            raise
 
         val_loader = None
         if config.validation_table:
-            val_loader = data_processor.create_dataloader_from_dataset(
-                dataset_name=config.validation_table,
-                feature_columns=config.feature_columns,
-                target_columns=[config.target_column],
-                batch_size=training_config.batch_size,
-                shuffle=False,
-            )
+            try:
+                # First try as a registered dataset
+                val_loader = data_processor.create_dataloader_from_dataset(
+                    dataset_name=config.validation_table,
+                    feature_columns=config.feature_columns,
+                    target_columns=[config.target_column],
+                    batch_size=training_config.batch_size,
+                    shuffle=False,
+                )
+                logger.info(
+                    f"Validation data loader created from dataset '{config.validation_table}' for job {job_id}"
+                )
+            except ValueError:
+                # Fallback to direct table access
+                logger.info(
+                    f"Validation dataset '{config.validation_table}' not found, trying as table name for job {job_id}"
+                )
+                val_loader = data_processor.create_dataloader_from_table(
+                    table_name=config.validation_table,
+                    feature_columns=config.feature_columns,
+                    target_columns=[config.target_column],
+                    batch_size=training_config.batch_size,
+                    shuffle=False,
+                )
+                logger.info(
+                    f"Validation data loader created from table '{config.validation_table}' for job {job_id}"
+                )
 
         # Setup checkpoint directory
-        checkpoint_dir = None
-        if config.checkpoint_dir:
-            checkpoint_dir = Path(config.checkpoint_dir)
-        else:
-            checkpoint_dir = self.artifacts_dir / config.model_id / "checkpoints"
+        try:
+            checkpoint_dir = None
+            if config.checkpoint_dir:
+                checkpoint_dir = Path(config.checkpoint_dir)
+            else:
+                checkpoint_dir = self.artifacts_dir / config.model_id / "checkpoints"
 
-        # Create trainer and run training
-        trainer = ArcTrainer(training_config)
-        result = trainer.train(
-            model=model,
-            train_loader=train_loader,
-            val_loader=val_loader,
-            callback=progress_callback,
-            checkpoint_dir=checkpoint_dir,
-            stop_event=cancel_event,
-        )
+            logger.info(
+                f"Checkpoint directory set to: {checkpoint_dir} for job {job_id}"
+            )
 
+            # Create trainer and run training
+            logger.info(f"Creating trainer for job {job_id}")
+            trainer = ArcTrainer(training_config)
+
+            logger.info(f"Starting model training for job {job_id}")
+            result = trainer.train(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                callback=progress_callback,
+                checkpoint_dir=checkpoint_dir,
+                stop_event=cancel_event,
+            )
+            logger.info(
+                f"Training completed for job {job_id}, success: {result.success}"
+            )
+
+        except Exception as training_error:
+            logger.error(
+                f"Training execution failed for job {job_id}: {training_error}",
+                exc_info=True,
+            )
+            # Update job status to reflect the training failure
+            try:
+                self.job_service.update_job_status(
+                    job_id,
+                    JobStatus.FAILED,
+                    f"Training execution failed: {str(training_error)}",
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update job status after training error for {job_id}: {update_error}"
+                )
+            raise
+
+        # Handle cancellation
         if cancel_event.is_set() and not result.success:
             # Ensure job status reflects cancellation even if trainer returned
-            self.job_service.update_job_status(
-                job_id, JobStatus.CANCELLED, "Training cancelled"
-            )
+            logger.info(f"Training was cancelled for job {job_id}")
+            try:
+                self.job_service.update_job_status(
+                    job_id, JobStatus.CANCELLED, "Training cancelled"
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update cancellation status for {job_id}: {update_error}"
+                )
+            return result
+
+        # Handle training failure
+        if not result.success:
+            error_msg = result.error_message or "Training failed with unknown error"
+            logger.error(f"Training failed for job {job_id}: {error_msg}")
+            try:
+                self.job_service.update_job_status(
+                    job_id, JobStatus.FAILED, f"Training failed: {error_msg}"
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update failure status for {job_id}: {update_error}"
+                )
             return result
 
         # Save trained model artifact
-        if result.success:
+        logger.info(f"Training succeeded for job {job_id}, saving artifacts")
+        try:
             self._save_training_artifact(job_id, config, model, trainer, result)
+            logger.info(f"Artifacts saved successfully for job {job_id}")
+        except Exception as artifact_error:
+            logger.error(
+                f"Failed to save artifacts for job {job_id}: {artifact_error}",
+                exc_info=True,
+            )
+            # Training succeeded but artifact saving failed - mark as partial success
+            try:
+                self.job_service.update_job_status(
+                    job_id,
+                    JobStatus.COMPLETED,
+                    f"Training completed but artifact save failed: {str(artifact_error)}",
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update status after artifact error for {job_id}: {update_error}"
+                )
 
         return result
 
@@ -460,7 +688,7 @@ class TrainingService:
         if completed_jobs:
             logger.info(f"Cleaned up {len(completed_jobs)} completed jobs")
 
-    async def wait_for_job(
+    def wait_for_job(
         self, job_id: str, timeout: float | None = None
     ) -> TrainingResult | None:
         """Wait for a training job to complete.
@@ -475,14 +703,14 @@ class TrainingService:
         if job_id not in self.active_jobs:
             return None
 
-        task = self.active_jobs[job_id]
+        future = self.active_jobs[job_id]
 
         try:
-            if timeout:
-                return await asyncio.wait_for(task, timeout=timeout)
-            else:
-                return await task
+            return future.result(timeout=timeout)
         except TimeoutError:
+            return None
+        except Exception:
+            # Job failed, return None
             return None
 
     def shutdown(self) -> None:
