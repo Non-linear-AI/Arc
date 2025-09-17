@@ -176,11 +176,11 @@ async def run_headless_mode(
     base_url: str | None,
     model: str | None,
     max_tool_rounds: int,
-    _: ServiceContainer,
+    services: ServiceContainer,
 ):
     """Run in headless mode - process prompt and exit."""
     try:
-        agent = ArcAgent(api_key, base_url, model, max_tool_rounds)
+        agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
 
         # Configure confirmation service for headless mode
         confirmation_service = ConfirmationService()
@@ -238,7 +238,7 @@ async def run_interactive_mode(
 ):
     """Run in interactive mode with enhanced UX."""
     try:
-        agent = ArcAgent(api_key, base_url, model, max_tool_rounds)
+        agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
         ui = InteractiveInterface()
 
         # Database context for SQL commands - defaults to system database

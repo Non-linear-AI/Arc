@@ -243,4 +243,26 @@ def get_base_tools() -> list[ArcTool]:
                 "required": ["updates"],
             },
         ),
+        ArcTool(
+            name="database_query",
+            description="Execute SQL queries against system or user databases",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "SQL query to execute",
+                    },
+                    "target_db": {
+                        "type": "string",
+                        "enum": ["system", "user"],
+                        "description": (
+                            "Target database: 'system' for read-only queries "
+                            "(default), 'user' for full SQL access"
+                        ),
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
     ]

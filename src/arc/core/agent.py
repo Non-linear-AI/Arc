@@ -8,7 +8,14 @@ from pathlib import Path
 import jinja2
 from openai.types.chat import ChatCompletionMessageParam
 
-from ..tools import BashTool, FileEditorTool, SearchTool, TodoTool, ToolResult
+from ..tools import (
+    BashTool,
+    DatabaseQueryTool,
+    FileEditorTool,
+    SearchTool,
+    TodoTool,
+    ToolResult,
+)
 from ..tools.tools import get_base_tools
 from ..utils import TokenCounter
 from .client import ArcClient, ArcToolCall
@@ -68,6 +75,7 @@ class ArcAgent:
         base_url: str | None = None,
         model: str | None = None,
         max_tool_rounds: int = 400,
+        services=None,
     ):
         # Initialize settings and model
         self.settings_manager = SettingsManager()
@@ -82,6 +90,7 @@ class ArcAgent:
         self.bash_tool = BashTool()
         self.search_tool = SearchTool()
         self.todo_tool = TodoTool()
+        self.database_query_tool = DatabaseQueryTool(services) if services else None
 
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
@@ -464,6 +473,16 @@ class ArcAgent:
                 return await self.todo_tool.execute(
                     action="update", updates=args["updates"]
                 )
+            elif tool_call.name == "database_query":
+                if self.database_query_tool:
+                    return await self.database_query_tool.execute(
+                        query=args["query"], target_db=args.get("target_db", "system")
+                    )
+                else:
+                    return ToolResult.error_result(
+                        "Database query tool not available. "
+                        "Database services not initialized."
+                    )
             else:
                 return ToolResult.error_result(f"Unknown tool: {tool_call.name}")
 
