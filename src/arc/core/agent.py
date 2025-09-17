@@ -115,11 +115,11 @@ class ArcAgent:
 
         # Generate system schema if services are available
         system_schema = None
-        if hasattr(self, 'database_query_tool') and self.database_query_tool:
+        if hasattr(self, "database_query_tool") and self.database_query_tool:
             try:
                 # Access schema service through the database query tool's services
                 services = self.database_query_tool.services
-                if services and hasattr(services, 'schema'):
+                if services and hasattr(services, "schema"):
                     system_schema = services.schema.generate_system_schema_prompt()
             except Exception:
                 # Continue without system schema if generation fails

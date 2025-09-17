@@ -348,17 +348,17 @@ class SchemaService(BaseService):
             return False
 
         # Normalize SQL: remove extra whitespace and convert to uppercase
-        normalized_sql = re.sub(r'\s+', ' ', sql.strip().upper())
+        normalized_sql = re.sub(r"\s+", " ", sql.strip().upper())
 
         # DDL statement patterns that modify schema
         ddl_patterns = [
-            r'^CREATE\s+(TABLE|INDEX|VIEW|SEQUENCE|TRIGGER|FUNCTION|PROCEDURE)',
-            r'^DROP\s+(TABLE|INDEX|VIEW|SEQUENCE|TRIGGER|FUNCTION|PROCEDURE)',
-            r'^ALTER\s+(TABLE|INDEX|VIEW|SEQUENCE)',
-            r'^TRUNCATE\s+TABLE',
-            r'^RENAME\s+(TABLE|COLUMN)',
+            r"^CREATE\s+(TABLE|INDEX|VIEW|SEQUENCE|TRIGGER|FUNCTION|PROCEDURE)",
+            r"^DROP\s+(TABLE|INDEX|VIEW|SEQUENCE|TRIGGER|FUNCTION|PROCEDURE)",
+            r"^ALTER\s+(TABLE|INDEX|VIEW|SEQUENCE)",
+            r"^TRUNCATE\s+TABLE",
+            r"^RENAME\s+(TABLE|COLUMN)",
             # DuckDB specific
-            r'^PRAGMA\s+(table_info|index_info)',
+            r"^PRAGMA\s+(table_info|index_info)",
         ]
 
         return any(re.match(pattern, normalized_sql) for pattern in ddl_patterns)
@@ -405,25 +405,25 @@ class SchemaService(BaseService):
                 "",
                 "Arc's system database contains the following tables for ML workflow "
                 "management:",
-                ""
+                "",
             ]
 
             # Table descriptions with ML context
             table_descriptions = {
                 "models": "Model registry - Stores ML model definitions, versions, and "
-                         "Arc-Graph specifications",
+                "Arc-Graph specifications",
                 "jobs": "Job tracking - Manages training, evaluation, and processing "
-                       "jobs with status monitoring",
+                "jobs with status monitoring",
                 "trained_models": "Model artifacts - Catalogs successful training "
-                                 "outputs with metrics and paths",
+                "outputs with metrics and paths",
                 "deployments": "Model serving - Tracks deployed models for real-time "
-                              "inference",
+                "inference",
                 "plugins": "Plugin registry - Available ML algorithms and custom "
-                          "components",
+                "components",
                 "plugin_components": "Plugin specs - Detailed component "
-                                    "specifications for plugins",
+                "specifications for plugins",
                 "plugin_schemas": "Plugin metadata - Schema validation and "
-                                 "documentation for algorithms"
+                "documentation for algorithms",
             }
 
             for table in schema_info.tables:
@@ -447,15 +447,17 @@ class SchemaService(BaseService):
 
                 prompt_sections.append("")
 
-            prompt_sections.extend([
-                "**Usage Guidelines**:",
-                "- Use system database queries for ML workflow operations "
-                "(models, jobs, deployments)",
-                "- System database is read-only - use SELECT queries only",
-                "- For user data analysis, use schema_discovery tool to explore "
-                "user database first",
-                ""
-            ])
+            prompt_sections.extend(
+                [
+                    "**Usage Guidelines**:",
+                    "- Use system database queries for ML workflow operations "
+                    "(models, jobs, deployments)",
+                    "- System database is read-only - use SELECT queries only",
+                    "- For user data analysis, use schema_discovery tool to explore "
+                    "user database first",
+                    "",
+                ]
+            )
 
             return "\n".join(prompt_sections)
 
