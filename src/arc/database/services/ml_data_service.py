@@ -94,14 +94,11 @@ class MLDataService(BaseService):
             return None
 
         try:
-            # Get schema
-            schema = self._get_table_schema(dataset_name)
+            schema = self._fetch_table_schema(dataset_name)
             if not schema:
                 return None
 
-            # Get row count
-            row_count = self._get_table_row_count(dataset_name)
-
+            row_count = self._fetch_table_row_count(dataset_name)
             return DatasetInfo(dataset_name, row_count, schema)
 
         except Exception:
@@ -249,41 +246,7 @@ class MLDataService(BaseService):
         Returns:
             Dictionary with min, max, mean, std, count stats or None if error
         """
-        if not self.dataset_exists(dataset_name):
-            return None
-
-        if not self._is_valid_column_name(column_name):
-            return None
-
-        try:
-            stats_sql = f'''
-            SELECT
-                MIN("{column_name}") as min_val,
-                MAX("{column_name}") as max_val,
-                AVG("{column_name}") as avg_val,
-                STDDEV("{column_name}") as std_val,
-                COUNT("{column_name}") as count_val,
-                COUNT(*) as total_rows
-            FROM "{dataset_name}"
-            WHERE "{column_name}" IS NOT NULL
-            '''
-
-            result = self.db_manager.user_query(stats_sql)
-            if not result.rows:
-                return None
-
-            row = result.rows[0]
-            return {
-                "min": row["min_val"],
-                "max": row["max_val"],
-                "mean": row["avg_val"],
-                "std": row["std_val"],
-                "count": row["count_val"],
-                "total_rows": row["total_rows"],
-            }
-
-        except Exception:
-            return None
+        return self._compute_column_statistics(dataset_name, column_name)
 
     def get_unique_values(
         self, dataset_name: str, column_name: str, limit: int = 100
@@ -394,8 +357,8 @@ class MLDataService(BaseService):
 
     # Internal helper methods
 
-    def _get_table_schema(self, table_name: str) -> list[dict[str, Any]]:
-        """Get table schema information."""
+    def _fetch_table_schema(self, table_name: str) -> list[dict[str, Any]]:
+        """Fetch column metadata for a table."""
         try:
             schema_sql = f"""
             SELECT column_name, data_type, is_nullable
@@ -404,122 +367,75 @@ class MLDataService(BaseService):
             ORDER BY ordinal_position
             """
 
-            result = self.db_manager.user_query(schema_sql)
-
-            schema = []
-            for row in result.rows:
-                schema.append(
-                    {
-                        "name": row["column_name"],
-                        "type": row["data_type"],
-                        "nullable": row["is_nullable"] == "YES",
-                    }
-                )
-
-            return schema
+            result = self._user_query(schema_sql)
+            return [
+                {
+                    "name": row["column_name"],
+                    "type": row["data_type"],
+                    "nullable": row["is_nullable"] == "YES",
+                }
+                for row in result.rows
+            ]
 
         except Exception:
             return []
 
-    def _get_table_row_count(self, table_name: str) -> int:
-        """Get row count for a table."""
+    def _fetch_table_row_count(self, table_name: str) -> int:
+        """Fetch the total number of rows for a table."""
         try:
-            count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
-            result = self.db_manager.user_query(count_sql)
+            count_sql = f'SELECT COUNT(*) AS row_count FROM "{table_name}"'
+            result = self._user_query(count_sql)
             if result.rows:
-                count_key = list(result.rows[0].keys())[0]
-                return result.rows[0][count_key]
+                return result.rows[0].get("row_count", 0)
             return 0
         except Exception:
             return 0
 
-    def create_temp_table(self, table_name: str, sql: str) -> bool:
-        """Create temporary table for plugin processing.
+    def _compute_column_statistics(
+        self, table_name: str, column_name: str
+    ) -> dict[str, Any] | None:
+        """Compute statistics for a numeric column."""
+        if not self.table_exists(table_name):
+            return None
 
-        Args:
-            table_name: Name for the temporary table
-            sql: SQL query to populate the table
-
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.is_valid_sql(sql):
-            return False
-
-        if not self._is_valid_table_name(table_name):
-            return False
+        if not self._is_valid_column_name(column_name):
+            return None
 
         try:
-            # Drop existing temp table if it exists
-            self.drop_temp_table(table_name)
+            stats_sql = f'''
+            SELECT
+                MIN("{column_name}") AS min_val,
+                MAX("{column_name}") AS max_val,
+                AVG("{column_name}") AS avg_val,
+                STDDEV("{column_name}") AS std_val,
+                COUNT("{column_name}") AS count_val,
+                COUNT(*) AS total_rows
+            FROM "{table_name}"
+            WHERE "{column_name}" IS NOT NULL
+            '''
 
-            # Create new temp table
-            create_sql = f"CREATE TEMP TABLE {table_name} AS {sql}"
-            self.db_manager.user_execute(create_sql)
-            return True
+            result = self._user_query(stats_sql)
+            if not result.rows:
+                return None
 
-        except Exception:
-            return False
-
-    def drop_temp_table(self, table_name: str) -> bool:
-        """Drop temporary table.
-
-        Args:
-            table_name: Name of table to drop
-
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self._is_valid_table_name(table_name):
-            return False
-
-        try:
-            # Check if table exists first
-            if self.table_exists(table_name):
-                drop_sql = f"DROP TABLE IF EXISTS {table_name}"
-                self.db_manager.user_execute(drop_sql)
-            return True
+            row = result.rows[0]
+            return {
+                "min": row.get("min_val"),
+                "max": row.get("max_val"),
+                "mean": row.get("avg_val"),
+                "std": row.get("std_val"),
+                "count": row.get("count_val", 0),
+                "total_rows": row.get("total_rows", 0),
+            }
 
         except Exception:
-            return False
+            return None
 
     def get_table_schema(self, table_name: str) -> list[dict[str, Any]]:
-        """Get column schema for a table.
-
-        Args:
-            table_name: Name of the table
-
-        Returns:
-            List of column specifications with name, type, nullable info
-        """
+        """Get column schema for a table."""
         if not self._is_valid_table_name(table_name):
             return []
-
-        try:
-            # Use DuckDB's information schema
-            schema_sql = f"""
-            SELECT column_name, data_type, is_nullable
-            FROM information_schema.columns
-            WHERE table_name = '{table_name}'
-            ORDER BY ordinal_position
-            """
-
-            result = self.db_manager.user_query(schema_sql)
-
-            schema = []
-            for row in result.rows:
-                schema.append(
-                    {
-                        "name": row["column_name"],
-                        "type": row["data_type"],
-                        "nullable": row["is_nullable"] == "YES",
-                    }
-                )
-
-            return schema
-
-        except Exception:
-            return []
+        return self._fetch_table_schema(table_name)
 
     def table_exists(self, table_name: str) -> bool:
         """Check if table exists in user database.
@@ -534,17 +450,15 @@ class MLDataService(BaseService):
             return False
 
         try:
-            # Check in information schema
             check_sql = f"""
-            SELECT COUNT(*)
+            SELECT COUNT(*) AS table_count
             FROM information_schema.tables
             WHERE table_name = '{table_name}'
             """
 
-            result = self.db_manager.user_query(check_sql)
+            result = self._user_query(check_sql)
             if result.rows:
-                count_key = list(result.rows[0].keys())[0]
-                return result.rows[0][count_key] > 0
+                return result.rows[0].get("table_count", 0) > 0
             return False
 
         except Exception:
@@ -581,7 +495,7 @@ class MLDataService(BaseService):
         columns_str = ", ".join(f'"{col}"' for col in columns)
         sql = f'SELECT {columns_str} FROM "{table_name}"'
 
-        return self.execute_sql(sql)
+        return self._user_query(sql)
 
     def get_table_row_count(self, table_name: str) -> int:
         """Get row count for a table.
@@ -592,19 +506,9 @@ class MLDataService(BaseService):
         Returns:
             Number of rows in the table
         """
-        if not self.table_exists(table_name):
+        if not self._is_valid_table_name(table_name):
             return 0
-
-        try:
-            count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
-            result = self.execute_sql(count_sql)
-            if result.rows:
-                count_key = list(result.rows[0].keys())[0]
-                return result.rows[0][count_key]
-            return 0
-
-        except Exception:
-            return 0
+        return self._fetch_table_row_count(table_name)
 
     def get_column_stats(
         self, table_name: str, column_name: str
@@ -618,39 +522,17 @@ class MLDataService(BaseService):
         Returns:
             Dictionary with min, max, avg, count stats or None if error
         """
-        if not self.table_exists(table_name):
+        stats = self._compute_column_statistics(table_name, column_name)
+        if stats is None:
             return None
 
-        if not self._is_valid_column_name(column_name):
-            return None
-
-        try:
-            stats_sql = f'''
-            SELECT
-                MIN("{column_name}") as min_val,
-                MAX("{column_name}") as max_val,
-                AVG("{column_name}") as avg_val,
-                COUNT("{column_name}") as count_val,
-                COUNT(*) as total_rows
-            FROM "{table_name}"
-            WHERE "{column_name}" IS NOT NULL
-            '''
-
-            result = self.execute_sql(stats_sql)
-            if not result.rows:
-                return None
-
-            row = result.rows[0]
-            return {
-                "min": row[0],
-                "max": row[1],
-                "avg": row[2],
-                "count": row[3],
-                "total_rows": row[4],
-            }
-
-        except Exception:
-            return None
+        return {
+            "min": stats["min"],
+            "max": stats["max"],
+            "avg": stats["mean"],
+            "count": stats["count"],
+            "total_rows": stats["total_rows"],
+        }
 
     def get_tables_list(self) -> list[str]:
         """Get list of all tables in user database.
@@ -658,19 +540,7 @@ class MLDataService(BaseService):
         Returns:
             List of table names
         """
-        try:
-            tables_sql = """
-            SELECT table_name
-            FROM information_schema.tables
-            WHERE table_schema = 'main'
-            ORDER BY table_name
-            """
-
-            result = self.db_manager.user_query(tables_sql)
-            return [row[0] for row in result.rows]
-
-        except Exception:
-            return []
+        return self.list_datasets()
 
     def sample_table_data(self, table_name: str, limit: int = 100) -> pd.DataFrame:
         """Get sample data from a table as DataFrame.
@@ -682,24 +552,7 @@ class MLDataService(BaseService):
         Returns:
             DataFrame with sample data
         """
-        if not self.table_exists(table_name):
-            return pd.DataFrame()
-
-        try:
-            sample_sql = f'SELECT * FROM "{table_name}" LIMIT {limit}'
-            result = self.execute_sql(sample_sql)
-
-            if not result.rows:
-                return pd.DataFrame()
-
-            # Get column names from schema
-            schema = self.get_table_schema(table_name)
-            columns = [col["name"] for col in schema]
-
-            return pd.DataFrame(result.rows, columns=columns)
-
-        except Exception:
-            return pd.DataFrame()
+        return self.sample_data(table_name, limit=limit)
 
     def _is_user_data_query(self, sql: str) -> bool:
         """Check if SQL query only accesses user data tables.
