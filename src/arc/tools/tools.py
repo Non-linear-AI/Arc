@@ -243,4 +243,66 @@ def get_base_tools() -> list[ArcTool]:
                 "required": ["updates"],
             },
         ),
+        ArcTool(
+            name="database_query",
+            description="Execute SQL queries against system or user databases",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "SQL query to execute",
+                    },
+                    "target_db": {
+                        "type": "string",
+                        "enum": ["system", "user"],
+                        "description": (
+                            "Target database: 'system' for read-only queries "
+                            "(default), 'user' for full SQL access"
+                        ),
+                    },
+                    "validate_schema": {
+                        "type": "boolean",
+                        "description": (
+                            "Whether to validate query against database schema "
+                            "(default: true)"
+                        ),
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        ArcTool(
+            name="schema_discovery",
+            description="Discover and explore database schema information",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list_tables", "describe_table", "show_schema"],
+                        "description": (
+                            "Schema discovery action: 'list_tables' shows all tables, "
+                            "'describe_table' shows detailed table structure, "
+                            "'show_schema' shows complete database overview"
+                        ),
+                    },
+                    "target_db": {
+                        "type": "string",
+                        "enum": ["system", "user"],
+                        "description": (
+                            "Target database: 'system' for Arc metadata, "
+                            "'user' for training data (default: system)"
+                        ),
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "description": (
+                            "Specific table name (required for 'describe_table' action)"
+                        ),
+                    },
+                },
+                "required": ["action"],
+            },
+        ),
     ]

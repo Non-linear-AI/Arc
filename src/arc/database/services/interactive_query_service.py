@@ -14,15 +14,18 @@ class InteractiveQueryService(BaseService):
     - Query validation and safety checks
     - Database targeting (system vs user)
     - Query result formatting
+    - Schema cache invalidation for DDL operations
     """
 
-    def __init__(self, db_manager):
+    def __init__(self, db_manager, schema_service=None):
         """Initialize InteractiveQueryService.
 
         Args:
             db_manager: DatabaseManager instance
+            schema_service: SchemaService instance for cache invalidation
         """
         super().__init__(db_manager)
+        self._schema_service = schema_service
 
     def execute_query(self, query: str, target_db: str = "system") -> QueryResult:
         """Execute SQL query against the specified database.
@@ -64,6 +67,10 @@ class InteractiveQueryService(BaseService):
             )
 
             execution_time = time.time() - start_time
+
+            # Check if this was a DDL operation and invalidate schema cache if needed
+            if self._schema_service and self._schema_service.is_ddl_statement(query):
+                self._schema_service.invalidate_cache(target_db)
 
             # Return a TimedQueryResult with execution time
             return TimedQueryResult(result.rows, execution_time)
