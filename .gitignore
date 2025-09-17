@@ -149,6 +149,7 @@ cython_debug/
 # uv
 .uv/
 .aider*
+.tools/
 
 # Database files
 *.db

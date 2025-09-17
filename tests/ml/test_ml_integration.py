@@ -145,7 +145,7 @@ class TestMLIntegration:
         assert job_service.db_manager is not None
 
     def test_training_config_missing_raises(self):
-        """Graphs without trainer.config should raise when training config is requested."""
+        """Graphs without trainer.config should raise when requesting config."""
         yaml_content = """
 version: "0.1"
 model_name: "missing_config_model"
