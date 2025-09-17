@@ -377,7 +377,6 @@ class TrainingService:
             ml_data_service = MLDataService(self.job_service.db_manager)
             data_processor = DataProcessor(
                 ml_data_service=ml_data_service,
-                database=self.job_service.db_manager._get_user_db(),
             )
 
             # Create data loaders - try dataset first, fallback to table
@@ -404,6 +403,7 @@ class TrainingService:
                     f"trying as table name for job {job_id}"
                 )
                 train_loader = data_processor.create_dataloader_from_table(
+                    ml_data_service=ml_data_service,
                     table_name=config.train_table,
                     feature_columns=config.feature_columns,
                     target_columns=[config.target_column],
@@ -450,6 +450,7 @@ class TrainingService:
                     f"trying as table name for job {job_id}"
                 )
                 val_loader = data_processor.create_dataloader_from_table(
+                    ml_data_service=ml_data_service,
                     table_name=config.validation_table,
                     feature_columns=config.feature_columns,
                     target_columns=[config.target_column],

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pandas as pd
 import pytest
 import torch
 
@@ -49,6 +50,70 @@ class _FakeDB(Database):
         pass
 
 
+class _FakeMLDataService:
+    """Minimal fake MLDataService for testing."""
+
+    def __init__(self, rows: list[dict[str, Any]]):
+        self.rows = rows
+
+    def dataset_exists(self, _dataset_name: str) -> bool:
+        return True  # Always pretend dataset exists for testing
+
+    def get_features_as_tensors(
+        self,
+        dataset_name: str,  # noqa: ARG002
+        feature_columns: list[str],
+        target_columns: list[str] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Convert fake data to tensors."""
+        # Extract feature data
+        feature_data = []
+        for row in self.rows:
+            feature_row = [row[col] for col in feature_columns]
+            feature_data.append(feature_row)
+
+        features = torch.tensor(feature_data, dtype=torch.float32)
+
+        # Extract target data if specified
+        targets = None
+        if target_columns:
+            target_data = []
+            for row in self.rows:
+                target_row = [row[col] for col in target_columns]
+                target_data.append(target_row)
+            targets = torch.tensor(target_data, dtype=torch.float32)
+            if len(target_columns) == 1:
+                targets = targets.squeeze(1)  # Remove extra dimension for single target
+
+        return features, targets
+
+    def get_data(
+        self,
+        dataset_name: str,  # noqa: ARG002
+        columns: list[str] | None = None,
+        limit: int | None = None,
+    ) -> pd.DataFrame:
+        """Get data as pandas DataFrame."""
+        if columns is None:
+            # If no columns specified, get all columns
+            if not self.rows:
+                return pd.DataFrame()
+            columns = list(self.rows[0].keys())
+
+        # Filter data by columns
+        filtered_data = []
+        for row in self.rows:
+            filtered_row = {col: row[col] for col in columns if col in row}
+            filtered_data.append(filtered_row)
+
+        df = pd.DataFrame(filtered_data)
+
+        if limit is not None:
+            df = df.head(limit)
+
+        return df
+
+
 def test_run_feature_pipeline_numeric_and_hash_ops():
     # Sample table rows
     rows = [
@@ -58,8 +123,8 @@ def test_run_feature_pipeline_numeric_and_hash_ops():
         {"age": 28, "bmi": 20.0, "glucose_level": 85.0, "outcome": 0, "country": "FR"},
     ]
 
-    db = _FakeDB(rows=rows)
-    dp = DataProcessor(database=db)
+    ml_data_service = _FakeMLDataService(rows=rows)
+    dp = DataProcessor(ml_data_service=ml_data_service)
 
     features_spec = {
         "feature_columns": ["age", "bmi", "glucose_level"],
@@ -140,8 +205,8 @@ def test_inspect_fit_train_only_and_prediction_requires_state():
         {"f1": 1.0, "f2": 2.0},
         {"f1": 3.0, "f2": 4.0},
     ]
-    db = _FakeDB(rows=rows)
-    dp = DataProcessor(database=db)
+    ml_data_service = _FakeMLDataService(rows=rows)
+    dp = DataProcessor(ml_data_service=ml_data_service)
 
     spec = {
         "feature_columns": ["f1", "f2"],
@@ -200,8 +265,8 @@ def test_inspect_fit_train_only_and_prediction_requires_state():
 
 
 def test_sequence_shift_and_hash_and_pad_ops():
-    db = _FakeDB(rows=[{"dummy": 1}])
-    dp = DataProcessor(database=db)
+    ml_data_service = _FakeMLDataService(rows=[{"dummy": 1}])
+    dp = DataProcessor(ml_data_service=ml_data_service)
 
     # sequence_shift on 2D tensor
     x = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=torch.long)
