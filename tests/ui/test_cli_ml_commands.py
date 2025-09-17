@@ -224,6 +224,8 @@ trainer:
     epochs: 2
     batch_size: 4
     learning_rate: 0.05
+    target_output_key: logits
+    reshape_targets: true
 """
 
 

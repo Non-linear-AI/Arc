@@ -88,6 +88,14 @@ class TrainingConfig:
     loss_function: str = "cross_entropy"
     loss_params: dict[str, Any] = field(default_factory=dict)
 
+    # Target output configuration
+    target_output_key: str | None = (
+        None  # Key to extract from dict outputs for loss calculation
+    )
+
+    # Target shape configuration
+    reshape_targets: bool = False  # Whether to add dimension to 1D targets
+
     # Training behavior
     validation_split: float = 0.2
     shuffle: bool = True
@@ -261,6 +269,8 @@ class ArcGraph:
                 device=config_data.get("device", "auto"),
                 log_every=config_data.get("log_every", 10),
                 verbose=config_data.get("verbose", True),
+                target_output_key=config_data.get("target_output_key"),
+                reshape_targets=config_data.get("reshape_targets", False),
             )
 
         trainer = TrainerSpec(

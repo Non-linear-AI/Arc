@@ -317,22 +317,32 @@ class ArcTrainer:
                 raise TrainingCancelledError("Training cancelled during batch")
 
             data, target = data.to(self.device), target.to(self.device)
-            # Only reshape targets for loss functions that expect 2D targets
-            if target.dim() == 1 and self.config.loss_function.lower() not in [
-                "cross_entropy"
-            ]:
+
+            # Reshape targets if configured
+            if self.config.reshape_targets and target.dim() == 1:
                 target = target.unsqueeze(1)
 
             # Forward pass
             self.optimizer.zero_grad()
             output = self.model(data)
-            if isinstance(output, dict):
-                try:
-                    output = next(iter(output.values()))
-                except StopIteration as exc:
+
+            # Extract target output if needed
+            if self.config.target_output_key is not None:
+                if isinstance(output, dict):
+                    if self.config.target_output_key not in output:
+                        available_keys = list(output.keys())
+                        key_name = self.config.target_output_key
+                        raise RuntimeError(
+                            f"Target output key '{key_name}' not found. "
+                            f"Available keys: {available_keys}"
+                        )
+                    output = output[self.config.target_output_key]
+                else:
+                    key_name = self.config.target_output_key
                     raise RuntimeError(
-                        "Model forward returned empty output dictionary"
-                    ) from exc
+                        f"target_output_key '{key_name}' specified "
+                        f"but model output is not a dictionary"
+                    )
             loss = self.loss_fn(output, target)
 
             # Backward pass
@@ -361,19 +371,30 @@ class ArcTrainer:
                     raise TrainingCancelledError("Training cancelled during validation")
 
                 data, target = data.to(self.device), target.to(self.device)
-                # Only reshape targets for loss functions that expect 2D targets
-                if target.dim() == 1 and self.config.loss_function.lower() not in [
-                    "cross_entropy"
-                ]:
+
+                # Reshape targets if configured
+                if self.config.reshape_targets and target.dim() == 1:
                     target = target.unsqueeze(1)
+
                 output = self.model(data)
-                if isinstance(output, dict):
-                    try:
-                        output = next(iter(output.values()))
-                    except StopIteration as exc:
+
+                # Extract target output if needed
+                if self.config.target_output_key is not None:
+                    if isinstance(output, dict):
+                        if self.config.target_output_key not in output:
+                            available_keys = list(output.keys())
+                            key_name = self.config.target_output_key
+                            raise RuntimeError(
+                                f"Target output key '{key_name}' not found. "
+                                f"Available keys: {available_keys}"
+                            )
+                        output = output[self.config.target_output_key]
+                    else:
+                        key_name = self.config.target_output_key
                         raise RuntimeError(
-                            "Model forward returned empty output dictionary"
-                        ) from exc
+                            f"target_output_key '{key_name}' specified "
+                            f"but model output is not a dictionary"
+                        )
                 loss = self.loss_fn(output, target)
                 total_loss += loss.item()
 
