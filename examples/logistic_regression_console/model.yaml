@@ -52,6 +52,8 @@ trainer:
     epochs: 5
     batch_size: 32
     learning_rate: 0.01
+    target_output_key: prediction
+    reshape_targets: true
     validation_split: 0.2
     shuffle: true
     checkpoint_every: 5
