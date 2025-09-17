@@ -317,7 +317,10 @@ class ArcTrainer:
                 raise TrainingCancelledError("Training cancelled during batch")
 
             data, target = data.to(self.device), target.to(self.device)
-            if target.dim() == 1:
+            # Only reshape targets for loss functions that expect 2D targets
+            if target.dim() == 1 and self.config.loss_function.lower() not in [
+                "cross_entropy"
+            ]:
                 target = target.unsqueeze(1)
 
             # Forward pass
@@ -358,7 +361,10 @@ class ArcTrainer:
                     raise TrainingCancelledError("Training cancelled during validation")
 
                 data, target = data.to(self.device), target.to(self.device)
-                if target.dim() == 1:
+                # Only reshape targets for loss functions that expect 2D targets
+                if target.dim() == 1 and self.config.loss_function.lower() not in [
+                    "cross_entropy"
+                ]:
                     target = target.unsqueeze(1)
                 output = self.model(data)
                 if isinstance(output, dict):

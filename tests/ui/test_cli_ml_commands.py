@@ -322,7 +322,8 @@ async def test_train_submits_job(tmp_path):
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --model my_model --data train_table --epochs 5 --learning-rate 0.005",
+        "/ml train --model my_model --data train_table --epochs 5 "
+        "--learning-rate 0.005",
         ui,
         runtime,
     )
@@ -464,9 +465,7 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     assert "Job ID:" in job_info
     job_id = job_info.split("Job ID:")[-1].strip()
 
-    result = await asyncio.wait_for(
-        runtime.training_service.wait_for_job(job_id, timeout=10), 10
-    )
+    result = runtime.training_service.wait_for_job(job_id, timeout=10)
     assert result is not None and result.success is True
 
     await asyncio.sleep(0)

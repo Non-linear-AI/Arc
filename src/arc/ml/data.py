@@ -941,7 +941,7 @@ class DataProcessor:
         shuffle: bool = True,
         **dataloader_kwargs,
     ) -> DataLoader:
-        """Create PyTorch DataLoader directly from database table (bypass MLDataService).
+        """Create PyTorch DataLoader directly from database table.
 
         Args:
             table_name: Name of the database table
@@ -969,7 +969,7 @@ class DataProcessor:
 
         try:
             # Query data from table - use safe column and table names
-            # Note: DuckDB allows table/column names to be used directly if they're valid identifiers
+            # Note: DuckDB allows table/column names as valid identifiers
             sql = f"SELECT {', '.join(all_columns)} FROM {table_name}"
             result = self.database.query(sql)
 

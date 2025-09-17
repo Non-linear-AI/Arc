@@ -90,7 +90,7 @@ async def test_training_service_completes_quick_job(tmp_path):
 
     job_id = service.submit_training_job(job_config)
 
-    result = await asyncio.wait_for(service.wait_for_job(job_id, timeout=10), 10)
+    result = service.wait_for_job(job_id, timeout=10)
 
     assert result is not None
     assert result.success is True
@@ -108,7 +108,7 @@ async def test_training_service_completes_quick_job(tmp_path):
 
 @pytest.mark.asyncio
 async def test_database_job_status_updates_correctly(tmp_path):
-    """Test that job status in database updates properly throughout training lifecycle."""
+    """Test job status updates properly throughout training lifecycle."""
 
     manager = DatabaseManager(":memory:", ":memory:")
     job_service = JobService(manager)
@@ -166,7 +166,8 @@ async def test_database_job_status_updates_correctly(tmp_path):
     # Check final database status - this is the critical test
     final_status = service.get_job_status(job_id)
     assert final_status["status"] == "completed", (
-        f"Expected 'completed', got '{final_status['status']}' with message: {final_status['message']}"
+        f"Expected 'completed', got '{final_status['status']}' with message: "
+        f"{final_status['message']}"
     )
     assert "completed" in final_status["message"].lower()
 
@@ -176,70 +177,8 @@ async def test_database_job_status_updates_correctly(tmp_path):
     service.shutdown()
 
 
-@pytest.mark.asyncio
-async def test_finalize_callback_handles_completion_status_correctly(tmp_path):
-    """Test that _finalize_job callback correctly handles task results and updates database status."""
-
-    import asyncio
-
-    from arc.ml.trainer import TrainingResult
-
-    manager = DatabaseManager(":memory:", ":memory:")
-    job_service = JobService(manager)
-    service = TrainingService(job_service, artifacts_dir=tmp_path / "artifacts")
-
-    # Mock a completed job
-    job_id = "test-finalize-job"
-
-    # Create a fake future that returns a successful result
-    fake_future = asyncio.Future()
-    fake_result = TrainingResult(
-        success=True,
-        total_epochs=3,
-        best_epoch=2,
-        final_train_loss=0.1,
-        final_val_loss=0.15,
-        best_val_loss=0.15,
-        train_losses=[0.5, 0.3, 0.1],
-        val_losses=[0.4, 0.25, 0.15],
-        metrics_history={"accuracy": [0.7, 0.85, 0.9]},
-        training_time=1.5,
-        error_message=None,
-    )
-    fake_future.set_result(fake_result)
-
-    # Add job to active jobs (simulating a running job)
-    service.active_jobs[job_id] = fake_future
-
-    # Create initial job record in database
-    from datetime import UTC, datetime
-
-    from arc.jobs.models import Job, JobStatus, JobType
-
-    job = Job(
-        job_id=job_id,
-        model_id=None,  # model_id is optional for training jobs
-        type=JobType.TRAIN_MODEL,
-        status=JobStatus.RUNNING,
-        message="Test job running",
-        sql_query=None,
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
-    )
-    job_service.create_job(job)
-
-    # Call _finalize_job directly
-    service._finalize_job(job_id, fake_future)
-
-    # Verify job status was updated to completed
-    final_status = service.get_job_status(job_id)
-    assert final_status["status"] == "completed"
-    assert "completed successfully" in final_status["message"]
-
-    # Verify job was removed from active jobs
-    assert job_id not in service.active_jobs
-
-    service.shutdown()
+# Removed test for _finalize_job as this method was refactored away
+# The functionality is covered by other integration tests
 
 
 @pytest.mark.asyncio

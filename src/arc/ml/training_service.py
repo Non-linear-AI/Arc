@@ -93,7 +93,8 @@ class TrainingJobProgressCallback:
             elapsed_time = time.time() - self.training_start_time
             if elapsed_time > self.max_training_time:
                 logger.error(
-                    f"Training job {self.job_id} exceeded timeout of {self.max_training_time}s"
+                    f"Training job {self.job_id} exceeded timeout of "
+                    f"{self.max_training_time}s"
                 )
                 try:
                     self.job_service.update_job_status(
@@ -106,7 +107,8 @@ class TrainingJobProgressCallback:
                         "Failed to update timeout status for job %s", self.job_id
                     )
                 raise TimeoutError(
-                    f"Training exceeded maximum time limit of {self.max_training_time} seconds"
+                    f"Training exceeded maximum time limit of "
+                    f"{self.max_training_time} seconds"
                 )
 
         progress_pct = int((epoch / total_epochs) * 100)
@@ -352,7 +354,7 @@ class TrainingService:
         try:
             logger.info(f"Starting training execution for job {job_id}")
 
-            # Setup training configuration - extract from Arc-Graph or use provided config
+            # Setup training configuration - extract from Arc-Graph
             if config.training_config:
                 training_config = config.training_config
             else:
@@ -392,12 +394,14 @@ class TrainingService:
                     shuffle=training_config.shuffle,
                 )
                 logger.info(
-                    f"Train data loader created from dataset '{config.train_table}' for job {job_id}"
+                    f"Train data loader created from dataset "
+                    f"'{config.train_table}' for job {job_id}"
                 )
             except ValueError:
                 # Fallback to direct table access
                 logger.info(
-                    f"Dataset '{config.train_table}' not found, trying as table name for job {job_id}"
+                    f"Dataset '{config.train_table}' not found, "
+                    f"trying as table name for job {job_id}"
                 )
                 train_loader = data_processor.create_dataloader_from_table(
                     table_name=config.train_table,
@@ -407,7 +411,8 @@ class TrainingService:
                     shuffle=training_config.shuffle,
                 )
                 logger.info(
-                    f"Train data loader created from table '{config.train_table}' for job {job_id}"
+                    f"Train data loader created from table "
+                    f"'{config.train_table}' for job {job_id}"
                 )
 
         except Exception as e:
@@ -435,12 +440,14 @@ class TrainingService:
                     shuffle=False,
                 )
                 logger.info(
-                    f"Validation data loader created from dataset '{config.validation_table}' for job {job_id}"
+                    f"Validation data loader created from dataset "
+                    f"'{config.validation_table}' for job {job_id}"
                 )
             except ValueError:
                 # Fallback to direct table access
                 logger.info(
-                    f"Validation dataset '{config.validation_table}' not found, trying as table name for job {job_id}"
+                    f"Validation dataset '{config.validation_table}' not found, "
+                    f"trying as table name for job {job_id}"
                 )
                 val_loader = data_processor.create_dataloader_from_table(
                     table_name=config.validation_table,
@@ -450,7 +457,8 @@ class TrainingService:
                     shuffle=False,
                 )
                 logger.info(
-                    f"Validation data loader created from table '{config.validation_table}' for job {job_id}"
+                    f"Validation data loader created from table "
+                    f"'{config.validation_table}' for job {job_id}"
                 )
 
         # Setup checkpoint directory
@@ -496,13 +504,14 @@ class TrainingService:
                 )
             except Exception as update_error:
                 logger.error(
-                    f"Failed to update job status after training error for {job_id}: {update_error}"
+                    f"Failed to update job status after training error for "
+                    f"{job_id}: {update_error}"
                 )
             raise
 
-        # Handle cancellation
-        if cancel_event.is_set() and not result.success:
-            # Ensure job status reflects cancellation even if trainer returned
+        # Handle cancellation (check first, before failure)
+        if cancel_event.is_set():
+            # Ensure job status reflects cancellation regardless of training result
             logger.info(f"Training was cancelled for job {job_id}")
             try:
                 self.job_service.update_job_status(
@@ -543,11 +552,13 @@ class TrainingService:
                 self.job_service.update_job_status(
                     job_id,
                     JobStatus.COMPLETED,
-                    f"Training completed but artifact save failed: {str(artifact_error)}",
+                    f"Training completed but artifact save failed: "
+                    f"{str(artifact_error)}",
                 )
             except Exception as update_error:
                 logger.error(
-                    f"Failed to update status after artifact error for {job_id}: {update_error}"
+                    f"Failed to update status after artifact error for "
+                    f"{job_id}: {update_error}"
                 )
 
         return result
