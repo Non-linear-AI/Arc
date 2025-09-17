@@ -12,6 +12,7 @@ from ..tools import (
     BashTool,
     DatabaseQueryTool,
     FileEditorTool,
+    SchemaDiscoveryTool,
     SearchTool,
     TodoTool,
     ToolResult,
@@ -91,6 +92,7 @@ class ArcAgent:
         self.search_tool = SearchTool()
         self.todo_tool = TodoTool()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
+        self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
 
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
@@ -111,6 +113,18 @@ class ArcAgent:
             else ""
         )
 
+        # Generate system schema if services are available
+        system_schema = None
+        if hasattr(self, 'database_query_tool') and self.database_query_tool:
+            try:
+                # Access schema service through the database query tool's services
+                services = self.database_query_tool.services
+                if services and hasattr(services, 'schema'):
+                    system_schema = services.schema.generate_system_schema_prompt()
+            except Exception:
+                # Continue without system schema if generation fails
+                pass
+
         # Load system prompt from Jinja2 template
         template_path = Path(__file__).parent.parent / "templates" / "system_prompt.j2"
 
@@ -128,6 +142,7 @@ class ArcAgent:
             system_content = template.render(
                 custom_instructions_section=custom_instructions_section,
                 current_directory=os.getcwd(),
+                system_schema=system_schema,
             )
         except Exception:
             # Fallback to basic system prompt if template loading fails
@@ -476,11 +491,25 @@ class ArcAgent:
             elif tool_call.name == "database_query":
                 if self.database_query_tool:
                     return await self.database_query_tool.execute(
-                        query=args["query"], target_db=args.get("target_db", "system")
+                        query=args["query"],
+                        target_db=args.get("target_db", "system"),
+                        validate_schema=args.get("validate_schema", True),
                     )
                 else:
                     return ToolResult.error_result(
                         "Database query tool not available. "
+                        "Database services not initialized."
+                    )
+            elif tool_call.name == "schema_discovery":
+                if self.schema_discovery_tool:
+                    return await self.schema_discovery_tool.execute(
+                        action=args["action"],
+                        target_db=args.get("target_db", "system"),
+                        table_name=args.get("table_name"),
+                    )
+                else:
+                    return ToolResult.error_result(
+                        "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
             else:

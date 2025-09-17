@@ -81,6 +81,8 @@ class InteractiveInterface:
             "search": "Search",
             "create_todo_list": "Create Plan",
             "update_todo_list": "Update Plan",
+            "database_query": "SQL Query",
+            "schema_discovery": "Schema Discovery",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -101,6 +103,8 @@ class InteractiveInterface:
             return "yellow"  # Search operations
         elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
             return "magenta"  # File operations
+        elif tool_name in ["database_query", "schema_discovery"]:
+            return "green"  # Database operations
         else:
             return "cyan"  # Default/messages
 
