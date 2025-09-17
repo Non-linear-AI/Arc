@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 try:
@@ -294,58 +294,21 @@ class ArcGraph:
         Returns:
             TrainingConfig: Training configuration for PyTorch trainer
         """
-        # Use the structured config if available, otherwise create defaults
-        if self.trainer.config:
-            base_config = self.trainer.config
-        else:
-            # Create default config with parsed optimizer and loss
-            base_config = TrainingConfig(
-                optimizer=self.trainer.optimizer.type.lower(),
-                optimizer_params=self.trainer.optimizer.config or {},
-                loss_function=self.trainer.loss.type.lower(),
-                loss_params={},
+        if self.trainer.config is None:
+            raise ValueError(
+                "Arc-Graph trainer.config is required for training. "
+                "Add a trainer.config section to the graph specification."
             )
 
-        # Apply overrides if provided
-        if override_params:
-            # Create a new config with overrides
-            config_dict = {
-                "epochs": override_params.get("epochs", base_config.epochs),
-                "batch_size": override_params.get("batch_size", base_config.batch_size),
-                "learning_rate": override_params.get(
-                    "learning_rate", base_config.learning_rate
-                ),
-                "optimizer": override_params.get("optimizer", base_config.optimizer),
-                "optimizer_params": override_params.get(
-                    "optimizer_params", base_config.optimizer_params
-                ),
-                "loss_function": override_params.get(
-                    "loss_function", base_config.loss_function
-                ),
-                "loss_params": override_params.get(
-                    "loss_params", base_config.loss_params
-                ),
-                "validation_split": override_params.get(
-                    "validation_split", base_config.validation_split
-                ),
-                "shuffle": override_params.get("shuffle", base_config.shuffle),
-                "drop_last": override_params.get("drop_last", base_config.drop_last),
-                "checkpoint_every": override_params.get(
-                    "checkpoint_every", base_config.checkpoint_every
-                ),
-                "save_best_only": override_params.get(
-                    "save_best_only", base_config.save_best_only
-                ),
-                "early_stopping_patience": override_params.get(
-                    "early_stopping_patience", base_config.early_stopping_patience
-                ),
-                "early_stopping_min_delta": override_params.get(
-                    "early_stopping_min_delta", base_config.early_stopping_min_delta
-                ),
-                "device": override_params.get("device", base_config.device),
-                "log_every": override_params.get("log_every", base_config.log_every),
-                "verbose": override_params.get("verbose", base_config.verbose),
-            }
-            return TrainingConfig(**config_dict)
+        config_data = asdict(self.trainer.config)
 
-        return base_config
+        if override_params:
+            unknown_keys = set(override_params) - set(config_data)
+            if unknown_keys:
+                raise ValueError(
+                    "Unsupported training config override(s): "
+                    + ", ".join(sorted(unknown_keys))
+                )
+            config_data.update(override_params)
+
+        return TrainingConfig(**config_data)

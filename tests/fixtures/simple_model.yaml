@@ -30,3 +30,7 @@ trainer:
   loss:
     type: core.BCELoss
     inputs: { pred: model.probability, target: target_columns.outcome }
+  config:
+    epochs: 1
+    batch_size: 32
+    learning_rate: 0.001

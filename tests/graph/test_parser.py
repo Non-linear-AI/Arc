@@ -53,6 +53,10 @@ model:
 trainer:
   optimizer: {type: AdamW}
   loss: {type: core.MSELoss}
+  config:
+    epochs: 1
+    batch_size: 8
+    learning_rate: 0.001
 """
     graph = ArcGraph.from_yaml(yaml_content)
     assert graph.model_name == "test_model"

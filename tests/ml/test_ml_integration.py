@@ -143,3 +143,33 @@ class TestMLIntegration:
         # and that the database connections work
         assert ml_data_service.db_manager is not None
         assert job_service.db_manager is not None
+
+    def test_training_config_missing_raises(self):
+        """Graphs without trainer.config should raise when training config is requested."""
+        yaml_content = """
+version: "0.1"
+model_name: "missing_config_model"
+
+features:
+  feature_columns: [x1, x2]
+  target_columns: [y]
+
+model:
+  inputs:
+    features: {dtype: float32, shape: [null, 2]}
+  graph:
+    - name: linear
+      type: core.Linear
+      params: {in_features: 2, out_features: 1}
+      inputs: {input: features}
+  outputs:
+    prediction: linear.output
+
+trainer:
+  optimizer: {type: AdamW}
+  loss: {type: core.MSELoss}
+"""
+
+        graph = ArcGraph.from_yaml(yaml_content)
+        with pytest.raises(ValueError, match="trainer.config is required"):
+            graph.to_training_config()
