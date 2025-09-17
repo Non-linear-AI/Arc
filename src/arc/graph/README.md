@@ -40,6 +40,7 @@ model:
 # === EXECUTION CONFIG ===
 # Training and prediction configurations
 trainer:
+  config: {...}
   optimizer: {...}
   loss: {...}
 
@@ -209,9 +210,10 @@ model:
     probability: "sigmoid_activation.output"
 
 trainer:
+  config: { learning_rate: 0.001 }
+  
   optimizer:
     type: "AdamW"
-    config: { learning_rate: 0.001 }
   
   loss:
     type: "core.BCELoss"
@@ -296,9 +298,10 @@ model:
     next_item_logits: "output_head.output"
 
 trainer:
+  config: { learning_rate: 0.001 }
+  
   optimizer:
     type: "AdamW"
-    config: { learning_rate: 0.001 }
   
   loss:
     type: "core.CrossEntropyLoss"

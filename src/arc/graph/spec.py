@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 try:
@@ -72,9 +72,48 @@ class LossSpec:
 
 
 @dataclass
+class TrainingConfig:
+    """Configuration for model training."""
+
+    # Core training parameters
+    epochs: int = 10
+    batch_size: int = 32
+    learning_rate: float = 0.001
+
+    # Optimizer configuration
+    optimizer: str = "adam"
+    optimizer_params: dict[str, Any] = field(default_factory=dict)
+
+    # Loss function configuration
+    loss_function: str = "cross_entropy"
+    loss_params: dict[str, Any] = field(default_factory=dict)
+
+    # Training behavior
+    validation_split: float = 0.2
+    shuffle: bool = True
+    drop_last: bool = False
+
+    # Checkpointing
+    checkpoint_every: int = 5  # epochs
+    save_best_only: bool = True
+
+    # Early stopping
+    early_stopping_patience: int | None = None
+    early_stopping_min_delta: float = 0.001
+
+    # Hardware
+    device: str = "auto"  # "auto", "cpu", "cuda", "mps"
+
+    # Logging
+    log_every: int = 10  # batches
+    verbose: bool = True
+
+
+@dataclass
 class TrainerSpec:
     optimizer: OptimizerSpec
     loss: LossSpec
+    config: TrainingConfig | None = None
 
 
 @dataclass
@@ -197,7 +236,36 @@ class ArcGraph:
         loss_spec = LossSpec(
             type=str(loss.get("type")), inputs=loss.get("inputs") or {}
         )
-        trainer = TrainerSpec(optimizer=optimizer, loss=loss_spec)
+
+        # Parse training config section
+        trainer_config = None
+        if "config" in t:
+            config_data = t["config"]
+            trainer_config = TrainingConfig(
+                epochs=config_data.get("epochs", 10),
+                batch_size=config_data.get("batch_size", 32),
+                learning_rate=config_data.get("learning_rate", 0.001),
+                optimizer=optimizer.type.lower(),
+                optimizer_params=optimizer.config or {},
+                loss_function=loss_spec.type.lower(),
+                loss_params={},
+                validation_split=config_data.get("validation_split", 0.2),
+                shuffle=config_data.get("shuffle", True),
+                drop_last=config_data.get("drop_last", False),
+                checkpoint_every=config_data.get("checkpoint_every", 5),
+                save_best_only=config_data.get("save_best_only", True),
+                early_stopping_patience=config_data.get("early_stopping_patience"),
+                early_stopping_min_delta=config_data.get(
+                    "early_stopping_min_delta", 0.001
+                ),
+                device=config_data.get("device", "auto"),
+                log_every=config_data.get("log_every", 10),
+                verbose=config_data.get("verbose", True),
+            )
+
+        trainer = TrainerSpec(
+            optimizer=optimizer, loss=loss_spec, config=trainer_config
+        )
 
         # Predictor (optional)
         pred = data.get("predictor")
@@ -214,3 +282,33 @@ class ArcGraph:
             trainer=trainer,
             predictor=predictor,
         )
+
+    def to_training_config(
+        self, override_params: dict[str, Any] | None = None
+    ) -> TrainingConfig:
+        """Get training configuration from Arc-Graph specification.
+
+        Args:
+            override_params: Optional parameters to override defaults
+
+        Returns:
+            TrainingConfig: Training configuration for PyTorch trainer
+        """
+        if self.trainer.config is None:
+            raise ValueError(
+                "Arc-Graph trainer.config is required for training. "
+                "Add a trainer.config section to the graph specification."
+            )
+
+        config_data = asdict(self.trainer.config)
+
+        if override_params:
+            unknown_keys = set(override_params) - set(config_data)
+            if unknown_keys:
+                raise ValueError(
+                    "Unsupported training config override(s): "
+                    + ", ".join(sorted(unknown_keys))
+                )
+            config_data.update(override_params)
+
+        return TrainingConfig(**config_data)

@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from ..database.base import Database
+from ..database.services import MLDataService
 from ..plugins import get_plugin_manager
 from .processors.base import ProcessorError, StatefulProcessor
 
@@ -48,7 +49,14 @@ class ArcDataset(Dataset):
 class DataProcessor:
     """Processes data for Arc-Graph models with plugin support."""
 
-    def __init__(self, database: Database | None = None):
+    def __init__(
+        self,
+        ml_data_service: MLDataService | None = None,
+        database: Database | None = None,
+    ):
+        # Prioritize MLDataService, fallback to direct database access for
+        # backwards compatibility
+        self.ml_data_service = ml_data_service
         self.database = database
         self.plugin_manager = get_plugin_manager()
         self.fitted_processors: dict[str, StatefulProcessor] = {}
@@ -71,11 +79,23 @@ class DataProcessor:
             Tuple of (features, targets) tensors
 
         Raises:
-            RuntimeError: If database not provided
+            RuntimeError: If no data service available
             ValueError: If columns not found or data invalid
         """
+        # Use MLDataService if available (preferred)
+        if self.ml_data_service:
+            try:
+                return self.ml_data_service.get_features_as_tensors(
+                    dataset_name=table_name,
+                    feature_columns=feature_columns,
+                    target_columns=target_columns,
+                )
+            except Exception as e:
+                raise ValueError(f"Failed to load data via MLDataService: {e}") from e
+
+        # Fallback to direct database access
         if not self.database:
-            raise RuntimeError("Database connection required to load from table")
+            raise RuntimeError("Either MLDataService or Database connection required")
 
         # Build query
         all_columns = feature_columns[:]
@@ -579,6 +599,24 @@ class DataProcessor:
         cols = list(columns)
         if not cols:
             raise ProcessorError("No columns specified to load from table")
+
+        # Use MLDataService if available (preferred)
+        if self.ml_data_service:
+            try:
+                return self.ml_data_service.get_data(
+                    dataset_name=table_name,
+                    columns=cols,
+                    limit=None,  # Get all data for processing pipeline
+                )
+            except Exception as e:
+                raise ProcessorError(
+                    f"Failed to load data via MLDataService: {e}"
+                ) from e
+
+        # Fallback to direct database access
+        if not self.database:
+            raise ProcessorError("Either MLDataService or Database connection required")
+
         cols_clause = ", ".join(cols)
         result = self.database.query(f"SELECT {cols_clause} FROM {table_name}")
         if not result.rows:
@@ -849,3 +887,47 @@ class DataProcessor:
             rows.append(torch.tensor(hashed, dtype=torch.long))
         output = torch.stack(rows)
         return {"output": output}
+
+    # High-level convenience methods for training integration
+
+    def create_dataloader_from_dataset(
+        self,
+        dataset_name: str,
+        feature_columns: list[str],
+        target_columns: list[str] | None = None,
+        batch_size: int = 32,
+        shuffle: bool = True,
+        **dataloader_kwargs,
+    ) -> DataLoader:
+        """Create PyTorch DataLoader from dataset using integrated MLDataService.
+
+        Args:
+            dataset_name: Name of the dataset
+            feature_columns: List of feature column names
+            target_columns: Optional list of target column names
+            batch_size: Batch size for DataLoader
+            shuffle: Whether to shuffle data
+            **dataloader_kwargs: Additional arguments for DataLoader
+
+        Returns:
+            PyTorch DataLoader ready for training
+
+        Raises:
+            RuntimeError: If no data service available
+            ValueError: If dataset or columns don't exist
+        """
+        # Load data using the integrated approach
+        features, targets = self.load_from_table(
+            table_name=dataset_name,
+            feature_columns=feature_columns,
+            target_columns=target_columns,
+        )
+
+        # Create dataset and dataloader
+        return self.create_dataloader(
+            features=features,
+            targets=targets,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            **dataloader_kwargs,
+        )

@@ -129,6 +129,14 @@ model:
 trainer:
   optimizer: {type: AdamW}
   loss: {type: core.BCELoss}
+  config:
+    epochs: 1
+    batch_size: 32
+    learning_rate: 0.001
+  config:
+    epochs: 1
+    batch_size: 32
+    learning_rate: 0.001
 """
 
         graph = ArcGraph.from_yaml(yaml_content)
@@ -178,6 +186,10 @@ model:
 trainer:
   optimizer: {type: AdamW}
   loss: {type: core.BCELoss}
+  config:
+    epochs: 1
+    batch_size: 32
+    learning_rate: 0.001
 """
 
         graph = ArcGraph.from_yaml(yaml_content)

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from .interactive_query_service import InteractiveQueryService
 from .job_service import JobService
+from .ml_data_service import MLDataService
 from .model_service import ModelService
 from .plugin_service import PluginService
 from .schema_service import SchemaService
@@ -34,6 +35,7 @@ class ServiceContainer:
         self._job_service = None
         self._plugin_service = None
         self._schema_service = None
+        self._ml_data_service = None
 
     @property
     def query(self) -> InteractiveQueryService:
@@ -69,6 +71,13 @@ class ServiceContainer:
         if self._schema_service is None:
             self._schema_service = SchemaService(self.db_manager)
         return self._schema_service
+
+    @property
+    def ml_data(self) -> MLDataService:
+        """Get the ML data service."""
+        if self._ml_data_service is None:
+            self._ml_data_service = MLDataService(self.db_manager)
+        return self._ml_data_service
 
     def close(self) -> None:
         """Clean up resources and close database connections."""
