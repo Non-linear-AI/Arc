@@ -99,12 +99,15 @@ class InteractiveQueryService(BaseService):
 
         if target_db == "system":
             # System database: read-only access (SELECT only)
-            if not query_upper.startswith("SELECT"):
-                raise QueryValidationError(
-                    "System database is read-only. Only SELECT queries are allowed. "
-                    "Supported: SELECT statements. "
+            if not query_upper.startswith("SELECT") and not query_upper.startswith(
+                "SHOW"
+            ):
+                msg = (
+                    "System database is read-only. Only SELECT or SHOW queries are "
+                    "allowed. Supported: SELECT statements. "
                     "Not supported: INSERT, UPDATE, DELETE, CREATE, DROP, etc."
                 )
+                raise QueryValidationError(msg)
         elif target_db == "user":
             # User database: full SQL access allowed
             # We could add specific validations here if needed in the future

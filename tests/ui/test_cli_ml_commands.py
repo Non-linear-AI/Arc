@@ -219,7 +219,7 @@ model:
 
 trainer:
   optimizer: {type: adam}
-  loss: {type: binary_cross_entropy}
+  loss: {type: binary_cross_entropy_with_logits}
   config:
     epochs: 2
     batch_size: 4

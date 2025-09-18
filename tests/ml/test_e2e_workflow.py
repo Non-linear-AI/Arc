@@ -106,7 +106,7 @@ trainer:
       betas: [0.9, 0.999]
 
   loss:
-    type: "binary_cross_entropy"
+    type: "binary_cross_entropy_with_logits"
     inputs:
       predictions: "model.logits"  # Use logits for BCEWithLogitsLoss
       targets: "vars.target"
@@ -231,7 +231,7 @@ class TestE2EWorkflow:
         # Test training config extraction
         training_config = arc_graph.to_training_config()
         assert training_config.optimizer == "adam"
-        assert training_config.loss_function == "binary_cross_entropy"
+        assert training_config.loss_function == "binary_cross_entropy_with_logits"
         assert training_config.epochs == 5
 
     @pytest.mark.asyncio
@@ -551,7 +551,7 @@ class TestE2EWorkflow:
         assert override_config.learning_rate == 0.005
         # Original values should remain for non-overridden fields
         assert override_config.optimizer == "adam"
-        assert override_config.loss_function == "binary_cross_entropy"
+        assert override_config.loss_function == "binary_cross_entropy_with_logits"
 
     def test_feature_config_extraction(self):
         """Test feature configuration extraction."""
