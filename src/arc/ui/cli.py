@@ -246,8 +246,6 @@ def _ml_create_model(
         {
             "name": True,
             "schema": True,
-            "description": True,
-            "type": True,
         },
     )
 
@@ -258,15 +256,10 @@ def _ml_create_model(
         raise CommandError("/ml create-model requires --name and --schema")
     schema_path_obj = Path(str(schema_path))
 
-    description = options.get("description")
-    model_type = options.get("type")
-
     try:
         model = runtime.create_model(
             name=str(name),
             schema_path=schema_path_obj,
-            description=str(description) if description else None,
-            model_type=str(model_type) if model_type else None,
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc
@@ -276,50 +269,12 @@ def _ml_create_model(
     )
 
 
-def _parse_int_option(
-    options: dict[str, str | bool], key: str, error_message: str
-) -> int | None:
-    if key not in options:
-        return None
-    try:
-        return int(options[key])
-    except (TypeError, ValueError) as exc:
-        raise CommandError(error_message) from exc
-
-
-def _parse_float_option(
-    options: dict[str, str | bool], key: str, error_message: str
-) -> float | None:
-    if key not in options:
-        return None
-    try:
-        return float(options[key])
-    except (TypeError, ValueError) as exc:
-        raise CommandError(error_message) from exc
-
-
-def _parse_tags(value: str | bool | None) -> list[str] | None:
-    if not value:
-        return None
-    tags = [tag.strip() for tag in str(value).split(",") if tag.strip()]
-    return tags or None
-
-
 def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -> None:
     options = _parse_options(
         args,
         {
             "model": True,
             "data": True,
-            "target": True,
-            "validation-table": True,
-            "validation-split": True,
-            "epochs": True,
-            "batch-size": True,
-            "learning-rate": True,
-            "checkpoint-dir": True,
-            "description": True,
-            "tags": True,
         },
     )
 
@@ -329,37 +284,10 @@ def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -
     if not model_name or not train_table:
         raise CommandError("/ml train requires --model and --data")
 
-    epochs = _parse_int_option(options, "epochs", "Option --epochs must be an integer")
-    batch_size = _parse_int_option(
-        options, "batch-size", "Option --batch-size must be an integer"
-    )
-    learning_rate = _parse_float_option(
-        options, "learning-rate", "Option --learning-rate must be a number"
-    )
-    validation_split = _parse_float_option(
-        options, "validation-split", "Option --validation-split must be a number"
-    )
-
-    tags = _parse_tags(options.get("tags"))
-
-    description = options.get("description")
-    validation_table = options.get("validation-table")
-    checkpoint_dir = options.get("checkpoint-dir")
-    target_column = options.get("target")
-
     try:
         job_id = runtime.train_model(
             model_name=str(model_name),
             train_table=str(train_table),
-            target_column=str(target_column) if target_column else None,
-            validation_table=str(validation_table) if validation_table else None,
-            validation_split=validation_split,
-            epochs=epochs,
-            batch_size=batch_size,
-            learning_rate=learning_rate,
-            checkpoint_dir=str(checkpoint_dir) if checkpoint_dir else None,
-            description=str(description) if description else None,
-            tags=tags,
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc
@@ -378,10 +306,6 @@ def _ml_predict(
         {
             "model": True,
             "data": True,
-            "batch-size": True,
-            "limit": True,
-            "output": True,
-            "device": True,
         },
     )
 
@@ -391,21 +315,10 @@ def _ml_predict(
     if not model_name or not table_name:
         raise CommandError("/ml predict requires --model and --data")
 
-    batch_size = _parse_int_option(
-        options, "batch-size", "Option --batch-size must be an integer"
-    )
-    limit = _parse_int_option(options, "limit", "Option --limit must be an integer")
-    output_table = options.get("output")
-    device = options.get("device")
-
     try:
         summary = runtime.predict(
             model_name=str(model_name),
             table_name=str(table_name),
-            batch_size=batch_size or 32,
-            limit=limit,
-            output_table=str(output_table) if output_table else None,
-            device=str(device) if device else None,
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc

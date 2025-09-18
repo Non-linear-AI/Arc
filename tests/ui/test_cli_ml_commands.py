@@ -400,8 +400,7 @@ async def test_train_submits_job(tmp_path):
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --model my_model --data train_table --epochs 5 "
-        "--learning-rate 0.005",
+        "/ml train --model my_model --data train_table",
         ui,
         runtime,
     )
@@ -414,8 +413,10 @@ async def test_train_submits_job(tmp_path):
     job_config = training_service.submitted_jobs[0]
     assert job_config.train_table == "train_table"
     assert job_config.target_column == "y"
-    assert job_config.training_config.epochs == 5
-    assert job_config.training_config.learning_rate == 0.005
+    assert job_config.training_config.epochs == 3  # Default from arc_graph config
+    assert (
+        job_config.training_config.learning_rate == 0.01
+    )  # Default from arc_graph config
 
 
 @pytest.mark.asyncio
@@ -533,7 +534,7 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     assert any("registered" in msg for msg in ui.successes)
 
     await handle_ml_command(
-        "/ml train --model pima_cli --data pima_small --epochs 2 --batch-size 4",
+        "/ml train --model pima_cli --data pima_small",
         ui,
         runtime,
     )
