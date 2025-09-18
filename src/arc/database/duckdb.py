@@ -1,6 +1,5 @@
 """DuckDB database implementation."""
 
-import contextlib
 import time
 from pathlib import Path
 from typing import Any
@@ -167,18 +166,12 @@ class DuckDBDatabase(Database):
                     artifact_id TEXT PRIMARY KEY,
                     job_id TEXT NOT NULL,
                     model_id TEXT NOT NULL,
+                    model_version INTEGER NOT NULL,
                     artifact_path TEXT NOT NULL,
                     metrics JSON,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-
-            # Ensure schema backward compatibility for existing databases
-            with contextlib.suppress(Exception):
-                # Ignore if column already has the expected type or cannot be altered
-                self.execute(
-                    "ALTER TABLE trained_models ALTER COLUMN model_id TYPE TEXT"
-                )
 
             # Tracks models served for real-time inference
             self.execute("""

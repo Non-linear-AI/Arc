@@ -152,7 +152,8 @@ def test_train_and_predict_flow(tmp_path, runtime, db_manager, output_table):
     assert len(trained_rows) == 1
     record = trained_rows[0]
     assert record["job_id"] == job_id
-    assert record["model_id"] == "runtimeflow-v1"
+    assert record["model_id"] == "runtimeflow"
+    assert record.get("model_version") == 1
     assert Path(record["artifact_path"]).exists()
 
     metrics = record["metrics"]

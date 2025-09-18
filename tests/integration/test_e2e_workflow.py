@@ -136,7 +136,8 @@ class TestEndToEndWorkflow:
         )
 
         job_config = TrainingJobConfig(
-            model_id="test-model-v1",
+            model_id="test-model",
+            model_version=1,
             model_name="test_model",
             arc_graph=arc_graph,
             train_table=sample_data["table_name"],
@@ -162,17 +163,19 @@ class TestEndToEndWorkflow:
         assert len(artifacts) >= 1
 
         # Find our model artifact
-        test_artifacts = [a for a in artifacts if a.model_id == "test-model-v1"]
+        test_artifacts = [a for a in artifacts if a.model_id == "test-model"]
         assert len(test_artifacts) == 1
 
         # Phase 3: Load model for prediction
         predictor = ArcPredictor.load_from_artifact(
-            artifact_manager=artifact_manager, model_id="test-model-v1", device="cpu"
+            artifact_manager=artifact_manager,
+            model_id="test-model",
+            device="cpu",
         )
 
         # Verify predictor is configured correctly
         predictor_info = predictor.to_dict()
-        assert predictor_info["model_id"] == "test-model-v1"
+        assert predictor_info["model_id"] == "test-model"
         assert predictor_info["output_keys"] == ["prediction", "logits"]
         assert predictor_info["feature_columns"] == ["feature1", "feature2"]
 
@@ -234,7 +237,8 @@ class TestEndToEndWorkflow:
         )
 
         job_config = TrainingJobConfig(
-            model_id="checkpoint-test-v1",
+            model_id="checkpoint-test",
+            model_version=1,
             model_name="checkpoint_test",
             arc_graph=arc_graph,
             train_table=sample_data["table_name"],
@@ -249,7 +253,7 @@ class TestEndToEndWorkflow:
         assert result is not None and result.success
 
         # Find checkpoint file
-        checkpoint_dir = temp_artifacts_dir / "checkpoint-test-v1" / "checkpoints"
+        checkpoint_dir = temp_artifacts_dir / "checkpoint-test" / "checkpoints"
         checkpoint_files = list(checkpoint_dir.glob("*.pt"))
         assert len(checkpoint_files) > 0
 
@@ -277,7 +281,8 @@ class TestEndToEndWorkflow:
         )
 
         job_config = TrainingJobConfig(
-            model_id="error-test-v1",
+            model_id="error-test",
+            model_version=1,
             model_name="error_test",
             arc_graph=arc_graph,
             train_table=sample_data["table_name"],
@@ -294,7 +299,9 @@ class TestEndToEndWorkflow:
         # Load predictor
         artifact_manager = ModelArtifactManager(temp_artifacts_dir)
         predictor = ArcPredictor.load_from_artifact(
-            artifact_manager=artifact_manager, model_id="error-test-v1", device="cpu"
+            artifact_manager=artifact_manager,
+            model_id="error-test",
+            device="cpu",
         )
 
         # Test wrong input shape
@@ -364,7 +371,8 @@ predictor:
         )
 
         job_config = TrainingJobConfig(
-            model_id="custom-pred-v1",
+            model_id="custom-pred",
+            model_version=1,
             model_name="custom_pred",
             arc_graph=arc_graph,
             train_table=sample_data["table_name"],
@@ -381,7 +389,9 @@ predictor:
         # Load predictor
         artifact_manager = ModelArtifactManager(temp_artifacts_dir)
         predictor = ArcPredictor.load_from_artifact(
-            artifact_manager=artifact_manager, model_id="custom-pred-v1", device="cpu"
+            artifact_manager=artifact_manager,
+            model_id="custom-pred",
+            device="cpu",
         )
 
         # Verify only logits are returned

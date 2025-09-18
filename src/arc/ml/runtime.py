@@ -18,6 +18,8 @@ from .artifacts import ModelArtifactManager
 from .predictor import ArcPredictor
 from .training_service import TrainingJobConfig, TrainingService
 
+MODEL_ID_PATTERN = re.compile(r"^(?P<base>.+?)-v(?P<version>\d+)$")
+
 if TYPE_CHECKING:  # pragma: no cover - import heavy modules only for typing
     from ..database.services.container import ServiceContainer
 
@@ -82,7 +84,8 @@ class MLRuntime:
 
         latest = self.model_service.get_latest_model_by_name(name)
         version = 1 if latest is None else latest.version + 1
-        model_id = f"{_slugify_name(name)}-v{version}"
+        base_slug = _slugify_name(name)
+        model_id = f"{base_slug}-v{version}"
 
         now = datetime.now(UTC)
         arc_graph_payload = json.dumps(asdict(arc_graph), default=str)
@@ -211,8 +214,13 @@ class MLRuntime:
         if checkpoint_dir:
             checkpoint_path = str(Path(checkpoint_dir).expanduser())
 
+        model_key, record_version = _split_model_identifier(model_record.id)
+        if record_version is None:
+            record_version = model_record.version
+
         job_config = TrainingJobConfig(
-            model_id=model_record.id,
+            model_id=model_key,
+            model_version=record_version,
             model_name=model_record.name,
             arc_graph=arc_graph,
             train_table=train_table,
@@ -289,10 +297,12 @@ class MLRuntime:
         if model_record is None:
             raise MLRuntimeError(f"Model '{model_name}' not found")
 
+        model_key, _ = _split_model_identifier(model_record.id)
+
         try:
             return ArcPredictor.load_from_artifact(
                 artifact_manager=self.artifact_manager,
-                model_id=model_record.id,
+                model_id=model_key,
                 device=device or "cpu",
             )
         except Exception as exc:  # noqa: BLE001
@@ -323,6 +333,13 @@ class MLRuntime:
             )
         except Exception as exc:  # noqa: BLE001
             raise MLRuntimeError(f"Failed to save predictions to table: {exc}") from exc
+
+
+def _split_model_identifier(model_id: str) -> tuple[str, int | None]:
+    match = MODEL_ID_PATTERN.match(model_id)
+    if match:
+        return match.group("base"), int(match.group("version"))
+    return model_id, None
 
 
 def _slugify_name(name: str) -> str:
