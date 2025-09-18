@@ -142,11 +142,9 @@ class ArcTrainer:
         elif loss_name == "mae":
             return nn.L1Loss(**params)
         elif loss_name == "binary_cross_entropy":
-            return nn.BCEWithLogitsLoss(**params)
-        elif loss_name == "bce":
-            return nn.BCELoss(**params)
-        elif loss_name == "bce_with_logits":
-            return nn.BCEWithLogitsLoss(**params)
+            return nn.BCELoss(**params)  # For probabilities (0-1)
+        elif loss_name == "binary_cross_entropy_with_logits":
+            return nn.BCEWithLogitsLoss(**params)  # For raw logits
         else:
             raise ValueError(f"Unsupported loss function: {loss_name}")
 
@@ -173,19 +171,19 @@ class ArcTrainer:
         """
         start_time = time.time()
 
+        # Initialize result tracking first
+        result = TrainingResult(
+            success=False,
+            total_epochs=self.config.epochs,
+            best_epoch=0,
+            final_train_loss=0.0,
+        )
+
         try:
             # Setup training components
             self.model = model.to(self.device)
             self.optimizer = self._setup_optimizer(model)
             self.loss_fn = self._setup_loss_function()
-
-            # Initialize result tracking
-            result = TrainingResult(
-                success=False,
-                total_epochs=self.config.epochs,
-                best_epoch=0,
-                final_train_loss=0.0,
-            )
 
             # Setup checkpoint directory
             if checkpoint_dir:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import torch
 from dotenv import load_dotenv
 
 from ..core import ArcAgent, SettingsManager
@@ -22,6 +23,8 @@ from ..database.models.model import Model
 from ..database.services import ServiceContainer
 from ..error_handling import error_handler
 from ..graph.spec import ArcGraph
+from ..ml.artifacts import ModelArtifactManager
+from ..ml.predictor import ArcPredictor
 from ..ml.training_service import TrainingJobConfig, TrainingService
 from ..utils import ConfirmationService, performance_manager
 from .console import InteractiveInterface
@@ -244,7 +247,7 @@ async def handle_ml_command(
         return
 
     if len(tokens) < 2:
-        ui.show_system_error("Usage: /ml <create-model|train|jobs> ...")
+        ui.show_system_error("Usage: /ml <create-model|train|predict|jobs> ...")
         return
 
     subcommand = tokens[1]
@@ -255,6 +258,8 @@ async def handle_ml_command(
             _ml_create_model(args, ui, runtime)
         elif subcommand == "train":
             _ml_train(args, ui, runtime)
+        elif subcommand == "predict":
+            _ml_predict(args, ui, runtime)
         elif subcommand == "jobs":
             _ml_jobs(args, ui, runtime)
         else:
@@ -479,6 +484,132 @@ def _ml_train(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> 
         "Training job submitted. Use /ml jobs status <job_id> to monitor."
     )
     ui.show_info(f"Job ID: {job_id}")
+
+
+def _ml_predict(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
+    options = _parse_options(
+        args,
+        {
+            "model": True,
+            "data": True,
+            "batch-size": True,
+            "limit": True,
+            "output": True,
+            "device": True,
+        },
+    )
+
+    model_name = options.get("model")
+    table_name = options.get("data")
+
+    if not model_name or not table_name:
+        raise CommandError("/ml predict requires --model and --data")
+
+    # Validate table exists
+    if not runtime.ml_data_service.dataset_exists(str(table_name)):
+        raise CommandError(f"Table '{table_name}' does not exist")
+
+    # Load predictor
+    predictor = _load_predictor(str(model_name), runtime, options.get("device"))
+
+    # Parse options
+    batch_size = 32
+    if "batch-size" in options:
+        try:
+            batch_size = int(options["batch-size"])
+        except ValueError as e:
+            raise CommandError("Option --batch-size must be an integer") from e
+
+    limit = None
+    if "limit" in options:
+        try:
+            limit = int(options["limit"])
+        except ValueError as e:
+            raise CommandError("Option --limit must be an integer") from e
+
+    # Run prediction
+    try:
+        predictions = predictor.predict_from_table(
+            ml_data_service=runtime.ml_data_service,
+            table_name=str(table_name),
+            batch_size=batch_size,
+            limit=limit,
+        )
+
+        # Show summary
+        total_predictions = list(predictions.values())[0].shape[0]
+        output_names = list(predictions.keys())
+
+        ui.show_system_success(
+            f"Generated {total_predictions} predictions with outputs: "
+            f"{', '.join(output_names)}"
+        )
+
+        # Optionally save to table
+        output_table = options.get("output")
+        if output_table:
+            _save_predictions_to_table(
+                predictions,
+                str(output_table),
+                runtime,
+                predictor,
+                str(table_name),
+                limit,
+            )
+            ui.show_system_success(f"Predictions saved to table '{output_table}'")
+
+    except Exception as e:
+        raise CommandError(f"Prediction failed: {e}") from e
+
+
+def _load_predictor(
+    model_name: str, runtime: MLRuntime, device: str | None = None
+) -> ArcPredictor:
+    """Load predictor from model name."""
+    # Get model record
+    model_record = runtime.model_service.get_latest_model_by_name(model_name)
+    if model_record is None:
+        raise CommandError(f"Model '{model_name}' not found")
+
+    # Load from artifacts
+    artifact_manager = ModelArtifactManager(runtime.artifacts_root)
+    try:
+        return ArcPredictor.load_from_artifact(
+            artifact_manager=artifact_manager,
+            model_id=model_record.id,
+            device=device or "cpu",
+        )
+    except Exception as e:
+        raise CommandError(f"Failed to load predictor: {e}") from e
+
+
+def _save_predictions_to_table(
+    predictions: dict[str, torch.Tensor],
+    table_name: str,
+    runtime: MLRuntime,
+    predictor: "ArcPredictor",
+    source_table: str,
+    limit: int | None = None,
+) -> None:
+    """Save predictions to a database table with original features."""
+    try:
+        # Get feature columns from Arc-Graph
+        feature_columns = predictor.arc_graph.features.feature_columns
+        if not feature_columns:
+            raise CommandError("No feature columns found in Arc-Graph specification")
+
+        # Use ml_data_service to save predictions with streaming support
+        runtime.ml_data_service.save_prediction_results(
+            source_table=source_table,
+            output_table=table_name,
+            feature_columns=feature_columns,
+            predictions=predictions,
+            batch_size=1000,  # Process in batches of 1000 rows
+            limit=limit,
+        )
+
+    except Exception as e:
+        raise CommandError(f"Failed to save predictions to table: {e}") from e
 
 
 def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:

@@ -691,3 +691,150 @@ class MLDataService(BaseService):
 
         # Allow alphanumeric, underscores
         return re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", column_name) is not None
+
+    def save_prediction_results(
+        self,
+        source_table: str,
+        output_table: str,
+        feature_columns: list[str],
+        predictions: dict[str, Any],
+        batch_size: int = 1000,
+        limit: int | None = None,
+    ) -> None:
+        """Save prediction results with original features to a new table.
+
+        Streams data in batches to handle large datasets efficiently.
+
+        Args:
+            source_table: Name of the source table containing features
+            output_table: Name of the output table to create
+            feature_columns: List of feature column names from Arc-Graph
+            predictions: Dictionary mapping output names to prediction tensors
+            batch_size: Number of rows to process per batch
+            limit: Optional limit on number of rows to process
+
+        Raises:
+            ValueError: If table doesn't exist or columns are invalid
+        """
+        import contextlib
+
+        import torch
+
+        if not self.dataset_exists(source_table):
+            raise ValueError(f"Source table '{source_table}' does not exist")
+
+        # Validate feature columns exist
+        validation_result = self.validate_columns(source_table, feature_columns)
+        missing_cols = [col for col, exists in validation_result.items() if not exists]
+        if missing_cols:
+            raise ValueError(f"Missing feature columns: {missing_cols}")
+
+        # Get prediction info
+        if not predictions:
+            raise ValueError("No predictions provided")
+
+        num_predictions = list(predictions.values())[0].shape[0]
+        prediction_columns = list(predictions.keys())
+
+        # Create table schema
+        schema_parts = []
+
+        # Add feature columns (get types from source table)
+        source_schema = self.get_table_schema(source_table)
+        feature_types = {col["name"]: col["type"] for col in source_schema}
+
+        for col in feature_columns:
+            col_type = feature_types.get(col, "DOUBLE")
+            schema_parts.append(f'"{col}" {col_type}')
+
+        # Add prediction columns
+        for pred_col in prediction_columns:
+            schema_parts.append(f'"pred_{pred_col}" DOUBLE')
+
+        schema_cols = ", ".join(schema_parts)
+        schema = f'CREATE TABLE IF NOT EXISTS "{output_table}" ({schema_cols})'
+
+        try:
+            # Drop existing table and create new one
+            self.db_manager.user_execute(f'DROP TABLE IF EXISTS "{output_table}"')
+            self.db_manager.user_execute(schema)
+
+            # Process data in batches
+            total_rows = min(num_predictions, self.get_table_row_count(source_table))
+            if limit is not None:
+                total_rows = min(total_rows, limit)
+
+            processed = 0
+
+            while processed < total_rows:
+                # Calculate batch size for this iteration
+                current_batch = min(batch_size, total_rows - processed)
+
+                # Get feature data for this batch
+                features_query = f"""
+                    SELECT {", ".join(f'"{col}"' for col in feature_columns)}
+                    FROM "{source_table}"
+                    LIMIT {current_batch} OFFSET {processed}
+                """
+
+                feature_result = self.db_manager.user_query(features_query)
+
+                if not feature_result.rows:
+                    break
+
+                # Prepare batch data for insertion
+                batch_data = []
+                for i, feature_row in enumerate(feature_result.rows):
+                    prediction_idx = processed + i
+                    if prediction_idx >= num_predictions:
+                        break
+
+                    # Combine features and predictions
+                    row_data = [feature_row[col] for col in feature_columns]
+
+                    # Add prediction values
+                    for pred_col in prediction_columns:
+                        pred_tensor = predictions[pred_col][prediction_idx]
+                        if isinstance(pred_tensor, torch.Tensor):
+                            if pred_tensor.dim() == 0 or (
+                                pred_tensor.dim() == 1 and pred_tensor.shape[0] == 1
+                            ):
+                                pred_value = pred_tensor.item()
+                            else:
+                                # For multi-dimensional outputs, take first element
+                                pred_value = float(pred_tensor.flatten()[0].item())
+                        else:
+                            pred_value = float(pred_tensor)
+
+                        row_data.append(pred_value)
+
+                    batch_data.append(row_data)
+
+                # Insert batch
+                if batch_data:
+                    for row in batch_data:
+                        # Format values for SQL insertion
+                        formatted_values = []
+                        for value in row:
+                            if isinstance(value, str):
+                                # Escape single quotes and wrap in quotes
+                                escaped_value = value.replace("'", "''")
+                                formatted_values.append(f"'{escaped_value}'")
+                            elif value is None:
+                                formatted_values.append("NULL")
+                            else:
+                                formatted_values.append(str(value))
+
+                        values_str = ", ".join(formatted_values)
+                        insert_sql = (
+                            f'INSERT INTO "{output_table}" VALUES ({values_str})'
+                        )
+                        self.db_manager.user_execute(insert_sql)
+
+                processed += len(batch_data)
+
+        except Exception as e:
+            # Clean up on error
+            with contextlib.suppress(Exception):
+                self.db_manager.user_execute(f'DROP TABLE IF EXISTS "{output_table}"')
+            raise ValueError(f"Failed to save prediction results: {e}") from e
