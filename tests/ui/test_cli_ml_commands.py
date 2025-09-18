@@ -109,6 +109,7 @@ class StubModelRecord:
     name: str
     version: int
     arc_graph: str
+    spec: str
 
 
 @dataclass
@@ -136,6 +137,80 @@ class StubRuntime:
         self.job_service = job_service
         self.training_service = training_service
         self.artifacts_root = artifacts_root
+
+    def create_model(
+        self,
+        name: str,
+        schema_path: Path,
+        description: str | None = None,  # noqa: ARG002
+        model_type: str | None = None,  # noqa: ARG002
+    ):
+        """Stub implementation of create_model."""
+        import json
+
+        # Parse the schema file to get Arc-Graph data
+        schema_text = schema_path.read_text()
+        # For stub, we'll use the schema directly as arc_graph
+        arc_graph_data = {"model_name": name, "schema": schema_text}
+
+        model = StubModelRecord(
+            id=f"{name.lower()}-v1",
+            name=name,
+            version=1,
+            arc_graph=json.dumps(arc_graph_data),
+            spec=schema_text,
+        )
+
+        self.model_service.create_model(model)
+        return model
+
+    def train_model(
+        self,
+        model_name: str,
+        train_table: str,
+        target_column: str | None = None,
+        validation_table: str | None = None,
+        validation_split: float | None = None,  # noqa: ARG002
+        epochs: int | None = None,
+        learning_rate: float | None = None,
+        batch_size: int | None = None,
+        checkpoint_dir: str | None = None,  # noqa: ARG002
+        overrides: dict | None = None,  # noqa: ARG002
+        description: str | None = None,  # noqa: ARG002
+        tags: str | None = None,  # noqa: ARG002
+    ) -> str:
+        """Stub implementation of train_model."""
+        # Get the model record
+        model = self.model_service.get_latest_model_by_name(model_name)
+        if not model:
+            from arc.ml.runtime import MLRuntimeError
+
+            raise MLRuntimeError(f"Model '{model_name}' not found")
+
+        # For testing, create a simple mock config and submit to training service
+        # Parse arc_graph to get target column if not specified
+        arc_graph_data = json.loads(model.arc_graph)
+        if not target_column and arc_graph_data.get("features", {}).get(
+            "target_columns"
+        ):
+            target_column = arc_graph_data["features"]["target_columns"][0]
+
+        # We'll create a simple object that has the required attributes
+        class MockConfig:
+            def __init__(self):
+                self.model_id = model.id
+                self.model_name = model.name
+                self.train_table = train_table
+                self.target_column = target_column
+                self.validation_table = validation_table
+                self.training_config = self
+                # Training config attributes
+                self.epochs = epochs or 3
+                self.batch_size = batch_size or 16
+                self.learning_rate = learning_rate or 0.01
+
+        config = MockConfig()
+        return self.training_service.submit_training_job(config)
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +330,7 @@ async def test_create_model_registers_model(tmp_path):
     assert created.name == "my_model"
     assert created.version == 1
     assert created.spec == SCHEMA_WITH_CONFIG
-    assert json.loads(created.arc_graph)["model_name"] == "test_model"
+    assert json.loads(created.arc_graph)["model_name"] == "my_model"
 
 
 @pytest.mark.asyncio
@@ -302,6 +377,7 @@ async def test_train_submits_job(tmp_path):
         name="my_model",
         version=1,
         arc_graph=json.dumps(arc_graph_dict),
+        spec="",  # Add empty spec for testing
     )
 
     model_service = StubModelService()

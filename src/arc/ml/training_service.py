@@ -674,7 +674,9 @@ class TrainingService:
         )
 
         sql = """
-            INSERT INTO trained_models (artifact_id, job_id, model_id, artifact_path, metrics)
+            INSERT INTO trained_models (
+                artifact_id, job_id, model_id, artifact_path, metrics
+            )
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(artifact_id) DO UPDATE SET
                 job_id = excluded.job_id,

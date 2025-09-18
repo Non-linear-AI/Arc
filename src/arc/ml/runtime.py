@@ -200,11 +200,12 @@ class MLRuntime:
             else training_config.validation_split
         )
 
-        if validation_table:
-            if not self.ml_data_service.dataset_exists(validation_table):
-                raise MLRuntimeError(
-                    f"Validation table '{validation_table}' does not exist in user DB"
-                )
+        if validation_table and not self.ml_data_service.dataset_exists(
+            validation_table
+        ):
+            raise MLRuntimeError(
+                f"Validation table '{validation_table}' does not exist in user DB"
+            )
 
         checkpoint_path: str | None = None
         if checkpoint_dir:

@@ -321,12 +321,15 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "description": {
                         "type": "string",
-                        "description": "Optional description stored with the model metadata",
+                        "description": (
+                            "Optional description stored with the model metadata"
+                        ),
                     },
                     "model_type": {
                         "type": "string",
                         "description": (
-                            "Optional type identifier to store with the model. Defaults to 'ml.arc_graph'"
+                            "Optional type identifier to store with the model. "
+                            "Defaults to 'ml.arc_graph'"
                         ),
                     },
                 },
@@ -345,11 +348,15 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "train_table": {
                         "type": "string",
-                        "description": "User database table or dataset name with training data",
+                        "description": (
+                            "User database table or dataset name with training data"
+                        ),
                     },
                     "target_column": {
                         "type": "string",
-                        "description": "Target column for supervised learning (optional)",
+                        "description": (
+                            "Target column for supervised learning (optional)"
+                        ),
                     },
                     "validation_table": {
                         "type": "string",
@@ -358,7 +365,8 @@ def get_base_tools() -> list[ArcTool]:
                     "validation_split": {
                         "type": "number",
                         "description": (
-                            "Optional validation split (0-1). Overrides graph configuration if provided"
+                            "Optional validation split (0-1). "
+                            "Overrides graph configuration if provided"
                         ),
                     },
                     "epochs": {
@@ -392,17 +400,24 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="ml_predict",
-            description="Run inference with a trained Arc-Graph model and save results to a table",
+            description=(
+                "Run inference with a trained Arc-Graph model "
+                "and save results to a table"
+            ),
             parameters={
                 "type": "object",
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the registered model to use for prediction",
+                        "description": (
+                            "Name of the registered model to use for prediction"
+                        ),
                     },
                     "table_name": {
                         "type": "string",
-                        "description": "User database table or dataset containing features",
+                        "description": (
+                            "User database table or dataset containing features"
+                        ),
                     },
                     "output_table": {
                         "type": "string",

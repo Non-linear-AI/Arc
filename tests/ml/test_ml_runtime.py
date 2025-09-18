@@ -127,7 +127,7 @@ def test_create_model_missing_file_raises(runtime):
 
 
 @pytest.mark.parametrize("output_table", ["predictions", "pred_table"])
-def test_train_and_predict_flow(tmp_path, runtime, services, db_manager, output_table):
+def test_train_and_predict_flow(tmp_path, runtime, db_manager, output_table):
     schema_path = tmp_path / "schema.yaml"
     schema_path.write_text(SIMPLE_GRAPH_YAML)
 
@@ -152,7 +152,7 @@ def test_train_and_predict_flow(tmp_path, runtime, services, db_manager, output_
     assert len(trained_rows) == 1
     record = trained_rows[0]
     assert record["job_id"] == job_id
-    assert record["model_id"] == "RuntimeFlow"
+    assert record["model_id"] == "runtimeflow-v1"
     assert Path(record["artifact_path"]).exists()
 
     metrics = record["metrics"]

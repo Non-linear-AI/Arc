@@ -412,7 +412,8 @@ def _ml_predict(
 
     outputs_display = ", ".join(summary.outputs) if summary.outputs else "None"
     ui.show_system_success(
-        f"Generated {summary.total_predictions} predictions with outputs: {outputs_display}"
+        f"Generated {summary.total_predictions} predictions "
+        f"with outputs: {outputs_display}"
     )
 
     if summary.saved_table:

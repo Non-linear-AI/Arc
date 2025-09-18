@@ -113,7 +113,8 @@ class MLTrainTool(BaseTool):
     ) -> ToolResult:
         if not model_name or not train_table:
             return ToolResult.error_result(
-                "Parameters 'model_name' and 'train_table' are required to train a model."
+                "Parameters 'model_name' and 'train_table' are required "
+                "to train a model."
             )
 
         try:
@@ -181,8 +182,8 @@ class MLPredictTool(BaseTool):
     ) -> ToolResult:
         if not model_name or not table_name or not output_table:
             return ToolResult.error_result(
-                "Parameters 'model_name', 'table_name', and 'output_table' are required "
-                "to run prediction."
+                "Parameters 'model_name', 'table_name', and 'output_table' "
+                "are required to run prediction."
             )
 
         try:

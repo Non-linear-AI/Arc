@@ -533,7 +533,8 @@ class ArcAgent:
                         model_type=args.get("model_type"),
                     )
                 return ToolResult.error_result(
-                    "ML create model tool not available. Database services not initialized."
+                    "ML create model tool not available. "
+                    "Database services not initialized."
                 )
             elif tool_call.name == "ml_train":
                 if self.ml_train_tool:
