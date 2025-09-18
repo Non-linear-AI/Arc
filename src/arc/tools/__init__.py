@@ -7,6 +7,7 @@ from .file_editor import FileEditorTool
 from .schema_discovery import SchemaDiscoveryTool
 from .search import SearchTool
 from .todo import TodoTool
+from .ml import MLCreateModelTool, MLTrainTool, MLPredictTool
 
 __all__ = [
     "ToolResult",
@@ -16,4 +17,7 @@ __all__ = [
     "SchemaDiscoveryTool",
     "SearchTool",
     "TodoTool",
+    "MLCreateModelTool",
+    "MLTrainTool",
+    "MLPredictTool",
 ]

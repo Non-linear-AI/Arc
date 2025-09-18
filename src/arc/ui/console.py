@@ -80,6 +80,10 @@ class InteractiveInterface:
                     "Register an Arc-Graph model",
                 ),
                 ("/ml train --model NAME --data TABLE", "Launch a training job"),
+                (
+                    "/ml predict --model NAME --data TABLE --output TABLE",
+                    "Run inference and save predictions",
+                ),
                 ("/ml jobs list", "Show recent ML jobs"),
                 ("/ml jobs status <job_id>", "Inspect an individual job"),
             ]
@@ -97,6 +101,9 @@ class InteractiveInterface:
             "update_todo_list": "Update Plan",
             "database_query": "SQL Query",
             "schema_discovery": "Schema Discovery",
+            "ml_create_model": "Register Model",
+            "ml_train": "Train Model",
+            "ml_predict": "Predict",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -119,6 +126,8 @@ class InteractiveInterface:
             return "magenta"  # File operations
         elif tool_name in ["database_query", "schema_discovery"]:
             return "green"  # Database operations
+        elif tool_name in ["ml_create_model", "ml_train", "ml_predict"]:
+            return "green"
         else:
             return "cyan"  # Default/messages
 

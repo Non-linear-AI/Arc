@@ -8,10 +8,14 @@ from pathlib import Path
 import jinja2
 from openai.types.chat import ChatCompletionMessageParam
 
+from ..ml.runtime import MLRuntime
 from ..tools import (
     BashTool,
     DatabaseQueryTool,
     FileEditorTool,
+    MLCreateModelTool,
+    MLPredictTool,
+    MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
     TodoTool,
@@ -93,6 +97,16 @@ class ArcAgent:
         self.todo_tool = TodoTool()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
+        self.ml_runtime = MLRuntime(services) if services else None
+        self.ml_create_model_tool = (
+            MLCreateModelTool(self.ml_runtime) if self.ml_runtime else None
+        )
+        self.ml_train_tool = (
+            MLTrainTool(self.ml_runtime) if self.ml_runtime else None
+        )
+        self.ml_predict_tool = (
+            MLPredictTool(self.ml_runtime) if self.ml_runtime else None
+        )
 
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
@@ -512,6 +526,48 @@ class ArcAgent:
                         "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
+            elif tool_call.name == "ml_create_model":
+                if self.ml_create_model_tool:
+                    return await self.ml_create_model_tool.execute(
+                        name=args.get("name"),
+                        schema_path=args.get("schema_path"),
+                        description=args.get("description"),
+                        model_type=args.get("model_type"),
+                    )
+                return ToolResult.error_result(
+                    "ML create model tool not available. Database services not initialized."
+                )
+            elif tool_call.name == "ml_train":
+                if self.ml_train_tool:
+                    return await self.ml_train_tool.execute(
+                        model_name=args.get("model_name"),
+                        train_table=args.get("train_table"),
+                        target_column=args.get("target_column"),
+                        validation_table=args.get("validation_table"),
+                        validation_split=args.get("validation_split"),
+                        epochs=args.get("epochs"),
+                        batch_size=args.get("batch_size"),
+                        learning_rate=args.get("learning_rate"),
+                        checkpoint_dir=args.get("checkpoint_dir"),
+                        description=args.get("description"),
+                        tags=args.get("tags"),
+                    )
+                return ToolResult.error_result(
+                    "ML train tool not available. Database services not initialized."
+                )
+            elif tool_call.name == "ml_predict":
+                if self.ml_predict_tool:
+                    return await self.ml_predict_tool.execute(
+                        model_name=args.get("model_name"),
+                        table_name=args.get("table_name"),
+                        output_table=args.get("output_table"),
+                        batch_size=args.get("batch_size"),
+                        limit=args.get("limit"),
+                        device=args.get("device"),
+                    )
+                return ToolResult.error_result(
+                    "ML predict tool not available. Database services not initialized."
+                )
             else:
                 return ToolResult.error_result(f"Unknown tool: {tool_call.name}")
 
