@@ -128,10 +128,12 @@ class TestDataProcessor:
         assert val_targets is None
 
     def test_load_from_table_no_database(self):
-        """Test loading from table without database."""
+        """Test loading from table without MLDataService."""
         processor = DataProcessor()
 
-        with pytest.raises(RuntimeError, match="Database connection required"):
+        with pytest.raises(
+            RuntimeError, match="MLDataService is required for data access"
+        ):
             processor.load_from_table("test_table", ["col1", "col2"])
 
 

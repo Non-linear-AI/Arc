@@ -186,6 +186,87 @@ class MLDataService(BaseService):
         except Exception as e:
             raise ValueError(f"Failed to extract data from dataset: {e}") from e
 
+    def get_features_and_targets_paginated(
+        self,
+        dataset_name: str,
+        feature_columns: list[str],
+        target_columns: list[str] | None = None,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+        """Extract features and targets from a dataset with pagination support.
+
+        Args:
+            dataset_name: Name of the dataset
+            feature_columns: List of feature column names
+            target_columns: Optional list of target column names
+            offset: Number of rows to skip from the beginning
+            limit: Maximum number of rows to return
+
+        Returns:
+            Tuple of (features_df, targets_df). targets_df is None if no target columns
+
+        Raises:
+            ValueError: If dataset or columns don't exist
+        """
+        if not self.dataset_exists(dataset_name):
+            raise ValueError(f"Dataset '{dataset_name}' does not exist")
+
+        # Validate columns exist
+        dataset_info = self.get_dataset_info(dataset_name)
+        available_columns = dataset_info.column_names
+
+        for col in feature_columns:
+            if col not in available_columns:
+                raise ValueError(f"Feature column '{col}' not found in dataset")
+
+        if target_columns:
+            for col in target_columns:
+                if col not in available_columns:
+                    raise ValueError(f"Target column '{col}' not found in dataset")
+
+        # Build query with pagination
+        all_columns = feature_columns[:]
+        if target_columns:
+            all_columns.extend(target_columns)
+
+        columns_str = ", ".join(f'"{col}"' for col in all_columns)
+        query = f'SELECT {columns_str} FROM "{dataset_name}"'
+
+        # Add OFFSET and LIMIT for pagination
+        if offset > 0:
+            query += f" OFFSET {offset}"
+        if limit is not None and limit > 0:
+            query += f" LIMIT {limit}"
+
+        try:
+            result = self.db_manager.user_query(query)
+
+            if not result.rows:
+                # Return empty DataFrames with correct columns
+                features_df = pd.DataFrame(columns=feature_columns)
+                targets_df = None
+                if target_columns:
+                    targets_df = pd.DataFrame(columns=target_columns)
+                return features_df, targets_df
+
+            # Create DataFrame with proper column names
+            df = pd.DataFrame(result.rows, columns=all_columns)
+
+            # Split into features and targets
+            features_df = df[feature_columns]
+
+            targets_df = None
+            if target_columns:
+                targets_df = df[target_columns]
+
+            return features_df, targets_df
+
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract paginated data from dataset: {e}"
+            ) from e
+
     def get_features_as_tensors(
         self,
         dataset_name: str,

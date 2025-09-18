@@ -32,6 +32,25 @@ class SimpleTestModel(nn.Module):
         return x
 
 
+class DictOutputModel(nn.Module):
+    """Model that returns dictionary output for testing."""
+
+    def __init__(self, input_size: int = 10, output_size: int = 2):
+        super().__init__()
+        self.linear1 = nn.Linear(input_size, 16)
+        self.relu = nn.ReLU()
+        self.prediction_head = nn.Linear(16, output_size)
+        self.auxiliary_head = nn.Linear(16, 3)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.relu(x)
+        return {
+            "predictions": self.prediction_head(x),
+            "auxiliary": self.auxiliary_head(x),
+        }
+
+
 @pytest.fixture
 def sample_data():
     """Create sample training data."""
@@ -379,3 +398,87 @@ class TestTrainingResult:
         assert result.training_time == 0.0
         assert result.checkpoint_path is None
         assert result.error_message is None
+
+
+class TestTrainerFlexibleConfiguration:
+    """Test flexible configuration options for trainer."""
+
+    def test_tensor_output_no_key(self, sample_data):
+        """Test tensor output with no target_output_key."""
+        train_loader, _ = sample_data
+
+        config = TrainingConfig(
+            epochs=1,
+            loss_function="cross_entropy",
+            target_output_key=None,  # No key specified
+        )
+        trainer = ArcTrainer(config)
+        model = SimpleTestModel()
+
+        # Should complete without error using whole tensor output
+        result = trainer.train(model, train_loader)
+        assert result.success
+
+    def test_dict_output_with_key(self, sample_data):
+        """Test dict output with explicit target_output_key."""
+        train_loader, _ = sample_data
+
+        config = TrainingConfig(
+            epochs=1,
+            loss_function="cross_entropy",
+            target_output_key="predictions",  # Use specific key
+        )
+        trainer = ArcTrainer(config)
+        model = DictOutputModel()
+
+        # Should use "predictions" key from model output
+        result = trainer.train(model, train_loader)
+        assert result.success
+
+    def test_dict_output_invalid_key(self, sample_data):
+        """Test dict output with invalid target_output_key."""
+        train_loader, _ = sample_data
+
+        config = TrainingConfig(
+            epochs=1,
+            loss_function="cross_entropy",
+            target_output_key="nonexistent",  # Invalid key
+        )
+        trainer = ArcTrainer(config)
+        model = DictOutputModel()
+
+        # Should raise RuntimeError for missing key
+        with pytest.raises(RuntimeError, match="Target output key"):
+            trainer.train(model, train_loader)
+
+    def test_dict_output_no_key_error(self, sample_data):
+        """Test dict output with no target_output_key specified (should error)."""
+        train_loader, _ = sample_data
+
+        config = TrainingConfig(
+            epochs=1,
+            loss_function="cross_entropy",
+            target_output_key=None,  # No key specified for dict output
+        )
+        trainer = ArcTrainer(config)
+        model = DictOutputModel()
+
+        # Should raise an error since dict output requires a key
+        with pytest.raises((RuntimeError, TypeError)):
+            trainer.train(model, train_loader)
+
+    def test_tensor_output_with_key_error(self, sample_data):
+        """Test tensor output with target_output_key specified (should error)."""
+        train_loader, _ = sample_data
+
+        config = TrainingConfig(
+            epochs=1,
+            loss_function="cross_entropy",
+            target_output_key="predictions",  # Key specified for tensor output
+        )
+        trainer = ArcTrainer(config)
+        model = SimpleTestModel()
+
+        # Should raise RuntimeError since output is not a dict
+        with pytest.raises(RuntimeError, match="but model output is not a dictionary"):
+            trainer.train(model, train_loader)

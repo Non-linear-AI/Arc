@@ -12,7 +12,6 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from ..database.base import Database
 from ..database.services import MLDataService
 from ..plugins import get_plugin_manager
 from .processors.base import ProcessorError, StatefulProcessor
@@ -52,12 +51,13 @@ class DataProcessor:
     def __init__(
         self,
         ml_data_service: MLDataService | None = None,
-        database: Database | None = None,
     ):
-        # Prioritize MLDataService, fallback to direct database access for
-        # backwards compatibility
+        """Initialize DataProcessor with MLDataService.
+
+        Args:
+            ml_data_service: MLDataService instance for data access
+        """
         self.ml_data_service = ml_data_service
-        self.database = database
         self.plugin_manager = get_plugin_manager()
         self.fitted_processors: dict[str, StatefulProcessor] = {}
         self._processor_configs: dict[str, dict[str, Any]] = {}
@@ -68,7 +68,7 @@ class DataProcessor:
         feature_columns: list[str],
         target_columns: list[str] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Load data from database table.
+        """Load data from database table using MLDataService.
 
         Args:
             table_name: Name of database table
@@ -79,10 +79,10 @@ class DataProcessor:
             Tuple of (features, targets) tensors
 
         Raises:
-            RuntimeError: If no data service available
+            RuntimeError: If no MLDataService available
             ValueError: If columns not found or data invalid
         """
-        # Use MLDataService if available (preferred)
+        # Use MLDataService for data access
         if self.ml_data_service:
             try:
                 return self.ml_data_service.get_features_as_tensors(
@@ -93,47 +93,8 @@ class DataProcessor:
             except Exception as e:
                 raise ValueError(f"Failed to load data via MLDataService: {e}") from e
 
-        # Fallback to direct database access
-        if not self.database:
-            raise RuntimeError("Either MLDataService or Database connection required")
-
-        # Build query
-        all_columns = feature_columns[:]
-        if target_columns:
-            all_columns.extend(target_columns)
-
-        columns_str = ", ".join(all_columns)
-        query = f"SELECT {columns_str} FROM {table_name}"
-
-        # Execute query
-        result = self.database.query(query)
-        if not result.rows:
-            raise ValueError(f"No data found in table {table_name}")
-
-        # Convert to DataFrame for easier processing
-        df = pd.DataFrame(result.rows)
-
-        # Extract features
-        try:
-            feature_data = df[feature_columns].values.astype(float)
-            features = torch.tensor(feature_data, dtype=torch.float32)
-        except Exception as e:
-            raise ValueError(f"Failed to process feature columns: {e}") from e
-
-        # Extract targets if provided
-        targets = None
-        if target_columns:
-            try:
-                target_data = df[target_columns].values.astype(float)
-                targets = torch.tensor(target_data, dtype=torch.float32)
-                if len(target_columns) == 1:
-                    targets = targets.squeeze(
-                        1
-                    )  # Remove extra dimension for single target
-            except Exception as e:
-                raise ValueError(f"Failed to process target columns: {e}") from e
-
-        return features, targets
+        # No MLDataService available
+        raise RuntimeError("MLDataService is required for data access")
 
     def create_dataloader(
         self,
@@ -513,8 +474,8 @@ class DataProcessor:
         Returns a context with populated namespaces, the default features tensor
         (taken from tensors.features if present), and an optional targets tensor.
         """
-        if not self.database:
-            raise RuntimeError("Database connection required to run feature pipeline")
+        if not self.ml_data_service:
+            raise RuntimeError("MLDataService required to run feature pipeline")
 
         feature_columns: list[str] = list(features_spec.get("feature_columns", []))
         target_columns: list[str] = list(features_spec.get("target_columns", []))
@@ -931,3 +892,204 @@ class DataProcessor:
             shuffle=shuffle,
             **dataloader_kwargs,
         )
+
+    def create_dataloader_from_table(
+        self,
+        ml_data_service,
+        table_name: str,
+        feature_columns: list[str],
+        target_columns: list[str] | None = None,
+        batch_size: int = 32,
+        shuffle: bool = True,
+        chunk_size: int = 10000,
+        **dataloader_kwargs,
+    ) -> DataLoader:
+        """Create PyTorch DataLoader from database table using incremental loading.
+
+        Args:
+            ml_data_service: MLDataService instance for data access
+            table_name: Name of the database table
+            feature_columns: List of feature column names
+            target_columns: Optional list of target column names
+            batch_size: Batch size for DataLoader
+            shuffle: Whether to shuffle data
+            chunk_size: Number of rows to load per chunk for streaming
+            **dataloader_kwargs: Additional arguments for DataLoader
+
+        Returns:
+            PyTorch DataLoader ready for training
+
+        Raises:
+            ValueError: If table or columns don't exist
+        """
+        # Check if table exists as a dataset
+        if not ml_data_service.dataset_exists(table_name):
+            raise ValueError(f"Dataset/table '{table_name}' does not exist")
+
+        # Get dataset info to determine size and validate columns
+        dataset_info = ml_data_service.get_dataset_info(table_name)
+        if not dataset_info:
+            raise ValueError(f"Could not get info for dataset '{table_name}'")
+
+        # Validate columns exist
+        available_columns = dataset_info.column_names
+        for col in feature_columns:
+            if col not in available_columns:
+                raise ValueError(
+                    f"Feature column '{col}' not found in dataset '{table_name}'"
+                )
+
+        if target_columns:
+            for col in target_columns:
+                if col not in available_columns:
+                    raise ValueError(
+                        f"Target column '{col}' not found in dataset '{table_name}'"
+                    )
+
+        # Create streaming dataset that loads data incrementally
+        streaming_dataset = StreamingTableDataset(
+            ml_data_service=ml_data_service,
+            table_name=table_name,
+            feature_columns=feature_columns,
+            target_columns=target_columns,
+            total_rows=dataset_info.row_count,
+            chunk_size=chunk_size,
+        )
+
+        return DataLoader(
+            streaming_dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            **dataloader_kwargs,
+        )
+
+
+class StreamingTableDataset(Dataset):
+    """PyTorch Dataset that streams data from database in chunks using MLDataService."""
+
+    def __init__(
+        self,
+        ml_data_service,
+        table_name: str,
+        feature_columns: list[str],
+        target_columns: list[str] | None,
+        total_rows: int,
+        chunk_size: int = 10000,
+    ):
+        """Initialize streaming dataset.
+
+        Args:
+            ml_data_service: MLDataService instance for data access
+            table_name: Name of the database table
+            feature_columns: List of feature column names
+            target_columns: Optional list of target column names
+            total_rows: Total number of rows in the dataset
+            chunk_size: Number of rows to load per chunk
+        """
+        self.ml_data_service = ml_data_service
+        self.table_name = table_name
+        self.feature_columns = feature_columns
+        self.target_columns = target_columns
+        self.total_rows = total_rows
+        self.chunk_size = chunk_size
+
+        # Cache for loaded chunks
+        self._chunk_cache = {}
+        self._current_chunk_id = -1
+        self._current_chunk_data = None
+        self._max_cached_chunks = 3  # Keep max 3 chunks in memory
+
+    def __len__(self) -> int:
+        return self.total_rows
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Get a single sample by index."""
+        if idx >= self.total_rows:
+            raise IndexError(
+                f"Index {idx} out of range for dataset of size {self.total_rows}"
+            )
+
+        # Determine which chunk this index belongs to
+        chunk_id = idx // self.chunk_size
+        idx_in_chunk = idx % self.chunk_size
+
+        # Load chunk if not already loaded
+        if chunk_id != self._current_chunk_id:
+            self._load_chunk(chunk_id)
+
+        # Extract the sample from the current chunk
+        if self._current_chunk_data is None:
+            raise RuntimeError(f"Failed to load chunk {chunk_id}")
+
+        features, targets = self._current_chunk_data
+
+        # Handle case where chunk might be smaller than chunk_size (last chunk)
+        if idx_in_chunk >= len(features):
+            raise IndexError(
+                f"Index {idx_in_chunk} out of range for chunk of size {len(features)}"
+            )
+
+        sample_features = features[idx_in_chunk]
+        sample_targets = targets[idx_in_chunk] if targets is not None else None
+
+        return sample_features, sample_targets
+
+    def _load_chunk(self, chunk_id: int) -> None:
+        """Load a specific chunk of data using MLDataService pagination."""
+        # Check cache first
+        if chunk_id in self._chunk_cache:
+            self._current_chunk_data = self._chunk_cache[chunk_id]
+            self._current_chunk_id = chunk_id
+            return
+
+        # Calculate offset and limit for this chunk
+        offset = chunk_id * self.chunk_size
+        limit = min(self.chunk_size, self.total_rows - offset)
+
+        try:
+            # Use MLDataService with pagination to get chunk data
+            features_df, targets_df = (
+                self.ml_data_service.get_features_and_targets_paginated(
+                    dataset_name=self.table_name,
+                    feature_columns=self.feature_columns,
+                    target_columns=self.target_columns,
+                    offset=offset,
+                    limit=limit,
+                )
+            )
+
+            # Convert to tensors
+            import torch
+
+            if features_df.empty:
+                # Handle empty chunk (shouldn't happen with proper bounds checking)
+                features = torch.empty(
+                    0, len(self.feature_columns), dtype=torch.float32
+                )
+                targets = None
+                if self.target_columns:
+                    targets = torch.empty(
+                        0, len(self.target_columns), dtype=torch.float32
+                    )
+            else:
+                features = torch.tensor(features_df.values, dtype=torch.float32)
+                targets = None
+                if targets_df is not None:
+                    targets = torch.tensor(targets_df.values, dtype=torch.float32)
+
+            chunk_data = (features, targets)
+
+            # Cache the chunk with LRU-like eviction
+            if len(self._chunk_cache) >= self._max_cached_chunks:
+                # Remove oldest chunk (simple FIFO for now)
+                oldest_chunk = min(self._chunk_cache.keys())
+                del self._chunk_cache[oldest_chunk]
+
+            self._chunk_cache[chunk_id] = chunk_data
+            self._current_chunk_data = chunk_data
+            self._current_chunk_id = chunk_id
+
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load chunk {chunk_id} from table '{self.table_name}': {e}"
+            ) from e

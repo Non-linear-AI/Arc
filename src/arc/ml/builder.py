@@ -30,7 +30,9 @@ class ArcModel(nn.Module):
         self.execution_order = execution_order
         self.input_mappings = input_mappings
 
-    def forward(self, inputs: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def forward(
+        self, inputs: dict[str, torch.Tensor] | torch.Tensor
+    ) -> dict[str, torch.Tensor]:
         """Forward pass through the model with DAG execution.
 
         Args:
@@ -39,6 +41,13 @@ class ArcModel(nn.Module):
         Returns:
             Dictionary mapping output names to tensors
         """
+        if isinstance(inputs, torch.Tensor):
+            if len(self.input_names) != 1:
+                raise ValueError(
+                    "Tensor input provided but model requires multiple named inputs"
+                )
+            inputs = {self.input_names[0]: inputs}
+
         # Validate inputs
         for input_name in self.input_names:
             if input_name not in inputs:
