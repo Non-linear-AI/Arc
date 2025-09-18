@@ -67,6 +67,8 @@ class MLRuntime:
         model_type: str | None = None,
     ) -> Model:
         """Register a new Arc-Graph backed model."""
+        _validate_model_name(name)
+
         schema_file = schema_path.expanduser()
         if not schema_file.exists():
             raise MLRuntimeError(f"Schema file not found: {schema_file}")
@@ -126,6 +128,8 @@ class MLRuntime:
         tags: list[str] | None = None,
     ) -> str:
         """Submit a training job for the given model and dataset."""
+        _validate_model_name(model_name)
+
         train_table = str(train_table)
         validation_table = str(validation_table) if validation_table else None
 
@@ -293,6 +297,8 @@ class MLRuntime:
         self, *, model_name: str, device: str | None = None
     ) -> ArcPredictor:
         """Load an ArcPredictor for the latest version of a model."""
+        _validate_model_name(model_name)
+
         model_record = self.model_service.get_latest_model_by_name(model_name)
         if model_record is None:
             raise MLRuntimeError(f"Model '{model_name}' not found")
@@ -340,6 +346,45 @@ def _split_model_identifier(model_id: str) -> tuple[str, int | None]:
     if match:
         return match.group("base"), int(match.group("version"))
     return model_id, None
+
+
+def _validate_model_name(name: str) -> None:
+    """Validate model name follows proper naming conventions.
+
+    Args:
+        name: Model name to validate
+
+    Raises:
+        MLRuntimeError: If the model name is invalid
+    """
+    if not name or not name.strip():
+        raise MLRuntimeError("Model name cannot be empty")
+
+    # Check for spaces within the name (not just leading/trailing)
+    if " " in name.strip():
+        raise MLRuntimeError(
+            "Model name cannot contain spaces. "
+            "Use hyphens (-) or underscores (_) instead. "
+            f"Example: '{name.replace(' ', '-')}'"
+        )
+
+    # Check for invalid characters that could cause issues
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name.strip()):
+        raise MLRuntimeError(
+            "Model name can only contain alphanumeric characters, "
+            "hyphens, and underscores."
+        )
+
+    # Check length constraints
+    if len(name.strip()) > 100:
+        raise MLRuntimeError("Model name cannot exceed 100 characters")
+
+    # Check that it doesn't start or end with hyphens/underscores (common convention)
+    clean_name = name.strip()
+    if clean_name.startswith(("-", "_")) or clean_name.endswith(("-", "_")):
+        raise MLRuntimeError(
+            "Model name should not start or end with hyphens or underscores"
+        )
 
 
 def _slugify_name(name: str) -> str:
