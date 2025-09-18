@@ -1,0 +1,16 @@
+version: "0.1"
+model_name: "broken"
+
+features:
+  feature_columns: [x1]
+  processors: []
+
+# model is missing required inputs/graph/outputs
+model:
+  inputs: {}
+  graph: []
+  outputs: {}
+
+trainer:
+  optimizer: { type: AdamW }
+  loss: { type: core.MSELoss }

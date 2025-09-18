@@ -80,6 +80,11 @@ class ArcClient:
         """Get the current model."""
         return self.current_model
 
+    @property
+    def model(self) -> str:
+        """Get the current model (alias for get_current_model)."""
+        return self.current_model
+
     async def chat(
         self,
         messages: list[ChatCompletionMessageParam],

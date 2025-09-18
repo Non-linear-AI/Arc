@@ -1,0 +1,66 @@
+version: "0.1"
+model_name: "pima_diabetes_classifier"
+description: "Logistic regression model for the Pima Indians diabetes dataset"
+
+features:
+  feature_columns:
+    - pregnancies
+    - glucose
+    - blood_pressure
+    - skin_thickness
+    - insulin
+    - bmi
+    - diabetes_pedigree
+    - age
+  target_columns:
+    - outcome
+  processors: []
+
+model:
+  inputs:
+    features:
+      dtype: float32
+      shape: [null, 8]
+  graph:
+    - name: classifier
+      type: core.Linear
+      params:
+        in_features: 8
+        out_features: 1
+        bias: true
+      inputs:
+        input: features
+    - name: sigmoid
+      type: core.Sigmoid
+      inputs:
+        input: classifier.output
+  outputs:
+    logits: classifier.output
+    prediction: sigmoid.output
+
+trainer:
+  optimizer:
+    type: adam
+    config:
+      lr: 0.01
+  loss:
+    type: binary_cross_entropy
+    inputs:
+      predictions: model.logits
+      targets: vars.outcome
+  config:
+    epochs: 5
+    batch_size: 32
+    learning_rate: 0.01
+    target_output_key: prediction
+    reshape_targets: true
+    validation_split: 0.2
+    shuffle: true
+    checkpoint_every: 5
+    save_best_only: true
+    device: auto
+    log_every: 10
+    verbose: true
+
+predictor:
+  returns: [prediction, logits]

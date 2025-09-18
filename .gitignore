@@ -149,6 +149,10 @@ cython_debug/
 # uv
 .uv/
 .aider*
+.tools/
 
 # Database files
 *.db
+
+# Model artifacts
+/artifacts/
