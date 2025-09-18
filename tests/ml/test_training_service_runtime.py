@@ -81,6 +81,7 @@ async def test_training_service_completes_quick_job(tmp_path):
 
     job_config = TrainingJobConfig(
         model_id="unit-test-model",
+        model_version=1,
         model_name="unit-test-model",
         arc_graph=arc_graph,
         train_table="train_data",
@@ -142,6 +143,7 @@ async def test_database_job_status_updates_correctly(tmp_path):
 
     job_config = TrainingJobConfig(
         model_id="db-status-test-model",
+        model_version=1,
         model_name="db-status-test-model",
         arc_graph=arc_graph,
         train_table="train_data",
@@ -215,6 +217,7 @@ async def test_training_error_handling_and_status_reporting(tmp_path):
 
     job_config = TrainingJobConfig(
         model_id="error-test-model",
+        model_version=1,
         model_name="error-test-model",
         arc_graph=arc_graph,
         train_table="train_data",

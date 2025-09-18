@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -17,6 +18,7 @@ from ..database.services.ml_data_service import MLDataService
 from ..graph.spec import ArcGraph, TrainingConfig
 from ..jobs.models import Job, JobStatus, JobType
 from .artifacts import (
+    ModelArtifact,
     ModelArtifactManager,
     create_artifact_from_training,
 )
@@ -32,7 +34,8 @@ class TrainingJobConfig:
     """Configuration for a training job."""
 
     # Model configuration
-    model_id: str
+    model_id: str  # Stable model identifier (slug)
+    model_version: int  # Model version number associated with the job
     model_name: str
     arc_graph: ArcGraph
 
@@ -263,7 +266,12 @@ class TrainingService:
         # Store the future for tracking
         self.active_jobs[job_id] = future
 
-        logger.info(f"Training job {job_id} submitted for model {config.model_id}")
+        logger.info(
+            "Training job %s submitted for model %s (base version %s)",
+            job_id,
+            config.model_id,
+            config.model_version,
+        )
         return job_id
 
     def _run_training_thread_wrapper(
@@ -541,8 +549,24 @@ class TrainingService:
         # Save trained model artifact
         logger.info(f"Training succeeded for job {job_id}, saving artifacts")
         try:
-            self._save_training_artifact(job_id, config, model, trainer, result)
+            artifact, artifact_dir = self._save_training_artifact(
+                job_id, config, model, trainer, result
+            )
             logger.info(f"Artifacts saved successfully for job {job_id}")
+            try:
+                self._record_trained_model(
+                    job_id=job_id,
+                    artifact=artifact,
+                    artifact_dir=artifact_dir,
+                    training_result=result,
+                )
+            except Exception as record_error:
+                logger.error(
+                    "Failed to record trained model metadata for job %s: %s",
+                    job_id,
+                    record_error,
+                    exc_info=True,
+                )
         except Exception as artifact_error:
             logger.error(
                 f"Failed to save artifacts for job {job_id}: {artifact_error}",
@@ -571,7 +595,7 @@ class TrainingService:
         model: ArcModel,
         trainer: ArcTrainer,
         result: TrainingResult,
-    ) -> None:
+    ) -> tuple[ModelArtifact, Path]:
         """Save training artifacts.
 
         Args:
@@ -582,15 +606,17 @@ class TrainingService:
             result: Training result
         """
         # Determine version (increment from existing)
+        model_key = config.model_id
+
         try:
-            latest_version = self.artifact_manager.get_latest_version(config.model_id)
+            latest_version = self.artifact_manager.get_latest_version(model_key)
             version = latest_version + 1
         except FileNotFoundError:
             version = 1
 
         # Create artifact metadata
         artifact = create_artifact_from_training(
-            model_id=config.model_id,
+            model_id=model_key,
             model_name=config.model_name,
             version=version,
             training_config=config.training_config or TrainingConfig(),
@@ -627,6 +653,60 @@ class TrainingService:
         )
 
         logger.info(f"Training artifacts saved to: {artifact_dir}")
+
+        return artifact, artifact_dir
+
+    def _record_trained_model(
+        self,
+        *,
+        job_id: str,
+        artifact: ModelArtifact,
+        artifact_dir: Path,
+        training_result: TrainingResult,
+    ) -> None:
+        """Record trained model information in the system database."""
+
+        artifact_id = f"{artifact.model_id}-v{artifact.version}"
+
+        metrics_payload = json.dumps(
+            {
+                "final_metrics": artifact.final_metrics or {},
+                "best_metrics": artifact.best_metrics or {},
+                "training_time": training_result.training_time,
+                "total_epochs": training_result.total_epochs,
+                "best_epoch": training_result.best_epoch,
+            },
+            default=str,
+        )
+
+        sql = """
+            INSERT INTO trained_models (
+                artifact_id,
+                job_id,
+                model_id,
+                model_version,
+                artifact_path,
+                metrics
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(artifact_id) DO UPDATE SET
+                job_id = excluded.job_id,
+                model_id = excluded.model_id,
+                model_version = excluded.model_version,
+                artifact_path = excluded.artifact_path,
+                metrics = excluded.metrics
+        """
+
+        params = [
+            artifact_id,
+            job_id,
+            artifact.model_id,
+            artifact.version,
+            str(artifact_dir),
+            metrics_payload,
+        ]
+
+        self.job_service.db_manager.system_execute(sql, params)
 
     def get_job_status(self, job_id: str) -> dict[str, Any]:
         """Get status of a training job.

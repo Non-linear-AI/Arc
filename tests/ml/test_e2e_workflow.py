@@ -286,6 +286,7 @@ class TestE2EWorkflow:
             # Create training job config
             config = TrainingJobConfig(
                 model_id="test_logistic_model",
+                model_version=1,
                 model_name="Test Logistic Regression",
                 arc_graph=arc_graph,
                 train_table=table_name,
@@ -367,6 +368,7 @@ class TestE2EWorkflow:
 
             config = TrainingJobConfig(
                 model_id="config_test_model",
+                model_version=1,
                 model_name="Config Test",
                 arc_graph=arc_graph,
                 train_table=table_name,
@@ -448,6 +450,7 @@ class TestE2EWorkflow:
 
             config = TrainingJobConfig(
                 model_id="cancel_test_model",
+                model_version=1,
                 model_name="Cancel Test",
                 arc_graph=arc_graph,
                 train_table=table_name,
@@ -512,6 +515,7 @@ class TestE2EWorkflow:
 
             config = TrainingJobConfig(
                 model_id="e2e_test_model",
+                model_version=1,
                 model_name="E2E Test Model",
                 arc_graph=arc_graph,
                 train_table=table_name,

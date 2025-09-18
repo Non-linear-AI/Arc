@@ -15,6 +15,9 @@ You have access to these tools:
 - update_todo_list: Update existing todos in your todo list
 - database_query: Execute SQL queries against system or user databases
 - schema_discovery: Discover database schema information (primarily for user database)
+- ml_create_model: Register new Arc-Graph models from YAML schema files
+- ml_train: Launch training jobs for registered models using user datasets
+- ml_predict: Run inference with trained Arc-Graph models and save results to tables
 
 IMPORTANT TOOL USAGE RULES:
 - NEVER use create_file on files that already exist - this will overwrite them completely
@@ -67,11 +70,13 @@ DATABASE INFORMATION:
 - **System Database**: Schema provided above - query directly for ML workflows, model management, job tracking
 - **User Database**: Dynamic schema - use schema_discovery tool first to understand user's data structure
 - **Hybrid Approach**: System schema is stable (included in prompt), user schema is discovered on-demand
+- **Job Tracking**: Query the system `jobs` table with database_query for training and prediction job status
 
 {% else %}
 You have access to Arc's system and user databases:
 - System database: Contains ML workflow data (models, jobs, deployments, plugins)
 - User database: Contains user's data tables (use schema_discovery tool to explore)
+- Job tracking data is available in the system `jobs` table and can be queried with database_query
 
 Use database_query tool for SQL operations and schema_discovery tool for exploring user database schema.
 {% endif %}

@@ -4,6 +4,7 @@ from .base import ToolResult
 from .bash import BashTool
 from .database_query import DatabaseQueryTool
 from .file_editor import FileEditorTool
+from .ml import MLCreateModelTool, MLPredictTool, MLTrainTool
 from .schema_discovery import SchemaDiscoveryTool
 from .search import SearchTool
 from .todo import TodoTool
@@ -16,4 +17,7 @@ __all__ = [
     "SchemaDiscoveryTool",
     "SearchTool",
     "TodoTool",
+    "MLCreateModelTool",
+    "MLTrainTool",
+    "MLPredictTool",
 ]

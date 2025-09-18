@@ -305,4 +305,138 @@ def get_base_tools() -> list[ArcTool]:
                 "required": ["action"],
             },
         ),
+        ArcTool(
+            name="ml_create_model",
+            description="Register a new Arc-Graph model from a YAML schema file",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Human-friendly name for the model",
+                    },
+                    "schema_path": {
+                        "type": "string",
+                        "description": "Path to the Arc-Graph YAML schema file",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "Optional description stored with the model metadata"
+                        ),
+                    },
+                    "model_type": {
+                        "type": "string",
+                        "description": (
+                            "Optional type identifier to store with the model. "
+                            "Defaults to 'ml.arc_graph'"
+                        ),
+                    },
+                },
+                "required": ["name", "schema_path"],
+            },
+        ),
+        ArcTool(
+            name="ml_train",
+            description="Launch an Arc-Graph training job on a dataset",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "model_name": {
+                        "type": "string",
+                        "description": "Name of the registered model to train",
+                    },
+                    "train_table": {
+                        "type": "string",
+                        "description": (
+                            "User database table or dataset name with training data"
+                        ),
+                    },
+                    "target_column": {
+                        "type": "string",
+                        "description": (
+                            "Target column for supervised learning (optional)"
+                        ),
+                    },
+                    "validation_table": {
+                        "type": "string",
+                        "description": "Optional validation table or dataset name",
+                    },
+                    "validation_split": {
+                        "type": "number",
+                        "description": (
+                            "Optional validation split (0-1). "
+                            "Overrides graph configuration if provided"
+                        ),
+                    },
+                    "epochs": {
+                        "type": "integer",
+                        "description": "Override training epochs",
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "description": "Override training batch size",
+                    },
+                    "learning_rate": {
+                        "type": "number",
+                        "description": "Override learning rate",
+                    },
+                    "checkpoint_dir": {
+                        "type": "string",
+                        "description": "Directory path for checkpoints (optional)",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional description for the training job",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional tags to attach to the training job",
+                    },
+                },
+                "required": ["model_name", "train_table"],
+            },
+        ),
+        ArcTool(
+            name="ml_predict",
+            description=(
+                "Run inference with a trained Arc-Graph model "
+                "and save results to a table"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "model_name": {
+                        "type": "string",
+                        "description": (
+                            "Name of the registered model to use for prediction"
+                        ),
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "description": (
+                            "User database table or dataset containing features"
+                        ),
+                    },
+                    "output_table": {
+                        "type": "string",
+                        "description": "Destination table name for prediction results",
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "description": "Batch size for prediction (default: 32)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Limit the number of rows to process",
+                    },
+                    "device": {
+                        "type": "string",
+                        "description": "Torch device for inference (default: cpu)",
+                    },
+                },
+                "required": ["model_name", "table_name", "output_table"],
+            },
+        ),
     ]

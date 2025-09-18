@@ -3,29 +3,20 @@
 import asyncio
 import json
 import os
-import re
 import shlex
 import sys
 import time
 from contextlib import suppress
-from dataclasses import asdict
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import click
-import torch
 from dotenv import load_dotenv
 
 from ..core import ArcAgent, SettingsManager
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
-from ..database.models.model import Model
 from ..database.services import ServiceContainer
 from ..error_handling import error_handler
-from ..graph.spec import ArcGraph
-from ..ml.artifacts import ModelArtifactManager
-from ..ml.predictor import ArcPredictor
-from ..ml.training_service import TrainingJobConfig, TrainingService
+from ..ml.runtime import MLRuntime, MLRuntimeError
 from ..utils import ConfirmationService, performance_manager
 from .console import InteractiveInterface
 
@@ -187,29 +178,6 @@ class CommandError(Exception):
     """Raised when ML command parsing or validation fails."""
 
 
-class MLRuntime:
-    """Runtime utilities for ML CLI commands."""
-
-    def __init__(self, services: ServiceContainer, artifacts_dir: Path | None = None):
-        self.services = services
-        self.model_service = services.models
-        self.job_service = services.jobs
-        self.ml_data_service = services.ml_data
-        self.artifacts_root = Path(artifacts_dir or "artifacts")
-        self.artifacts_root.mkdir(parents=True, exist_ok=True)
-        self.training_service = TrainingService(
-            self.job_service, artifacts_dir=self.artifacts_root
-        )
-
-    def shutdown(self) -> None:
-        self.training_service.shutdown()
-
-
-def _slugify_name(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug or "model"
-
-
 def _parse_options(args: list[str], spec: dict[str, bool]) -> dict[str, str | bool]:
     options: dict[str, str | bool] = {}
     idx = 0
@@ -234,7 +202,7 @@ def _parse_options(args: list[str], spec: dict[str, bool]) -> dict[str, str | bo
 
 
 async def handle_ml_command(
-    user_input: str, ui: InteractiveInterface, runtime: MLRuntime
+    user_input: str, ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
     try:
         tokens = shlex.split(user_input)
@@ -271,15 +239,13 @@ async def handle_ml_command(
 
 
 def _ml_create_model(
-    args: list[str], ui: InteractiveInterface, runtime: MLRuntime
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
     options = _parse_options(
         args,
         {
             "name": True,
             "schema": True,
-            "description": True,
-            "type": True,
         },
     )
 
@@ -288,73 +254,27 @@ def _ml_create_model(
 
     if not name or not schema_path:
         raise CommandError("/ml create-model requires --name and --schema")
-
-    schema_file = Path(str(schema_path)).expanduser()
-    if not schema_file.exists():
-        raise CommandError(f"Schema file not found: {schema_file}")
+    schema_path_obj = Path(str(schema_path))
 
     try:
-        schema_text = schema_file.read_text(encoding="utf-8")
-    except OSError as e:
-        raise CommandError(f"Failed to read schema file: {e}") from e
-
-    try:
-        arc_graph = ArcGraph.from_yaml(schema_text)
-    except Exception as e:
-        raise CommandError(f"Invalid Arc-Graph schema: {e}") from e
-
-    # Ensure graph is ready for training
-    arc_graph.to_training_config()
-
-    model_service = runtime.model_service
-    latest = model_service.get_latest_model_by_name(str(name))
-    version = 1 if latest is None else latest.version + 1
-
-    model_id = f"{_slugify_name(str(name))}-v{version}"
-    model_type = str(options.get("type") or "ml.arc_graph")
-    description = str(options.get("description") or arc_graph.description or "")
-
-    now = datetime.now(UTC)
-    arc_graph_payload = json.dumps(asdict(arc_graph), default=str)
-
-    model = Model(
-        id=model_id,
-        type=model_type,
-        name=str(name),
-        version=version,
-        description=description,
-        base_model_id=None,
-        spec=schema_text,
-        arc_graph=arc_graph_payload,
-        created_at=now,
-        updated_at=now,
-    )
-
-    try:
-        model_service.create_model(model)
-    except DatabaseError as e:
-        raise CommandError(f"Failed to register model: {e}") from e
+        model = runtime.create_model(
+            name=str(name),
+            schema_path=schema_path_obj,
+        )
+    except MLRuntimeError as exc:
+        raise CommandError(str(exc)) from exc
 
     ui.show_system_success(
-        f"Model '{name}' registered (version {version}, id={model_id})."
+        f"Model '{model.name}' registered (version {model.version}, id={model.id})."
     )
 
 
-def _ml_train(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
+def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -> None:
     options = _parse_options(
         args,
         {
             "model": True,
             "data": True,
-            "target": True,
-            "validation-table": True,
-            "validation-split": True,
-            "epochs": True,
-            "batch-size": True,
-            "learning-rate": True,
-            "checkpoint-dir": True,
-            "description": True,
-            "tags": True,
         },
     )
 
@@ -364,138 +284,28 @@ def _ml_train(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> 
     if not model_name or not train_table:
         raise CommandError("/ml train requires --model and --data")
 
-    model_record = runtime.model_service.get_latest_model_by_name(str(model_name))
-    if model_record is None:
-        raise CommandError(
-            f"Model '{model_name}' not found. Use /ml create-model first."
-        )
-
-    if not model_record.arc_graph:
-        raise CommandError(
-            "Stored model is missing arc graph specification; cannot train."
-        )
-
     try:
-        arc_graph_dict = json.loads(model_record.arc_graph)
-        arc_graph = ArcGraph.from_dict(arc_graph_dict)
-    except Exception as e:
-        raise CommandError(f"Failed to load Arc-Graph from stored spec: {e}") from e
-
-    feature_columns = arc_graph.features.feature_columns
-    if not feature_columns:
-        raise CommandError(
-            "Arc-Graph must define features.feature_columns before training."
+        job_id = runtime.train_model(
+            model_name=str(model_name),
+            train_table=str(train_table),
         )
+    except MLRuntimeError as exc:
+        raise CommandError(str(exc)) from exc
 
-    if not runtime.ml_data_service.dataset_exists(str(train_table)):
-        raise CommandError(f"Training table '{train_table}' does not exist in user DB")
-
-    target_column = options.get("target")
-    if not target_column:
-        targets = arc_graph.features.target_columns or []
-        if not targets:
-            raise CommandError(
-                "Unable to determine target column. Provide --target explicitly."
-            )
-        target_column = targets[0]
-
-    columns_to_check = list(feature_columns)
-    if target_column not in columns_to_check:
-        columns_to_check.append(target_column)
-
-    missing = [
-        col
-        for col, exists in runtime.ml_data_service.validate_columns(
-            str(train_table), columns_to_check
-        ).items()
-        if not exists
-    ]
-    if missing:
-        raise CommandError(
-            "Training table is missing required column(s): " + ", ".join(missing)
-        )
-
-    overrides: dict[str, Any] = {}
-    if "epochs" in options:
-        try:
-            overrides["epochs"] = int(options["epochs"])
-        except ValueError as e:
-            raise CommandError("Option --epochs must be an integer") from e
-    if "batch-size" in options:
-        try:
-            overrides["batch_size"] = int(options["batch-size"])
-        except ValueError as e:
-            raise CommandError("Option --batch-size must be an integer") from e
-    if "learning-rate" in options:
-        try:
-            overrides["learning_rate"] = float(options["learning-rate"])
-        except ValueError as e:
-            raise CommandError("Option --learning-rate must be a number") from e
-    if "validation-split" in options:
-        try:
-            overrides["validation_split"] = float(options["validation-split"])
-        except ValueError as e:
-            raise CommandError("Option --validation-split must be a number") from e
-
-    training_config = arc_graph.to_training_config(overrides or None)
-
-    validation_table = options.get("validation-table")
-    validation_split = overrides.get(
-        "validation_split", training_config.validation_split
-    )
-
-    if validation_table and not runtime.ml_data_service.dataset_exists(
-        str(validation_table)
-    ):
-        raise CommandError(
-            f"Validation table '{validation_table}' does not exist in user DB"
-        )
-
-    checkpoint_dir = options.get("checkpoint-dir")
-    checkpoint_path = None
-    if checkpoint_dir:
-        checkpoint_path = str(Path(str(checkpoint_dir)).expanduser())
-
-    tags_value = options.get("tags")
-    tags = None
-    if tags_value:
-        tags = [tag.strip() for tag in str(tags_value).split(",") if tag.strip()]
-        if not tags:
-            tags = None
-
-    job_config = TrainingJobConfig(
-        model_id=model_record.id,
-        model_name=model_record.name,
-        arc_graph=arc_graph,
-        train_table=str(train_table),
-        target_column=str(target_column),
-        feature_columns=list(feature_columns),
-        validation_table=str(validation_table) if validation_table else None,
-        validation_split=validation_split,
-        training_config=training_config,
-        artifacts_dir=str(runtime.artifacts_root),
-        checkpoint_dir=checkpoint_path,
-        description=str(options.get("description") or "Training job"),
-        tags=tags,
-    )
-
-    job_id = runtime.training_service.submit_training_job(job_config)
     ui.show_system_success(
         "Training job submitted. Use /ml jobs status <job_id> to monitor."
     )
     ui.show_info(f"Job ID: {job_id}")
 
 
-def _ml_predict(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
+def _ml_predict(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
     options = _parse_options(
         args,
         {
             "model": True,
             "data": True,
-            "batch-size": True,
-            "limit": True,
-            "output": True,
-            "device": True,
         },
     )
 
@@ -505,111 +315,22 @@ def _ml_predict(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -
     if not model_name or not table_name:
         raise CommandError("/ml predict requires --model and --data")
 
-    # Validate table exists
-    if not runtime.ml_data_service.dataset_exists(str(table_name)):
-        raise CommandError(f"Table '{table_name}' does not exist")
-
-    # Load predictor
-    predictor = _load_predictor(str(model_name), runtime, options.get("device"))
-
-    # Parse options
-    batch_size = 32
-    if "batch-size" in options:
-        try:
-            batch_size = int(options["batch-size"])
-        except ValueError as e:
-            raise CommandError("Option --batch-size must be an integer") from e
-
-    limit = None
-    if "limit" in options:
-        try:
-            limit = int(options["limit"])
-        except ValueError as e:
-            raise CommandError("Option --limit must be an integer") from e
-
-    # Run prediction
     try:
-        predictions = predictor.predict_from_table(
-            ml_data_service=runtime.ml_data_service,
+        summary = runtime.predict(
+            model_name=str(model_name),
             table_name=str(table_name),
-            batch_size=batch_size,
-            limit=limit,
         )
+    except MLRuntimeError as exc:
+        raise CommandError(str(exc)) from exc
 
-        # Show summary
-        total_predictions = list(predictions.values())[0].shape[0]
-        output_names = list(predictions.keys())
+    outputs_display = ", ".join(summary.outputs) if summary.outputs else "None"
+    ui.show_system_success(
+        f"Generated {summary.total_predictions} predictions "
+        f"with outputs: {outputs_display}"
+    )
 
-        ui.show_system_success(
-            f"Generated {total_predictions} predictions with outputs: "
-            f"{', '.join(output_names)}"
-        )
-
-        # Optionally save to table
-        output_table = options.get("output")
-        if output_table:
-            _save_predictions_to_table(
-                predictions,
-                str(output_table),
-                runtime,
-                predictor,
-                str(table_name),
-                limit,
-            )
-            ui.show_system_success(f"Predictions saved to table '{output_table}'")
-
-    except Exception as e:
-        raise CommandError(f"Prediction failed: {e}") from e
-
-
-def _load_predictor(
-    model_name: str, runtime: MLRuntime, device: str | None = None
-) -> ArcPredictor:
-    """Load predictor from model name."""
-    # Get model record
-    model_record = runtime.model_service.get_latest_model_by_name(model_name)
-    if model_record is None:
-        raise CommandError(f"Model '{model_name}' not found")
-
-    # Load from artifacts
-    artifact_manager = ModelArtifactManager(runtime.artifacts_root)
-    try:
-        return ArcPredictor.load_from_artifact(
-            artifact_manager=artifact_manager,
-            model_id=model_record.id,
-            device=device or "cpu",
-        )
-    except Exception as e:
-        raise CommandError(f"Failed to load predictor: {e}") from e
-
-
-def _save_predictions_to_table(
-    predictions: dict[str, torch.Tensor],
-    table_name: str,
-    runtime: MLRuntime,
-    predictor: "ArcPredictor",
-    source_table: str,
-    limit: int | None = None,
-) -> None:
-    """Save predictions to a database table with original features."""
-    try:
-        # Get feature columns from Arc-Graph
-        feature_columns = predictor.arc_graph.features.feature_columns
-        if not feature_columns:
-            raise CommandError("No feature columns found in Arc-Graph specification")
-
-        # Use ml_data_service to save predictions with streaming support
-        runtime.ml_data_service.save_prediction_results(
-            source_table=source_table,
-            output_table=table_name,
-            feature_columns=feature_columns,
-            predictions=predictions,
-            batch_size=1000,  # Process in batches of 1000 rows
-            limit=limit,
-        )
-
-    except Exception as e:
-        raise CommandError(f"Failed to save predictions to table: {e}") from e
+    if summary.saved_table:
+        ui.show_system_success(f"Predictions saved to table '{summary.saved_table}'")
 
 
 def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
