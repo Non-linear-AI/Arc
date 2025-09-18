@@ -305,9 +305,7 @@ def _parse_tags(value: str | bool | None) -> list[str] | None:
     return tags or None
 
 
-def _ml_train(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
+def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -> None:
     options = _parse_options(
         args,
         {
@@ -418,9 +416,7 @@ def _ml_predict(
     )
 
     if summary.saved_table:
-        ui.show_system_success(
-            f"Predictions saved to table '{summary.saved_table}'"
-        )
+        ui.show_system_success(f"Predictions saved to table '{summary.saved_table}'")
 
 
 def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:

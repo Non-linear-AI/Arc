@@ -7,7 +7,7 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -38,7 +38,7 @@ class PredictionSummary:
 class MLRuntime:
     """Runtime utilities for ML operations shared across CLI and tools."""
 
-    def __init__(self, services: "ServiceContainer", artifacts_dir: Path | None = None):
+    def __init__(self, services: ServiceContainer, artifacts_dir: Path | None = None):
         self.services = services
         self.model_service = services.models
         self.job_service = services.jobs
@@ -206,7 +206,7 @@ class MLRuntime:
                     f"Validation table '{validation_table}' does not exist in user DB"
                 )
 
-        checkpoint_path: Optional[str] = None
+        checkpoint_path: str | None = None
         if checkpoint_dir:
             checkpoint_path = str(Path(checkpoint_dir).expanduser())
 
@@ -309,9 +309,7 @@ class MLRuntime:
         """Persist predictions together with original feature columns."""
         feature_columns = predictor.arc_graph.features.feature_columns
         if not feature_columns:
-            raise MLRuntimeError(
-                "No feature columns found in Arc-Graph specification"
-            )
+            raise MLRuntimeError("No feature columns found in Arc-Graph specification")
 
         try:
             self.ml_data_service.save_prediction_results(
@@ -323,9 +321,7 @@ class MLRuntime:
                 limit=limit,
             )
         except Exception as exc:  # noqa: BLE001
-            raise MLRuntimeError(
-                f"Failed to save predictions to table: {exc}"
-            ) from exc
+            raise MLRuntimeError(f"Failed to save predictions to table: {exc}") from exc
 
 
 def _slugify_name(name: str) -> str:

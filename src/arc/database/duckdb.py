@@ -165,12 +165,21 @@ class DuckDBDatabase(Database):
                 CREATE TABLE IF NOT EXISTS trained_models(
                     artifact_id TEXT PRIMARY KEY,
                     job_id TEXT NOT NULL,
-                    model_id INTEGER NOT NULL,
+                    model_id TEXT NOT NULL,
                     artifact_path TEXT NOT NULL,
                     metrics JSON,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            # Ensure schema backward compatibility for existing databases
+            try:
+                self.execute(
+                    "ALTER TABLE trained_models ALTER COLUMN model_id TYPE TEXT"
+                )
+            except Exception:
+                # Ignore if column already has the expected type or cannot be altered
+                pass
 
             # Tracks models served for real-time inference
             self.execute("""

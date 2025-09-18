@@ -101,9 +101,7 @@ class ArcAgent:
         self.ml_create_model_tool = (
             MLCreateModelTool(self.ml_runtime) if self.ml_runtime else None
         )
-        self.ml_train_tool = (
-            MLTrainTool(self.ml_runtime) if self.ml_runtime else None
-        )
+        self.ml_train_tool = MLTrainTool(self.ml_runtime) if self.ml_runtime else None
         self.ml_predict_tool = (
             MLPredictTool(self.ml_runtime) if self.ml_runtime else None
         )

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from ..ml.runtime import MLRuntime, MLRuntimeError
 from .base import BaseTool, ToolResult
@@ -144,7 +145,9 @@ class MLTrainTool(BaseTool):
         except MLRuntimeError as exc:
             return ToolResult.error_result(str(exc))
         except Exception as exc:  # noqa: BLE001
-            return ToolResult.error_result(f"Unexpected error launching training: {exc}")
+            return ToolResult.error_result(
+                f"Unexpected error launching training: {exc}"
+            )
 
         lines = [
             "Training job submitted successfully.",
