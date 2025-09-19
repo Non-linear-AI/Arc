@@ -73,7 +73,11 @@ class InteractiveInterface:
                 p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
 
             p.print()
-            p.print("[bold]ML Commands[/bold]")
+            p.print("[blue]⏺[/blue] [bold]ML Commands[/bold]")
+            p.print(
+                "  [dim]Commands require '/' prefix. "
+                "Regular text without '/' is sent to the AI.[/dim]"
+            )
             ml_commands = [
                 (
                     "/ml create-model --name NAME --schema PATH",
