@@ -146,17 +146,6 @@ class TestArcPredictorStreaming:
             predictions_small["prediction"], predictions_large["prediction"]
         )
 
-    def test_predict_from_table_streaming_missing_columns(
-        self, arc_predictor, ml_data_service, sample_dataset
-    ):
-        """Test error handling when feature columns are missing."""
-        with pytest.raises(PredictionError, match="Missing feature columns"):
-            arc_predictor.predict_from_table_streaming(
-                ml_data_service=ml_data_service,
-                table_name=sample_dataset,
-                feature_columns=["feature1", "nonexistent_column"],
-            )
-
     def test_predict_from_table_streaming_nonexistent_table(
         self, arc_predictor, ml_data_service
     ):

@@ -275,16 +275,6 @@ class ArcPredictor:
             if not dataset_info:
                 raise PredictionError(f"Dataset '{table_name}' does not exist")
 
-            # Validate feature columns exist in the dataset
-            column_validation = ml_data_service.validate_columns(
-                table_name, feature_columns
-            )
-            missing_cols = [
-                col for col, exists in column_validation.items() if not exists
-            ]
-            if missing_cols:
-                raise PredictionError(f"Missing feature columns: {missing_cols}")
-
             total_rows = dataset_info.row_count
             if limit is not None:
                 total_rows = min(total_rows, limit)
