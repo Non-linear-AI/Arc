@@ -1,33 +1,70 @@
 """Arc-Graph parsing and validation package."""
 
-from .spec import (
-    ArcGraph,
-    Features,
+# New separated architecture imports
+from .features import (
+    CORE_PROCESSORS,
+    FeatureSpec,
+    FeaturesValidationError,
+    ProcessorConfig,
+    get_processor_class,
+    validate_features_dict,
+)
+from .model import (
+    CORE_LAYERS,
     GraphNode,
-    LossSpec,
     ModelInput,
     ModelSpec,
-    OptimizerSpec,
-    PredictorSpec,
-    Processor,
-    TrainerSpec,
-    TrainingConfig,
+    ModelValidationError,
+    get_layer_class,
+    validate_model_dict,
 )
-from .validator import ArcGraphValidator, GraphValidationError, validate_graph_dict
+from .predictor import (
+    PredictorSpec,
+    PredictorValidationError,
+    validate_predictor_dict,
+)
+from .trainer import (
+    CORE_LOSSES,
+    CORE_OPTIMIZERS,
+    LossConfig,
+    OptimizerConfig,
+    TrainerSpec,
+    TrainerValidationError,
+    TrainingConfig,
+    get_loss_class,
+    get_optimizer_class,
+    validate_trainer_dict,
+)
 
 __all__ = [
-    "ArcGraph",
-    "Features",
-    "GraphNode",
-    "ModelInput",
+    # Model architecture
     "ModelSpec",
-    "OptimizerSpec",
-    "LossSpec",
-    "Processor",
+    "ModelInput",
+    "GraphNode",
+    "validate_model_dict",
+    "ModelValidationError",
+    "get_layer_class",
+    "CORE_LAYERS",
+    # Trainer architecture
     "TrainerSpec",
+    "OptimizerConfig",
+    "LossConfig",
     "TrainingConfig",
+    "validate_trainer_dict",
+    "TrainerValidationError",
+    "get_optimizer_class",
+    "get_loss_class",
+    "CORE_OPTIMIZERS",
+    "CORE_LOSSES",
+    # Features architecture
+    "FeatureSpec",
+    "ProcessorConfig",
+    "validate_features_dict",
+    "FeaturesValidationError",
+    "get_processor_class",
+    "CORE_PROCESSORS",
+    # Predictor architecture
     "PredictorSpec",
-    "validate_graph_dict",
-    "ArcGraphValidator",
-    "GraphValidationError",
+    "validate_predictor_dict",
+    "PredictorValidationError",
 ]

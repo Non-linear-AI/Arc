@@ -14,45 +14,29 @@ from arc.ml.runtime import MLRuntimeError
 
 SIMPLE_GRAPH_YAML = textwrap.dedent(
     """
-    version: "0.1"
-    model_name: "runtime_test_model"
-    description: "Runtime test model"
+    inputs:
+      features:
+        dtype: float32
+        shape: [null, 2]
+        columns: [feature1, feature2]
 
-    features:
-      feature_columns: [feature1, feature2]
-      target_columns: [label]
+    graph:
+      - name: linear
+        type: torch.nn.Linear
+        params:
+          in_features: 2
+          out_features: 1
+          bias: true
+        inputs:
+          input: features
+      - name: sigmoid
+        type: torch.nn.Sigmoid
+        inputs:
+          input: linear.output
 
-    model:
-      inputs:
-        features:
-          dtype: float32
-          shape: [null, 2]
-
-      graph:
-        - name: linear
-          type: core.Linear
-          params: {in_features: 2, out_features: 1, bias: true}
-          inputs: {input: features}
-        - name: sigmoid
-          type: core.Sigmoid
-          inputs: {input: linear.output}
-
-      outputs:
-        logits: linear.output
-        prediction: sigmoid.output
-
-    trainer:
-      optimizer: {type: adam}
-      loss: {type: binary_cross_entropy_with_logits}
-      config:
-        epochs: 1
-        batch_size: 2
-        learning_rate: 0.1
-        target_output_key: logits
-        reshape_targets: true
-
-    predictor:
-      returns: [prediction]
+    outputs:
+      logits: linear.output
+      prediction: sigmoid.output
     """
 )
 
@@ -169,7 +153,7 @@ def test_train_and_predict_flow(tmp_path, runtime, db_manager, output_table):
 
     assert summary.saved_table == output_table
     assert summary.total_predictions == 4
-    assert summary.outputs == ["prediction"]
+    assert set(summary.outputs) == {"logits", "prediction"}
 
     prediction_count = db_manager.user_query(
         f"SELECT COUNT(*) as cnt FROM {output_table}"

@@ -7,7 +7,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ..graph.spec import ArcGraph, GraphNode, ModelSpec
+from ..graph import GraphNode, ModelSpec
 from .layers import get_layer_class
 from .utils import ShapeInferenceError, ShapeValidator, resolve_variable_references
 
@@ -174,12 +174,12 @@ class ModelBuilder:
         self.shape_validator: ShapeValidator | None = None
 
     def build_model(
-        self, graph: ArcGraph, sample_data: torch.Tensor | None = None
+        self, graph: ModelSpec, sample_data: torch.Tensor | None = None
     ) -> ArcModel:
-        """Build a PyTorch model from Arc-Graph specification.
+        """Build a PyTorch model from ModelSpec specification.
 
         Args:
-            graph: Arc-Graph specification
+            graph: ModelSpec specification
             sample_data: Optional sample data for auto-detecting input sizes
 
         Returns:
@@ -196,14 +196,14 @@ class ModelBuilder:
 
         # Auto-detect input sizes if sample data provided
         if sample_data is not None:
-            self._auto_detect_sizes(graph.model, sample_data)
+            self._auto_detect_sizes(graph, sample_data)
 
         # Initialize shape validator
         if self.enable_shape_validation:
             self.shape_validator = ShapeValidator(self.var_registry)
 
         # Compute execution order and input mappings
-        execution_order, input_mappings = self._compute_execution_order(graph.model)
+        execution_order, input_mappings = self._compute_execution_order(graph)
 
         # Validate shapes if enabled
         if self.enable_shape_validation and self.shape_validator:
@@ -211,27 +211,27 @@ class ModelBuilder:
                 # Convert sample_data to input dict for validation
                 sample_inputs = None
                 if sample_data is not None:
-                    first_input_name = next(iter(graph.model.inputs.keys()))
+                    first_input_name = next(iter(graph.inputs.keys()))
                     sample_inputs = {first_input_name: sample_data}
 
                 # Sort nodes in execution order
-                node_dict = {node.name: node for node in graph.model.graph}
+                node_dict = {node.name: node for node in graph.graph}
                 ordered_nodes = [
                     node_dict[name] for name in execution_order if name in node_dict
                 ]
 
                 self.shape_validator.validate_model_shapes(
-                    graph.model.inputs, ordered_nodes, input_mappings, sample_inputs
+                    graph.inputs, ordered_nodes, input_mappings, sample_inputs
                 )
             except ShapeInferenceError as e:
                 raise ValueError(f"Shape validation failed: {e}") from e
 
         # Build layers
-        layers = self._build_layers(graph.model)
+        layers = self._build_layers(graph)
 
         # Get input names and output mapping
-        input_names = list(graph.model.inputs.keys())
-        output_mapping = graph.model.outputs
+        input_names = list(graph.inputs.keys())
+        output_mapping = graph.outputs
 
         return ArcModel(
             layers, input_names, output_mapping, execution_order, input_mappings
@@ -415,12 +415,12 @@ class ModelBuilder:
         return None
 
     def validate_model_at_runtime(
-        self, graph: ArcGraph, inputs: dict[str, torch.Tensor]
+        self, graph: ModelSpec, inputs: dict[str, torch.Tensor]
     ) -> dict[str, torch.Tensor]:
         """Validate model inputs and outputs at runtime.
 
         Args:
-            graph: Arc-Graph specification
+            graph: ModelSpec specification
             inputs: Input tensors to validate
 
         Returns:

@@ -1,0 +1,19 @@
+optimizer:
+  type: torch.optim.Adam
+  lr: 0.001
+loss:
+  type: torch.nn.BCELoss
+  inputs:
+    pred: model.prediction
+    target: outcome
+config:
+  epochs: 100
+  batch_size: 32
+  validation_split: 0.2
+  shuffle: true
+  checkpoint_every: 10
+  save_best_only: true
+  device: auto
+  log_every: 10
+  verbose: true
+  early_stopping_patience: 10

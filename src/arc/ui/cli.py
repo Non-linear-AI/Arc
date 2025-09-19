@@ -13,6 +13,10 @@ import click
 from dotenv import load_dotenv
 
 from ..core import ArcAgent, SettingsManager
+from ..core.agents import ModelGeneratorAgent, TrainerGeneratorAgent
+from ..core.agents.model_generator.model_generator import ModelGeneratorError
+from ..core.agents.predictor_generator import PredictorGeneratorAgent
+from ..core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
 from ..database.services import ServiceContainer
 from ..error_handling import error_handler
@@ -215,7 +219,10 @@ async def handle_ml_command(
         return
 
     if len(tokens) < 2:
-        ui.show_system_error("Usage: /ml <create-model|train|predict|jobs> ...")
+        ui.show_system_error(
+            "Usage: /ml <create-model|train|predict|jobs|generate-model|"
+            "generate-trainer|generate-predictor> ..."
+        )
         return
 
     subcommand = tokens[1]
@@ -230,6 +237,12 @@ async def handle_ml_command(
             _ml_predict(args, ui, runtime)
         elif subcommand == "jobs":
             _ml_jobs(args, ui, runtime)
+        elif subcommand == "generate-model":
+            await _ml_generate_model(args, ui, runtime)
+        elif subcommand == "generate-trainer":
+            await _ml_generate_trainer(args, ui, runtime)
+        elif subcommand == "generate-predictor":
+            await _ml_generate_predictor(args, ui, runtime)
         else:
             raise CommandError(f"Unknown ML command: {subcommand}")
     except CommandError as e:
@@ -275,11 +288,13 @@ def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -
         {
             "model": True,
             "data": True,
+            "target": True,
         },
     )
 
     model_name = options.get("model")
     train_table = options.get("data")
+    target_column = options.get("target")
 
     if not model_name or not train_table:
         raise CommandError("/ml train requires --model and --data")
@@ -288,6 +303,7 @@ def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -
         job_id = runtime.train_model(
             model_name=str(model_name),
             train_table=str(train_table),
+            target_column=str(target_column) if target_column else None,
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc
@@ -397,6 +413,289 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
         ui.show_key_values("Job Status", rows)
     else:
         raise CommandError(f"Unknown jobs subcommand: {sub}")
+
+
+async def _ml_generate_model(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
+    """Handle model specification generation command."""
+    options = _parse_options(
+        args,
+        {
+            "name": True,
+            "context": True,
+            "data-table": True,
+            "output": True,
+        },
+    )
+
+    name = options.get("name")
+    context = options.get("context")
+    data_table = options.get("data-table")
+    output_path = options.get("output")
+
+    if not name or not context or not data_table:
+        raise CommandError(
+            "/ml generate-model requires --name, --context, and --data-table"
+        )
+
+    # Default output path if not specified
+    if not output_path:
+        output_path = f"{name}_model.yaml"
+
+    try:
+        ui.show_info(f"🤖 Generating model specification for '{name}'...")
+        ui.show_info(f"📊 Analyzing data table '{data_table}'...")
+
+        # Get the agent from the runtime or create one for model generation
+        services = runtime.services
+        settings_manager = SettingsManager()
+        api_key = settings_manager.get_api_key()
+        base_url = settings_manager.get_base_url()
+        model = settings_manager.get_current_model()
+
+        if not api_key:
+            raise CommandError("API key required for model generation")
+
+        agent = ArcAgent(api_key, base_url, model, 400, services)
+
+        # Create model generator agent
+        model_generator = ModelGeneratorAgent(services, agent)
+
+        # Generate the model specification
+        model_spec, model_yaml = await model_generator.generate_model(
+            name=str(name),
+            user_context=str(context),
+            table_name=str(data_table),
+            output_path=str(output_path),
+        )
+
+        ui.show_system_success("✅ Model specification generated successfully!")
+        ui.show_info(f"📄 Saved to: {output_path}")
+        ui.show_info(f"🏗️ Model: {name}")
+
+        # Show brief summary of generated model
+        input_count = len(model_spec.inputs)
+        node_count = len(model_spec.graph)
+        output_count = len(model_spec.outputs)
+
+        ui.show_info(f"📥 Inputs: {input_count}")
+        ui.show_info(f"🧠 Model nodes: {node_count}")
+        ui.show_info(f"📤 Outputs: {output_count}")
+
+        # Suggest next steps
+        ui.show_info("\n💡 Next steps:")
+        ui.show_info(
+            f"   /ml generate-trainer --name {name}_trainer --context "
+            f"'training config' --model-spec {output_path}"
+        )
+
+    except ModelGeneratorError as exc:
+        raise CommandError(f"Model generation failed: {exc}") from exc
+    except Exception as exc:
+        raise CommandError(f"Unexpected error during model generation: {exc}") from exc
+
+
+async def _ml_generate_trainer(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
+    """Handle trainer specification generation command."""
+    options = _parse_options(
+        args,
+        {
+            "name": True,
+            "context": True,
+            "model-spec": True,
+            "output": True,
+        },
+    )
+
+    name = options.get("name")
+    context = options.get("context")
+    model_spec_path = options.get("model-spec")
+    output_path = options.get("output")
+
+    if not name or not context or not model_spec_path:
+        raise CommandError(
+            "/ml generate-trainer requires --name, --context, and --model-spec"
+        )
+
+    # Default output path if not specified
+    if not output_path:
+        output_path = f"{name}_trainer.yaml"
+
+    try:
+        ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
+        ui.show_info(f"📋 Using model specification: {model_spec_path}")
+
+        # Read the model specification
+        model_spec_file = Path(str(model_spec_path))
+        if not model_spec_file.exists():
+            raise CommandError(f"Model specification file not found: {model_spec_path}")
+
+        model_spec_content = model_spec_file.read_text(encoding="utf-8")
+
+        # Get the agent from the runtime or create one for trainer generation
+        services = runtime.services
+        settings_manager = SettingsManager()
+        api_key = settings_manager.get_api_key()
+        base_url = settings_manager.get_base_url()
+        model = settings_manager.get_current_model()
+
+        if not api_key:
+            raise CommandError("API key required for trainer generation")
+
+        agent = ArcAgent(api_key, base_url, model, 400, services)
+
+        # Create trainer generator agent
+        trainer_generator = TrainerGeneratorAgent(services, agent)
+
+        # Generate the trainer specification
+        trainer_spec, trainer_yaml = await trainer_generator.generate_trainer(
+            name=str(name),
+            user_context=str(context),
+            model_spec=model_spec_content,
+            output_path=str(output_path),
+        )
+
+        ui.show_system_success("✅ Trainer specification generated successfully!")
+        ui.show_info(f"📄 Saved to: {output_path}")
+        ui.show_info(f"🏋️ Trainer: {name}")
+
+        # Show brief summary of generated trainer
+        ui.show_info(f"🎯 Loss function: {trainer_spec.loss.type}")
+        ui.show_info(f"⚡ Optimizer: {trainer_spec.optimizer.type}")
+        if hasattr(trainer_spec, "epochs"):
+            ui.show_info(f"🔄 Epochs: {trainer_spec.epochs}")
+        if hasattr(trainer_spec, "batch_size"):
+            ui.show_info(f"📦 Batch size: {trainer_spec.batch_size}")
+
+        # Suggest next steps
+        ui.show_info("\n💡 Next steps:")
+        ui.show_info(
+            f"   /ml create-model --name {name.replace('_trainer', '')} "
+            f"--schema <combined_schema>"
+        )
+        ui.show_info(
+            f"   /ml train --model {name.replace('_trainer', '')} --data <table_name>"
+        )
+
+    except TrainerGeneratorError as exc:
+        raise CommandError(f"Trainer generation failed: {exc}") from exc
+    except Exception as exc:
+        raise CommandError(
+            f"Unexpected error during trainer generation: {exc}"
+        ) from exc
+
+
+async def _ml_generate_predictor(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
+    """Handle predictor specification generation command."""
+    options = _parse_options(
+        args,
+        {
+            "model-id": True,
+            "context": True,
+            "name": True,
+            "model-version": True,
+            "outputs": True,
+            "output": True,
+        },
+    )
+
+    model_id = options.get("model-id")
+    context = options.get("context")
+    name = options.get("name")
+    model_version_str = options.get("model-version")
+    outputs = options.get("outputs")
+    output_path = options.get("output")
+
+    if not model_id or not context:
+        raise CommandError("/ml generate-predictor requires --model-id and --context")
+
+    # Parse model version
+    model_version = None
+    if model_version_str:
+        try:
+            model_version = int(model_version_str)
+        except ValueError as e:
+            raise CommandError(f"Invalid model version: {model_version_str}") from e
+
+    # Default output path if not specified
+    if not output_path:
+        output_path = f"{model_id}_predictor.yaml"
+
+    try:
+        ui.show_info(f"🤖 Generating predictor specification for model '{model_id}'...")
+        if model_version:
+            ui.show_info(f"📌 Model version: {model_version}")
+        else:
+            ui.show_info("📌 Model version: latest")
+
+        # Get the agent configuration
+        services = runtime.services
+        settings_manager = SettingsManager()
+        api_key = settings_manager.get_api_key()
+        base_url = settings_manager.get_base_url()
+        model = settings_manager.get_current_model()
+
+        if not api_key:
+            raise CommandError("API key required for predictor generation")
+
+        # Create Arc agent and predictor generator agent
+        agent = ArcAgent(api_key, base_url, model, 400, services)
+        predictor_generator = PredictorGeneratorAgent(services, agent)
+
+        # Parse outputs if provided
+        prediction_requirements = None
+        if outputs:
+            output_list = [output.strip() for output in outputs.split(",")]
+            prediction_requirements = (
+                f"Required prediction outputs: {', '.join(output_list)}"
+            )
+
+        # Generate the predictor specification
+        predictor_spec, predictor_yaml = await predictor_generator.generate_predictor(
+            model_id=model_id,
+            user_context=context,
+            output_path=output_path,
+            model_version=model_version,
+            prediction_requirements=prediction_requirements,
+        )
+
+        # Override name if provided
+        if name:
+            predictor_spec.name = name
+
+        # Save the predictor specification
+        from pathlib import Path
+
+        from ..graph.predictor import save_predictor_to_yaml
+
+        output_file = Path(output_path)
+        save_predictor_to_yaml(predictor_spec, output_file)
+
+        ui.show_system_success("✅ Predictor specification generated successfully!")
+        ui.show_info(f"📄 Saved to: {output_path}")
+        ui.show_info(f"🎯 Predictor: {predictor_spec.name}")
+        ui.show_info(f"🔗 Model ID: {predictor_spec.model_id}")
+
+        if predictor_spec.model_version:
+            ui.show_info(f"📌 Model version: {predictor_spec.model_version}")
+
+        if predictor_spec.outputs:
+            ui.show_info("📤 Output mappings:")
+            for pred_output, model_output in predictor_spec.outputs.items():
+                ui.show_info(f"   {pred_output} -> {model_output}")
+
+        # Suggest next steps
+        ui.show_info("\n💡 Next steps:")
+        ui.show_info("   Use this predictor specification for model inference")
+        ui.show_info("   /ml predict --model <model_name> --data <input_data>")
+
+    except Exception as exc:
+        raise CommandError(f"Predictor generation failed: {exc}") from exc
 
 
 async def run_headless_mode(
@@ -582,3 +881,249 @@ async def run_interactive_mode(
 
 if __name__ == "__main__":
     cli()
+
+
+@cli.command("generate-model")
+@click.option("-n", "--name", required=True, help="Model name")
+@click.option("-c", "--context", required=True, help="Model description and context")
+@click.option("-t", "--data-table", required=True, help="Database table name for data")
+@click.option("-o", "--output", help="Output file path (default: {name}_model.yaml)")
+@click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
+@click.option("-u", "--base-url", help="Arc API base URL")
+@click.option("-m", "--model", "ai_model", help="AI model to use")
+def generate_model(
+    name: str,
+    context: str,
+    data_table: str,
+    output: str | None,
+    api_key: str | None,
+    base_url: str | None,
+    ai_model: str | None,
+):
+    """Generate a model specification using Arc model generator agent."""
+    ui = InteractiveInterface()
+
+    # Get configuration
+    settings_manager = SettingsManager()
+    api_key = api_key or settings_manager.get_api_key()
+    if not api_key:
+        ui.show_system_error(
+            "API key required. Set ARC_API_KEY environment variable or use --api-key"
+        )
+        sys.exit(1)
+
+    base_url = base_url or settings_manager.get_base_url()
+    ai_model = ai_model or settings_manager.get_current_model()
+
+    # Initialize services
+    system_db_path = settings_manager.get_system_database_path()
+    user_db_path = settings_manager.get_user_database_path()
+    db_manager = DatabaseManager(system_db_path, user_db_path)
+    services = ServiceContainer(db_manager)
+    runtime = MLRuntime(services)
+
+    # Run model generation
+    asyncio.run(
+        _ml_generate_model_cli(
+            name, context, data_table, output, api_key, base_url, ai_model, ui, runtime
+        )
+    )
+
+
+@cli.command("generate-trainer")
+@click.option("-n", "--name", required=True, help="Trainer name")
+@click.option(
+    "-c", "--context", required=True, help="Training context and requirements"
+)
+@click.option(
+    "-s", "--model-spec", required=True, help="Path to model specification file"
+)
+@click.option("-o", "--output", help="Output file path (default: {name}_trainer.yaml)")
+@click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
+@click.option("-u", "--base-url", help="Arc API base URL")
+@click.option("-m", "--model", "ai_model", help="AI model to use")
+def generate_trainer(
+    name: str,
+    context: str,
+    model_spec: str,
+    output: str | None,
+    api_key: str | None,
+    base_url: str | None,
+    ai_model: str | None,
+):
+    """Generate a trainer specification using Arc trainer generator agent."""
+    ui = InteractiveInterface()
+
+    # Get configuration
+    settings_manager = SettingsManager()
+    api_key = api_key or settings_manager.get_api_key()
+    if not api_key:
+        ui.show_system_error(
+            "API key required. Set ARC_API_KEY environment variable or use --api-key"
+        )
+        sys.exit(1)
+
+    base_url = base_url or settings_manager.get_base_url()
+    ai_model = ai_model or settings_manager.get_current_model()
+
+    # Initialize services
+    system_db_path = settings_manager.get_system_database_path()
+    user_db_path = settings_manager.get_user_database_path()
+    db_manager = DatabaseManager(system_db_path, user_db_path)
+    services = ServiceContainer(db_manager)
+    runtime = MLRuntime(services)
+
+    # Run trainer generation
+    asyncio.run(
+        _ml_generate_trainer_cli(
+            name, context, model_spec, output, api_key, base_url, ai_model, ui, runtime
+        )
+    )
+
+
+@cli.command("generate-predictor")
+@click.option("-n", "--name", help="Predictor name")
+@click.option(
+    "-c", "--context", required=True, help="Prediction requirements and use case"
+)
+@click.option(
+    "-i", "--model-id", required=True, help="Model ID to create predictor for"
+)
+@click.option("-v", "--model-version", type=int, help="Model version (default: latest)")
+@click.option("--outputs", help="Comma-separated list of desired output names")
+@click.option(
+    "-o", "--output", help="Output file path (default: {model_id}_predictor.yaml)"
+)
+@click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
+@click.option("-u", "--base-url", help="Arc API base URL")
+@click.option("-m", "--model", "ai_model", help="AI model to use")
+def generate_predictor(
+    name: str | None,
+    context: str,
+    model_id: str,
+    model_version: int | None,
+    outputs: str | None,
+    output: str | None,
+    api_key: str | None,
+    base_url: str | None,
+    ai_model: str | None,
+):
+    """Generate a predictor specification using Arc predictor generator agent."""
+    ui = InteractiveInterface()
+
+    # Get configuration
+    settings_manager = SettingsManager()
+    api_key = api_key or settings_manager.get_api_key()
+    if not api_key:
+        ui.show_system_error(
+            "API key required. Set ARC_API_KEY environment variable or use --api-key"
+        )
+        sys.exit(1)
+
+    base_url = base_url or settings_manager.get_base_url()
+    ai_model = ai_model or settings_manager.get_current_model()
+
+    # Initialize services
+    system_db_path = settings_manager.get_system_database_path()
+    user_db_path = settings_manager.get_user_database_path()
+    db_manager = DatabaseManager(system_db_path, user_db_path)
+    services = ServiceContainer(db_manager)
+    runtime = MLRuntime(services)
+
+    # Run predictor generation
+    asyncio.run(
+        _ml_generate_predictor_cli(
+            name,
+            context,
+            model_id,
+            model_version,
+            outputs,
+            output,
+            api_key,
+            base_url,
+            ai_model,
+            ui,
+            runtime,
+        )
+    )
+
+
+async def _ml_generate_model_cli(
+    name: str,
+    context: str,
+    data_table: str,
+    output_path: str | None,
+    _api_key: str,
+    _base_url: str | None,
+    _ai_model: str | None,
+    ui: InteractiveInterface,
+    runtime: MLRuntime,
+) -> None:
+    """CLI wrapper for model generation."""
+    try:
+        args = ["--name", name, "--context", context, "--data-table", data_table]
+        if output_path:
+            args.extend(["--output", output_path])
+
+        await _ml_generate_model(args, ui, runtime)
+
+    except Exception as e:
+        ui.show_system_error(f"Model generation failed: {e}")
+        sys.exit(1)
+
+
+async def _ml_generate_trainer_cli(
+    name: str,
+    context: str,
+    model_spec: str,
+    output_path: str | None,
+    _api_key: str,
+    _base_url: str | None,
+    _ai_model: str | None,
+    ui: InteractiveInterface,
+    runtime: MLRuntime,
+) -> None:
+    """CLI wrapper for trainer generation."""
+    try:
+        args = ["--name", name, "--context", context, "--model-spec", model_spec]
+        if output_path:
+            args.extend(["--output", output_path])
+
+        await _ml_generate_trainer(args, ui, runtime)
+
+    except Exception as e:
+        ui.show_system_error(f"Trainer generation failed: {e}")
+        sys.exit(1)
+
+
+async def _ml_generate_predictor_cli(
+    name: str | None,
+    context: str,
+    model_id: str,
+    model_version: int | None,
+    outputs: str | None,
+    output_path: str | None,
+    _api_key: str,
+    _base_url: str | None,
+    _ai_model: str | None,
+    ui: InteractiveInterface,
+    runtime: MLRuntime,
+) -> None:
+    """CLI wrapper for predictor generation."""
+    try:
+        args = ["--model-id", model_id, "--context", context]
+
+        if name:
+            args.extend(["--name", name])
+        if model_version:
+            args.extend(["--model-version", str(model_version)])
+        if outputs:
+            args.extend(["--outputs", outputs])
+        if output_path:
+            args.extend(["--output", output_path])
+
+        await _ml_generate_predictor(args, ui, runtime)
+
+    except Exception as e:
+        ui.show_system_error(f"Predictor generation failed: {e}")
+        sys.exit(1)

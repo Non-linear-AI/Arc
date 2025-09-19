@@ -3,8 +3,9 @@ inputs:
     dtype: float32
     shape: [null, 8]
     columns: [pregnancies, glucose, blood_pressure, skin_thickness, insulin, bmi, diabetes_pedigree, age]
+
 graph:
-  - name: classifier
+  - name: regressor
     type: torch.nn.Linear
     params:
       in_features: 8
@@ -12,10 +13,6 @@ graph:
       bias: true
     inputs:
       input: patient_data
-  - name: sigmoid
-    type: torch.nn.Sigmoid
-    inputs:
-      input: classifier.output
+
 outputs:
-  logits: classifier.output
-  prediction: sigmoid.output
+  prediction: regressor.output

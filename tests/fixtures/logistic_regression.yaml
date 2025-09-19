@@ -1,58 +1,40 @@
-version: "0.1"
-model_name: "diabetes_predictor"
-description: "Simple logistic regression for diabetes prediction"
-
-features:
-  feature_columns: [age, bmi, glucose_level]
-  target_columns: [outcome]
-  processors:
-    - name: assemble_features
-      op: transform.assemble_vector
-      inputs: {columns: feature_columns}
-      outputs: {tensors.raw_features: output}
-
-    - name: get_feature_count
-      op: inspect.feature_stats
-      train_only: true
-      inputs: {tensor: tensors.raw_features}
-      outputs: {vars.n_features: n_features}
-
-    - name: learn_scaler
-      op: fit.standard_scaler
-      train_only: true
-      inputs: {x: tensors.raw_features}
-      outputs: {states.scaler: state}
-
-    - name: apply_scaling
-      op: transform.standard_scaler
-      inputs: {x: tensors.raw_features, state: states.scaler}
-      outputs: {tensors.features: output}
-
 model:
   inputs:
-    features: {dtype: float32, shape: [null, vars.n_features]}
+    health_data:
+      dtype: float32
+      shape: [null, 3]
+      columns: [age, bmi, glucose_level]
 
   graph:
     - name: linear_layer
-      type: core.Linear
-      params: {in_features: vars.n_features, out_features: 1, bias: true}
-      inputs: {input: features}
+      type: torch.nn.Linear
+      params:
+        in_features: 3
+        out_features: 1
+        bias: true
+      inputs:
+        input: health_data
 
     - name: sigmoid_activation
-      type: core.Sigmoid
-      inputs: {input: linear_layer.output}
+      type: torch.nn.Sigmoid
+      inputs:
+        input: linear_layer.output
 
   outputs:
     probability: sigmoid_activation.output
 
 trainer:
   optimizer:
-    type: AdamW
-    config: {learning_rate: 0.001, weight_decay: 0.01}
+    type: torch.optim.AdamW
+    config:
+      learning_rate: 0.001
+      weight_decay: 0.01
 
   loss:
-    type: core.BCELoss
-    inputs: {pred: model.probability, target: target_columns.outcome}
+    type: torch.nn.BCELoss
+    inputs:
+      pred: model.probability
+      target: outcome
 
 predictor:
   returns: [probability]

@@ -12,7 +12,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ..graph.spec import ArcGraph, TrainingConfig
+from ..graph import TrainingConfig
 from .trainer import TrainingResult
 
 
@@ -79,7 +79,7 @@ class ModelArtifactManager:
         artifact: ModelArtifact,
         optimizer: torch.optim.Optimizer | None = None,
         training_history: dict[str, Any] | None = None,
-        arc_graph: ArcGraph | None = None,
+        arc_graph: dict[str, Any] | None = None,
         overwrite: bool = False,
     ) -> Path:
         """Save a complete model artifact.
@@ -422,7 +422,7 @@ def create_artifact_from_training(
     version: int,
     training_config: TrainingConfig,
     training_result: TrainingResult,
-    arc_graph: ArcGraph | None = None,
+    arc_graph: dict[str, Any] | None = None,
     model_info: dict[str, Any] | None = None,
     **kwargs,
 ) -> ModelArtifact:

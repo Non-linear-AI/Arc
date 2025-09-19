@@ -80,6 +80,10 @@ class InteractiveInterface:
             )
             ml_commands = [
                 (
+                    "/ml generate-schema --name NAME --context DESC --data-table TABLE",
+                    "Generate Arc-Graph schema using LLM",
+                ),
+                (
                     "/ml create-model --name NAME --schema PATH",
                     "Register an Arc-Graph model",
                 ),

@@ -1,6 +1,3 @@
-version: "0.1"
-model_name: "broken"
-
 features:
   feature_columns: [x1]
   processors: []

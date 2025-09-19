@@ -13,7 +13,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from ..graph.spec import TrainingConfig
+from ..graph.trainer import TrainingConfig
+from ..plugins import get_plugin_manager
 from .metrics import MetricsTracker
 
 logger = logging.getLogger(__name__)
@@ -115,38 +116,48 @@ class ArcTrainer:
         return device
 
     def _setup_optimizer(self, model: nn.Module) -> torch.optim.Optimizer:
-        """Setup optimizer based on configuration."""
-        optimizer_name = self.config.optimizer.lower()
-        params = {"lr": self.config.learning_rate, **self.config.optimizer_params}
+        """Setup optimizer using exact PyTorch names from plugin system."""
+        optimizer_name = self.config.optimizer
 
-        if optimizer_name == "adam":
-            return torch.optim.Adam(model.parameters(), **params)
-        elif optimizer_name == "sgd":
-            return torch.optim.SGD(model.parameters(), **params)
-        elif optimizer_name == "adamw":
-            return torch.optim.AdamW(model.parameters(), **params)
-        elif optimizer_name == "rmsprop":
-            return torch.optim.RMSprop(model.parameters(), **params)
+        # Start with optimizer params from config
+        params = dict(self.config.optimizer_params)
+
+        # Convert learning_rate to lr if present in optimizer_params
+        if "learning_rate" in params:
+            params["lr"] = params.pop("learning_rate")
         else:
-            raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+            params["lr"] = self.config.learning_rate
+
+        # Get optimizer class from plugin system
+        pm = get_plugin_manager()
+        optimizer_class = pm.get_optimizer(optimizer_name)
+
+        if optimizer_class is None:
+            optimizers = pm.get_optimizers()
+            raise ValueError(
+                f"Unsupported optimizer: {optimizer_name}. "
+                f"Available: {list(optimizers.keys())}"
+            )
+        return optimizer_class(model.parameters(), **params)
 
     def _setup_loss_function(self) -> nn.Module:
-        """Setup loss function based on configuration."""
-        loss_name = self.config.loss_function.lower()
+        """Setup loss function using exact PyTorch names from plugin system."""
+        loss_name = self.config.loss_function
+
         params = self.config.loss_params
 
-        if loss_name == "cross_entropy":
-            return nn.CrossEntropyLoss(**params)
-        elif loss_name == "mse":
-            return nn.MSELoss(**params)
-        elif loss_name == "mae":
-            return nn.L1Loss(**params)
-        elif loss_name == "binary_cross_entropy":
-            return nn.BCELoss(**params)  # For probabilities (0-1)
-        elif loss_name == "binary_cross_entropy_with_logits":
-            return nn.BCEWithLogitsLoss(**params)  # For raw logits
-        else:
-            raise ValueError(f"Unsupported loss function: {loss_name}")
+        # Get loss class from plugin system
+        pm = get_plugin_manager()
+        loss_class = pm.get_loss(loss_name)
+
+        if loss_class is None:
+            losses = pm.get_losses()
+            raise ValueError(
+                f"Unsupported loss function: {loss_name}. "
+                f"Available: {list(losses.keys())}"
+            )
+
+        return loss_class(**params)
 
     def train(
         self,

@@ -18,11 +18,6 @@ The design is guided by these principles:
 Every Arc-Graph file is composed of these primary, top-level sections, designed for clarity and separation of concerns:
 
 ```yaml
-# === METADATA ===
-version: "0.1"
-model_name: "my_model"
-description: "A brief description of the model's purpose."
-
 # === DATA PIPELINE ===
 # Transforms raw data into model-ready tensors
 features:
@@ -160,9 +155,6 @@ predictor:
 ### 6.1. Example 1: Logistic Regression
 
 ```yaml
-version: "0.1"
-model_name: "diabetes_predictor_final"
-
 features:
   feature_columns: [age, bmi, glucose_level]
   target_columns: [outcome]
@@ -228,9 +220,6 @@ predictor:
 This example is updated to show a `var` being used by a `transform` operator.
 
 ```yaml
-version: "0.1"
-model_name: "recommender_complex"
-
 features:
   feature_columns: [age, country, device, event_id, event_category, event_features]
   target_columns: [event_id]

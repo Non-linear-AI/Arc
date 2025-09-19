@@ -15,7 +15,7 @@ from typing import Any
 from ..database import DatabaseError
 from ..database.services.job_service import JobService
 from ..database.services.ml_data_service import MLDataService
-from ..graph.spec import ArcGraph, TrainingConfig
+from ..graph import FeatureSpec, ModelSpec, TrainerSpec
 from ..jobs.models import Job, JobStatus, JobType
 from .artifacts import (
     ModelArtifact,
@@ -33,21 +33,23 @@ logger = logging.getLogger(__name__)
 class TrainingJobConfig:
     """Configuration for a training job."""
 
-    # Model configuration
+    # Required fields first
     model_id: str  # Stable model identifier (slug)
     model_version: int  # Model version number associated with the job
     model_name: str
-    arc_graph: ArcGraph
-
-    # Data configuration
     train_table: str
     target_column: str
+    arc_graph: ModelSpec  # Model specification
+
+    # Optional fields with defaults
+    feature_spec: FeatureSpec | None = None
     feature_columns: list[str] | None = None
     validation_table: str | None = None
     validation_split: float = 0.2
-
-    # Training configuration
-    training_config: TrainingConfig | None = None
+    epochs: int = 10
+    batch_size: int = 32
+    learning_rate: float = 0.001
+    trainer_spec: TrainerSpec | None = None
 
     # Storage configuration
     artifacts_dir: str | None = None
@@ -362,30 +364,93 @@ class TrainingService:
         try:
             logger.info(f"Starting training execution for job {job_id}")
 
-            # Setup training configuration - extract from Arc-Graph
-            if config.training_config:
-                training_config = config.training_config
+            # Setup training configuration - extract from TrainerSpec or use defaults
+            if config.trainer_spec:
+                trainer_spec = config.trainer_spec
             else:
-                # Extract training configuration from Arc-Graph specification without
-                # overriding graph-defined parameters unless explicitly provided
-                training_config = config.arc_graph.to_training_config()
+                # Create default trainer spec if none provided
+                from ..graph.trainer import LossConfig, OptimizerConfig, TrainerSpec
+
+                trainer_spec = TrainerSpec(
+                    optimizer=OptimizerConfig(
+                        type="torch.optim.Adam", lr=config.learning_rate
+                    ),
+                    loss=LossConfig(type="torch.nn.BCEWithLogitsLoss"),
+                    epochs=config.epochs,
+                    batch_size=config.batch_size,
+                    learning_rate=config.learning_rate,
+                    validation_split=config.validation_split,
+                )
+
+            # Create a bridge config that has all the fields the trainer expects
+            base_training_config = trainer_spec.get_training_config()
+            from types import SimpleNamespace
+
+            training_config = SimpleNamespace(
+                # Basic training parameters
+                epochs=trainer_spec.epochs,
+                batch_size=trainer_spec.batch_size,
+                learning_rate=trainer_spec.learning_rate,
+                validation_split=trainer_spec.validation_split,
+                device=trainer_spec.device,
+                early_stopping_patience=trainer_spec.early_stopping_patience,
+                # Training config parameters
+                shuffle=base_training_config.shuffle,
+                num_workers=base_training_config.num_workers,
+                pin_memory=base_training_config.pin_memory,
+                checkpoint_every=base_training_config.checkpoint_every,
+                save_best_only=base_training_config.save_best_only,
+                save_dir=base_training_config.save_dir,
+                early_stopping_min_delta=base_training_config.early_stopping_min_delta,
+                early_stopping_monitor=base_training_config.early_stopping_monitor,
+                early_stopping_mode=base_training_config.early_stopping_mode,
+                log_every=base_training_config.log_every,
+                verbose=base_training_config.verbose,
+                gradient_clip_val=base_training_config.gradient_clip_val,
+                gradient_clip_norm=base_training_config.gradient_clip_norm,
+                accumulate_grad_batches=base_training_config.accumulate_grad_batches,
+                seed=base_training_config.seed,
+                # Optimizer and loss config
+                optimizer=trainer_spec.optimizer.type,
+                optimizer_params=trainer_spec.optimizer.params or {},
+                loss_function=trainer_spec.loss.type,
+                loss_params=trainer_spec.loss.params or {},
+                # Additional trainer-specific fields (with defaults)
+                reshape_targets=True,  # Default for binary classification
+                target_output_key="logits",  # Use logits for BCEWithLogitsLoss
+            )
 
             # Persist the effective training configuration for downstream use
             config.training_config = training_config
             logger.info(f"Training config ready for job {job_id}")
 
-            # Build model from Arc Graph
-            logger.info(f"Building model for job {job_id}")
-            builder = ModelBuilder()
-            model = builder.build_model(config.arc_graph)
-            logger.info(f"Model built successfully for job {job_id}")
-
             # Create data processor with ML data service and database access
             logger.info(f"Setting up data processor for job {job_id}")
             ml_data_service = MLDataService(self.job_service.db_manager)
-            data_processor = DataProcessor(
-                ml_data_service=ml_data_service,
-            )
+            data_processor = DataProcessor(ml_data_service=ml_data_service)
+
+            # Run inspection processors to get vars for model building
+            logger.info(f"Running inspection processors for job {job_id}")
+            # Create features_spec from config since ModelSpec doesn't have features
+            features_dict = {
+                "feature_columns": config.feature_columns,
+                "target_columns": [config.target_column],
+            }
+            inspection_context = data_processor.run_feature_pipeline(
+                table_name=config.train_table,
+                features_spec=features_dict,
+                training=True,
+            )[0]  # Get context only, ignore features and targets
+
+            # Build model from Arc Graph with vars context
+            logger.info(f"Building model for job {job_id}")
+            builder = ModelBuilder()
+            # Pass vars to builder for variable resolution
+            if "vars" in inspection_context:
+                for var_name, var_value in inspection_context["vars"].items():
+                    builder.set_variable(f"vars.{var_name}", var_value)
+            model = builder.build_model(config.arc_graph)
+            logger.info(f"Model built successfully for job {job_id}")
 
             # Create data loaders - try dataset first, fallback to table
             logger.info(
@@ -619,7 +684,7 @@ class TrainingService:
             model_id=model_key,
             model_name=config.model_name,
             version=version,
-            training_config=config.training_config or TrainingConfig(),
+            training_config=config.trainer_spec or {},
             training_result=result,
             arc_graph=config.arc_graph,
             model_info={
@@ -639,7 +704,7 @@ class TrainingService:
             "val_losses": result.val_losses,
             "metrics_history": result.metrics_history,
             "training_time": result.training_time,
-            "config": asdict(config.training_config or TrainingConfig()),
+            "config": asdict(config.trainer_spec) if config.trainer_spec else {},
         }
 
         # Save artifact
