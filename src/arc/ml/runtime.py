@@ -251,23 +251,46 @@ class MLRuntime:
         limit: int | None = None,
         output_table: str | None = None,
         device: str | None = None,
+        streaming_prediction_threshold: int = 50000,
+        streaming_prediction_chunk_size: int = 10000,
     ) -> PredictionSummary:
-        """Run inference on a dataset and optionally persist predictions."""
+        """Run inference on a dataset and optionally persist predictions.
+
+        Automatically uses streaming for large datasets (>50k rows) to prevent OOM.
+        """
         table_name = str(table_name)
         output_table = str(output_table) if output_table else None
 
         if not self.ml_data_service.dataset_exists(table_name):
             raise MLRuntimeError(f"Table '{table_name}' does not exist")
 
+        # Auto-detect whether to use streaming based on dataset size
+        dataset_info = self.ml_data_service.get_dataset_info(table_name)
+        use_streaming = False
+        if dataset_info:
+            effective_rows = dataset_info.row_count
+            if limit is not None:
+                effective_rows = min(effective_rows, limit)
+            use_streaming = effective_rows > streaming_prediction_threshold
+
         predictor = self.load_predictor(model_name=model_name, device=device)
 
         try:
-            predictions = predictor.predict_from_table(
-                ml_data_service=self.ml_data_service,
-                table_name=table_name,
-                batch_size=batch_size,
-                limit=limit,
-            )
+            if use_streaming:
+                predictions = predictor.predict_from_table_streaming(
+                    ml_data_service=self.ml_data_service,
+                    table_name=table_name,
+                    batch_size=batch_size,
+                    chunk_size=streaming_prediction_chunk_size,
+                    limit=limit,
+                )
+            else:
+                predictions = predictor.predict_from_table(
+                    ml_data_service=self.ml_data_service,
+                    table_name=table_name,
+                    batch_size=batch_size,
+                    limit=limit,
+                )
         except Exception as exc:  # noqa: BLE001
             raise MLRuntimeError(f"Prediction failed: {exc}") from exc
 

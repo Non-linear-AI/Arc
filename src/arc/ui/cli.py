@@ -306,6 +306,7 @@ def _ml_predict(
         {
             "model": True,
             "data": True,
+            "output": True,
         },
     )
 
@@ -315,10 +316,14 @@ def _ml_predict(
     if not model_name or not table_name:
         raise CommandError("/ml predict requires --model and --data")
 
+    # Parse optional output table parameter
+    output_table = options.get("output")
+
     try:
         summary = runtime.predict(
             model_name=str(model_name),
             table_name=str(table_name),
+            output_table=output_table,
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc

@@ -229,6 +229,136 @@ class ArcPredictor:
             logger.error(f"Table prediction failed: {e}")
             raise PredictionError(f"Table prediction failed: {e}") from e
 
+    def predict_from_table_streaming(
+        self,
+        ml_data_service: MLDataService,
+        table_name: str,
+        feature_columns: list[str] | None = None,
+        batch_size: int = 32,
+        chunk_size: int = 10000,
+        limit: int | None = None,
+    ) -> dict[str, torch.Tensor]:
+        """Run prediction on data from a database table using streaming for efficiency.
+
+        This method loads data in chunks to handle large datasets without memory issues,
+        similar to the approach used in training with StreamingTableDataset.
+
+        Args:
+            ml_data_service: Service for accessing ML data
+            table_name: Name of the table containing features
+            feature_columns: List of feature column names
+                (uses arc_graph default if None)
+            batch_size: Batch size for model inference processing
+            chunk_size: Number of rows to load per chunk from database
+            limit: Maximum number of rows to process
+
+        Returns:
+            Dictionary mapping output names to prediction tensors
+
+        Raises:
+            PredictionError: If prediction fails
+        """
+        try:
+            # Use feature columns from arc_graph if not provided
+            if feature_columns is None:
+                if (
+                    not self.arc_graph.features
+                    or not self.arc_graph.features.feature_columns
+                ):
+                    raise PredictionError(
+                        "No feature columns specified and none found in arc_graph"
+                    )
+                feature_columns = self.arc_graph.features.feature_columns
+
+            # Get dataset info to validate and determine total size
+            dataset_info = ml_data_service.get_dataset_info(table_name)
+            if not dataset_info:
+                raise PredictionError(f"Dataset '{table_name}' does not exist")
+
+            # Validate feature columns exist in the dataset
+            column_validation = ml_data_service.validate_columns(
+                table_name, feature_columns
+            )
+            missing_cols = [
+                col for col, exists in column_validation.items() if not exists
+            ]
+            if missing_cols:
+                raise PredictionError(f"Missing feature columns: {missing_cols}")
+
+            total_rows = dataset_info.row_count
+            if limit is not None:
+                total_rows = min(total_rows, limit)
+
+            logger.info(
+                f"Starting streaming prediction on table '{table_name}' "
+                f"with {total_rows} rows using chunk_size={chunk_size}"
+            )
+
+            # Initialize result accumulation
+            predictions = {key: [] for key in self.output_keys}
+            processed_rows = 0
+
+            # Process data in chunks
+            while processed_rows < total_rows:
+                # Calculate chunk size for this iteration
+                current_chunk_size = min(chunk_size, total_rows - processed_rows)
+
+                logger.info(
+                    f"Processing chunk: rows {processed_rows} to "
+                    f"{processed_rows + current_chunk_size - 1}"
+                )
+
+                # Load chunk data using pagination
+                features_df, _ = ml_data_service.get_features_and_targets_paginated(
+                    dataset_name=table_name,
+                    feature_columns=feature_columns,
+                    target_columns=None,  # No targets needed for prediction
+                    offset=processed_rows,
+                    limit=current_chunk_size,
+                )
+
+                # Break if no more data
+                if features_df.empty:
+                    break
+
+                # Convert to tensor
+                features_tensor = torch.tensor(
+                    features_df.values.astype(float), dtype=torch.float32
+                )
+
+                # Run prediction on this chunk
+                chunk_predictions = self.predict_batch(features_tensor, batch_size)
+
+                # Accumulate results
+                for key in self.output_keys:
+                    predictions[key].append(chunk_predictions[key])
+
+                processed_rows += len(features_df)
+
+                # Stop if we've hit the limit
+                if limit is not None and processed_rows >= limit:
+                    break
+
+            # Concatenate all chunk results
+            final_predictions = {}
+            for key in self.output_keys:
+                if predictions[key]:
+                    final_predictions[key] = torch.cat(predictions[key], dim=0)
+                else:
+                    # Handle case where no data was processed
+                    final_predictions[key] = torch.empty(0)
+
+            logger.info(
+                f"Streaming prediction completed: processed {processed_rows} rows, "
+                f"generated {len(final_predictions)} output types"
+            )
+
+            return final_predictions
+
+        except Exception as e:
+            logger.error(f"Streaming table prediction failed: {e}")
+            raise PredictionError(f"Streaming table prediction failed: {e}") from e
+
     def predict_dataframe(
         self,
         df: pd.DataFrame,
