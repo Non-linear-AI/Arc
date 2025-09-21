@@ -14,7 +14,7 @@ import pytest
 from arc.database.manager import DatabaseManager
 from arc.database.services import ServiceContainer
 from arc.jobs.models import JobStatus, JobType
-from arc.ui.cli import MLRuntime, handle_ml_command
+from arc.ui.cli import handle_ml_command
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -501,7 +501,7 @@ async def test_train_missing_model_shows_error(tmp_path):
 @pytest.mark.asyncio
 async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     manager = DatabaseManager(":memory:", ":memory:")
-    services = ServiceContainer(manager)
+    services = ServiceContainer(manager, artifacts_dir=str(tmp_path / "artifacts"))
 
     table_sql = """
     CREATE TABLE pima_small (
@@ -525,18 +525,19 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     schema_path = tmp_path / "model.yaml"
     schema_path.write_text(PIMA_SCHEMA)
 
-    runtime = MLRuntime(services, artifacts_dir=tmp_path / "artifacts")
     ui = StubUI()
 
     await handle_ml_command(
-        f"/ml create-model --name pima_cli --schema {schema_path}", ui, runtime
+        f"/ml create-model --name pima_cli --schema {schema_path}",
+        ui,
+        services.ml_runtime,
     )
     assert any("registered" in msg for msg in ui.successes)
 
     await handle_ml_command(
         "/ml train --model pima_cli --data pima_small",
         ui,
-        runtime,
+        services.ml_runtime,
     )
 
     assert ui.infos, "Expected job id information"
@@ -544,7 +545,7 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     assert "Job ID:" in job_info
     job_id = job_info.split("Job ID:")[-1].strip()
 
-    result = runtime.training_service.wait_for_job(job_id, timeout=10)
+    result = services.ml_runtime.training_service.wait_for_job(job_id, timeout=10)
     assert result is not None and result.success is True
 
     await asyncio.sleep(0)
@@ -552,5 +553,4 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     job_record = services.jobs.get_job_by_id(job_id)
     assert job_record.status == JobStatus.COMPLETED
 
-    runtime.shutdown()
-    services.close()
+    services.shutdown()
