@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ...ml.runtime import MLRuntime
     from ..manager import DatabaseManager
 
 from .interactive_query_service import InteractiveQueryService
@@ -21,13 +22,15 @@ class ServiceContainer:
     performance and resource management.
     """
 
-    def __init__(self, db_manager: "DatabaseManager"):
+    def __init__(self, db_manager: "DatabaseManager", artifacts_dir: str | None = None):
         """Initialize ServiceContainer with database manager.
 
         Args:
             db_manager: DatabaseManager instance for database access
+            artifacts_dir: Directory for ML artifacts storage
         """
         self.db_manager = db_manager
+        self.artifacts_dir = artifacts_dir
 
         # Services are initialized lazily via properties
         self._query_service = None
@@ -36,6 +39,7 @@ class ServiceContainer:
         self._plugin_service = None
         self._schema_service = None
         self._ml_data_service = None
+        self._ml_runtime = None
 
     @property
     def query(self) -> InteractiveQueryService:
@@ -79,6 +83,22 @@ class ServiceContainer:
             self._ml_data_service = MLDataService(self.db_manager)
         return self._ml_data_service
 
+    @property
+    def ml_runtime(self) -> "MLRuntime":
+        """Get the ML runtime service."""
+        if self._ml_runtime is None:
+            from ...ml.runtime import MLRuntime
+
+            self._ml_runtime = MLRuntime(self, self.artifacts_dir)
+        return self._ml_runtime
+
+    def shutdown(self) -> None:
+        """Shutdown all services and clean up resources."""
+        # Shutdown ML runtime if it was initialized
+        if self._ml_runtime is not None:
+            self._ml_runtime.shutdown()
+        self.close()
+
     def close(self) -> None:
         """Clean up resources and close database connections."""
         self.db_manager.close()
@@ -88,8 +108,8 @@ class ServiceContainer:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit - ensure connections are closed."""
-        self.close()
+        """Context manager exit - ensure all resources are cleaned up."""
+        self.shutdown()
 
     def __repr__(self) -> str:
         """String representation for debugging."""

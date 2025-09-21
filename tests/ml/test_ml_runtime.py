@@ -10,7 +10,7 @@ import pytest
 
 from arc.database.manager import DatabaseManager
 from arc.database.services import ServiceContainer
-from arc.ml.runtime import MLRuntime, MLRuntimeError
+from arc.ml.runtime import MLRuntimeError
 
 SIMPLE_GRAPH_YAML = textwrap.dedent(
     """
@@ -69,13 +69,13 @@ def db_manager(tmp_path):
 
 
 @pytest.fixture()
-def services(db_manager):
-    return ServiceContainer(db_manager)
+def services(tmp_path, db_manager):
+    return ServiceContainer(db_manager, artifacts_dir=str(tmp_path / "artifacts"))
 
 
 @pytest.fixture()
-def runtime(tmp_path, services):
-    runtime = MLRuntime(services, artifacts_dir=tmp_path / "artifacts")
+def runtime(services):
+    runtime = services.ml_runtime
     try:
         yield runtime
     finally:

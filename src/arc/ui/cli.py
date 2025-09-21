@@ -100,7 +100,7 @@ def chat(
     system_db_path = settings_manager.get_system_database_path()
     user_db_path = settings_manager.get_user_database_path()
     db_manager = DatabaseManager(system_db_path, user_db_path)
-    services = ServiceContainer(db_manager)
+    services = ServiceContainer(db_manager, artifacts_dir="artifacts")
 
     # Run the appropriate mode
     if prompt:
@@ -473,8 +473,6 @@ async def run_interactive_mode(
         # Database context for SQL commands - defaults to system database
         current_database = "system"
 
-        ml_runtime = MLRuntime(services)
-
         # Show enhanced welcome screen
         ui.show_welcome(agent.get_current_model(), agent.get_current_directory())
 
@@ -489,7 +487,7 @@ async def run_interactive_mode(
                 # Handle system commands (only with / prefix)
                 if user_input.startswith("/"):
                     if user_input.startswith("/ml"):
-                        await handle_ml_command(user_input, ui, ml_runtime)
+                        await handle_ml_command(user_input, ui, services.ml_runtime)
                         continue
 
                     cmd = user_input[
@@ -579,8 +577,7 @@ async def run_interactive_mode(
         sys.exit(1)
     finally:
         with suppress(Exception):
-            if "ml_runtime" in locals():
-                ml_runtime.shutdown()
+            services.shutdown()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,6 @@ from pathlib import Path
 import jinja2
 from openai.types.chat import ChatCompletionMessageParam
 
-from ..ml.runtime import MLRuntime
 from ..tools import (
     BashTool,
     DatabaseQueryTool,
@@ -97,14 +96,11 @@ class ArcAgent:
         self.todo_tool = TodoTool()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
-        self.ml_runtime = MLRuntime(services) if services else None
         self.ml_create_model_tool = (
-            MLCreateModelTool(self.ml_runtime) if self.ml_runtime else None
+            MLCreateModelTool(services.ml_runtime) if services else None
         )
-        self.ml_train_tool = MLTrainTool(self.ml_runtime) if self.ml_runtime else None
-        self.ml_predict_tool = (
-            MLPredictTool(self.ml_runtime) if self.ml_runtime else None
-        )
+        self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
+        self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
 
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
