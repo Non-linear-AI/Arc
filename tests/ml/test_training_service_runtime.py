@@ -52,7 +52,7 @@ trainer:
 async def test_training_service_completes_quick_job(tmp_path):
     """Ensure TrainingService completes and updates job status."""
 
-    manager = DatabaseManager(":memory:", ":memory:")
+    manager = DatabaseManager(":memory:", ":memory:", shared_connections_for_tests=True)
     job_service = JobService(manager)
 
     manager.user_execute(
@@ -113,7 +113,7 @@ async def test_training_service_completes_quick_job(tmp_path):
 async def test_database_job_status_updates_correctly(tmp_path):
     """Test job status updates properly throughout training lifecycle."""
 
-    manager = DatabaseManager(":memory:", ":memory:")
+    manager = DatabaseManager(":memory:", ":memory:", shared_connections_for_tests=True)
     job_service = JobService(manager)
 
     # Create minimal training data
@@ -189,7 +189,7 @@ async def test_database_job_status_updates_correctly(tmp_path):
 async def test_training_error_handling_and_status_reporting(tmp_path):
     """Test that training errors are properly caught and reported in job status."""
 
-    manager = DatabaseManager(":memory:", ":memory:")
+    manager = DatabaseManager(":memory:", ":memory:", shared_connections_for_tests=True)
     job_service = JobService(manager)
 
     # Create minimal training data with WRONG column names to trigger error

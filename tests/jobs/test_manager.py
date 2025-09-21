@@ -11,7 +11,7 @@ from src.arc.jobs.models import JobStatus, JobType
 @pytest.fixture
 def db_manager():
     """Use in-memory DuckDB for isolated manager tests."""
-    return DatabaseManager(":memory:", ":memory:")
+    return DatabaseManager(":memory:", ":memory:", shared_connections_for_tests=True)
 
 
 @pytest.fixture

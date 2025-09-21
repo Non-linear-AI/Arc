@@ -69,8 +69,12 @@ class TestEndToEndWorkflow:
 
     @pytest.fixture
     def database_manager(self):
-        """Create in-memory database for testing."""
-        manager = DatabaseManager(":memory:", ":memory:")
+        """Create in-memory database for testing with shared connections."""
+        # Use shared connections for integration tests to allow data sharing
+        # between main test thread and background training threads
+        manager = DatabaseManager(
+            ":memory:", ":memory:", shared_connections_for_tests=True
+        )
         yield manager
         manager.close()
 

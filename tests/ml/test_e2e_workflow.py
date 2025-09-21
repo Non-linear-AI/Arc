@@ -126,7 +126,11 @@ predictor:
 async def setup_database_and_data(data: pd.DataFrame) -> tuple[DatabaseManager, str]:
     """Setup database and load data."""
     # Create in-memory database for testing
-    db_manager = DatabaseManager(system_db_path=":memory:", user_db_path=":memory:")
+    db_manager = DatabaseManager(
+        system_db_path=":memory:",
+        user_db_path=":memory:",
+        shared_connections_for_tests=True,
+    )
 
     table_name = "logistic_data"
 
