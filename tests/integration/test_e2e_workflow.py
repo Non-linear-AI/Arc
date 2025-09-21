@@ -68,13 +68,13 @@ class TestEndToEndWorkflow:
             yield Path(temp_dir)
 
     @pytest.fixture
-    def database_manager(self):
-        """Create in-memory database for testing with shared connections."""
-        # Use shared connections for integration tests to allow data sharing
-        # between main test thread and background training threads
-        manager = DatabaseManager(
-            ":memory:", ":memory:", shared_connections_for_tests=True
-        )
+    def database_manager(self, tmp_path):
+        """Create temporary file databases for testing."""
+        # Use file databases to allow natural data sharing between threads
+        # while maintaining thread-safe connections
+        system_db = tmp_path / "system.db"
+        user_db = tmp_path / "user.db"
+        manager = DatabaseManager(str(system_db), str(user_db))
         yield manager
         manager.close()
 

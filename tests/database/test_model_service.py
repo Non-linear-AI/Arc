@@ -9,9 +9,11 @@ from arc.database.services.model_service import Model, ModelService
 
 
 @pytest.fixture
-def db_manager():
-    """Create an in-memory database manager for testing."""
-    with DatabaseManager(":memory:") as manager:
+def db_manager(tmp_path):
+    """Create temporary file database manager for testing."""
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    with DatabaseManager(str(system_db), str(user_db)) as manager:
         yield manager
 
 

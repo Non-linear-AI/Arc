@@ -30,9 +30,10 @@ def test_database_manager_no_user_db():
         assert not manager.has_user_database()
 
 
-def test_system_database_operations():
+def test_system_database_operations(tmp_path):
     """Test system database operations."""
-    with DatabaseManager(":memory:") as manager:
+    system_db = tmp_path / "system.db"
+    with DatabaseManager(str(system_db)) as manager:
         # System database should have Arc schema initialized
         result = manager.system_query("SELECT COUNT(*) as count FROM models")
         assert result.first()["count"] == 0
@@ -48,9 +49,11 @@ def test_system_database_operations():
         assert result.first()["name"] == "test_model"
 
 
-def test_user_database_operations():
+def test_user_database_operations(tmp_path):
     """Test user database operations."""
-    with DatabaseManager(":memory:", ":memory:") as manager:
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    with DatabaseManager(str(system_db), str(user_db)) as manager:
         # Create a test table in user database
         manager.user_execute("CREATE TABLE test_data (id INTEGER, value TEXT)")
 
@@ -62,9 +65,10 @@ def test_user_database_operations():
         assert result.first()["value"] == "test"
 
 
-def test_user_database_not_configured():
+def test_user_database_not_configured(tmp_path):
     """Test operations when user database is not configured."""
-    with DatabaseManager(":memory:") as manager:
+    system_db = tmp_path / "system.db"
+    with DatabaseManager(str(system_db)) as manager:
         with pytest.raises(DatabaseError, match="No user database configured"):
             manager.user_query("SELECT 1")
 
@@ -72,15 +76,17 @@ def test_user_database_not_configured():
             manager.user_execute("CREATE TABLE test (id INTEGER)")
 
 
-def test_set_user_database():
+def test_set_user_database(tmp_path):
     """Test switching user databases."""
-    with DatabaseManager(":memory:") as manager:
+    system_db = tmp_path / "system.db"
+    with DatabaseManager(str(system_db)) as manager:
         assert not manager.has_user_database()
 
         # Set user database
-        manager.set_user_database(":memory:")
+        user_db = tmp_path / "user.db"
+        manager.set_user_database(str(user_db))
         assert manager.has_user_database()
-        assert manager.get_user_db_path() == ":memory:"
+        assert manager.get_user_db_path() == str(user_db)
 
         # Should now work
         manager.user_execute("CREATE TABLE test (id INTEGER)")
@@ -135,9 +141,10 @@ def test_thread_local_connections():
     manager.close()
 
 
-def test_concurrent_system_database_access():
+def test_concurrent_system_database_access(tmp_path):
     """Test concurrent access to system database from multiple threads."""
-    manager = DatabaseManager(":memory:")
+    system_db = tmp_path / "system.db"
+    manager = DatabaseManager(str(system_db))
     results = []
     errors = []
 
@@ -186,9 +193,11 @@ def test_concurrent_system_database_access():
     manager.close()
 
 
-def test_mixed_concurrent_operations():
+def test_mixed_concurrent_operations(tmp_path):
     """Test mixing system and user database operations across threads."""
-    manager = DatabaseManager(":memory:", ":memory:")
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    manager = DatabaseManager(str(system_db), str(user_db))
     system_results = []
     user_results = []
     errors = []
@@ -257,9 +266,10 @@ def test_mixed_concurrent_operations():
     manager.close()
 
 
-def test_thread_isolation_with_database_switching():
+def test_thread_isolation_with_database_switching(tmp_path):
     """Test that database switching is properly isolated per thread."""
-    manager = DatabaseManager(":memory:")
+    system_db = tmp_path / "system.db"
+    manager = DatabaseManager(str(system_db))
     results = {}
 
     def worker_with_db_switch(thread_id):
@@ -300,9 +310,11 @@ def test_thread_isolation_with_database_switching():
     manager.close()
 
 
-def test_connection_cleanup_per_thread():
+def test_connection_cleanup_per_thread(tmp_path):
     """Test that connections are properly cleaned up per thread."""
-    manager = DatabaseManager(":memory:", ":memory:")
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    manager = DatabaseManager(str(system_db), str(user_db))
 
     def worker_with_cleanup():
         """Worker that creates connections and then cleans them up."""

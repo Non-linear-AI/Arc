@@ -11,13 +11,11 @@ from arc.ml.training_service import TrainingService
 
 
 @pytest.fixture
-def db_manager():
-    """Create in-memory database manager."""
-    return DatabaseManager(
-        system_db_path=":memory:",
-        user_db_path=":memory:",
-        shared_connections_for_tests=True,
-    )
+def db_manager(tmp_path):
+    """Create file-based database manager for thread-safe testing."""
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    return DatabaseManager(str(system_db), str(user_db))
 
 
 @pytest.fixture

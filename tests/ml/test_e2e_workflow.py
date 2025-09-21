@@ -123,14 +123,18 @@ predictor:
 """
 
 
-async def setup_database_and_data(data: pd.DataFrame) -> tuple[DatabaseManager, str]:
+async def setup_database_and_data(
+    data: pd.DataFrame, tmp_path=None
+) -> tuple[DatabaseManager, str]:
     """Setup database and load data."""
-    # Create in-memory database for testing
-    db_manager = DatabaseManager(
-        system_db_path=":memory:",
-        user_db_path=":memory:",
-        shared_connections_for_tests=True,
-    )
+    if tmp_path is not None:
+        # Use temporary file databases for thread-safe testing
+        system_db = tmp_path / "system.db"
+        user_db = tmp_path / "user.db"
+        db_manager = DatabaseManager(str(system_db), str(user_db))
+    else:
+        # Fallback to in-memory for simple tests
+        db_manager = DatabaseManager(":memory:", ":memory:")
 
     table_name = "logistic_data"
 
@@ -181,10 +185,10 @@ class TestE2EWorkflow:
             assert f"feature_{i}" in data.columns
 
     @pytest.mark.asyncio
-    async def test_database_setup(self):
+    async def test_database_setup(self, tmp_path):
         """Test database setup and data loading."""
         data = generate_logistic_regression_data(n_samples=30, n_features=2)
-        db_manager, table_name = await setup_database_and_data(data)
+        db_manager, table_name = await setup_database_and_data(data, tmp_path)
 
         # Test MLDataService integration
         ml_service = MLDataService(db_manager)
@@ -239,10 +243,10 @@ class TestE2EWorkflow:
         assert training_config.epochs == 5
 
     @pytest.mark.asyncio
-    async def test_data_processor_integration(self):
+    async def test_data_processor_integration(self, tmp_path):
         """Test DataProcessor with MLDataService integration."""
         data = generate_logistic_regression_data(n_samples=40, n_features=2)
-        db_manager, table_name = await setup_database_and_data(data)
+        db_manager, table_name = await setup_database_and_data(data, tmp_path)
 
         ml_service = MLDataService(db_manager)
         processor = DataProcessor(ml_data_service=ml_service)
@@ -274,10 +278,10 @@ class TestE2EWorkflow:
         assert len(batch_targets) == len(batch_features)
 
     @pytest.mark.asyncio
-    async def test_training_job_submission(self):
+    async def test_training_job_submission(self, tmp_path):
         """Test training job submission and status tracking."""
         data = generate_logistic_regression_data(n_samples=20, n_features=2)
-        db_manager, table_name = await setup_database_and_data(data)
+        db_manager, table_name = await setup_database_and_data(data, tmp_path)
 
         arc_graph = ArcGraph.from_yaml(create_arc_graph_spec())
 
@@ -324,10 +328,10 @@ class TestE2EWorkflow:
             training_service.shutdown()
 
     @pytest.mark.asyncio
-    async def test_training_config_persisted_in_artifact(self, monkeypatch):
+    async def test_training_config_persisted_in_artifact(self, monkeypatch, tmp_path):
         """Ensure artifacts record the effective training configuration."""
         data = generate_logistic_regression_data(n_samples=24, n_features=4)
-        db_manager, table_name = await setup_database_and_data(data)
+        db_manager, table_name = await setup_database_and_data(data, tmp_path)
 
         arc_graph = ArcGraph.from_yaml(create_arc_graph_spec())
         expected_config = arc_graph.trainer.config
@@ -398,10 +402,10 @@ class TestE2EWorkflow:
             training_service.shutdown()
 
     @pytest.mark.asyncio
-    async def test_job_cancellation_stops_training(self, monkeypatch):
+    async def test_job_cancellation_stops_training(self, monkeypatch, tmp_path):
         """Cancellation should halt training and skip artifact creation."""
         data = generate_logistic_regression_data(n_samples=50, n_features=4)
-        db_manager, table_name = await setup_database_and_data(data)
+        db_manager, table_name = await setup_database_and_data(data, tmp_path)
 
         arc_graph_yaml = create_arc_graph_spec().replace("epochs: 5", "epochs: 100")
         arc_graph = ArcGraph.from_yaml(arc_graph_yaml)
@@ -483,11 +487,11 @@ class TestE2EWorkflow:
             training_service.shutdown()
 
     @pytest.mark.asyncio
-    async def test_complete_e2e_pipeline(self):
+    async def test_complete_e2e_pipeline(self, tmp_path):
         """Test complete end-to-end pipeline with very small dataset."""
         # Generate minimal data for speed
         data = generate_logistic_regression_data(n_samples=10, n_features=2)
-        db_manager, table_name = await setup_database_and_data(data)
+        db_manager, table_name = await setup_database_and_data(data, tmp_path)
 
         # Parse Arc-Graph
         arc_graph_yaml = create_arc_graph_spec()

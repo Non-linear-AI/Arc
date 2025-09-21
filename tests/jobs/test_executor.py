@@ -12,9 +12,11 @@ from src.arc.jobs.models import Job, JobStatus, JobType
 
 
 @pytest.fixture
-def db_manager():
-    """Use in-memory DuckDB for fast, isolated tests."""
-    return DatabaseManager(":memory:", ":memory:", shared_connections_for_tests=True)
+def db_manager(tmp_path):
+    """Use file-based DuckDB for thread-safe testing."""
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    return DatabaseManager(str(system_db), str(user_db))
 
 
 @pytest.fixture
