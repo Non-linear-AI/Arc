@@ -463,12 +463,6 @@ def get_base_tools() -> list[ArcTool]:
                             "Optional file path to save the generated model YAML"
                         ),
                     },
-                    "max_iterations": {
-                        "type": "integer",
-                        "description": (
-                            "Maximum validation retries during generation (default: 3)"
-                        ),
-                    },
                 },
                 "required": ["name", "context", "data_table"],
             },
@@ -490,16 +484,7 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "model_spec_path": {
                         "type": "string",
-                        "description": (
-                            "Path to the model specification YAML used as input"
-                        ),
-                    },
-                    "model_spec": {
-                        "type": "string",
-                        "description": (
-                            "Raw model specification YAML (use instead of path "
-                            "if already loaded)"
-                        ),
+                        "description": "Path to the model specification YAML file",
                     },
                     "output_path": {
                         "type": "string",
@@ -507,14 +492,8 @@ def get_base_tools() -> list[ArcTool]:
                             "Optional file path to save the generated trainer YAML"
                         ),
                     },
-                    "max_iterations": {
-                        "type": "integer",
-                        "description": (
-                            "Maximum validation retries during generation (default: 3)"
-                        ),
-                    },
                 },
-                "required": ["name", "context"],
+                "required": ["name", "context", "model_spec_path"],
             },
         ),
         ArcTool(

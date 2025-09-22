@@ -251,7 +251,6 @@ class MLModelGeneratorTool(BaseTool):
         context: str | None = None,
         data_table: str | None = None,
         output_path: str | None = None,
-        max_iterations: int | None = None,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -271,11 +270,6 @@ class MLModelGeneratorTool(BaseTool):
                 "to generate a model specification."
             )
 
-        try:
-            iterations = _as_optional_int(max_iterations, "max_iterations")
-        except ValueError as exc:
-            return ToolResult.error_result(str(exc))
-
         agent = ModelGeneratorAgent(
             self.services,
             self.api_key,
@@ -288,8 +282,6 @@ class MLModelGeneratorTool(BaseTool):
                 name=str(name),
                 user_context=str(context),
                 table_name=str(data_table),
-                output_path=str(output_path) if output_path else None,
-                max_iterations=iterations or 3,
             )
         except ModelGeneratorError as exc:
             return ToolResult.error_result(str(exc))
@@ -338,9 +330,7 @@ class MLTrainerGeneratorTool(BaseTool):
         name: str | None = None,
         context: str | None = None,
         model_spec_path: str | None = None,
-        model_spec: str | None = None,
         output_path: str | None = None,
-        max_iterations: int | None = None,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -354,31 +344,17 @@ class MLTrainerGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
-        if not name or not context:
+        if not name or not context or not model_spec_path:
             return ToolResult.error_result(
-                "Parameters 'name' and 'context' are required "
+                "Parameters 'name', 'context', and 'model_spec_path' are required "
                 "to generate a trainer specification."
             )
 
-        if not model_spec and not model_spec_path:
+        # Check that model spec file exists
+        if not Path(model_spec_path).exists():
             return ToolResult.error_result(
-                "Provide either 'model_spec' YAML content or 'model_spec_path' "
-                "pointing to a model specification file."
+                f"Model specification file not found: {model_spec_path}"
             )
-
-        try:
-            iterations = _as_optional_int(max_iterations, "max_iterations")
-        except ValueError as exc:
-            return ToolResult.error_result(str(exc))
-
-        model_spec_content = model_spec
-        if not model_spec_content and model_spec_path:
-            try:
-                model_spec_content = Path(model_spec_path).read_text(encoding="utf-8")
-            except OSError as exc:
-                return ToolResult.error_result(
-                    f"Failed to read model specification file: {exc}"
-                )
 
         agent = TrainerGeneratorAgent(
             self.services,
@@ -391,9 +367,7 @@ class MLTrainerGeneratorTool(BaseTool):
             trainer_spec, trainer_yaml = await agent.generate_trainer(
                 name=str(name),
                 user_context=str(context),
-                model_spec=str(model_spec_content),
-                output_path=str(output_path) if output_path else None,
-                max_iterations=iterations or 3,
+                model_spec_path=str(model_spec_path),
             )
         except TrainerGeneratorError as exc:
             return ToolResult.error_result(str(exc))

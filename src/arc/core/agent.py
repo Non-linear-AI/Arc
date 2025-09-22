@@ -609,7 +609,6 @@ class ArcAgent:
                         context=args.get("context"),
                         data_table=args.get("data_table"),
                         output_path=args.get("output_path"),
-                        max_iterations=args.get("max_iterations"),
                     )
                 return ToolResult.error_result(
                     "ML model generator tool not available. "
@@ -621,9 +620,7 @@ class ArcAgent:
                         name=args.get("name"),
                         context=args.get("context"),
                         model_spec_path=args.get("model_spec_path"),
-                        model_spec=args.get("model_spec"),
                         output_path=args.get("output_path"),
-                        max_iterations=args.get("max_iterations"),
                     )
                 return ToolResult.error_result(
                     "ML trainer generator tool not available. "
@@ -632,15 +629,10 @@ class ArcAgent:
             elif tool_call.name == "ml_predictor_generator":
                 if self.ml_predictor_generator_tool:
                     return await self.ml_predictor_generator_tool.execute(
-                        model_id=args.get("model_id"),
                         context=args.get("context"),
-                        name=args.get("name"),
-                        model_version=args.get("model_version"),
-                        outputs=args.get("outputs"),
-                        output_path=args.get("output_path"),
-                        max_iterations=args.get("max_iterations"),
                         model_spec_path=args.get("model_spec_path"),
-                        model_spec=args.get("model_spec"),
+                        trainer_spec_path=args.get("trainer_spec_path"),
+                        output_path=args.get("output_path"),
                     )
                 return ToolResult.error_result(
                     "ML predictor generator tool not available. "

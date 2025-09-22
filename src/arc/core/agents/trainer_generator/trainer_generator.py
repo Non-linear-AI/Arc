@@ -194,7 +194,7 @@ class TrainerGeneratorAgent(BaseAgent):
     def _get_trainer_examples(self, user_context: str) -> list[dict[str, Any]]:
         """Get relevant trainer examples."""
         examples = self.example_repository.retrieve_relevant_trainer_examples(
-            user_context=user_context, max_examples=1
+            user_context, max_examples=1
         )
         return [
             {
