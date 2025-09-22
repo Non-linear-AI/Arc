@@ -500,8 +500,11 @@ async def test_train_missing_model_shows_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_end_to_end_training_with_realistic_dataset(tmp_path):
-    manager = DatabaseManager(":memory:", ":memory:")
-    services = ServiceContainer(manager, artifacts_dir=str(tmp_path / "artifacts"))
+    # Use temporary file databases for thread-safe training
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    manager = DatabaseManager(str(system_db), str(user_db))
+    services = ServiceContainer(manager)
 
     table_sql = """
     CREATE TABLE pima_small (

@@ -1,5 +1,6 @@
 """Database manager for Arc - handles system and user database separation."""
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,10 @@ class DatabaseManager:
     from core system components.
     """
 
+    # Class-level tracking of initialized databases to prevent schema conflicts
+    _initialized_dbs: set[str] = set()
+    _init_lock = threading.Lock()
+
     def __init__(
         self, system_db_path: str | Path, user_db_path: str | Path | None = None
     ):
@@ -29,30 +34,49 @@ class DatabaseManager:
         self.system_db_path = str(system_db_path)
         self.user_db_path = str(user_db_path) if user_db_path else None
 
-        # Lazy-loaded database connections
-        self._system_db: Database | None = None
-        self._user_db: Database | None = None
+        # Thread-local storage for database connections
+        # Each thread gets its own Database instances to avoid connection sharing
+        self._thread_local = threading.local()
 
         # Service instances (lazy-loaded)
         self._services_initialized = False
 
     def _get_system_db(self) -> Database:
-        """Get or create system database connection."""
-        if self._system_db is None:
-            self._system_db = DuckDBDatabase(self.system_db_path)
-            # Initialize system schema on first access
-            self._system_db.init_schema()
-        return self._system_db
+        """Get or create thread-local system database connection."""
+        if not hasattr(self._thread_local, "system_db"):
+            self._thread_local.system_db = DuckDBDatabase(self.system_db_path)
+            # Initialize system schema with coordination to prevent conflicts
+            self._ensure_schema_initialized(
+                self._thread_local.system_db, self.system_db_path
+            )
+        return self._thread_local.system_db
 
     def _get_user_db(self) -> Database:
-        """Get or create user database connection."""
+        """Get or create thread-local user database connection."""
         if self.user_db_path is None:
             raise DatabaseError("No user database configured")
 
-        if self._user_db is None:
-            self._user_db = DuckDBDatabase(self.user_db_path)
+        if not hasattr(self._thread_local, "user_db"):
+            self._thread_local.user_db = DuckDBDatabase(self.user_db_path)
             # User database doesn't need Arc system schema
-        return self._user_db
+        return self._thread_local.user_db
+
+    def _ensure_schema_initialized(self, db: Database, db_path: str) -> None:
+        """Ensure database schema is initialized exactly once per database file."""
+        # Use absolute path as key to handle relative paths consistently
+        abs_path = str(Path(db_path).resolve())
+
+        with self._init_lock:
+            if abs_path not in self._initialized_dbs:
+                try:
+                    db.init_schema()
+                    self._initialized_dbs.add(abs_path)
+                except Exception as e:
+                    # If initialization fails, don't mark as initialized
+                    # so another thread can try
+                    raise DatabaseError(
+                        f"Schema initialization failed for {abs_path}: {e}"
+                    ) from e
 
     def system_query(self, sql: str, params: list | None = None) -> QueryResult:
         """Execute a query against the system database.
@@ -81,11 +105,12 @@ class DatabaseManager:
         """
         self._get_system_db().execute(sql, params)
 
-    def user_query(self, sql: str) -> QueryResult:
+    def user_query(self, sql: str, params: list | None = None) -> QueryResult:
         """Execute a query against the user database.
 
         Args:
             sql: SQL SELECT statement
+            params: Optional list of parameters for the query
 
         Returns:
             QueryResult containing the results
@@ -93,18 +118,19 @@ class DatabaseManager:
         Raises:
             DatabaseError: If query execution fails or no user DB configured
         """
-        return self._get_user_db().query(sql)
+        return self._get_user_db().query(sql, params)
 
-    def user_execute(self, sql: str) -> None:
+    def user_execute(self, sql: str, params: list | None = None) -> None:
         """Execute a statement against the user database.
 
         Args:
             sql: SQL statement (DDL/DML)
+            params: Optional list of parameters for the statement
 
         Raises:
             DatabaseError: If statement execution fails or no user DB configured
         """
-        self._get_user_db().execute(sql)
+        self._get_user_db().execute(sql, params)
 
     def set_user_database(self, db_path: str | Path) -> None:
         """Switch to a different user database.
@@ -112,10 +138,10 @@ class DatabaseManager:
         Args:
             db_path: Path to the new user database
         """
-        # Close existing user database connection
-        if self._user_db is not None:
-            self._user_db.close()
-            self._user_db = None
+        # Close existing user database connection for current thread
+        if hasattr(self._thread_local, "user_db"):
+            self._thread_local.user_db.close()
+            delattr(self._thread_local, "user_db")
 
         self.user_db_path = str(db_path)
 
@@ -132,14 +158,14 @@ class DatabaseManager:
         return self.user_db_path is not None
 
     def close(self) -> None:
-        """Close all database connections."""
-        if self._system_db is not None:
-            self._system_db.close()
-            self._system_db = None
+        """Close all database connections for the current thread."""
+        if hasattr(self._thread_local, "system_db"):
+            self._thread_local.system_db.close()
+            delattr(self._thread_local, "system_db")
 
-        if self._user_db is not None:
-            self._user_db.close()
-            self._user_db = None
+        if hasattr(self._thread_local, "user_db"):
+            self._thread_local.user_db.close()
+            delattr(self._thread_local, "user_db")
 
     def __enter__(self) -> "DatabaseManager":
         """Context manager entry."""
