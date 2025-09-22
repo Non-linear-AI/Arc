@@ -65,7 +65,6 @@ class ModelGeneratorAgent(BaseAgent):
         context = {
             "model_name": name,
             "user_intent": user_context,
-            "table_name": table_name,
             "data_profile": data_profile,
             "available_components": self._get_model_components(),
             "examples": self._get_model_examples(user_context, data_profile),
@@ -215,31 +214,16 @@ class ModelGeneratorAgent(BaseAgent):
     async def _profile_data(self, table_name: str) -> dict[str, Any]:
         """Get basic data profile for the table."""
         try:
-            if not table_name.replace("_", "").isalnum():
-                return {"error": f"Invalid table name: {table_name}"}
+            # Use ML data service instead of raw SQL/db manager
+            dataset_info = self.services.ml_data.get_dataset_info(table_name)
 
-            # Get table schema
-            schema_query = f"PRAGMA table_info({table_name})"
-            schema_result = self.services.db_manager.user_query(schema_query)
+            if dataset_info is None:
+                return {"error": f"Table {table_name} not found or invalid"}
 
-            if not schema_result:
-                return {"error": f"Table {table_name} not found"}
-
-            columns = []
-            for row in schema_result:
-                columns.append(
-                    {
-                        "name": row["name"],
-                        "type": row["type"],
-                        "nullable": not bool(row["notnull"]),
-                    }
-                )
-
+            # Return only essential, non-duplicated fields
             return {
-                "table_name": table_name,
-                "columns": columns,
-                "column_names": [col["name"] for col in columns],
-                "num_columns": len(columns),
+                "table_name": dataset_info.name,
+                "columns": dataset_info.columns,
             }
 
         except Exception as e:

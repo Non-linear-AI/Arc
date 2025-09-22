@@ -13,7 +13,7 @@ Generate ONLY the model architecture - no training configuration.
 inputs:
   meaningful_name:              # Use patient_data, text_features, etc.
     dtype: float32             # Data type
-    shape: [null, N]           # N = number of columns ({{ data_profile.num_columns if data_profile.num_columns else "count from data" }})
+    shape: [null, N]           # N = number of columns ({{ data_profile.columns | length if data_profile.columns else "count from data" }})
     columns: [col1, col2, ...]  # Actual column names from dataset
 
 graph:
@@ -41,9 +41,9 @@ outputs:
 {{ available_components.node_types | join(", ") }}
 
 ## Data Context
-{% if data_profile.column_names -%}
-**Available Columns**: {{ data_profile.column_names | join(", ") }}
-**Column Count**: {{ data_profile.num_columns }}
+{% if data_profile.columns -%}
+**Available Columns**: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
+**Column Count**: {{ data_profile.columns | length }}
 {% endif %}
 
 ## Example
