@@ -1,4 +1,9 @@
-"""Base agent class for shared LLM interaction functionality."""
+"""Base agent class for shared LLM interaction functionality.
+
+This class now handles both Jinja template rendering and direct
+network requests to the LLM (via ArcClient). It no longer relies
+on an external ArcAgent to pass prompts as user messages.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,7 @@ import jinja2
 import yaml
 
 from ....database.services import ServiceContainer
-from ...agent import ArcAgent
+from ...client import ArcClient
 
 
 class AgentError(Exception):
@@ -21,15 +26,24 @@ class AgentError(Exception):
 class BaseAgent(abc.ABC):
     """Base class for Arc AI agents with shared LLM interaction functionality."""
 
-    def __init__(self, services: ServiceContainer, agent: ArcAgent):
+    def __init__(
+        self,
+        services: ServiceContainer,
+        api_key: str,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
         """Initialize the base agent.
 
         Args:
             services: Service container for database access
-            agent: Arc agent for LLM interactions
+            api_key: API key for Arc/OpenAI
+            base_url: Optional base URL for the API
+            model: Optional model name
         """
         self.services = services
-        self.agent = agent
+        # Initialize an API client dedicated to this agent
+        self.arc_client = ArcClient(api_key=api_key, model=model or "gpt-4", base_url=base_url)
 
     @abc.abstractmethod
     def get_template_directory(self) -> Path:
@@ -112,17 +126,19 @@ class BaseAgent(abc.ABC):
         last_error = None
         for attempt in range(max_retries + 1):
             try:
-                # Use process_user_message with timeout
-                chat_entries = await asyncio.wait_for(
-                    self.agent.process_user_message(prompt), timeout=timeout
+                # Build a minimal message list for one-shot generations
+                messages = [{"role": "user", "content": prompt}]
+
+                # Call the API with a timeout
+                response_msg = await asyncio.wait_for(
+                    self.arc_client.chat(messages, tools=None), timeout=timeout
                 )
 
-                # Extract the response content
-                for entry in chat_entries:
-                    if entry.type == "assistant" and entry.content:
-                        return self._clean_llm_response(entry.content)
+                content = (response_msg.content or "").strip()
+                if not content:
+                    raise AgentError("No content received from LLM")
 
-                raise AgentError("No valid response received from LLM")
+                return self._clean_llm_response(content)
 
             except TimeoutError:
                 last_error = f"LLM request timed out after {timeout} seconds"

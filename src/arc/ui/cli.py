@@ -457,10 +457,8 @@ async def _ml_generate_model(
         if not api_key:
             raise CommandError("API key required for model generation")
 
-        agent = ArcAgent(api_key, base_url, model, 400, services)
-
-        # Create model generator agent
-        model_generator = ModelGeneratorAgent(services, agent)
+        # Create model generator agent (no ArcAgent dependency)
+        model_generator = ModelGeneratorAgent(services, api_key, base_url, model)
 
         # Generate the model specification
         model_spec, model_yaml = await model_generator.generate_model(
@@ -545,10 +543,8 @@ async def _ml_generate_trainer(
         if not api_key:
             raise CommandError("API key required for trainer generation")
 
-        agent = ArcAgent(api_key, base_url, model, 400, services)
-
-        # Create trainer generator agent
-        trainer_generator = TrainerGeneratorAgent(services, agent)
+        # Create trainer generator agent (no ArcAgent dependency)
+        trainer_generator = TrainerGeneratorAgent(services, api_key, base_url, model)
 
         # Generate the trainer specification
         trainer_spec, trainer_yaml = await trainer_generator.generate_trainer(
@@ -643,9 +639,8 @@ async def _ml_generate_predictor(
         if not api_key:
             raise CommandError("API key required for predictor generation")
 
-        # Create Arc agent and predictor generator agent
-        agent = ArcAgent(api_key, base_url, model, 400, services)
-        predictor_generator = PredictorGeneratorAgent(services, agent)
+        # Create predictor generator agent (no ArcAgent dependency)
+        predictor_generator = PredictorGeneratorAgent(services, api_key, base_url, model)
 
         # Parse outputs if provided
         prediction_requirements = None

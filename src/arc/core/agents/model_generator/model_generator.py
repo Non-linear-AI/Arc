@@ -7,7 +7,6 @@ from typing import Any
 
 from ....database.services import ServiceContainer
 from ....graph.model import CORE_LAYERS, ModelSpec, validate_model_dict
-from ...agent import ArcAgent
 from ..shared.base_agent import AgentError, BaseAgent
 from ..shared.example_repository import ExampleRepository
 
@@ -19,14 +18,22 @@ class ModelGeneratorError(AgentError):
 class ModelGeneratorAgent(BaseAgent):
     """Specialized agent for generating Arc model specifications using LLM."""
 
-    def __init__(self, services: ServiceContainer, agent: ArcAgent):
+    def __init__(
+        self,
+        services: ServiceContainer,
+        api_key: str,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
         """Initialize model generator agent.
 
         Args:
             services: Service container for database access
-            agent: Arc agent for LLM interactions
+            api_key: API key for LLM interactions
+            base_url: Optional base URL
+            model: Optional model name
         """
-        super().__init__(services, agent)
+        super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
 
     def get_template_directory(self) -> Path:
