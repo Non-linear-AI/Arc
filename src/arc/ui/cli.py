@@ -465,8 +465,10 @@ async def _ml_generate_model(
             name=str(name),
             user_context=str(context),
             table_name=str(data_table),
-            output_path=str(output_path),
         )
+
+        # Save to file
+        Path(output_path).write_text(model_yaml)
 
         ui.show_system_success("✅ Model specification generated successfully!")
         ui.show_info(f"📄 Saved to: {output_path}")
@@ -526,12 +528,10 @@ async def _ml_generate_trainer(
         ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
         ui.show_info(f"📋 Using model specification: {model_spec_path}")
 
-        # Read the model specification
+        # Check that model specification file exists
         model_spec_file = Path(str(model_spec_path))
         if not model_spec_file.exists():
             raise CommandError(f"Model specification file not found: {model_spec_path}")
-
-        model_spec_content = model_spec_file.read_text(encoding="utf-8")
 
         # Get the agent from the runtime or create one for trainer generation
         services = runtime.services
@@ -550,9 +550,11 @@ async def _ml_generate_trainer(
         trainer_spec, trainer_yaml = await trainer_generator.generate_trainer(
             name=str(name),
             user_context=str(context),
-            model_spec=model_spec_content,
-            output_path=str(output_path),
+            model_spec_path=str(model_spec_path),
         )
+
+        # Save to file
+        Path(output_path).write_text(trainer_yaml)
 
         ui.show_system_success("✅ Trainer specification generated successfully!")
         ui.show_info(f"📄 Saved to: {output_path}")
@@ -591,43 +593,43 @@ async def _ml_generate_predictor(
     options = _parse_options(
         args,
         {
-            "model-id": True,
+            "model-spec": True,
             "context": True,
-            "name": True,
-            "model-version": True,
-            "outputs": True,
+            "trainer-spec": True,
             "output": True,
         },
     )
 
-    model_id = options.get("model-id")
+    model_spec_path = options.get("model-spec")
     context = options.get("context")
-    name = options.get("name")
-    model_version_str = options.get("model-version")
-    outputs = options.get("outputs")
+    trainer_spec_path = options.get("trainer-spec")
     output_path = options.get("output")
 
-    if not model_id or not context:
-        raise CommandError("/ml generate-predictor requires --model-id and --context")
+    if not model_spec_path or not context:
+        raise CommandError("/ml generate-predictor requires --model-spec and --context")
 
-    # Parse model version
-    model_version = None
-    if model_version_str:
-        try:
-            model_version = int(model_version_str)
-        except ValueError as e:
-            raise CommandError(f"Invalid model version: {model_version_str}") from e
+    # Check that model spec file exists
+    model_spec_file = Path(str(model_spec_path))
+    if not model_spec_file.exists():
+        raise CommandError(f"Model specification file not found: {model_spec_path}")
+
+    # Check trainer spec file if provided
+    if trainer_spec_path:
+        trainer_spec_file = Path(str(trainer_spec_path))
+        if not trainer_spec_file.exists():
+            raise CommandError(
+                f"Trainer specification file not found: {trainer_spec_path}"
+            )
 
     # Default output path if not specified
     if not output_path:
-        output_path = f"{model_id}_predictor.yaml"
+        output_path = "predictor.yaml"
 
     try:
-        ui.show_info(f"🤖 Generating predictor specification for model '{model_id}'...")
-        if model_version:
-            ui.show_info(f"📌 Model version: {model_version}")
-        else:
-            ui.show_info("📌 Model version: latest")
+        ui.show_info("🤖 Generating predictor specification...")
+        ui.show_info(f"📋 Using model specification: {model_spec_path}")
+        if trainer_spec_path:
+            ui.show_info(f"🏋️ Using trainer specification: {trainer_spec_path}")
 
         # Get the agent configuration
         services = runtime.services
@@ -640,54 +642,35 @@ async def _ml_generate_predictor(
             raise CommandError("API key required for predictor generation")
 
         # Create predictor generator agent (no ArcAgent dependency)
-        predictor_generator = PredictorGeneratorAgent(services, api_key, base_url, model)
-
-        # Parse outputs if provided
-        prediction_requirements = None
-        if outputs:
-            output_list = [output.strip() for output in outputs.split(",")]
-            prediction_requirements = (
-                f"Required prediction outputs: {', '.join(output_list)}"
-            )
-
-        # Generate the predictor specification
-        predictor_spec, predictor_yaml = await predictor_generator.generate_predictor(
-            model_id=model_id,
-            user_context=context,
-            output_path=output_path,
-            model_version=model_version,
-            prediction_requirements=prediction_requirements,
+        predictor_generator = PredictorGeneratorAgent(
+            services, api_key, base_url, model
         )
 
-        # Override name if provided
-        if name:
-            predictor_spec.name = name
+        # Generate the predictor specification
+        predictor_yaml = await predictor_generator.generate_predictor(
+            user_context=context,
+            model_spec_path=str(model_spec_path),
+            trainer_spec_path=str(trainer_spec_path) if trainer_spec_path else None,
+        )
 
-        # Save the predictor specification
-        from pathlib import Path
-
-        from ..graph.predictor import save_predictor_to_yaml
-
-        output_file = Path(output_path)
-        save_predictor_to_yaml(predictor_spec, output_file)
+        # Save to file
+        Path(output_path).write_text(predictor_yaml)
 
         ui.show_system_success("✅ Predictor specification generated successfully!")
         ui.show_info(f"📄 Saved to: {output_path}")
-        ui.show_info(f"🎯 Predictor: {predictor_spec.name}")
-        ui.show_info(f"🔗 Model ID: {predictor_spec.model_id}")
 
-        if predictor_spec.model_version:
-            ui.show_info(f"📌 Model version: {predictor_spec.model_version}")
-
-        if predictor_spec.outputs:
-            ui.show_info("📤 Output mappings:")
-            for pred_output, model_output in predictor_spec.outputs.items():
-                ui.show_info(f"   {pred_output} -> {model_output}")
+        # Show YAML preview
+        ui.show_info("\n📋 Generated YAML:")
+        # Show first few lines of the YAML
+        yaml_lines = predictor_yaml.strip().split("\n")
+        for line in yaml_lines[:10]:  # Show first 10 lines
+            ui.show_info(f"   {line}")
+        if len(yaml_lines) > 10:
+            ui.show_info("   ...")
 
         # Suggest next steps
         ui.show_info("\n💡 Next steps:")
         ui.show_info("   Use this predictor specification for model inference")
-        ui.show_info("   /ml predict --model <model_name> --data <input_data>")
 
     except Exception as exc:
         raise CommandError(f"Predictor generation failed: {exc}") from exc
@@ -977,27 +960,21 @@ def generate_trainer(
 
 
 @cli.command("generate-predictor")
-@click.option("-n", "--name", help="Predictor name")
 @click.option(
     "-c", "--context", required=True, help="Prediction requirements and use case"
 )
 @click.option(
-    "-i", "--model-id", required=True, help="Model ID to create predictor for"
+    "-s", "--model-spec", required=True, help="Path to model specification file"
 )
-@click.option("-v", "--model-version", type=int, help="Model version (default: latest)")
-@click.option("--outputs", help="Comma-separated list of desired output names")
-@click.option(
-    "-o", "--output", help="Output file path (default: {model_id}_predictor.yaml)"
-)
+@click.option("-t", "--trainer-spec", help="Path to trainer specification file")
+@click.option("-o", "--output", help="Output file path (default: predictor.yaml)")
 @click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
 @click.option("-u", "--base-url", help="Arc API base URL")
 @click.option("-m", "--model", "ai_model", help="AI model to use")
 def generate_predictor(
-    name: str | None,
     context: str,
-    model_id: str,
-    model_version: int | None,
-    outputs: str | None,
+    model_spec: str,
+    trainer_spec: str | None,
     output: str | None,
     api_key: str | None,
     base_url: str | None,
@@ -1028,11 +1005,9 @@ def generate_predictor(
     # Run predictor generation
     asyncio.run(
         _ml_generate_predictor_cli(
-            name,
             context,
-            model_id,
-            model_version,
-            outputs,
+            model_spec,
+            trainer_spec,
             output,
             api_key,
             base_url,
@@ -1092,11 +1067,9 @@ async def _ml_generate_trainer_cli(
 
 
 async def _ml_generate_predictor_cli(
-    name: str | None,
     context: str,
-    model_id: str,
-    model_version: int | None,
-    outputs: str | None,
+    model_spec_path: str,
+    trainer_spec_path: str | None,
     output_path: str | None,
     _api_key: str,
     _base_url: str | None,
@@ -1106,14 +1079,10 @@ async def _ml_generate_predictor_cli(
 ) -> None:
     """CLI wrapper for predictor generation."""
     try:
-        args = ["--model-id", model_id, "--context", context]
+        args = ["--model-spec", model_spec_path, "--context", context]
 
-        if name:
-            args.extend(["--name", name])
-        if model_version:
-            args.extend(["--model-version", str(model_version)])
-        if outputs:
-            args.extend(["--outputs", outputs])
+        if trainer_spec_path:
+            args.extend(["--trainer-spec", trainer_spec_path])
         if output_path:
             args.extend(["--output", output_path])
 

@@ -55,25 +55,29 @@ class TrainerGeneratorAgent(BaseAgent):
         self,
         name: str,
         user_context: str,
-        model_spec: str,  # The model YAML for reference
-        output_path: str | None = None,
-        max_iterations: int = 3,
+        model_spec_path: str,
     ) -> tuple[TrainerSpec, str]:
-        """Generate Arc trainer specification based on model and user context.
+        """Generate Arc trainer specification based on model spec file and user context.
 
         Args:
             name: Trainer name for the specification
             user_context: User description of desired training setup
-            model_spec: Model YAML specification for reference
-            output_path: Optional path to save generated trainer spec
-            max_iterations: Maximum number of generation attempts
+            model_spec_path: Path to model YAML specification file
 
         Returns:
             Tuple of (parsed TrainerSpec, raw YAML string)
 
         Raises:
-            TrainerGeneratorError: If generation fails after max iterations
+            TrainerGeneratorError: If generation fails
         """
+        # Read model spec from file
+        try:
+            model_spec = Path(model_spec_path).read_text(encoding="utf-8")
+        except OSError as e:
+            raise TrainerGeneratorError(
+                f"Failed to read model spec file {model_spec_path}: {e}"
+            ) from e
+
         # Build simple context for LLM
         context = {
             "trainer_name": name,
@@ -84,15 +88,11 @@ class TrainerGeneratorAgent(BaseAgent):
             "examples": self._get_trainer_examples(user_context),
         }
 
-        # Use the base agent validation loop
+        # Generate trainer specification with single attempt
         try:
             trainer_spec, trainer_yaml = await self._generate_with_validation_loop(
-                context, self._validate_trainer_comprehensive, max_iterations
+                context, self._validate_trainer_comprehensive, 1
             )
-
-            # Save to file if requested
-            if output_path:
-                self._save_to_file(trainer_yaml, output_path)
 
             return trainer_spec, trainer_yaml
 

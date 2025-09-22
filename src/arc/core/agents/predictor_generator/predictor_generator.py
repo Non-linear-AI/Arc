@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from ....database.services import ServiceContainer
-from ....graph import PredictorSpec, validate_predictor_dict
 from ..shared.base_agent import AgentError, BaseAgent
 from ..shared.example_repository import ExampleRepository
 
@@ -49,65 +48,145 @@ class PredictorGeneratorAgent(BaseAgent):
 
     async def generate_predictor(
         self,
-        model_id: str,
         user_context: str,
-        model_version: int | None = None,
-        model_outputs: dict[str, str] | None = None,
-        prediction_requirements: str | None = None,
-        max_iterations: int = 3,
-    ) -> tuple[PredictorSpec, str]:
-        """Generate Arc predictor specification based on model and user context.
+        model_spec_path: str,
+        trainer_spec_path: str | None = None,
+    ) -> str:
+        """Generate Arc predictor specification based on model and trainer specs.
 
         Args:
-            model_id: ID of the model to create predictor for
             user_context: User description of prediction requirements
-            model_version: Version of the model (None for latest)
-            model_outputs: Available model outputs {output_name: description}
-            prediction_requirements: Specific prediction output requirements
-            max_iterations: Maximum number of generation attempts
+            model_spec_path: Path to model YAML specification file
+            trainer_spec_path: Path to trainer YAML specification file (optional)
 
         Returns:
-            Tuple of (parsed PredictorSpec, raw YAML string)
+            Generated predictor YAML string
 
         Raises:
-            PredictorGeneratorError: If generation fails after max iterations
+            PredictorGeneratorError: If generation fails
         """
-        logger.info(
-            f"Generating predictor for model {model_id}, version {model_version}"
-        )
+        logger.info(f"Generating predictor from model spec: {model_spec_path}")
 
-        # Build simple context for LLM
+        # Read model spec from file
+        try:
+            model_spec = Path(model_spec_path).read_text(encoding="utf-8")
+        except OSError as e:
+            raise PredictorGeneratorError(
+                f"Failed to read model spec file {model_spec_path}: {e}"
+            ) from e
+
+        # Read trainer spec from file if provided
+        trainer_spec = None
+        if trainer_spec_path:
+            try:
+                trainer_spec = Path(trainer_spec_path).read_text(encoding="utf-8")
+            except OSError as e:
+                raise PredictorGeneratorError(
+                    f"Failed to read trainer spec file {trainer_spec_path}: {e}"
+                ) from e
+
+        # Build context for LLM with specs and user requirements
         context = {
-            "model_id": model_id,
-            "model_version": model_version or "latest",
             "user_context": user_context,
-            "outputs_info": self._format_model_outputs(model_outputs),
-            "requirements_info": prediction_requirements
-            or "No specific requirements provided",
+            "model_spec": model_spec,
+            "trainer_spec": trainer_spec,
+            "model_profile": self._extract_model_profile(model_spec),
+            "trainer_profile": self._extract_trainer_profile(trainer_spec)
+            if trainer_spec
+            else None,
             "predictor_examples": self._get_predictor_examples(user_context),
         }
 
-        # Use the base agent validation loop
+        # Generate predictor specification with single attempt
         try:
-            predictor_spec, predictor_yaml = await self._generate_with_validation_loop(
-                context, self._validate_predictor_comprehensive, max_iterations
+            _validated_data, predictor_yaml = await self._generate_with_validation_loop(
+                context, self._validate_predictor_comprehensive, 1
             )
 
-            return predictor_spec, predictor_yaml
+            return predictor_yaml
 
         except Exception as e:
             logger.error(f"Predictor generation failed: {e}")
             raise PredictorGeneratorError(f"Failed to generate predictor: {e}") from e
 
-    def _format_model_outputs(self, model_outputs: dict[str, str] | None) -> str:
-        """Format model outputs for prompt."""
-        if model_outputs:
-            outputs_list = []
-            for output_name, description in model_outputs.items():
-                outputs_list.append(f"  - {output_name}: {description}")
-            return "Available model outputs:\n" + "\n".join(outputs_list)
-        else:
-            return "Model outputs: Not specified (will use all model outputs)"
+    def _extract_model_profile(self, model_spec: str) -> dict[str, Any]:
+        """Extract relevant information from model specification.
+
+        Args:
+            model_spec: Model YAML specification
+
+        Returns:
+            Dictionary with model profile information
+        """
+        try:
+            import yaml
+
+            model_data = yaml.safe_load(model_spec)
+            if not model_data:
+                return {}
+
+            profile = {}
+
+            # Extract inputs information
+            if "inputs" in model_data:
+                inputs_info = []
+                for input_name, input_spec in model_data["inputs"].items():
+                    inputs_info.append(
+                        {
+                            "name": input_name,
+                            "dtype": input_spec.get("dtype"),
+                            "shape": input_spec.get("shape"),
+                            "columns": input_spec.get("columns"),
+                        }
+                    )
+                profile["inputs"] = inputs_info
+
+            # Extract outputs information
+            if "outputs" in model_data:
+                profile["outputs"] = list(model_data["outputs"].keys())
+                profile["output_mappings"] = model_data["outputs"]
+
+            return profile
+
+        except Exception as e:
+            logger.warning(f"Failed to extract model profile: {e}")
+            return {}
+
+    def _extract_trainer_profile(self, trainer_spec: str) -> dict[str, Any]:
+        """Extract relevant information from trainer specification.
+
+        Args:
+            trainer_spec: Trainer YAML specification
+
+        Returns:
+            Dictionary with trainer profile information
+        """
+        try:
+            import yaml
+
+            trainer_data = yaml.safe_load(trainer_spec)
+            if not trainer_data:
+                return {}
+
+            profile = {}
+
+            # Extract optimizer information
+            if "optimizer" in trainer_data:
+                profile["optimizer"] = trainer_data["optimizer"]
+
+            # Extract loss function information
+            if "loss" in trainer_data:
+                profile["loss"] = trainer_data["loss"]
+
+            # Extract training configuration
+            if "config" in trainer_data:
+                profile["training_config"] = trainer_data["config"]
+
+            return profile
+
+        except Exception as e:
+            logger.warning(f"Failed to extract trainer profile: {e}")
+            return {}
 
     def _get_predictor_examples(self, user_context: str) -> list[dict[str, Any]]:
         """Get relevant predictor examples."""
@@ -134,7 +213,7 @@ class PredictorGeneratorAgent(BaseAgent):
                 }
 
             # Check required top-level fields for predictor
-            required_fields = ["name", "model_id"]
+            required_fields = ["name"]
             missing_fields = [field for field in required_fields if field not in data]
 
             if missing_fields:
@@ -144,44 +223,19 @@ class PredictorGeneratorAgent(BaseAgent):
                     "error": f"Missing required fields: {', '.join(missing_fields)}",
                 }
 
-            # Validate and create PredictorSpec
-            predictor_spec = validate_predictor_dict(data)
+            # Basic YAML structure validation without creating PredictorSpec
+            name = data.get("name")
+            if not isinstance(name, str) or not name.strip():
+                return {
+                    "valid": False,
+                    "object": None,
+                    "error": "name must be a non-empty string",
+                }
 
-            logger.debug(f"Generated predictor: {predictor_spec.name}")
-            return {"valid": True, "object": predictor_spec, "error": None}
+            logger.debug(f"Generated predictor YAML: {name}")
+            return {"valid": True, "object": data, "error": None}
 
         except Exception as e:
             logger.error(f"Failed to validate predictor YAML: {e}")
             logger.debug(f"Invalid YAML content: {yaml_content}")
             return {"valid": False, "object": None, "error": str(e)}
-
-    async def generate_predictor_from_model_spec(
-        self,
-        model_id: str,
-        model_spec_dict: dict[str, Any],
-        user_context: str,
-        model_version: int | None = None,
-    ) -> tuple[PredictorSpec, str]:
-        """Generate predictor specification from a model specification.
-
-        Args:
-            model_id: ID of the model
-            model_spec_dict: Model specification dictionary
-            user_context: User description of prediction requirements
-            model_version: Version of the model
-
-        Returns:
-            Tuple of (PredictorSpec, YAML string)
-        """
-        # Extract model outputs with descriptions
-        model_outputs = {}
-        if "outputs" in model_spec_dict:
-            for output_name, output_ref in model_spec_dict["outputs"].items():
-                model_outputs[output_name] = f"Model output from {output_ref}"
-
-        return await self.generate_predictor(
-            model_id=model_id,
-            user_context=user_context,
-            model_version=model_version,
-            model_outputs=model_outputs,
-        )

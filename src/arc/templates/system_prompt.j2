@@ -18,6 +18,9 @@ You have access to these tools:
 - ml_create_model: Register new Arc-Graph models from YAML schema files
 - ml_train: Launch training jobs for registered models using user datasets
 - ml_predict: Run inference with trained Arc-Graph models and save results to tables
+- ml_model_generator: Generate Arc-Graph model YAML specifications using the generator agent
+- ml_trainer_generator: Generate Arc-Graph trainer YAML specifications given a model
+- ml_predictor_generator: Generate Arc-Graph predictor YAML specifications for registered models
 
 IMPORTANT TOOL USAGE RULES:
 - NEVER use create_file on files that already exist - this will overwrite them completely

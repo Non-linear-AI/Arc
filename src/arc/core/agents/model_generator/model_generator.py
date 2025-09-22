@@ -49,8 +49,6 @@ class ModelGeneratorAgent(BaseAgent):
         name: str,
         user_context: str,
         table_name: str,
-        output_path: str | None = None,
-        max_iterations: int = 3,
     ) -> tuple[ModelSpec, str]:
         """Generate Arc model specification based on data and user context.
 
@@ -58,8 +56,6 @@ class ModelGeneratorAgent(BaseAgent):
             name: Model name for the specification
             user_context: User description of desired model
             table_name: Database table name for data exploration
-            output_path: Optional path to save generated model spec
-            max_iterations: Maximum attempts to fix validation errors
 
         Returns:
             Tuple of (parsed ModelSpec object, YAML string)
@@ -77,15 +73,11 @@ class ModelGeneratorAgent(BaseAgent):
             "examples": self._get_model_examples(user_context, data_profile),
         }
 
-        # Use the base agent validation loop
+        # Use the base agent validation loop with default max_iterations
         try:
             model_spec, model_yaml = await self._generate_with_validation_loop(
-                context, self._validate_model_comprehensive, max_iterations
+                context, self._validate_model_comprehensive, 3
             )
-
-            # Save to file if requested
-            if output_path:
-                self._save_to_file(model_yaml, output_path)
 
             return model_spec, model_yaml
 

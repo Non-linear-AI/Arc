@@ -15,11 +15,17 @@ class TestModelGeneratorAgent:
     def mock_services(self):
         """Mock services container."""
         services_mock = MagicMock()
-        services_mock.db_manager.user_query.return_value = [
+
+        # Mock ML data service
+        mock_dataset_info = MagicMock()
+        mock_dataset_info.name = "test_table"
+        mock_dataset_info.columns = [
             {"name": "feature1", "type": "REAL", "notnull": 0},
             {"name": "feature2", "type": "REAL", "notnull": 0},
             {"name": "target", "type": "INTEGER", "notnull": 1},
         ]
+        services_mock.ml_data.get_dataset_info.return_value = mock_dataset_info
+
         return services_mock
 
     @pytest.fixture
@@ -28,9 +34,20 @@ class TestModelGeneratorAgent:
         return MagicMock()
 
     @pytest.fixture
-    def model_generator(self, mock_services, mock_agent):
+    def model_generator(self, mock_services):
         """ModelGeneratorAgent instance."""
-        return ModelGeneratorAgent(mock_services, mock_agent)
+        from unittest.mock import AsyncMock, MagicMock
+
+        generator = ModelGeneratorAgent(mock_services, "test_api_key")
+
+        # Mock the arc_client to avoid actual API calls
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = "mocked_yaml_content"
+        mock_client.chat = AsyncMock(return_value=mock_response)
+        generator.arc_client = mock_client
+
+        return generator
 
     @pytest.fixture
     def valid_model_yaml(self):
@@ -56,16 +73,12 @@ outputs:
   prediction: sigmoid.output"""
 
     @pytest.mark.asyncio
-    async def test_generate_model_success(
-        self, model_generator, mock_agent, valid_model_yaml
-    ):
+    async def test_generate_model_success(self, model_generator, valid_model_yaml):
         """Test successful model generation."""
         # Mock the LLM response
-        chat_entry_mock = MagicMock()
-        chat_entry_mock.type = "assistant"
-        chat_entry_mock.content = valid_model_yaml
-
-        mock_agent.process_user_message = AsyncMock(return_value=[chat_entry_mock])
+        mock_response = MagicMock()
+        mock_response.content = valid_model_yaml
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Generate model
         model_spec, model_yaml = await model_generator.generate_model(
@@ -86,41 +99,35 @@ outputs:
         assert "outputs:" in model_yaml
 
     @pytest.mark.asyncio
-    async def test_generate_model_with_output_path(
-        self, model_generator, mock_agent, valid_model_yaml, tmp_path
+    async def test_generate_model_yaml_generation(
+        self, model_generator, valid_model_yaml
     ):
-        """Test model generation with file output."""
+        """Test model generation returns correct YAML."""
         # Mock the LLM response
-        chat_entry_mock = MagicMock()
-        chat_entry_mock.type = "assistant"
-        chat_entry_mock.content = valid_model_yaml
+        mock_response = MagicMock()
+        mock_response.content = valid_model_yaml
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
-        mock_agent.process_user_message = AsyncMock(return_value=[chat_entry_mock])
-
-        # Generate model with output path
-        output_file = tmp_path / "test_model.yaml"
+        # Generate model (output path handling is now done by CLI)
         model_spec, model_yaml = await model_generator.generate_model(
             name="test_model",
             user_context="Binary classification model",
             table_name="test_table",
-            output_path=str(output_file),
         )
 
-        # Verify file was created
-        assert output_file.exists()
-        file_content = output_file.read_text()
-        assert "inputs:" in file_content
-        assert "graph:" in file_content
+        # Verify model was generated correctly
+        assert model_spec is not None
+        assert model_yaml is not None
+        assert "inputs:" in model_yaml
+        assert "graph:" in model_yaml
 
     @pytest.mark.asyncio
-    async def test_generate_model_invalid_yaml(self, model_generator, mock_agent):
+    async def test_generate_model_invalid_yaml(self, model_generator):
         """Test model generation with invalid YAML response."""
         # Mock invalid YAML response
-        chat_entry_mock = MagicMock()
-        chat_entry_mock.type = "assistant"
-        chat_entry_mock.content = "invalid: yaml: content: ["
-
-        mock_agent.process_user_message = AsyncMock(return_value=[chat_entry_mock])
+        mock_response = MagicMock()
+        mock_response.content = "invalid: yaml: content: ["
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Should raise ModelGeneratorError
         with pytest.raises(ModelGeneratorError):
@@ -129,9 +136,7 @@ outputs:
             )
 
     @pytest.mark.asyncio
-    async def test_generate_model_missing_required_fields(
-        self, model_generator, mock_agent
-    ):
+    async def test_generate_model_missing_required_fields(self, model_generator):
         """Test model generation with missing required fields."""
         # Mock response missing required fields
         incomplete_yaml = """
@@ -142,11 +147,9 @@ outputs:
         # Missing graph and outputs
         """
 
-        chat_entry_mock = MagicMock()
-        chat_entry_mock.type = "assistant"
-        chat_entry_mock.content = incomplete_yaml
-
-        mock_agent.process_user_message = AsyncMock(return_value=[chat_entry_mock])
+        mock_response = MagicMock()
+        mock_response.content = incomplete_yaml
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Should raise ModelGeneratorError
         with pytest.raises(ModelGeneratorError):
@@ -155,7 +158,7 @@ outputs:
             )
 
     @pytest.mark.asyncio
-    async def test_generate_model_invalid_node_types(self, model_generator, mock_agent):
+    async def test_generate_model_invalid_node_types(self, model_generator):
         """Test model generation with invalid node types."""
         # Mock response with invalid node type
         invalid_yaml = """
@@ -172,11 +175,9 @@ outputs:
           result: invalid_layer.output
         """
 
-        chat_entry_mock = MagicMock()
-        chat_entry_mock.type = "assistant"
-        chat_entry_mock.content = invalid_yaml
-
-        mock_agent.process_user_message = AsyncMock(return_value=[chat_entry_mock])
+        mock_response = MagicMock()
+        mock_response.content = invalid_yaml
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Should raise ModelGeneratorError due to validation
         with pytest.raises(ModelGeneratorError):
@@ -200,31 +201,38 @@ outputs:
 
         assert result["table_name"] == "test_table"
         assert len(result["columns"]) == 3
-        assert result["num_columns"] == 3
-        assert "feature1" in result["column_names"]
-        assert "feature2" in result["column_names"]
-        assert "target" in result["column_names"]
+
+        # Check that specific columns are present
+        column_names = [col["name"] for col in result["columns"]]
+        assert "feature1" in column_names
+        assert "feature2" in column_names
+        assert "target" in column_names
 
     def test_profile_data_table_not_found(self, model_generator, mock_services):
         """Test data profiling with non-existent table."""
         import asyncio
 
-        # Mock empty result (table not found)
-        mock_services.db_manager.user_query.return_value = []
+        # Mock None result (table not found)
+        mock_services.ml_data.get_dataset_info.return_value = None
 
         result = asyncio.run(model_generator._profile_data("nonexistent_table"))
 
         assert "error" in result
         assert "not found" in result["error"]
 
-    def test_profile_data_invalid_table_name(self, model_generator):
+    def test_profile_data_invalid_table_name(self, model_generator, mock_services):
         """Test data profiling with invalid table name."""
         import asyncio
+
+        # Mock exception from ML data service for invalid table name
+        mock_services.ml_data.get_dataset_info.side_effect = Exception(
+            "Invalid table name"
+        )
 
         result = asyncio.run(model_generator._profile_data("invalid-table-name!"))
 
         assert "error" in result
-        assert "Invalid table name" in result["error"]
+        assert "Failed to analyze table" in result["error"]
 
     def test_get_model_components(self, model_generator):
         """Test getting available model components."""

@@ -43,7 +43,7 @@ class BaseAgent(abc.ABC):
         """
         self.services = services
         # Initialize an API client dedicated to this agent
-        self.arc_client = ArcClient(api_key=api_key, model=model or "gpt-4", base_url=base_url)
+        self.arc_client = ArcClient(api_key=api_key, model=model, base_url=base_url)
 
     @abc.abstractmethod
     def get_template_directory(self) -> Path:

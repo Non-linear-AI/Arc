@@ -439,4 +439,114 @@ def get_base_tools() -> list[ArcTool]:
                 "required": ["model_name", "table_name", "output_table"],
             },
         ),
+        ArcTool(
+            name="ml_model_generator",
+            description="Generate Arc-Graph model YAML using the model generator agent",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Model name to include in the specification",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Description of the intended model behavior",
+                    },
+                    "data_table": {
+                        "type": "string",
+                        "description": "Database table to profile for generation",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional file path to save the generated model YAML"
+                        ),
+                    },
+                    "max_iterations": {
+                        "type": "integer",
+                        "description": (
+                            "Maximum validation retries during generation (default: 3)"
+                        ),
+                    },
+                },
+                "required": ["name", "context", "data_table"],
+            },
+        ),
+        ArcTool(
+            name="ml_trainer_generator",
+            description="Generate Arc-Graph trainer YAML using the trainer "
+            "generator agent",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Trainer name to include in the specification",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Training goals, constraints, and notes",
+                    },
+                    "model_spec_path": {
+                        "type": "string",
+                        "description": (
+                            "Path to the model specification YAML used as input"
+                        ),
+                    },
+                    "model_spec": {
+                        "type": "string",
+                        "description": (
+                            "Raw model specification YAML (use instead of path "
+                            "if already loaded)"
+                        ),
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional file path to save the generated trainer YAML"
+                        ),
+                    },
+                    "max_iterations": {
+                        "type": "integer",
+                        "description": (
+                            "Maximum validation retries during generation (default: 3)"
+                        ),
+                    },
+                },
+                "required": ["name", "context"],
+            },
+        ),
+        ArcTool(
+            name="ml_predictor_generator",
+            description="Generate Arc-Graph predictor YAML using the predictor "
+            "generator agent",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "context": {
+                        "type": "string",
+                        "description": "Description of prediction requirements "
+                        "and usage",
+                    },
+                    "model_spec_path": {
+                        "type": "string",
+                        "description": "Path to model specification YAML file",
+                    },
+                    "trainer_spec_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional path to trainer specification YAML file"
+                        ),
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional file path to save the generated predictor YAML"
+                        ),
+                    },
+                },
+                "required": ["context", "model_spec_path"],
+            },
+        ),
     ]
