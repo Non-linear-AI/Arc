@@ -13,7 +13,7 @@ import torch
 
 from ..database import DatabaseError
 from ..database.models.model import Model
-from ..graph.spec import ArcGraph
+from ..graph.model import ModelSpec
 from .artifacts import ModelArtifactManager
 from .predictor import ArcPredictor
 from .training_service import TrainingJobConfig, TrainingService
@@ -79,10 +79,12 @@ class MLRuntime:
             raise MLRuntimeError(f"Failed to read schema file: {exc}") from exc
 
         try:
-            arc_graph = ArcGraph.from_yaml(schema_text)
-            arc_graph.to_training_config()
+            model_spec = ModelSpec.from_yaml(schema_text)
+            # Basic validation - ensure model spec is valid
+            _ = model_spec.get_input_names()
+            _ = model_spec.get_output_names()
         except Exception as exc:  # noqa: BLE001 - propagate as runtime error
-            raise MLRuntimeError(f"Invalid Arc-Graph schema: {exc}") from exc
+            raise MLRuntimeError(f"Invalid model schema: {exc}") from exc
 
         latest = self.model_service.get_latest_model_by_name(name)
         version = 1 if latest is None else latest.version + 1
@@ -90,17 +92,17 @@ class MLRuntime:
         model_id = f"{base_slug}-v{version}"
 
         now = datetime.now(UTC)
-        arc_graph_payload = json.dumps(asdict(arc_graph), default=str)
+        model_spec_payload = json.dumps(asdict(model_spec), default=str)
 
         model = Model(
             id=model_id,
-            type=model_type or "ml.arc_graph",
+            type=model_type or "ml.model_spec",
             name=name,
             version=version,
-            description=description or arc_graph.description or "",
+            description=description or "",
             base_model_id=None,
             spec=schema_text,
-            arc_graph=arc_graph_payload,
+            arc_graph=model_spec_payload,  # Keep field name for backward compatibility
             created_at=now,
             updated_at=now,
         )
@@ -145,17 +147,22 @@ class MLRuntime:
             )
 
         try:
-            arc_graph_dict = json.loads(model_record.arc_graph)
-            arc_graph = ArcGraph.from_dict(arc_graph_dict)
+            # Use the model spec stored in the model record
+            model_spec = ModelSpec.from_yaml(model_record.spec)
         except Exception as exc:  # noqa: BLE001 - rewrap into runtime error
             raise MLRuntimeError(
-                f"Failed to load Arc-Graph from stored spec: {exc}"
+                f"Failed to load model spec from stored record: {exc}"
             ) from exc
 
-        feature_columns = arc_graph.features.feature_columns
+        # Extract feature columns from model spec inputs
+        feature_columns = []
+        for input_spec in model_spec.inputs.values():
+            if input_spec.columns:
+                feature_columns.extend(input_spec.columns)
+
         if not feature_columns:
             raise MLRuntimeError(
-                "Arc-Graph must define features.feature_columns before training."
+                "Model spec must define input columns before training."
             )
 
         if not self.ml_data_service.dataset_exists(train_table):
@@ -165,12 +172,11 @@ class MLRuntime:
 
         resolved_target = target_column
         if not resolved_target:
-            targets = arc_graph.features.target_columns or []
-            if not targets:
-                raise MLRuntimeError(
-                    "Unable to determine target column. Provide target explicitly."
-                )
-            resolved_target = targets[0]
+            # In the new model spec structure, target column must be provided explicitly
+            # since model specs focus on architecture rather than data preprocessing
+            raise MLRuntimeError(
+                "Target column must be provided explicitly when starting training."
+            )
 
         columns_to_check = list(feature_columns)
         if resolved_target not in columns_to_check:
@@ -199,13 +205,12 @@ class MLRuntime:
         if validation_split is not None:
             overrides["validation_split"] = validation_split
 
-        training_config = arc_graph.to_training_config(overrides or None)
+        # Extract training parameters for job config
+        training_epochs = overrides.get("epochs", 10)
+        training_batch_size = overrides.get("batch_size", 32)
+        training_learning_rate = overrides.get("learning_rate", 0.001)
 
-        resolved_validation_split = (
-            overrides.get("validation_split")
-            if overrides.get("validation_split") is not None
-            else training_config.validation_split
-        )
+        resolved_validation_split = overrides.get("validation_split", 0.2)
 
         if validation_table and not self.ml_data_service.dataset_exists(
             validation_table
@@ -226,13 +231,15 @@ class MLRuntime:
             model_id=model_key,
             model_version=record_version,
             model_name=model_record.name,
-            arc_graph=arc_graph,
             train_table=train_table,
             target_column=resolved_target,
+            arc_graph=model_spec,  # Pass model spec
             feature_columns=list(feature_columns),
             validation_table=validation_table,
             validation_split=resolved_validation_split,
-            training_config=training_config,
+            epochs=training_epochs,
+            batch_size=training_batch_size,
+            learning_rate=training_learning_rate,
             artifacts_dir=str(self.artifacts_root),
             checkpoint_dir=checkpoint_path,
             description=description or "Training job",
@@ -347,9 +354,14 @@ class MLRuntime:
         limit: int | None = None,
     ) -> None:
         """Persist predictions together with original feature columns."""
-        feature_columns = predictor.arc_graph.features.feature_columns
+        # Extract feature columns from model spec
+        feature_columns = []
+        for input_spec in predictor.model_spec.inputs.values():
+            if input_spec.columns:
+                feature_columns.extend(input_spec.columns)
+
         if not feature_columns:
-            raise MLRuntimeError("No feature columns found in Arc-Graph specification")
+            raise MLRuntimeError("No feature columns found in model specification")
 
         try:
             self.ml_data_service.save_prediction_results(

@@ -7,6 +7,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ..core.agents.model_generator import ModelGeneratorAgent, ModelGeneratorError
+from ..core.agents.predictor_generator import (
+    PredictorGeneratorAgent,
+    PredictorGeneratorError,
+)
+from ..core.agents.trainer_generator import (
+    TrainerGeneratorAgent,
+    TrainerGeneratorError,
+)
 from ..ml.runtime import MLRuntime, MLRuntimeError
 from .base import BaseTool, ToolResult
 
@@ -216,5 +225,261 @@ class MLPredictTool(BaseTool):
             f"Outputs: {outputs}",
             f"Results saved to table: {summary.saved_table or output_table}",
         ]
+
+        return ToolResult.success_result("\n".join(lines))
+
+
+class MLModelGeneratorTool(BaseTool):
+    """Tool for generating Arc-Graph model specifications via LLM."""
+
+    def __init__(
+        self,
+        services,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+    ) -> None:
+        self.services = services
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+
+    async def execute(
+        self,
+        *,
+        name: str | None = None,
+        context: str | None = None,
+        data_table: str | None = None,
+        output_path: str | None = None,
+    ) -> ToolResult:
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for model generation. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "Model generation service unavailable. "
+                "Database services not initialized."
+            )
+
+        if not name or not context or not data_table:
+            return ToolResult.error_result(
+                "Parameters 'name', 'context', and 'data_table' are required "
+                "to generate a model specification."
+            )
+
+        agent = ModelGeneratorAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            model_spec, model_yaml = await agent.generate_model(
+                name=str(name),
+                user_context=str(context),
+                table_name=str(data_table),
+            )
+        except ModelGeneratorError as exc:
+            return ToolResult.error_result(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during model generation: {exc}"
+            )
+
+        summary = (
+            f"Inputs: {len(model_spec.inputs)} • Nodes: {len(model_spec.graph)} "
+            f"• Outputs: {len(model_spec.outputs)}"
+        )
+
+        lines = [
+            f"Model specification generated for '{name}'.",
+            summary,
+        ]
+
+        if output_path:
+            lines.append(f"Saved to: {output_path}")
+
+        lines.append("YAML:")
+        lines.append(model_yaml.strip())
+
+        return ToolResult.success_result("\n".join(lines))
+
+
+class MLTrainerGeneratorTool(BaseTool):
+    """Tool for generating Arc-Graph trainer specifications via LLM."""
+
+    def __init__(
+        self,
+        services,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+    ) -> None:
+        self.services = services
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+
+    async def execute(
+        self,
+        *,
+        name: str | None = None,
+        context: str | None = None,
+        model_spec_path: str | None = None,
+        output_path: str | None = None,
+    ) -> ToolResult:
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for trainer generation. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "Trainer generation service unavailable. "
+                "Database services not initialized."
+            )
+
+        if not name or not context or not model_spec_path:
+            return ToolResult.error_result(
+                "Parameters 'name', 'context', and 'model_spec_path' are required "
+                "to generate a trainer specification."
+            )
+
+        # Check that model spec file exists
+        if not Path(model_spec_path).exists():
+            return ToolResult.error_result(
+                f"Model specification file not found: {model_spec_path}"
+            )
+
+        agent = TrainerGeneratorAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            trainer_spec, trainer_yaml = await agent.generate_trainer(
+                name=str(name),
+                user_context=str(context),
+                model_spec_path=str(model_spec_path),
+            )
+        except TrainerGeneratorError as exc:
+            return ToolResult.error_result(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during trainer generation: {exc}"
+            )
+
+        lines = [
+            f"Trainer specification generated for '{name}'.",
+            f"Loss: {trainer_spec.loss.type} • "
+            f"Optimizer: {trainer_spec.optimizer.type}",
+        ]
+
+        if output_path:
+            lines.append(f"Saved to: {output_path}")
+
+        lines.append("YAML:")
+        lines.append(trainer_yaml.strip())
+
+        return ToolResult.success_result("\n".join(lines))
+
+
+class MLPredictorGeneratorTool(BaseTool):
+    """Tool for generating Arc-Graph predictor specifications via LLM."""
+
+    def __init__(
+        self,
+        services,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+    ) -> None:
+        self.services = services
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+
+    async def execute(
+        self,
+        *,
+        context: str | None = None,
+        model_spec_path: str | None = None,
+        trainer_spec_path: str | None = None,
+        output_path: str | None = None,
+    ) -> ToolResult:
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for predictor generation. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "Predictor generation service unavailable. "
+                "Database services not initialized."
+            )
+
+        if not model_spec_path or not context:
+            return ToolResult.error_result(
+                "Parameters 'model_spec_path' and 'context' are required "
+                "to generate a predictor specification."
+            )
+
+        # Check that model spec file exists
+        if not Path(model_spec_path).exists():
+            return ToolResult.error_result(
+                f"Model specification file not found: {model_spec_path}"
+            )
+
+        # Check trainer spec file if provided
+        if trainer_spec_path and not Path(trainer_spec_path).exists():
+            return ToolResult.error_result(
+                f"Trainer specification file not found: {trainer_spec_path}"
+            )
+
+        agent = PredictorGeneratorAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            predictor_yaml = await agent.generate_predictor(
+                user_context=str(context),
+                model_spec_path=str(model_spec_path),
+                trainer_spec_path=str(trainer_spec_path) if trainer_spec_path else None,
+            )
+        except PredictorGeneratorError as exc:
+            return ToolResult.error_result(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during predictor generation: {exc}"
+            )
+
+        if output_path:
+            try:
+                Path(output_path).write_text(predictor_yaml, encoding="utf-8")
+            except Exception as exc:  # noqa: BLE001
+                return ToolResult.error_result(
+                    f"Predictor generated but failed to save file: {exc}"
+                )
+
+        lines = [
+            "Predictor specification generated successfully.",
+        ]
+
+        if output_path:
+            lines.append(f"Saved to: {output_path}")
+
+        lines.append("YAML:")
+        lines.append(predictor_yaml.strip())
 
         return ToolResult.success_result("\n".join(lines))

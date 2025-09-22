@@ -32,12 +32,12 @@ class TestPluginSystem:
         # Get all registered layers
         layers = pm.get_layers()
 
-        # Check that some core layers are present under core namespace
-        assert "core.Linear" in layers
-        assert "core.ReLU" in layers
-        assert "core.Dropout" in layers
-        assert "core.Embedding" in layers
-        assert "core.LSTM" in layers
+        # Check that some core layers are present under torch.nn namespace
+        assert "torch.nn.Linear" in layers
+        assert "torch.nn.ReLU" in layers
+        assert "torch.nn.Dropout" in layers
+        assert "torch.nn.Embedding" in layers
+        assert "torch.nn.LSTM" in layers
 
     def test_optimizer_registration(self):
         """Test that optimizers are registered through plugins."""
@@ -46,11 +46,11 @@ class TestPluginSystem:
         # Get all registered optimizers
         optimizers = pm.get_optimizers()
 
-        # Check that common optimizers are present (with core prefix)
-        assert "core.SGD" in optimizers
-        assert "core.Adam" in optimizers
-        assert "core.AdamW" in optimizers
-        assert "core.RMSprop" in optimizers
+        # Check that common optimizers are present (with torch.optim prefix)
+        assert "torch.optim.SGD" in optimizers
+        assert "torch.optim.Adam" in optimizers
+        assert "torch.optim.AdamW" in optimizers
+        assert "torch.optim.RMSprop" in optimizers
 
     def test_loss_registration(self):
         """Test that loss functions are registered through plugins."""
@@ -59,34 +59,28 @@ class TestPluginSystem:
         # Get all registered losses
         losses = pm.get_losses()
 
-        # Check that common losses are present (with core prefix)
-        assert "core.MSELoss" in losses
-        assert "core.CrossEntropyLoss" in losses
-        assert "core.BCELoss" in losses
+        # Check that common losses are present (with torch.nn prefix)
+        assert "torch.nn.MSELoss" in losses
+        assert "torch.nn.CrossEntropyLoss" in losses
+        assert "torch.nn.BCELoss" in losses
 
     def test_layer_retrieval(self):
         """Test that layers can be retrieved by name."""
         pm = get_plugin_manager()
 
         # Test retrieval of specific layers
-        linear_layer = pm.get_layer("core.Linear")
+        linear_layer = pm.get_layer("torch.nn.Linear")
         assert linear_layer is not None
 
-        # Default namespace resolves to core plugin
-        assert pm.get_layer("Linear") is linear_layer
-
-        # Test non-existent layer
+        # Test non-existent layer returns None
         nonexistent = pm.get_layer("NonExistent")
         assert nonexistent is None
 
     def test_get_layer_class_integration(self):
         """Test that get_layer_class works with the plugin system."""
-        # Test core layer type
-        linear_class = get_layer_class("core.Linear")
+        # Test torch layer type
+        linear_class = get_layer_class("torch.nn.Linear")
         assert linear_class.__name__ == "LinearLayer"
-
-        # Unqualified name defaults to core
-        assert get_layer_class("Linear") is linear_class
 
         # Test error for unknown layer
         with pytest.raises(ValueError, match="Unknown layer type"):
@@ -98,11 +92,13 @@ class TestPluginSystem:
 
         # Test valid layer config
         valid_config = {"in_features": 10, "out_features": 5}
-        assert pm.validate_component_config("layer", "core.Linear", valid_config)
+        assert pm.validate_component_config("layer", "torch.nn.Linear", valid_config)
 
         # Test invalid layer config
         invalid_config = {"in_features": 10}  # Missing out_features
-        assert not pm.validate_component_config("layer", "core.Linear", invalid_config)
+        assert not pm.validate_component_config(
+            "layer", "torch.nn.Linear", invalid_config
+        )
 
         # Test valid optimizer config
         optimizer_config = {"lr": 0.001}
@@ -118,9 +114,9 @@ class TestPluginSystem:
         """Test that plugin metadata is accessible."""
         pm = get_plugin_manager()
 
-        # Check metadata for built-in layer plugin
+        # Check metadata for builtin layer plugin
         metadata = pm.get_plugin_metadata("builtin_layers")
-        assert metadata["name"] == "builtin_layers"
+        assert metadata["name"] == "torch_layers"  # Plugin ID != metadata name
         assert "version" in metadata
         assert "description" in metadata
 

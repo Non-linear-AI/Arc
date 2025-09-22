@@ -80,6 +80,18 @@ class InteractiveInterface:
             )
             ml_commands = [
                 (
+                    "/ml generate-model --name NAME --context DESC --data-table TABLE",
+                    "Generate an Arc-Graph model specification",
+                ),
+                (
+                    "/ml generate-trainer --name NAME --context DESC --model-spec FILE",
+                    "Generate an Arc-Graph trainer specification",
+                ),
+                (
+                    "/ml generate-predictor --model-id ID --context DESC",
+                    "Generate an Arc-Graph predictor specification",
+                ),
+                (
                     "/ml create-model --name NAME --schema PATH",
                     "Register an Arc-Graph model",
                 ),
@@ -108,6 +120,9 @@ class InteractiveInterface:
             "ml_create_model": "Register Model",
             "ml_train": "Train Model",
             "ml_predict": "Predict",
+            "ml_model_generator": "Model Generator",
+            "ml_trainer_generator": "Trainer Generator",
+            "ml_predictor_generator": "Predictor Generator",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -130,7 +145,14 @@ class InteractiveInterface:
             return "magenta"  # File operations
         elif tool_name in ["database_query", "schema_discovery"]:
             return "green"  # Database operations
-        elif tool_name in ["ml_create_model", "ml_train", "ml_predict"]:
+        elif tool_name in [
+            "ml_create_model",
+            "ml_train",
+            "ml_predict",
+            "ml_model_generator",
+            "ml_trainer_generator",
+            "ml_predictor_generator",
+        ]:
             return "green"
         else:
             return "cyan"  # Default/messages

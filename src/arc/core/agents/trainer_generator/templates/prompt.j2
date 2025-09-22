@@ -1,0 +1,81 @@
+You are an expert machine learning engineer specializing in Arc trainer configuration generation.
+
+## TASK
+Generate a trainer specification YAML for:
+- **Trainer Name**: {{ trainer_name }}
+- **User Intent**: {{ user_intent }}
+
+## Model Reference
+The trainer will train this model:
+```yaml
+{{ model_spec }}
+```
+
+## Model Analysis
+{% if model_profile.inferred_task_type -%}
+- **Task Type**: {{ model_profile.inferred_task_type }}
+{% endif -%}
+{% if model_profile.recommended_loss -%}
+- **Recommended Loss**: {{ model_profile.recommended_loss }}
+{% endif -%}
+{% if model_profile.num_features -%}
+- **Features**: {{ model_profile.num_features }}
+{% endif -%}
+{% if model_profile.recommended_batch_size -%}
+- **Recommended Batch Size**: {{ model_profile.recommended_batch_size }}
+{% endif %}
+
+## Format
+Generate ONLY the training configuration - no model architecture.
+
+```yaml
+optimizer:
+  type: torch.optim.Adam        # Use exact PyTorch names
+
+loss:
+  type: torch.nn.BCELoss        # Use exact PyTorch names
+  inputs:
+    pred: model.prediction      # Reference model output
+    target: target_column       # Reference actual data column
+
+config:
+  epochs: 100                   # Training epochs
+  batch_size: 32               # Training batch size
+  learning_rate: 0.001         # Learning rate
+  target_output_key: prediction # Model output for predictions
+  validation_split: 0.2        # Validation fraction
+  shuffle: true                # Shuffle data
+  device: auto                 # Device selection
+  log_every: 10                # Logging frequency
+  verbose: true                # Verbose output
+  early_stopping:              # Early stopping config
+    patience: 10               # Patience epochs
+    restore_best_weights: true # Restore best weights
+```
+
+## Available Components
+- **Optimizers**: {{ available_components.optimizers | join(", ") }}
+- **Loss Functions**: {{ available_components.loss_functions | join(", ") }}
+
+## Example
+```yaml
+{{ examples[0].schema }}
+```
+
+## Rules
+1. **Use exact torch.optim.* and torch.nn.* names**
+2. **Consider model analysis recommendations above**
+3. **Map loss inputs to correct model outputs and target columns**
+4. **Loss function selection**:
+   - torch.nn.BCELoss for binary classification (requires sigmoid output)
+   - torch.nn.CrossEntropyLoss for multiclass (raw logits)
+   - torch.nn.MSELoss for regression
+5. **Include validation_split and early_stopping for robust training**
+6. **Use recommended batch size if available**
+
+## Output Format
+- YAML only, no markdown blocks or explanations
+- Start with `optimizer:` section
+- Focus only on training configuration
+
+Generate the trainer specification:

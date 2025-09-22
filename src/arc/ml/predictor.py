@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from arc.database.services.ml_data_service import MLDataService
-from arc.graph.spec import ArcGraph
+from arc.graph import ModelSpec, PredictorSpec
 from arc.ml.artifacts import ModelArtifact, ModelArtifactManager
 from arc.ml.builder import ModelBuilder
 
@@ -33,21 +33,24 @@ class ArcPredictor:
     def __init__(
         self,
         model: nn.Module,
-        arc_graph: ArcGraph,
+        model_spec: ModelSpec,
         artifact: ModelArtifact,
+        predictor_spec: PredictorSpec | None = None,
         device: str | torch.device = "cpu",
     ):
         """Initialize predictor.
 
         Args:
             model: Trained PyTorch model
-            arc_graph: Arc-Graph specification
+            model_spec: Model specification
             artifact: Model artifact metadata
+            predictor_spec: Optional predictor specification for output mapping
             device: Device for inference
         """
         self.model = model
-        self.arc_graph = arc_graph
+        self.model_spec = model_spec
         self.artifact = artifact
+        self.predictor_spec = predictor_spec
         self.device = torch.device(device)
 
         # Move model to device and set to evaluation mode
@@ -61,16 +64,61 @@ class ArcPredictor:
         logger.info(f"Will return outputs: {self.output_keys}")
 
     def _get_output_keys(self) -> list[str]:
-        """Determine which outputs to return based on predictor spec."""
-        if self.arc_graph.predictor and self.arc_graph.predictor.returns:
-            return self.arc_graph.predictor.returns
+        """Determine which outputs to return based on predictor and model spec."""
+        # If predictor spec is provided and has outputs, use those
+        if self.predictor_spec and self.predictor_spec.outputs:
+            return list(self.predictor_spec.outputs.keys())
 
-        # If no predictor spec, return all model outputs
-        if self.arc_graph.model and self.arc_graph.model.outputs:
-            return list(self.arc_graph.model.outputs.keys())
+        # Fallback to all model outputs from ModelSpec
+        if self.model_spec.outputs:
+            return list(self.model_spec.outputs.keys())
 
-        # Fallback: assume single output named 'output'
+        # Final fallback: assume single output named 'output'
         return ["output"]
+
+    def _extract_outputs(
+        self, model_output: dict[str, torch.Tensor] | torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """Extract and map outputs according to predictor specification."""
+        if isinstance(model_output, dict):
+            # Handle dictionary output from model
+            extracted = {}
+
+            for pred_output_name in self.output_keys:
+                # Determine which model output to use for this predictor output
+                if self.predictor_spec and self.predictor_spec.outputs:
+                    # Use explicit mapping from predictor spec
+                    model_output_name = self.predictor_spec.outputs.get(
+                        pred_output_name
+                    )
+                    if model_output_name is None:
+                        raise PredictionError(
+                            f"Predictor output '{pred_output_name}' not found in "
+                            f"predictor spec mapping"
+                        )
+                else:
+                    # Direct mapping: predictor output name = model output name
+                    model_output_name = pred_output_name
+
+                if model_output_name not in model_output:
+                    available = list(model_output.keys())
+                    raise PredictionError(
+                        f"Model output '{model_output_name}' not found in model "
+                        f"outputs. Available: {available}"
+                    )
+
+                extracted[pred_output_name] = model_output[model_output_name]
+
+            return extracted
+        else:
+            # Single tensor output from model
+            if len(self.output_keys) == 1:
+                return {self.output_keys[0]: model_output}
+            else:
+                raise PredictionError(
+                    f"Model returns single tensor but predictor expects "
+                    f"multiple outputs: {self.output_keys}"
+                )
 
     def predict_batch(
         self,
@@ -105,25 +153,12 @@ class ArcPredictor:
                     # Forward pass
                     output = self.model(batch_features)
 
-                    # Extract requested outputs
-                    if isinstance(output, dict):
-                        for key in self.output_keys:
-                            if key not in output:
-                                available = list(output.keys())
-                                raise PredictionError(
-                                    f"Output '{key}' not found in model outputs. "
-                                    f"Available: {available}"
-                                )
-                            predictions[key].append(output[key].cpu())
-                    else:
-                        # Single tensor output
-                        if len(self.output_keys) == 1:
-                            predictions[self.output_keys[0]].append(output.cpu())
-                        else:
-                            raise PredictionError(
-                                f"Model returns single tensor but predictor expects "
-                                f"multiple outputs: {self.output_keys}"
-                            )
+                    # Extract and map outputs according to predictor spec
+                    extracted_outputs = self._extract_outputs(output)
+
+                    # Collect outputs for this batch
+                    for key, tensor in extracted_outputs.items():
+                        predictions[key].append(tensor.cpu())
 
             # Concatenate all batches
             final_predictions = {}
@@ -183,7 +218,7 @@ class ArcPredictor:
             ml_data_service: Service for accessing ML data
             table_name: Name of the table containing features
             feature_columns: List of feature column names
-                (uses arc_graph default if None)
+                (uses model_spec default if None)
             batch_size: Batch size for processing
             limit: Maximum number of rows to process
 
@@ -194,16 +229,21 @@ class ArcPredictor:
             PredictionError: If prediction fails
         """
         try:
-            # Use feature columns from arc_graph if not provided
+            # Use feature columns from model_spec if not provided
             if feature_columns is None:
-                if (
-                    not self.arc_graph.features
-                    or not self.arc_graph.features.feature_columns
-                ):
+                # Extract feature columns from model inputs
+                if not self.model_spec.inputs:
                     raise PredictionError(
-                        "No feature columns specified and none found in arc_graph"
+                        "No feature columns specified and no inputs found in model_spec"
                     )
-                feature_columns = self.arc_graph.features.feature_columns
+                # Get columns from the first input (assuming single input for
+                # simplicity)
+                first_input = next(iter(self.model_spec.inputs.values()))
+                if not hasattr(first_input, "columns") or not first_input.columns:
+                    raise PredictionError(
+                        "No feature columns found in model input specification"
+                    )
+                feature_columns = first_input.columns
 
             logger.info(
                 f"Loading features from table '{table_name}' with columns: "
@@ -360,7 +400,7 @@ class ArcPredictor:
         Args:
             df: DataFrame containing features
             feature_columns: List of feature column names
-                (uses arc_graph default if None)
+                (uses model_spec default if None)
             batch_size: Batch size for processing
 
         Returns:
@@ -370,16 +410,21 @@ class ArcPredictor:
             PredictionError: If prediction fails
         """
         try:
-            # Use feature columns from arc_graph if not provided
+            # Use feature columns from model_spec if not provided
             if feature_columns is None:
-                if (
-                    not self.arc_graph.features
-                    or not self.arc_graph.features.feature_columns
-                ):
+                # Extract feature columns from model inputs
+                if not self.model_spec.inputs:
                     raise PredictionError(
-                        "No feature columns specified and none found in arc_graph"
+                        "No feature columns specified and no inputs found in model_spec"
                     )
-                feature_columns = self.arc_graph.features.feature_columns
+                # Get columns from the first input (assuming single input for
+                # simplicity)
+                first_input = next(iter(self.model_spec.inputs.values()))
+                if not hasattr(first_input, "columns") or not first_input.columns:
+                    raise PredictionError(
+                        "No feature columns found in model input specification"
+                    )
+                feature_columns = first_input.columns
 
             # Validate columns exist
             missing_cols = [col for col in feature_columns if col not in df.columns]
@@ -410,8 +455,9 @@ class ArcPredictor:
             "device": str(self.device),
             "output_keys": self.output_keys,
             "feature_columns": (
-                self.arc_graph.features.feature_columns
-                if self.arc_graph.features
+                next(iter(self.model_spec.inputs.values())).columns
+                if self.model_spec.inputs
+                and hasattr(next(iter(self.model_spec.inputs.values())), "columns")
                 else None
             ),
         }
@@ -448,25 +494,71 @@ class ArcPredictor:
                 device=device,
             )
 
-            # Reconstruct Arc-Graph from metadata
+            # Reconstruct ModelSpec from metadata
             if not artifact.arc_graph:
                 raise PredictionError(
-                    f"No Arc-Graph specification found in artifact for model {model_id}"
+                    f"No model specification found in artifact for model {model_id}"
                 )
 
-            arc_graph = ArcGraph.from_dict(artifact.arc_graph)
+            # Convert old arc_graph format to new ModelSpec if needed
+            if "model" in artifact.arc_graph:
+                model_dict = artifact.arc_graph["model"]
+            else:
+                model_dict = artifact.arc_graph
 
-            # Build model from Arc-Graph
+            from arc.graph.model import (
+                GraphNode,
+                ModelInput,
+                ModelSpec,
+                validate_model_dict,
+            )
+
+            # Validate the model structure
+            validate_model_dict(model_dict)
+
+            # Create ModelSpec from dict (similar to ModelSpec.from_yaml)
+            # Parse inputs
+            inputs = {}
+            for input_name, input_spec in model_dict["inputs"].items():
+                inputs[input_name] = ModelInput(
+                    dtype=input_spec["dtype"],
+                    shape=input_spec["shape"],
+                    columns=input_spec.get("columns"),
+                )
+
+            # Parse graph nodes
+            graph = []
+            for node_data in model_dict["graph"]:
+                graph.append(
+                    GraphNode(
+                        name=node_data["name"],
+                        type=node_data["type"],
+                        params=node_data.get("params", {}),
+                        inputs=node_data.get("inputs", {}),
+                    )
+                )
+
+            # Parse outputs
+            outputs = model_dict["outputs"]
+
+            model_spec = ModelSpec(
+                inputs=inputs,
+                graph=graph,
+                outputs=outputs,
+            )
+
+            # Build model from ModelSpec
             builder = ModelBuilder()
-            model = builder.build_model(arc_graph)
+            model = builder.build_model(model_spec)
 
             # Load trained weights
             model.load_state_dict(state_dict)
 
             return cls(
                 model=model,
-                arc_graph=arc_graph,
+                model_spec=model_spec,
                 artifact=artifact,
+                predictor_spec=None,
                 device=device,
             )
 
@@ -478,14 +570,14 @@ class ArcPredictor:
     def load_from_checkpoint(
         cls,
         checkpoint_path: str | Path,
-        arc_graph: ArcGraph,
+        model_spec: ModelSpec,
         device: str | torch.device = "cpu",
     ) -> ArcPredictor:
         """Load predictor from training checkpoint.
 
         Args:
             checkpoint_path: Path to checkpoint file
-            arc_graph: Arc-Graph specification
+            model_spec: Model specification
             device: Device for inference
 
         Returns:
@@ -502,9 +594,9 @@ class ArcPredictor:
                 checkpoint_path, map_location=device, weights_only=False
             )
 
-            # Build model from Arc-Graph
+            # Build model from ModelSpec
             builder = ModelBuilder()
-            model = builder.build_model(arc_graph)
+            model = builder.build_model(model_spec)
 
             # Load trained weights
             model.load_state_dict(checkpoint["model_state_dict"])
@@ -515,13 +607,14 @@ class ArcPredictor:
                 model_name="Checkpoint Model",
                 version=checkpoint.get("epoch", 1),
                 model_state_path="model.pt",
-                arc_graph=arc_graph.__dict__,
+                arc_graph=model_spec.__dict__,
             )
 
             return cls(
                 model=model,
-                arc_graph=arc_graph,
+                model_spec=model_spec,
                 artifact=artifact,
+                predictor_spec=None,
                 device=device,
             )
 
@@ -530,3 +623,106 @@ class ArcPredictor:
             raise PredictionError(
                 f"Failed to load predictor from checkpoint: {e}"
             ) from e
+
+    @classmethod
+    def load_with_predictor_spec(
+        cls,
+        artifact_manager: ModelArtifactManager,
+        predictor_spec: PredictorSpec,
+        device: str | torch.device = "cpu",
+    ) -> ArcPredictor:
+        """Load predictor using a predictor specification.
+
+        Args:
+            artifact_manager: Manager for loading artifacts
+            predictor_spec: Predictor specification with model_id and output mapping
+            device: Device for inference
+
+        Returns:
+            Loaded predictor with custom output mapping
+
+        Raises:
+            PredictionError: If loading fails
+        """
+        try:
+            logger.info(f"Loading predictor with spec: {predictor_spec.name}")
+
+            # Load model using the model_id from predictor spec
+            state_dict, artifact = artifact_manager.load_model_state_dict(
+                model_id=predictor_spec.model_id,
+                version=predictor_spec.model_version,
+                device=device,
+            )
+
+            # Reconstruct ModelSpec from metadata
+            if not artifact.arc_graph:
+                raise PredictionError(
+                    f"No model specification found in artifact for model "
+                    f"{predictor_spec.model_id}"
+                )
+
+            # Convert old arc_graph format to new ModelSpec if needed
+            if "model" in artifact.arc_graph:
+                model_dict = artifact.arc_graph["model"]
+            else:
+                model_dict = artifact.arc_graph
+
+            from arc.graph.model import (
+                GraphNode,
+                ModelInput,
+                ModelSpec,
+                validate_model_dict,
+            )
+
+            # Validate the model structure
+            validate_model_dict(model_dict)
+
+            # Create ModelSpec from dict (similar to ModelSpec.from_yaml)
+            # Parse inputs
+            inputs = {}
+            for input_name, input_spec in model_dict["inputs"].items():
+                inputs[input_name] = ModelInput(
+                    dtype=input_spec["dtype"],
+                    shape=input_spec["shape"],
+                    columns=input_spec.get("columns"),
+                )
+
+            # Parse graph nodes
+            graph = []
+            for node_data in model_dict["graph"]:
+                graph.append(
+                    GraphNode(
+                        name=node_data["name"],
+                        type=node_data["type"],
+                        params=node_data.get("params", {}),
+                        inputs=node_data.get("inputs", {}),
+                    )
+                )
+
+            # Parse outputs
+            outputs = model_dict["outputs"]
+
+            model_spec = ModelSpec(
+                inputs=inputs,
+                graph=graph,
+                outputs=outputs,
+            )
+
+            # Build model from ModelSpec
+            builder = ModelBuilder()
+            model = builder.build_model(model_spec)
+
+            # Load trained weights
+            model.load_state_dict(state_dict)
+
+            return cls(
+                model=model,
+                model_spec=model_spec,
+                artifact=artifact,
+                predictor_spec=predictor_spec,
+                device=device,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to load predictor with spec: {e}")
+            raise PredictionError(f"Failed to load predictor with spec: {e}") from e

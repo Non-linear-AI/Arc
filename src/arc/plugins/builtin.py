@@ -19,13 +19,13 @@ hookimpl = pluggy.HookimplMarker("arc")
 
 
 class BuiltinLayerPlugin:
-    """Plugin that registers Arc Graph's built-in layer types."""
+    """Plugin that registers PyTorch layer types with exact PyTorch names."""
 
     __plugin_metadata__ = {
-        "name": "builtin_layers",
+        "name": "torch_layers",
         "version": "1.0.0",
-        "description": "Built-in Arc Graph layer types",
-        "namespace": "core",
+        "description": "PyTorch layer types using torch.nn namespace",
+        "namespace": "torch.nn",
     }
 
     @hookimpl
@@ -49,7 +49,7 @@ class BuiltinLayerPlugin:
         )
 
         return {
-            # Basic layers (suffix names; namespace provided via metadata)
+            # Basic layers with exact PyTorch names
             "Linear": LinearLayer,
             "ReLU": ReLULayer,
             "Sigmoid": SigmoidLayer,
@@ -59,43 +59,49 @@ class BuiltinLayerPlugin:
             # Embedding layers
             "Embedding": EmbeddingLayer,
             # Attention and transformer layers
-            "MultiHeadAttention": MultiHeadAttentionLayer,
+            "MultiheadAttention": MultiHeadAttentionLayer,  # Exact PyTorch name
             "TransformerEncoderLayer": TransformerEncoderLayerCustom,
-            "PositionalEncoding": PositionalEncodingLayer,
+            "PositionalEncoding": PositionalEncodingLayer,  # Custom but clear name
             # Sequence modeling layers
             "LSTM": LSTMLayer,
             "GRU": GRULayer,
-            # Routing and combination layers
+            # Routing and combination layers (custom)
             "Concatenate": ConcatenateLayer,
             "Add": AddLayer,
         }
 
     @hookimpl
     def validate_layer_config(self, layer_type: str, config: dict[str, Any]) -> bool:
-        """Validate layer configuration for built-in layers."""
-        # Basic validation for built-in layers (handle both core. and alias names)
-        if layer_type in ("core.Linear", "Linear"):
+        """Validate layer configuration for PyTorch layers."""
+        # Basic validation for PyTorch layers using exact PyTorch parameter names
+        if layer_type in ("torch.nn.Linear", "Linear"):
             required = ["in_features", "out_features"]
             return all(param in config for param in required)
-        elif layer_type in ("core.Embedding", "Embedding"):
+        elif layer_type in ("torch.nn.Embedding", "Embedding"):
             required = ["num_embeddings", "embedding_dim"]
             return all(param in config for param in required)
-        elif layer_type in ("core.LSTM", "LSTM") or layer_type in ("core.GRU", "GRU"):
+        elif layer_type in ("torch.nn.LSTM", "LSTM") or layer_type in (
+            "torch.nn.GRU",
+            "GRU",
+        ):
             required = ["input_size", "hidden_size"]
             return all(param in config for param in required)
-        elif layer_type in ("core.MultiHeadAttention", "MultiHeadAttention"):
+        elif layer_type in ("torch.nn.MultiheadAttention", "MultiheadAttention"):
             required = ["embed_dim", "num_heads"]
             return all(param in config for param in required)
-        elif layer_type in ("core.TransformerEncoderLayer", "TransformerLayer"):
+        elif layer_type in (
+            "torch.nn.TransformerEncoderLayer",
+            "TransformerEncoderLayer",
+        ):
             required = ["d_model", "nhead"]
             return all(param in config for param in required)
-        elif layer_type in ("core.PositionalEncoding", "PositionalEncoding"):
+        elif layer_type in ("torch.nn.PositionalEncoding", "PositionalEncoding"):
             required = ["d_model"]
             return all(param in config for param in required)
-        elif layer_type in ("core.BatchNorm1d", "BatchNorm"):
+        elif layer_type in ("torch.nn.BatchNorm1d", "BatchNorm1d"):
             required = ["num_features"]
             return all(param in config for param in required)
-        elif layer_type in ("core.LayerNorm", "LayerNorm"):
+        elif layer_type in ("torch.nn.LayerNorm", "LayerNorm"):
             required = ["normalized_shape"]
             return all(param in config for param in required)
 
@@ -104,13 +110,13 @@ class BuiltinLayerPlugin:
 
 
 class BuiltinOptimizerPlugin:
-    """Plugin that registers Arc Graph's built-in optimizer types."""
+    """Plugin that registers PyTorch optimizers with exact PyTorch names."""
 
     __plugin_metadata__ = {
-        "name": "builtin_optimizers",
+        "name": "torch_optimizers",
         "version": "1.0.0",
-        "description": "Built-in PyTorch optimizers",
-        "namespace": "core",
+        "description": "PyTorch optimizers using torch.optim namespace",
+        "namespace": "torch.optim",
     }
 
     @hookimpl
@@ -125,7 +131,7 @@ class BuiltinOptimizerPlugin:
             "RMSprop": optim.RMSprop,
             "Adagrad": optim.Adagrad,
             "Adadelta": optim.Adadelta,
-            "AdamAx": optim.Adamax,
+            "Adamax": optim.Adamax,  # Exact PyTorch name
             "ASGD": optim.ASGD,
             "LBFGS": optim.LBFGS,
         }
@@ -148,13 +154,13 @@ class BuiltinOptimizerPlugin:
 
 
 class BuiltinLossPlugin:
-    """Plugin that registers Arc Graph's built-in loss function types."""
+    """Plugin that registers PyTorch loss functions with exact PyTorch names."""
 
     __plugin_metadata__ = {
-        "name": "builtin_losses",
+        "name": "torch_losses",
         "version": "1.0.0",
-        "description": "Built-in PyTorch loss functions",
-        "namespace": "core",
+        "description": "PyTorch loss functions using torch.nn namespace",
+        "namespace": "torch.nn",
     }
 
     @hookimpl

@@ -218,32 +218,23 @@ class StubRuntime:
 
 
 SCHEMA_WITH_CONFIG = """
-version: "0.1"
-model_name: "test_model"
+inputs:
+  features:
+    dtype: float32
+    shape: [null, 2]
+    columns: [x1, x2]
 
-features:
-  feature_columns: [x1, x2]
-  target_columns: [y]
-  processors: []
+graph:
+  - name: linear
+    type: torch.nn.Linear
+    params:
+      in_features: 2
+      out_features: 1
+    inputs:
+      input: features
 
-model:
-  inputs:
-    features: {dtype: float32, shape: [null, 2]}
-  graph:
-    - name: linear
-      type: core.Linear
-      params: {in_features: 2, out_features: 1}
-      inputs: {input: features}
-  outputs:
-    prediction: linear.output
-
-trainer:
-  optimizer: {type: adam}
-  loss: {type: mse}
-  config:
-    epochs: 3
-    batch_size: 16
-    learning_rate: 0.01
+outputs:
+  prediction: linear.output
 """
 
 
@@ -261,46 +252,37 @@ PIMA_SMALL_ROWS = [
 ]
 
 PIMA_SCHEMA = """
-version: "0.1"
-model_name: "pima_diabetes_classifier"
+inputs:
+  features:
+    dtype: float32
+    shape: [null, 8]
+    columns:
+      - pregnancies
+      - glucose
+      - blood_pressure
+      - skin_thickness
+      - insulin
+      - bmi
+      - diabetes_pedigree
+      - age
 
-features:
-  feature_columns:
-    - pregnancies
-    - glucose
-    - blood_pressure
-    - skin_thickness
-    - insulin
-    - bmi
-    - diabetes_pedigree
-    - age
-  target_columns: [outcome]
-  processors: []
+graph:
+  - name: linear
+    type: torch.nn.Linear
+    params:
+      in_features: 8
+      out_features: 1
+      bias: true
+    inputs:
+      input: features
+  - name: sigmoid
+    type: torch.nn.Sigmoid
+    inputs:
+      input: linear.output
 
-model:
-  inputs:
-    features: {dtype: float32, shape: [null, 8]}
-  graph:
-    - name: linear
-      type: core.Linear
-      params: {in_features: 8, out_features: 1, bias: true}
-      inputs: {input: features}
-    - name: sigmoid
-      type: core.Sigmoid
-      inputs: {input: linear.output}
-  outputs:
-    logits: linear.output
-    prediction: sigmoid.output
-
-trainer:
-  optimizer: {type: adam}
-  loss: {type: binary_cross_entropy_with_logits}
-  config:
-    epochs: 2
-    batch_size: 4
-    learning_rate: 0.05
-    target_output_key: logits
-    reshape_targets: true
+outputs:
+  logits: linear.output
+  prediction: sigmoid.output
 """
 
 
@@ -330,7 +312,11 @@ async def test_create_model_registers_model(tmp_path):
     assert created.name == "my_model"
     assert created.version == 1
     assert created.spec == SCHEMA_WITH_CONFIG
-    assert json.loads(created.arc_graph)["model_name"] == "my_model"
+    stored_graph = json.loads(created.arc_graph)
+    import yaml
+
+    schema_dict = yaml.safe_load(stored_graph["schema"])
+    assert schema_dict["inputs"]["features"]["columns"] == ["x1", "x2"]
 
 
 @pytest.mark.asyncio
@@ -338,9 +324,6 @@ async def test_train_submits_job(tmp_path):
     arc_graph_dict = json.loads(
         json.dumps(
             {
-                "version": "0.1",
-                "model_name": "test_model",
-                "description": "",
                 "features": {
                     "feature_columns": ["x1", "x2"],
                     "target_columns": ["y"],
@@ -538,7 +521,7 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     assert any("registered" in msg for msg in ui.successes)
 
     await handle_ml_command(
-        "/ml train --model pima_cli --data pima_small",
+        "/ml train --model pima_cli --data pima_small --target outcome",
         ui,
         services.ml_runtime,
     )

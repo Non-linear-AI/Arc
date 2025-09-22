@@ -13,7 +13,10 @@ from ..tools import (
     DatabaseQueryTool,
     FileEditorTool,
     MLCreateModelTool,
+    MLModelGeneratorTool,
+    MLPredictorGeneratorTool,
     MLPredictTool,
+    MLTrainerGeneratorTool,
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
@@ -88,6 +91,12 @@ class ArcAgent:
 
         self.max_tool_rounds = max_tool_rounds
         self.arc_client = ArcClient(api_key, model_to_use, base_url)
+        self.api_key = api_key
+        self.base_url = self.arc_client.base_url
+
+        # Track the model currently configured for the client so tool calls
+        # stay consistent
+        self.current_model_name = self.arc_client.get_current_model()
 
         # Initialize tools
         self.file_editor = FileEditorTool()
@@ -101,6 +110,36 @@ class ArcAgent:
         )
         self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
+        self.ml_model_generator_tool = (
+            MLModelGeneratorTool(
+                services,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+            )
+            if services
+            else None
+        )
+        self.ml_trainer_generator_tool = (
+            MLTrainerGeneratorTool(
+                services,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+            )
+            if services
+            else None
+        )
+        self.ml_predictor_generator_tool = (
+            MLPredictorGeneratorTool(
+                services,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+            )
+            if services
+            else None
+        )
 
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
@@ -563,6 +602,42 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML predict tool not available. Database services not initialized."
                 )
+            elif tool_call.name == "ml_model_generator":
+                if self.ml_model_generator_tool:
+                    return await self.ml_model_generator_tool.execute(
+                        name=args.get("name"),
+                        context=args.get("context"),
+                        data_table=args.get("data_table"),
+                        output_path=args.get("output_path"),
+                    )
+                return ToolResult.error_result(
+                    "ML model generator tool not available. "
+                    "Database services not initialized."
+                )
+            elif tool_call.name == "ml_trainer_generator":
+                if self.ml_trainer_generator_tool:
+                    return await self.ml_trainer_generator_tool.execute(
+                        name=args.get("name"),
+                        context=args.get("context"),
+                        model_spec_path=args.get("model_spec_path"),
+                        output_path=args.get("output_path"),
+                    )
+                return ToolResult.error_result(
+                    "ML trainer generator tool not available. "
+                    "Database services not initialized."
+                )
+            elif tool_call.name == "ml_predictor_generator":
+                if self.ml_predictor_generator_tool:
+                    return await self.ml_predictor_generator_tool.execute(
+                        context=args.get("context"),
+                        model_spec_path=args.get("model_spec_path"),
+                        trainer_spec_path=args.get("trainer_spec_path"),
+                        output_path=args.get("output_path"),
+                    )
+                return ToolResult.error_result(
+                    "ML predictor generator tool not available. "
+                    "Database services not initialized."
+                )
             else:
                 return ToolResult.error_result(f"Unknown tool: {tool_call.name}")
 
@@ -593,3 +668,10 @@ class ArcAgent:
         """Set the current model."""
         self.arc_client.set_model(model)
         self.token_counter = TokenCounter(model)
+        self.current_model_name = model
+        if getattr(self, "ml_model_generator_tool", None):
+            self.ml_model_generator_tool.model = model
+        if getattr(self, "ml_trainer_generator_tool", None):
+            self.ml_trainer_generator_tool.model = model
+        if getattr(self, "ml_predictor_generator_tool", None):
+            self.ml_predictor_generator_tool.model = model
