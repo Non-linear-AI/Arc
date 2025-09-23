@@ -19,9 +19,8 @@ from ..core.agents.predictor_generator import PredictorGeneratorAgent
 from ..core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
 from ..database.services import ServiceContainer
-from ..error_handling import error_handler
 from ..ml.runtime import MLRuntime, MLRuntimeError
-from ..utils import ConfirmationService, performance_manager
+from ..utils import ConfirmationService
 from .console import InteractiveInterface
 
 # Load environment variables
@@ -771,25 +770,13 @@ async def run_interactive_mode(
                         1:
                     ].lower()  # Remove the / prefix and convert to lowercase
 
-                    if cmd in ["exit", "quit", "bye"]:
+                    if cmd == "exit":
                         ui.show_goodbye()
                         break
                     elif cmd == "help":
                         ui.show_commands()
                         continue
-                    elif cmd == "stats":
-                        # Show editing statistics if available
-                        if hasattr(agent.file_editor, "editor_manager"):
-                            stats = (
-                                agent.file_editor.editor_manager.get_strategy_stats()
-                            )
-                            ui.show_edit_summary(stats)
-                        else:
-                            ui.show_info("📊 No editing statistics available yet.")
-                        continue
-                    elif cmd == "tree":
-                        ui.show_file_tree(agent.get_current_directory())
-                        continue
+
                     elif cmd == "clear":
                         ui.clear_screen()
                         continue
@@ -808,12 +795,6 @@ async def run_interactive_mode(
                         )
                         ui.show_config_panel(config_text)
                         continue
-                    elif cmd == "performance":
-                        # Show performance metrics
-                        metrics = performance_manager.get_metrics()
-                        error_stats = error_handler.get_error_stats()
-                        ui.show_performance_metrics(metrics, error_stats)
-                        continue
                     elif cmd.startswith("sql"):
                         # Handle SQL queries and update current database context
                         current_database = await handle_sql_command(
@@ -824,10 +805,7 @@ async def run_interactive_mode(
                         ui.show_system_error(f"Unknown system command: /{cmd}")
                         continue
 
-                    # Handle special exit commands without prefix (for convenience)
-                elif user_input.lower() in ["exit", "quit", "bye"]:
-                    ui.show_goodbye()
-                    break
+                # No special exit without slash; only /exit is supported
 
                 if not user_input:
                     continue

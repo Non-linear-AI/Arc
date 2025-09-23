@@ -30,13 +30,9 @@ class ArcCompleter(Completer):
         # Base commands
         self.base_commands = [
             "/help",
-            "/stats",
-            "/performance",
-            "/tree",
             "/config",
             "/clear",
             "/exit",
-            "/quit",
         ]
 
         # SQL commands
@@ -210,13 +206,9 @@ class ArcCompleter(Completer):
                 ("/help", "Show help information"),
                 ("/ml", "Machine learning commands"),
                 ("/sql", "Database operations"),
-                ("/stats", "Show statistics"),
-                ("/performance", "Performance metrics"),
-                ("/tree", "Directory structure"),
                 ("/config", "Configuration"),
                 ("/clear", "Clear screen"),
                 ("/exit", "Exit application"),
-                ("/quit", "Exit application"),
             ]
             for command, description in all_commands:
                 if command.startswith(text):

@@ -10,7 +10,6 @@ from typing import Any
 from rich import box
 from rich.align import Align
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.tree import Tree
@@ -160,9 +159,6 @@ class InteractiveInterface:
             )
             commands = [
                 ("/help", "Show available commands and features"),
-                ("/stats", "Show editing strategy statistics"),
-                ("/performance", "Show performance metrics and cache statistics"),
-                ("/tree", "Show directory structure"),
                 ("/config", "View current configuration"),
                 (
                     "/sql use [system|user] | /sql <query>",
@@ -170,7 +166,7 @@ class InteractiveInterface:
                     "(system: read-only, user: full access)",
                 ),
                 ("/clear", "Clear the screen"),
-                ("/exit or /quit", "Exit the application"),
+                ("/exit", "Exit the application"),
             ]
             for cmd, desc in commands:
                 p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
@@ -665,12 +661,34 @@ class InteractiveInterface:
         return ", ".join(formatted)
 
     def prompt_confirmation(self, message: str) -> bool:
-        """Enhanced confirmation prompt."""
-        return Confirm.ask(f"🤔 {message}")
+        """Confirmation prompt that avoids prompt_toolkit conflicts.
+
+        Uses basic console input to ensure compatibility when prompt_toolkit
+        is active elsewhere.
+        """
+        while True:
+            try:
+                prompt = f"🤔 {message} [y/N]: "
+                resp = self._printer.console.input(prompt).strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                return False
+
+            if resp in ("y", "yes"):
+                return True
+            if resp in ("n", "no", ""):
+                return False
+            self._printer.print("Please enter 'y' or 'n'.")
 
     def prompt_input(self, message: str, default: str | None = None) -> str:
-        """Enhanced input prompt."""
-        return Prompt.ask(f"💭 {message}", default=default)
+        """Simple input prompt using console.input to avoid conflicts."""
+        try:
+            value = self._printer.console.input(
+                f"💭 {message}{' [' + default + ']' if default else ''}: "
+            )
+        except (KeyboardInterrupt, EOFError):
+            return default or ""
+        value = value.strip()
+        return value if value else (default or "")
 
     def show_code_diff(self, old_code: str, new_code: str, language: str = "python"):
         """Show code diff with syntax highlighting."""
