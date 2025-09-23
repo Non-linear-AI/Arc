@@ -47,7 +47,7 @@ class InteractiveInterface:
 
         # Single concise hint
         self._printer.print(
-            " Use /help for more information. Press Esc to interrupt, Ctrl+C to exit."
+            " Use /help for more information. Press Esc to interrupt."
         )
         self._printer.add_separator()
 
@@ -109,6 +109,19 @@ class InteractiveInterface:
                     )
             except Exception:
                 pass
+
+    @contextmanager
+    def escape_watcher(self):
+        """Start an ESC watcher during streaming and restore terminal state on exit.
+
+        Yields a watcher with `is_pressed()` to poll ESC events.
+        """
+        watcher = self._EscWatcher()
+        watcher.start()
+        try:
+            yield watcher
+        finally:
+            watcher.stop()
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""

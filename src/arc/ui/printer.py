@@ -248,9 +248,6 @@ class Printer:
         # Advanced input handling
         self._prompt_session = None
         self._prompt_enabled = True
-        self._last_interrupt_time = None
-        self._interrupt_count = 0
-        self._agent_callback = None
 
         # Set up history file path
         self._history_file = Path.home() / ".arc_history"
@@ -639,27 +636,6 @@ class Printer:
 
         return kb
 
-    def _handle_keyboard_interrupt(self) -> str:
-        """Handle Ctrl+C with double-press exit pattern (from aider)."""
-        now = time.time()
-
-        # If we have an agent callback, call it for cancellation
-        if self._agent_callback:
-            with suppress(Exception):
-                self._agent_callback()
-
-        # Double Ctrl+C within 2 seconds exits
-        if self._last_interrupt_time and now - self._last_interrupt_time < 2:
-            self.console.print("\n\n^C KeyboardInterrupt - Exiting...", style="red")
-            raise SystemExit(1)
-
-        # First Ctrl+C just shows message and resets input
-        self.console.print(
-            "\n\n^C Press Ctrl+C again within 2 seconds to exit", style="yellow"
-        )
-        self._last_interrupt_time = now
-        return ""  # Return empty string to continue input loop
-
     def clear(self) -> None:
         """Clear the screen without any section management."""
         self.console.clear()
@@ -685,34 +661,3 @@ class Printer:
                 self.console.print(message, style=style)
             else:
                 self.console.print(message)
-
-    def set_prompt_enabled(self, enabled: bool) -> None:
-        """Enable or disable prompt_toolkit features (for compatibility)."""
-        self._prompt_enabled = enabled
-
-    def setup_agent_interrupt_handler(self, agent_callback=None) -> None:
-        """Set up interrupt handling for agent execution contexts.
-
-        This method sets up a more compatible interrupt handling approach
-        that works with asyncio event loops.
-
-        Args:
-            agent_callback: Optional callback to call when interrupt is detected
-        """
-        # Store the callback for later use
-        self._agent_callback = agent_callback
-
-        # For asyncio compatibility, we'll handle interrupts at the input level
-        # rather than using signal handlers during async operations
-        self.console.print(
-            "[dim]Interrupt handling active: Ctrl+C to cancel operations[/dim]"
-        )
-
-    def restore_default_interrupt_handler(self) -> None:
-        """Restore default Ctrl+C handling."""
-        # Reset agent callback
-        self._agent_callback = None
-
-    def cleanup(self) -> None:
-        """Cleanup resources and restore default handlers."""
-        self.restore_default_interrupt_handler()

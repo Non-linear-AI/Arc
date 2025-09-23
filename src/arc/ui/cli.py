@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import shlex
-import signal
 import sys
 import time
 from contextlib import suppress
@@ -28,33 +27,6 @@ from .console import InteractiveInterface
 # Load environment variables
 load_dotenv()
 
-
-class InterruptionHandler:
-    """Handles interruption during agent execution via Ctrl+C."""
-
-    def __init__(self):
-        self.interrupted = False
-        self.original_handler = None
-        self.setup_signal_handling()
-
-    def setup_signal_handling(self):
-        """Set up signal handling for SIGINT (Ctrl+C)."""
-        with suppress(OSError, ValueError):
-            self.original_handler = signal.signal(signal.SIGINT, self._signal_handler)
-
-    def _signal_handler(self, _signum, _frame):
-        """Handle SIGINT signal."""
-        self.interrupted = True
-
-    def check_interruption(self) -> bool:
-        """Check if interruption was requested."""
-        return self.interrupted
-
-    def cleanup(self):
-        """Restore original signal handler."""
-        if self.original_handler is not None:
-            with suppress(OSError, ValueError):
-                signal.signal(signal.SIGINT, self.original_handler)
 
 
 @click.group()
@@ -864,20 +836,15 @@ async def run_interactive_mode(
                 # Process streaming response with clean context management
                 start_time = time.time()
 
-                esc = InteractiveInterface._EscWatcher()
-                esc.start()
-                try:
+                with ui.escape_watcher() as esc:
                     with ui.stream_response(start_time) as handler:
                         async for chunk in agent.process_user_message_stream(
                             user_input
                         ):
-                            # Allow ESC to interrupt streaming and return to prompt
                             if esc.is_pressed():
-                                ui.show_info("⏹️ Interrupted.")
+                                ui.show_warning("User Interrupted.\n")
                                 break
                             handler.handle_chunk(chunk)
-                finally:
-                    esc.stop()
 
             except KeyboardInterrupt:
                 ui.show_goodbye()
