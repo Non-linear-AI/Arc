@@ -2,6 +2,7 @@
 
 import sys
 import threading
+import asyncio
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -53,12 +54,14 @@ class InteractiveInterface:
 
     # Lightweight ESC watcher used during streaming (no prompt active)
     class _EscWatcher:
-        def __init__(self):
+        def __init__(self, loop: asyncio.AbstractEventLoop | None = None, event: asyncio.Event | None = None):
             self._pressed = threading.Event()
             self._stop = threading.Event()
             self._thread: threading.Thread | None = None
             self._fd = None
             self._orig_attrs = None
+            self._loop = loop
+            self._event = event
 
         def start(self):
             if not sys.stdin.isatty():
@@ -85,6 +88,12 @@ class InteractiveInterface:
                                 ch = sys.stdin.read(1)
                                 if ch == "\x1b":  # ESC
                                     self._pressed.set()
+                                    # Notify asyncio side immediately if available
+                                    if self._loop is not None and self._event is not None:
+                                        try:
+                                            self._loop.call_soon_threadsafe(self._event.set)
+                                        except Exception:
+                                            pass
                                     break
                     except Exception:
                         pass
@@ -114,12 +123,25 @@ class InteractiveInterface:
     def escape_watcher(self):
         """Start an ESC watcher during streaming and restore terminal state on exit.
 
-        Yields a watcher with `is_pressed()` to poll ESC events.
+        Yields an object with:
+          - is_pressed(): bool (thread-side immediate flag)
+          - event: asyncio.Event (fires promptly on ESC)
         """
-        watcher = self._EscWatcher()
+        loop = asyncio.get_running_loop()
+        event = asyncio.Event()
+
+        class EscHandle:
+            def __init__(self, watcher, event):
+                self._watcher = watcher
+                self.event = event
+
+            def is_pressed(self) -> bool:
+                return self._watcher.is_pressed()
+
+        watcher = self._EscWatcher(loop, event)
         watcher.start()
         try:
-            yield watcher
+            yield EscHandle(watcher, event)
         finally:
             watcher.stop()
 

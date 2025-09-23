@@ -837,14 +837,36 @@ async def run_interactive_mode(
                 start_time = time.time()
 
                 with ui.escape_watcher() as esc:
+                    interrupted = False
                     with ui.stream_response(start_time) as handler:
-                        async for chunk in agent.process_user_message_stream(
-                            user_input
-                        ):
-                            if esc.is_pressed():
-                                ui.show_warning("User Interrupted.\n")
-                                break
-                            handler.handle_chunk(chunk)
+                        agen = agent.process_user_message_stream(user_input).__aiter__()
+                        esc_task = asyncio.create_task(esc.event.wait())
+                        try:
+                            while True:
+                                next_task = asyncio.create_task(agen.__anext__())
+                                done, _ = await asyncio.wait(
+                                    {esc_task, next_task},
+                                    return_when=asyncio.FIRST_COMPLETED,
+                                )
+
+                                if esc_task in done:
+                                    interrupted = True
+                                    next_task.cancel()
+                                    with suppress(Exception):
+                                        await agen.aclose()
+                                    break
+
+                                # Otherwise, next_task completed
+                                chunk = next_task.result()
+                                handler.handle_chunk(chunk)
+                        except StopAsyncIteration:
+                            pass
+                        finally:
+                            if not esc_task.done():
+                                esc_task.cancel()
+
+                if interrupted:
+                    ui.show_info("⏹ Interrupted.")
 
             except KeyboardInterrupt:
                 ui.show_goodbye()
