@@ -1,8 +1,8 @@
 """Enhanced UX components for Arc CLI."""
 
+import asyncio
 import sys
 import threading
-import asyncio
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -47,14 +47,16 @@ class InteractiveInterface:
         self._printer.print(Align.left(panel))
 
         # Single concise hint
-        self._printer.print(
-            " Use /help for more information. Press Esc to interrupt."
-        )
+        self._printer.print(" Use /help for more information. Press Esc to interrupt.")
         self._printer.add_separator()
 
     # Lightweight ESC watcher used during streaming (no prompt active)
     class _EscWatcher:
-        def __init__(self, loop: asyncio.AbstractEventLoop | None = None, event: asyncio.Event | None = None):
+        def __init__(
+            self,
+            loop: asyncio.AbstractEventLoop | None = None,
+            event: asyncio.Event | None = None,
+        ):
             self._pressed = threading.Event()
             self._stop = threading.Event()
             self._thread: threading.Thread | None = None
@@ -89,11 +91,14 @@ class InteractiveInterface:
                                 if ch == "\x1b":  # ESC
                                     self._pressed.set()
                                     # Notify asyncio side immediately if available
-                                    if self._loop is not None and self._event is not None:
-                                        try:
-                                            self._loop.call_soon_threadsafe(self._event.set)
-                                        except Exception:
-                                            pass
+                                    if (
+                                        self._loop is not None
+                                        and self._event is not None
+                                    ):
+                                        with suppress(Exception):
+                                            self._loop.call_soon_threadsafe(
+                                                self._event.set
+                                            )
                                     break
                     except Exception:
                         pass
