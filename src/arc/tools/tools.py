@@ -528,4 +528,56 @@ def get_base_tools() -> list[ArcTool]:
                 "required": ["context", "model_spec_path"],
             },
         ),
+        ArcTool(
+            name="data_processing",
+            description="Generate or validate SQL data processing YAML configurations",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["generate", "validate"],
+                        "description": (
+                            "Action to perform: 'generate' creates YAML from natural language, "
+                            "'validate' checks existing YAML configuration"
+                        ),
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Natural language description of data processing requirements "
+                            "(required for 'generate' action)"
+                        ),
+                    },
+                    "target_tables": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "List of database tables to analyze for generation (optional)"
+                        ),
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": (
+                            "Path to save generated YAML or validate existing YAML file"
+                        ),
+                    },
+                    "target_db": {
+                        "type": "string",
+                        "enum": ["system", "user"],
+                        "description": (
+                            "Target database for schema discovery: 'system' for Arc metadata, "
+                            "'user' for training data (default: user)"
+                        ),
+                    },
+                    "yaml_content": {
+                        "type": "string",
+                        "description": (
+                            "Raw YAML content for validation (alternative to output_path)"
+                        ),
+                    },
+                },
+                "required": ["action"],
+            },
+        ),
     ]

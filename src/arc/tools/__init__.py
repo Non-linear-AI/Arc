@@ -2,6 +2,7 @@
 
 from .base import ToolResult
 from .bash import BashTool
+from .data_processing import DataProcessingTool
 from .database_query import DatabaseQueryTool
 from .file_editor import FileEditorTool
 from .ml import (
@@ -19,6 +20,7 @@ from .todo import TodoTool
 __all__ = [
     "ToolResult",
     "BashTool",
+    "DataProcessingTool",
     "DatabaseQueryTool",
     "FileEditorTool",
     "SchemaDiscoveryTool",

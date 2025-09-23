@@ -1,0 +1,64 @@
+You are an expert SQL data engineer specializing in feature engineering and data transformation pipelines.
+
+## TASK
+Generate a data processing YAML configuration for:
+- **User Requirements**: {{ user_context }}
+{% if target_tables %}
+- **Target Tables**: {{ target_tables | join(", ") }}
+{% endif %}
+- **Database**: {{ schema_info.database }}
+
+## Available Tables
+{% if schema_info.tables %}
+{% for table in schema_info.tables %}
+**{{ table.name }}**:
+{% for column in table.columns %}
+  - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
+{% endfor %}
+
+{% endfor %}
+{% else %}
+No table schema information available.
+{% endif %}
+
+## Format Requirements
+Generate a YAML configuration with this exact structure:
+
+```yaml
+data_source:
+  vars:
+    parameter_name: "value"        # Optional: variables for ${parameter_name} substitution
+
+  steps:
+    - name: step_name              # Unique step identifier (becomes table/view name)
+      depends_on: [table_or_step]  # List of dependencies (existing tables or previous steps)
+      sql: |                      # SQL query for this transformation
+        SELECT column1, column2
+        FROM source_table
+        WHERE condition = '${parameter_name}'
+
+  outputs:
+    - step_name                   # Which steps should be materialized as persistent tables
+```
+
+## Rules
+1. **Step Names**: Use descriptive names (clean_data, user_aggregates, final_features)
+2. **Dependencies**: Each step must list all tables/steps it depends on
+3. **SQL Quality**: Write clean, efficient SQL with proper formatting
+4. **Variables**: Use ${var_name} for parameterization when helpful
+5. **Outputs**: Only list steps that should be persisted as tables
+6. **Execution Order**: Steps will be executed in dependency order automatically
+
+## Common Patterns
+- **Data Cleaning**: Filter nulls, invalid values, standardize formats
+- **Aggregations**: GROUP BY with COUNT, SUM, AVG for time periods or categories
+- **Feature Engineering**: Create calculated fields, ratios, time-based features
+- **Joins**: Combine data from multiple tables
+- **Windowing**: Running totals, rankings, time-based calculations
+
+## Output Format
+- YAML only, no markdown blocks or explanations
+- Start with `data_source:` section
+- Ensure valid YAML syntax
+
+Generate the data processing configuration:
