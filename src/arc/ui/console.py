@@ -44,7 +44,9 @@ class InteractiveInterface:
         self._printer.print(Align.left(panel))
 
         # Single concise hint
-        self._printer.print(" Use /help for more information. Press Ctrl+C to interrupt operations.")
+        self._printer.print(
+            " Use /help for more information. Press Ctrl+C to interrupt operations."
+        )
         self._printer.add_separator()
 
     def show_commands(self) -> None:
@@ -619,6 +621,16 @@ class InteractiveInterface:
             # Header
             p.print(f"{header}")
 
+            # Query panel
+            p.print_panel(
+                Panel(
+                    Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
+                    title="Query",
+                    border_style="blue",
+                    padding=(0, 1),
+                )
+            )
+
             if result.empty():
                 p.print_panel(
                     Panel(
@@ -728,9 +740,7 @@ class InteractiveInterface:
     def get_user_input(self, prompt: str = "\n> ") -> str:
         return self._printer.get_input(prompt).strip()
 
-    async def get_user_input_async(
-        self, prompt: str = "\n> "
-    ) -> str:
+    async def get_user_input_async(self, prompt: str = "\n> ") -> str:
         """Async version of get_user_input for use in async contexts."""
         result = await self._printer.get_input_async(prompt)
         return result.strip()

@@ -30,18 +30,28 @@ class ArcCompleter(Completer):
     def __init__(self):
         # Base commands
         self.base_commands = [
-            "/help", "/stats", "/performance", "/tree", "/config", "/clear", "/exit", "/quit"
+            "/help",
+            "/stats",
+            "/performance",
+            "/tree",
+            "/config",
+            "/clear",
+            "/exit",
+            "/quit",
         ]
 
         # SQL commands
-        self.sql_commands = [
-            "/sql use system", "/sql use user", "/sql"
-        ]
+        self.sql_commands = ["/sql use system", "/sql use user", "/sql"]
 
         # ML base commands
         self.ml_base_commands = [
-            "/ml generate-model", "/ml generate-trainer", "/ml generate-predictor",
-            "/ml create-model", "/ml train", "/ml predict", "/ml jobs"
+            "/ml generate-model",
+            "/ml generate-trainer",
+            "/ml generate-predictor",
+            "/ml create-model",
+            "/ml train",
+            "/ml predict",
+            "/ml jobs",
         ]
 
         # ML subcommands for jobs
@@ -53,34 +63,34 @@ class ArcCompleter(Completer):
                 ("--name", "Model name (required)"),
                 ("--context", "Model description and context (required)"),
                 ("--data-table", "Database table name for data (required)"),
-                ("--model", "AI model to use (optional)")
+                ("--model", "AI model to use (optional)"),
             ],
             "generate-trainer": [
                 ("--name", "Trainer name (required)"),
                 ("--context", "Training context and requirements (required)"),
                 ("--model-spec", "Path to model specification file (required)"),
-                ("--model", "AI model to use (optional)")
+                ("--model", "AI model to use (optional)"),
             ],
             "generate-predictor": [
                 ("--model-spec", "Path to model specification file (required)"),
                 ("--context", "Prediction requirements and use case (required)"),
                 ("--trainer-spec", "Path to trainer specification file (optional)"),
                 ("--output", "Output file path (optional)"),
-                ("--model", "AI model to use (optional)")
+                ("--model", "AI model to use (optional)"),
             ],
             "create-model": [
                 ("--name", "Model name (required)"),
-                ("--schema", "Path to model schema file (required)")
+                ("--schema", "Path to model schema file (required)"),
             ],
             "train": [
                 ("--model", "Model name (required)"),
-                ("--data", "Data table name (required)")
+                ("--data", "Data table name (required)"),
             ],
             "predict": [
                 ("--model", "Model name (required)"),
                 ("--data", "Input data table name (required)"),
-                ("--output", "Output table name (required)")
-            ]
+                ("--output", "Output table name (required)"),
+            ],
         }
 
         # All available options for fallback completion
@@ -91,39 +101,41 @@ class ArcCompleter(Completer):
 
         # Create word completer for simple cases
         all_completions = (
-            self.base_commands + self.sql_commands +
-            self.ml_base_commands + self.common_options
+            self.base_commands
+            + self.sql_commands
+            + self.ml_base_commands
+            + self.common_options
         )
         self.word_completer = WordCompleter(all_completions, ignore_case=True)
 
-    def get_completions(self, document, complete_event):
+    def get_completions(self, document, _complete_event):
         """Generate completions based on current input context."""
         text = document.text.lower()
         word_before_cursor = document.get_word_before_cursor().lower()
         text_parts = text.split()
 
         # Handle different completion contexts
-        if len(text_parts) >= 2 and text_parts[0] == '/ml' and text_parts[1] == 'jobs':
+        if len(text_parts) >= 2 and text_parts[0] == "/ml" and text_parts[1] == "jobs":
             # Complete ML jobs subcommands when we have "/ml jobs"
-            # Show options when there's a trailing space or we're already typing the third word
-            if len(text_parts) >= 3 or text.endswith(' '):
+            # Show options when there's a trailing space or typing third word
+            if len(text_parts) >= 3 or text.endswith(" "):
                 for subcommand in self.ml_jobs_subcommands:
                     if subcommand.startswith(word_before_cursor):
                         yield Completion(
                             subcommand,
                             start_position=-len(word_before_cursor),
-                            display_meta="ML jobs command"
+                            display_meta="ML jobs command",
                         )
-            # If user typed exactly "/ml jobs" and pressed tab, show available subcommands
-            elif len(text_parts) == 2 and text.strip() == '/ml jobs':
+            # If user typed exactly "/ml jobs" + tab, show subcommands
+            elif len(text_parts) == 2 and text.strip() == "/ml jobs":
                 for subcommand in self.ml_jobs_subcommands:
                     yield Completion(
-                        ' ' + subcommand,  # Add space before subcommand
+                        " " + subcommand,  # Add space before subcommand
                         start_position=0,
-                        display_meta="ML jobs command"
+                        display_meta="ML jobs command",
                     )
 
-        elif text.startswith('/ml ') and len(text_parts) >= 2:
+        elif text.startswith("/ml ") and len(text_parts) >= 2:
             # Check if we're completing parameters for a specific ML command
             if len(text_parts) >= 3 and text_parts[1] in self.ml_command_params:
                 # Complete parameters for the specific ML command
@@ -133,28 +145,30 @@ class ArcCompleter(Completer):
                 # Check which parameters are already used in the command
                 used_params = set()
                 for i in range(2, len(text_parts)):
-                    if text_parts[i].startswith('--'):
+                    if text_parts[i].startswith("--"):
                         used_params.add(text_parts[i])
 
                 # Suggest unused parameters
-                if word_before_cursor.startswith('--') or text.endswith(' '):
+                if word_before_cursor.startswith("--") or text.endswith(" "):
                     for param, description in available_params:
-                        if param not in used_params and param.startswith(word_before_cursor):
+                        if param not in used_params and param.startswith(
+                            word_before_cursor
+                        ):
                             yield Completion(
                                 param,
                                 start_position=-len(word_before_cursor),
-                                display_meta=description
+                                display_meta=description,
                             )
 
-            # If we have exactly "/ml <subcommand>" and it's a valid command, show its parameters
+            # If we have "/ml <subcommand>" and valid command, show parameters
             elif len(text_parts) == 2 and text_parts[1] in self.ml_command_params:
                 command = text_parts[1]
                 available_params = self.ml_command_params[command]
                 for param, description in available_params:
                     yield Completion(
-                        ' ' + param,  # Add space before parameter
+                        " " + param,  # Add space before parameter
                         start_position=0,
-                        display_meta=description
+                        display_meta=description,
                     )
 
             else:
@@ -166,21 +180,21 @@ class ArcCompleter(Completer):
                     ("create-model", "Create model from schema"),
                     ("train", "Start training job"),
                     ("predict", "Run prediction"),
-                    ("jobs", "Manage ML jobs")
+                    ("jobs", "Manage ML jobs"),
                 ]
                 for subcommand, description in ml_subcommands:
                     if subcommand.startswith(word_before_cursor):
                         yield Completion(
                             subcommand,
                             start_position=-len(word_before_cursor),
-                            display_meta=description
+                            display_meta=description,
                         )
 
-        elif text.startswith('/sql ') and len(text.split()) >= 2:
+        elif text.startswith("/sql ") and len(text.split()) >= 2:
             # Complete SQL specific options
             sql_options = [
                 ("use system", "Switch to system database"),
-                ("use user", "Switch to user database")
+                ("use user", "Switch to user database"),
             ]
             remaining_text = text[5:].strip()  # Remove '/sql '
             for option, description in sql_options:
@@ -188,10 +202,10 @@ class ArcCompleter(Completer):
                     yield Completion(
                         option,
                         start_position=-len(remaining_text),
-                        display_meta=description
+                        display_meta=description,
                     )
 
-        elif text.startswith('/') and len(text.split()) == 1:
+        elif text.startswith("/") and len(text.split()) == 1:
             # Complete base commands
             all_commands = [
                 ("/help", "Show help information"),
@@ -203,24 +217,22 @@ class ArcCompleter(Completer):
                 ("/config", "Configuration"),
                 ("/clear", "Clear screen"),
                 ("/exit", "Exit application"),
-                ("/quit", "Exit application")
+                ("/quit", "Exit application"),
             ]
             for command, description in all_commands:
                 if command.startswith(text):
                     yield Completion(
-                        command,
-                        start_position=-len(text),
-                        display_meta=description
+                        command, start_position=-len(text), display_meta=description
                     )
 
-        elif word_before_cursor.startswith('--'):
+        elif word_before_cursor.startswith("--"):
             # Complete command options
             for option in self.common_options:
                 if option.startswith(word_before_cursor):
                     yield Completion(
                         option,
                         start_position=-len(word_before_cursor),
-                        display_meta="Command option"
+                        display_meta="Command option",
                     )
 
         # If no specific context matches, don't suggest anything to avoid clutter
@@ -451,6 +463,7 @@ class Printer:
         # to avoid event loop conflicts
         try:
             import asyncio
+
             asyncio.get_running_loop()
             # We're in an async context, use basic input to avoid conflicts
             return self.console.input(prompt)
@@ -504,9 +517,7 @@ class Printer:
     def _is_real_terminal(self) -> bool:
         """Check if we're running in a real terminal that supports advanced input."""
         return (
-            sys.stdin.isatty() and
-            sys.stdout.isatty() and
-            hasattr(sys.stdin, 'fileno')
+            sys.stdin.isatty() and sys.stdout.isatty() and hasattr(sys.stdin, "fileno")
         )
 
     def _create_prompt_session(self) -> PromptSession:
@@ -515,19 +526,25 @@ class Printer:
         completer = ArcCompleter()
 
         # Create Arc CLI-styled completion menu to match the existing design
-        arc_style = Style.from_dict({
-            # Completion menu styling - subtle, professional look
-            'completion-menu.completion': 'bg:#1e1e1e fg:#d4d4d4',  # Dark background, light text (VS Code-like)
-            'completion-menu.completion.current': 'bg:#0e7490 fg:#ffffff bold',  # Cyan-600 selection (matches Arc cyan theme)
-            'completion-menu.meta.completion': 'bg:#1e1e1e fg:#888888',  # Dimmed text for descriptions (matches "dim" style)
-            'completion-menu.meta.completion.current': 'bg:#0e7490 fg:#f0f9ff',  # Light cyan for selected description
-            'completion-menu.multi-column-meta': 'bg:#1e1e1e fg:#888888',  # Consistent with dim text
-            'completion-menu.scrollbar': 'bg:#404040',  # Subtle scrollbar
-            'completion-menu': 'bg:#1e1e1e',  # Overall menu background
-
-            # Keep input text styling clean
-            '': '',  # Use terminal defaults for input text
-        })
+        arc_style = Style.from_dict(
+            {
+                # Completion menu styling - subtle, professional look
+                # Dark background, light text (VS Code-like)
+                "completion-menu.completion": "bg:#1e1e1e fg:#d4d4d4",
+                # Cyan-600 selection (matches Arc cyan theme)
+                "completion-menu.completion.current": "bg:#0e7490 fg:#ffffff bold",
+                # Dimmed text for descriptions (matches "dim" style)
+                "completion-menu.meta.completion": "bg:#1e1e1e fg:#888888",
+                # Light cyan for selected description
+                "completion-menu.meta.completion.current": "bg:#0e7490 fg:#f0f9ff",
+                # Consistent with dim text
+                "completion-menu.multi-column-meta": "bg:#1e1e1e fg:#888888",
+                "completion-menu.scrollbar": "bg:#404040",  # Subtle scrollbar
+                "completion-menu": "bg:#1e1e1e",  # Overall menu background
+                # Keep input text styling clean
+                "": "",  # Use terminal defaults for input text
+            }
+        )
 
         return PromptSession(
             history=FileHistory(str(self._history_file)),
@@ -536,7 +553,7 @@ class Printer:
             multiline=False,
             wrap_lines=True,
             mouse_support=False,  # Keep it simple for CLI
-            complete_style='column',
+            complete_style="column",
             style=arc_style,
         )
 
@@ -545,12 +562,12 @@ class Printer:
         kb = KeyBindings()
 
         # History navigation (Ctrl+Up/Down like aider)
-        @kb.add('c-up')
+        @kb.add("c-up")
         def _(event):
             """Navigate backward through history"""
             event.current_buffer.history_backward()
 
-        @kb.add('c-down')
+        @kb.add("c-down")
         def _(event):
             """Navigate forward through history"""
             event.current_buffer.history_forward()
@@ -561,69 +578,59 @@ class Printer:
         # This provides better UX than forcing history navigation
 
         # Cursor movement
-        @kb.add('left')
+        @kb.add("left")
         def _(event):
             """Move cursor left"""
             event.current_buffer.cursor_left()
 
-        @kb.add('right')
+        @kb.add("right")
         def _(event):
             """Move cursor right"""
             event.current_buffer.cursor_right()
 
         # Word movement (Ctrl+Left/Right)
-        @kb.add('c-left')
+        @kb.add("c-left")
         def _(event):
             """Move cursor to beginning of previous word"""
-            event.current_buffer.cursor_left(count=event.current_buffer.document.find_previous_word_beginning())
+            event.current_buffer.cursor_left(
+                count=event.current_buffer.document.find_previous_word_beginning()
+            )
 
-        @kb.add('c-right')
+        @kb.add("c-right")
         def _(event):
             """Move cursor to end of next word"""
-            event.current_buffer.cursor_right(count=event.current_buffer.document.find_next_word_ending())
+            event.current_buffer.cursor_right(
+                count=event.current_buffer.document.find_next_word_ending()
+            )
 
         # Line navigation
-        @kb.add('home')
-        @kb.add('c-a')
+        @kb.add("home")
+        @kb.add("c-a")
         def _(event):
             """Move cursor to beginning of line"""
             event.current_buffer.cursor_position = 0
 
-        @kb.add('end')
-        @kb.add('c-e')
+        @kb.add("end")
+        @kb.add("c-e")
         def _(event):
             """Move cursor to end of line"""
             event.current_buffer.cursor_position = len(event.current_buffer.text)
 
         # Text deletion
-        @kb.add('c-k')
+        @kb.add("c-k")
         def _(event):
             """Delete from cursor to end of line"""
             buffer = event.current_buffer
             buffer.delete(count=len(buffer.text) - buffer.cursor_position)
 
-        @kb.add('c-u')
+        @kb.add("c-u")
         def _(event):
             """Delete from beginning of line to cursor"""
             buffer = event.current_buffer
             buffer.delete(count=-buffer.cursor_position)
 
-        @kb.add('c-w')
-        def _(event):
-            """Delete previous word"""
-            buffer = event.current_buffer
-            pos = buffer.document.find_previous_word_beginning()
-            if pos:
-                buffer.delete(count=pos)
-
-        # Clear line
-        @kb.add('c-l')
-        def _(event):
-            """Clear the screen"""
-            event.app.output.clear()
-
         # Clear current input (like ESC in some shells)
-        @kb.add('escape')
+        @kb.add("escape")
         def _(event):
             """Clear current input line"""
             event.current_buffer.reset()

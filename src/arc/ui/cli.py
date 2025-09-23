@@ -6,7 +6,6 @@ import os
 import shlex
 import signal
 import sys
-import threading
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -875,7 +874,9 @@ async def run_interactive_mode(
                         ):
                             # Check for interruption (Ctrl+C)
                             if interruption_handler.check_interruption():
-                                ui.show_warning("⚠️ Operation cancelled by user (Ctrl+C)")
+                                ui.show_warning(
+                                    "⚠️ Operation cancelled by user (Ctrl+C)"
+                                )
                                 break
                             handler.handle_chunk(chunk)
                     finally:

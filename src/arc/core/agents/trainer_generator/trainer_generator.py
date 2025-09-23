@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -44,10 +43,6 @@ class TrainerGeneratorAgent(BaseAgent):
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
 
-        # Interrupt handling for async operations
-        self._interrupt_event = asyncio.Event()
-        self._last_interrupt_time = None
-
     def get_template_directory(self) -> Path:
         """Get the template directory for trainer generation.
 
@@ -75,41 +70,34 @@ class TrainerGeneratorAgent(BaseAgent):
         Raises:
             TrainerGeneratorError: If generation fails
         """
+        # Read model spec from file
         try:
-            # Reset interrupt event for this generation
-            self._interrupt_event.clear()
+            model_spec = Path(model_spec_path).read_text(encoding="utf-8")
+        except OSError as e:
+            raise TrainerGeneratorError(
+                f"Failed to read model spec file {model_spec_path}: {e}"
+            ) from e
 
-            # Read model spec from file
-            try:
-                model_spec = Path(model_spec_path).read_text(encoding="utf-8")
-            except OSError as e:
-                raise TrainerGeneratorError(
-                    f"Failed to read model spec file {model_spec_path}: {e}"
-                ) from e
+        # Build simple context for LLM
+        context = {
+            "trainer_name": name,
+            "user_intent": user_context,
+            "model_spec": model_spec,
+            "model_profile": self._extract_model_profile(model_spec),
+            "available_components": self._get_training_components(),
+            "examples": self._get_trainer_examples(user_context),
+        }
 
-            # Build simple context for LLM
-            context = {
-                "trainer_name": name,
-                "user_intent": user_context,
-                "model_spec": model_spec,
-                "model_profile": self._extract_model_profile(model_spec),
-                "available_components": self._get_training_components(),
-                "examples": self._get_trainer_examples(user_context),
-            }
+        # Generate trainer specification with single attempt
+        try:
+            trainer_spec, trainer_yaml = await self._generate_with_validation_loop(
+                context, self._validate_trainer_comprehensive, 1
+            )
 
-            # Generate trainer specification with cancellation support
-            try:
-                trainer_spec, trainer_yaml = await self._generate_with_validation_loop(
-                    context, self._validate_trainer_comprehensive, 1
-                )
+            return trainer_spec, trainer_yaml
 
-                return trainer_spec, trainer_yaml
-
-            except AgentError as e:
-                raise TrainerGeneratorError(str(e)) from e
-
-        except asyncio.CancelledError:
-            raise TrainerGeneratorError("Generation cancelled by user") from None
+        except AgentError as e:
+            raise TrainerGeneratorError(str(e)) from e
 
     def _validate_trainer_comprehensive(
         self, trainer_yaml: str, context: dict[str, Any]
@@ -278,12 +266,3 @@ class TrainerGeneratorAgent(BaseAgent):
 
         except Exception as e:
             return {"error": f"Failed to extract model profile: {str(e)}"}
-
-    def request_cancellation(self):
-        """Request cancellation of the current generation operation."""
-        self._interrupt_event.set()
-        print("\n^C Generation cancellation requested...")
-
-    def is_cancelled(self) -> bool:
-        """Check if generation has been cancelled."""
-        return self._interrupt_event.is_set()
