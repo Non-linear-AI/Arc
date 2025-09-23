@@ -166,7 +166,7 @@ async def handle_sql_command(
 
         # Display results using the UI formatter
         execution_time = getattr(result, "query_execution_time", result.execution_time)
-        ui.show_sql_result(result, current_database, query, execution_time)
+        ui.show_sql_result(result, current_database, execution_time)
 
     except QueryValidationError as e:
         ui.show_system_error(f"Query Error: {str(e)}")

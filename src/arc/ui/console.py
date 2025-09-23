@@ -709,7 +709,6 @@ class InteractiveInterface:
         self,
         result: QueryResult,
         target_db: str,
-        query: str,
         execution_time: float | None = None,
     ) -> None:
         """Display SQL query results in a formatted table."""
@@ -722,16 +721,6 @@ class InteractiveInterface:
             # Header
             p.print(f"{header}")
 
-            # Query panel
-            p.print_panel(
-                Panel(
-                    Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
-                    title="Query",
-                    border_style="blue",
-                    padding=(0, 1),
-                )
-            )
-
             if result.empty():
                 p.print_panel(
                     Panel(
@@ -742,16 +731,19 @@ class InteractiveInterface:
                 )
                 return
 
-            # Create table
+            # Build minimalist table with horizontal rules only
             table = Table(
-                show_header=True, header_style="bold magenta", box=box.ROUNDED
+                show_header=True,
+                header_style="bold",
+                border_style="color(240)",
+                box=box.HORIZONTALS,
             )
 
             # Add columns from first row
             first_row = result.first()
             if first_row:
                 for column_name in first_row:
-                    table.add_column(str(column_name), style="cyan", no_wrap=False)
+                    table.add_column(str(column_name), no_wrap=False)
 
             # Add data rows (limit to avoid overwhelming output)
             max_rows = 100
