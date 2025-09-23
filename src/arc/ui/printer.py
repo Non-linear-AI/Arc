@@ -477,7 +477,8 @@ class Printer:
 
             return self._prompt_session.prompt(prompt)
         except KeyboardInterrupt:
-            return self._handle_keyboard_interrupt()
+            # Ctrl+C exits the application
+            raise SystemExit(0) from None
         except EOFError:
             # Handle Ctrl+D (EOF)
             raise SystemExit("EOF received, exiting...") from None
@@ -506,7 +507,8 @@ class Printer:
                 return result
 
         except KeyboardInterrupt:
-            return self._handle_keyboard_interrupt()
+            # Ctrl+C exits the application
+            raise SystemExit(0) from None
         except EOFError:
             # Handle Ctrl+D (EOF)
             raise SystemExit("EOF received, exiting...") from None
@@ -592,15 +594,16 @@ class Printer:
         @kb.add("c-left")
         def _(event):
             """Move cursor to beginning of previous word"""
-            event.current_buffer.cursor_left(
-                count=event.current_buffer.document.find_previous_word_beginning()
+            # document.find_previous_word_beginning() returns a negative offset
+            event.current_buffer.cursor_position += (
+                event.current_buffer.document.find_previous_word_beginning()
             )
 
         @kb.add("c-right")
         def _(event):
             """Move cursor to end of next word"""
-            event.current_buffer.cursor_right(
-                count=event.current_buffer.document.find_next_word_ending()
+            event.current_buffer.cursor_position += (
+                event.current_buffer.document.find_next_word_ending()
             )
 
         # Line navigation
@@ -629,11 +632,10 @@ class Printer:
             buffer = event.current_buffer
             buffer.delete(count=-buffer.cursor_position)
 
-        # Clear current input (like ESC in some shells)
+        # ESC: interrupt current input and return control to caller
         @kb.add("escape")
         def _(event):
-            """Clear current input line"""
-            event.current_buffer.reset()
+            event.app.exit(result="")
 
         return kb
 

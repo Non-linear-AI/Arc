@@ -864,23 +864,20 @@ async def run_interactive_mode(
                 # Process streaming response with clean context management
                 start_time = time.time()
 
-                # Set up interruption monitoring during agent execution
-                interruption_handler = InterruptionHandler()
-
-                with ui.stream_response(start_time) as handler:
-                    try:
+                esc = InteractiveInterface._EscWatcher()
+                esc.start()
+                try:
+                    with ui.stream_response(start_time) as handler:
                         async for chunk in agent.process_user_message_stream(
                             user_input
                         ):
-                            # Check for interruption (Ctrl+C)
-                            if interruption_handler.check_interruption():
-                                ui.show_warning(
-                                    "⚠️ Operation cancelled by user (Ctrl+C)"
-                                )
+                            # Allow ESC to interrupt streaming and return to prompt
+                            if esc.is_pressed():
+                                ui.show_info("⏹️ Interrupted.")
                                 break
                             handler.handle_chunk(chunk)
-                    finally:
-                        interruption_handler.cleanup()
+                finally:
+                    esc.stop()
 
             except KeyboardInterrupt:
                 ui.show_goodbye()

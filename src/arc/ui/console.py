@@ -1,5 +1,7 @@
 """Enhanced UX components for Arc CLI."""
 
+import sys
+import threading
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -45,9 +47,68 @@ class InteractiveInterface:
 
         # Single concise hint
         self._printer.print(
-            " Use /help for more information. Press Ctrl+C to interrupt operations."
+            " Use /help for more information. Press Esc to interrupt, Ctrl+C to exit."
         )
         self._printer.add_separator()
+
+    # Lightweight ESC watcher used during streaming (no prompt active)
+    class _EscWatcher:
+        def __init__(self):
+            self._pressed = threading.Event()
+            self._stop = threading.Event()
+            self._thread: threading.Thread | None = None
+            self._fd = None
+            self._orig_attrs = None
+
+        def start(self):
+            if not sys.stdin.isatty():
+                return
+            try:
+                import select
+                import termios
+                import tty
+
+                self._termios = termios  # store for stop()
+                self._select = select
+                self._fd = sys.stdin.fileno()
+                self._orig_attrs = termios.tcgetattr(self._fd)
+                tty.setcbreak(self._fd)
+                attrs = termios.tcgetattr(self._fd)
+                attrs[3] = attrs[3] & ~termios.ECHO  # lflags: turn off echo
+                termios.tcsetattr(self._fd, termios.TCSADRAIN, attrs)
+
+                def _run():
+                    try:
+                        while not self._stop.is_set():
+                            r, _, _ = self._select.select([sys.stdin], [], [], 0.05)
+                            if r:
+                                ch = sys.stdin.read(1)
+                                if ch == "\x1b":  # ESC
+                                    self._pressed.set()
+                                    break
+                    except Exception:
+                        pass
+
+                self._thread = threading.Thread(target=_run, daemon=True)
+                self._thread.start()
+            except Exception:
+                # Best-effort only; if unavailable, do nothing
+                pass
+
+        def is_pressed(self) -> bool:
+            return self._pressed.is_set()
+
+        def stop(self):
+            try:
+                self._stop.set()
+                if self._thread:
+                    self._thread.join(timeout=0.2)
+                if self._orig_attrs is not None and self._fd is not None:
+                    self._termios.tcsetattr(
+                        self._fd, self._termios.TCSADRAIN, self._orig_attrs
+                    )
+            except Exception:
+                pass
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
