@@ -619,16 +619,6 @@ class InteractiveInterface:
             # Header
             p.print(f"{header}")
 
-            # Query panel
-            p.print_panel(
-                Panel(
-                    Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
-                    title="Query",
-                    border_style="blue",
-                    padding=(0, 1),
-                )
-            )
-
             if result.empty():
                 p.print_panel(
                     Panel(
@@ -681,10 +671,10 @@ class InteractiveInterface:
             p.print(table)
             total_rows = result.count()
             if total_rows > max_rows:
-                p.print(f"\n[dim]Showing {max_rows} of {total_rows} rows[/dim]")
+                p.print(f" [dim]Showing {max_rows} of {total_rows} rows[/dim]")
             else:
                 row_text = "row" if total_rows == 1 else "rows"
-                p.print(f"\n[dim]{total_rows} {row_text} returned[/dim]")
+                p.print(f" [dim]{total_rows} {row_text} returned[/dim]")
 
     # System and misc helpers using Printer
     def show_system_error(self, message: str) -> None:
