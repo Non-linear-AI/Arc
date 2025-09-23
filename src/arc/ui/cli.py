@@ -4,7 +4,9 @@ import asyncio
 import json
 import os
 import shlex
+import signal
 import sys
+import threading
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -26,6 +28,34 @@ from .console import InteractiveInterface
 
 # Load environment variables
 load_dotenv()
+
+
+class InterruptionHandler:
+    """Handles interruption during agent execution via Ctrl+C."""
+
+    def __init__(self):
+        self.interrupted = False
+        self.original_handler = None
+        self.setup_signal_handling()
+
+    def setup_signal_handling(self):
+        """Set up signal handling for SIGINT (Ctrl+C)."""
+        with suppress(OSError, ValueError):
+            self.original_handler = signal.signal(signal.SIGINT, self._signal_handler)
+
+    def _signal_handler(self, _signum, _frame):
+        """Handle SIGINT signal."""
+        self.interrupted = True
+
+    def check_interruption(self) -> bool:
+        """Check if interruption was requested."""
+        return self.interrupted
+
+    def cleanup(self):
+        """Restore original signal handler."""
+        if self.original_handler is not None:
+            with suppress(OSError, ValueError):
+                signal.signal(signal.SIGINT, self.original_handler)
 
 
 @click.group()
@@ -756,7 +786,7 @@ async def run_interactive_mode(
         while True:
             try:
                 # Get user input with styled prompt
-                user_input = ui.get_user_input()
+                user_input = await ui.get_user_input_async()
 
                 # Display the user message in chat history with different coloring
                 ui.show_user_message(user_input)
@@ -835,9 +865,21 @@ async def run_interactive_mode(
                 # Process streaming response with clean context management
                 start_time = time.time()
 
+                # Set up interruption monitoring during agent execution
+                interruption_handler = InterruptionHandler()
+
                 with ui.stream_response(start_time) as handler:
-                    async for chunk in agent.process_user_message_stream(user_input):
-                        handler.handle_chunk(chunk)
+                    try:
+                        async for chunk in agent.process_user_message_stream(
+                            user_input
+                        ):
+                            # Check for interruption (Ctrl+C)
+                            if interruption_handler.check_interruption():
+                                ui.show_warning("⚠️ Operation cancelled by user (Ctrl+C)")
+                                break
+                            handler.handle_chunk(chunk)
+                    finally:
+                        interruption_handler.cleanup()
 
             except KeyboardInterrupt:
                 ui.show_goodbye()

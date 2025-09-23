@@ -44,7 +44,7 @@ class InteractiveInterface:
         self._printer.print(Align.left(panel))
 
         # Single concise hint
-        self._printer.print(" Use /help for more information.")
+        self._printer.print(" Use /help for more information. Press Ctrl+C to interrupt operations.")
         self._printer.add_separator()
 
     def show_commands(self) -> None:
@@ -693,6 +693,9 @@ class InteractiveInterface:
     def show_system_success(self, message: str) -> None:
         self._printer.show_message(f"✅ {message}", use_section=False)
 
+    def show_warning(self, message: str) -> None:
+        self._printer.show_message(f"⚠️ {message}", style="yellow", use_section=False)
+
     def show_goodbye(self) -> None:
         self._printer.show_message("👋 Goodbye!", style="cyan", use_section=False)
 
@@ -732,8 +735,15 @@ class InteractiveInterface:
         with self._printer.section(color="cyan") as p:
             p.print(table)
 
-    def get_user_input(self, prompt: str = "\n[bold green]>[/bold green] ") -> str:
+    def get_user_input(self, prompt: str = "\n> ") -> str:
         return self._printer.get_input(prompt).strip()
+
+    async def get_user_input_async(
+        self, prompt: str = "\n> "
+    ) -> str:
+        """Async version of get_user_input for use in async contexts."""
+        result = await self._printer.get_input_async(prompt)
+        return result.strip()
 
     def cleanup(self) -> None:
         self._printer.cleanup()
