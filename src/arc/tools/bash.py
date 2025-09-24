@@ -40,7 +40,7 @@ class BashTool(BaseTool):
                 if not confirmation_result.confirmed:
                     return ToolResult.error_result(
                         confirmation_result.feedback
-                        or "Command execution cancelled by user"
+                        or "User denied permission to execute bash commands"
                     )
             # Create the process
             process = await asyncio.create_subprocess_shell(

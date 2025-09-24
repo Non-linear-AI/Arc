@@ -8,7 +8,6 @@
   cursor movement, and interruption support.
 """
 
-import sys
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion, WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.live import Live
@@ -471,6 +471,42 @@ class Printer:
 
     def is_input_active(self) -> bool:
         return self._input_active
+
+    async def get_choice_async(
+        self,
+        options: list[tuple[str, str]],
+        default: str | None = None,
+    ) -> str:
+        """Show a simple choice selector using prompt_toolkit.
+
+        Args:
+            options: list of (value, label) tuples
+            default: default value key
+            on_escape: optional callback when Esc is pressed
+        Returns the selected value, or "__esc__" if escaped.
+        """
+        # Add ESC handling - always allow ESC to cancel with __esc__ result
+        from prompt_toolkit.key_binding import KeyBindings
+
+        key_bindings = KeyBindings()
+
+        try:
+            self._input_active = True
+            choice = ChoiceInput(
+                message=" Use arrows/enter to select (or type number):",
+                options=options,
+                default=default,
+                show_frame=False,
+                key_bindings=key_bindings,
+            )
+            result = await choice.prompt_async()
+            return result
+        finally:
+            self._input_active = False
+
+    def reset_prompt_session(self) -> None:
+        """Reset the prompt session to ensure a clean state after nested prompts."""
+        self._prompt_session = None
 
     def _is_real_terminal(self) -> bool:
         """Deprecated; kept for compatibility but unused."""

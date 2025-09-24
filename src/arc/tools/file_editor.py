@@ -152,7 +152,7 @@ class FileEditorTool(BaseTool):
                 if not confirmation_result.confirmed:
                     return ToolResult.error_result(
                         confirmation_result.feedback
-                        or "File creation cancelled by user"
+                        or "User denied permission to create files"
                     )
 
             # Create edit instruction for new file
@@ -201,7 +201,8 @@ class FileEditorTool(BaseTool):
 
                 if not confirmation_result.confirmed:
                     return ToolResult.error_result(
-                        confirmation_result.feedback or "File edit cancelled by user"
+                        confirmation_result.feedback
+                        or "User denied permission to edit files"
                     )
             # Create edit instruction
             instruction = EditInstruction(

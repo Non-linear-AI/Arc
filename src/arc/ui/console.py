@@ -3,8 +3,9 @@
 import asyncio
 import sys
 import threading
+from collections.abc import Callable
 from contextlib import contextmanager, suppress
-from typing import Any, Callable
+from typing import Any
 
 from rich import box
 from rich.align import Align
@@ -145,12 +146,42 @@ class InteractiveInterface:
             def is_pressed(self) -> bool:
                 return self._watcher.is_pressed()
 
-        watcher = self._EscWatcher(loop, event, is_input_active=self._printer.is_input_active)
+        watcher = self._EscWatcher(
+            loop, event, is_input_active=self._printer.is_input_active
+        )
         watcher.start()
+        # Track active watcher so we can suspend it during interactive menus
+        self._active_watcher = watcher
         try:
             yield EscHandle(watcher, event)
         finally:
             watcher.stop()
+            if getattr(self, "_active_watcher", None) is watcher:
+                self._active_watcher = None
+
+    def suspend_escape(self) -> None:
+        """Stop any active ESC watcher to avoid stealing input (e.g., menus)."""
+        watcher = getattr(self, "_active_watcher", None)
+        if watcher is not None:
+            with suppress(Exception):
+                watcher.stop()
+            self._active_watcher = None
+
+    def trigger_escape(self) -> None:
+        """Programmatically trigger an ESC event to cancel the current task.
+
+        When a prompt_toolkit widget handles Esc locally, use this to propagate
+        the cancel up to the global streaming loop so the whole task stops.
+        """
+        watcher = getattr(self, "_active_watcher", None)
+        if watcher is not None:
+            try:
+                if getattr(watcher, "_event", None) is not None:
+                    watcher._event.set()
+                if getattr(watcher, "_pressed", None) is not None:
+                    watcher._pressed.set()
+            except Exception:
+                pass
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
@@ -236,17 +267,25 @@ class InteractiveInterface:
         return mapping.get(tool_name, tool_name)
 
     def _get_dot_color(self, tool_name: str) -> str:
-        """Get color for the dot based on action type."""
+        """Get color for the dot based on semantic action type.
+
+        Color scheme:
+        - Blue: System operations, configuration, databases
+        - Green: Success operations, ML training/prediction
+        - Yellow: File operations, search, user attention
+        - Red: System commands, potentially risky operations
+        - Default: Neutral tool output, informational
+        """
         if tool_name in ["create_todo_list", "update_todo_list"]:
-            return "blue"  # Plan operations
+            return "blue"  # Planning/system operations
         elif tool_name in ["bash"]:
-            return "red"  # System operations
+            return "red"  # System commands (potentially risky)
         elif tool_name in ["search"]:
-            return "yellow"  # Search operations
+            return "yellow"  # Search operations (attention/discovery)
         elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
-            return "magenta"  # File operations
+            return "yellow"  # File operations (user attention needed)
         elif tool_name in ["database_query", "schema_discovery"]:
-            return "green"  # Database operations
+            return "blue"  # Database/system operations
         elif tool_name in [
             "ml_create_model",
             "ml_train",
@@ -255,9 +294,9 @@ class InteractiveInterface:
             "ml_trainer_generator",
             "ml_predictor_generator",
         ]:
-            return "green"
+            return "green"  # ML operations (success/completion focused)
         else:
-            return "cyan"  # Default/messages
+            return "white"  # Default/neutral informational output
 
     def show_tool_execution(self, _tool_name: str, _args: dict[str, Any]):
         """Show tool execution line that will be replaced with result."""
@@ -517,7 +556,6 @@ class InteractiveInterface:
             # Ensure cleanup even if an exception occurs (no final rendering here)
             handler._finish_assistant_streaming(final=False)
 
-
     def _format_args(self, args: dict[str, Any]) -> str:
         """Format tool arguments for display."""
         if not args:
@@ -615,7 +653,7 @@ class InteractiveInterface:
                 )
                 return
 
-            # Build minimalist table with horizontal rules only
+            # Build clean table for panel display
             table = Table(
                 show_header=True,
                 header_style="bold",
@@ -656,7 +694,7 @@ class InteractiveInterface:
 
                 table.add_row(*row_values)
 
-            # Show the table and summary
+            # Show the table and summary in a compact panel
             p.print(table)
             total_rows = result.count()
             if total_rows > max_rows:
@@ -686,7 +724,7 @@ class InteractiveInterface:
 
     def show_config_panel(self, config_text: str) -> None:
         with self._printer.section(color="blue") as p:
-            p.print_panel(Panel(config_text))
+            p.print_panel(Panel(config_text, expand=False, border_style="color(240)"))
 
     def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         table = Table(title=title, box=box.SIMPLE_HEAVY)
@@ -699,7 +737,7 @@ class InteractiveInterface:
             for row in rows:
                 table.add_row(*row)
 
-        with self._printer.section(color="cyan") as p:
+        with self._printer.section(color="blue") as p:
             p.print(table)
 
     def show_key_values(self, title: str, pairs: list[list[str]]) -> None:
@@ -711,7 +749,7 @@ class InteractiveInterface:
             if len(pair) >= 2:
                 table.add_row(pair[0], pair[1])
 
-        with self._printer.section(color="cyan") as p:
+        with self._printer.section(color="blue") as p:
             p.print(table)
 
     def get_user_input(self, prompt: str = "\n> ") -> str:

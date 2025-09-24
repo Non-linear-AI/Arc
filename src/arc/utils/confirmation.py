@@ -5,7 +5,6 @@ If no UI is present (e.g., headless), auto-approves silently.
 """
 
 from typing import Any, Optional
-from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 
 class ConfirmationResult:
@@ -70,7 +69,7 @@ class ConfirmationService:
             return ConfirmationResult(confirmed=True)
 
         # Add spacing before confirmation and show header
-        with ui._printer.section(color="magenta") as p:
+        with ui._printer.section(color="yellow") as p:
             p.print(f"{operation}({target})")
             if content:
                 p.print("  [dim]⎿ Requesting user confirmation[/dim]")
@@ -84,31 +83,24 @@ class ConfirmationService:
                         p.print(f"      [dim]… +{len(lines) - 3} more lines[/dim]")
             else:
                 p.print("  [dim]⎿ Requesting user confirmation[/dim]")
-        # Separate options from header and present a choice prompt
-        ui._printer.add_separator("space")
-        with ui._printer.section(color="blue", add_dot=False) as p:
-            p.print("Do you want to proceed with this operation?")
-        
 
-        # Get user choice (prefer UI's prompt_toolkit path if available)
-        # Use prompt_toolkit's choice selector for responsive selection.
-        # Mark input as active to pause ESC watcher.
+        # Choices match the main prompt behavior; Esc cancels globally
         options = [
-            ("yes", "Yes"),
-            ("yes_session", "Yes, and don't ask again this session"),
-            ("no", "No"),
+            ("yes", "1. Yes"),
+            ("yes_session", "2. Yes, and don't ask again this session"),
+            ("no", "3. No"),
         ]
-        try:
-            # Best-effort: signal that input is active to pause ESC watcher.
-            ui._printer._input_active = True  # noqa: SLF001 (internal, controlled)
-            selection = await ChoiceInput(
-                message="Use arrows/enter to select:",
-                options=options,
-                default="yes",
-                show_frame=False,
-            ).prompt_async()
-        finally:
-            ui._printer._input_active = False  # noqa: SLF001
+
+        # Pass global escape trigger so ESC terminates the entire task
+        selection = await ui._printer.get_choice_async(options, default="yes")
+
+        ui._printer.add_separator("space")
+        # Reset prompt session to ensure consistent state after nested prompt
+        ui._printer.reset_prompt_session()
+
+        # Handle ESC as cancellation (same as "no")
+        if selection == "__esc__":
+            return ConfirmationResult(confirmed=False, feedback="Cancelled by user")
 
         if selection == "yes":
             return ConfirmationResult(confirmed=True)
@@ -123,7 +115,9 @@ class ConfirmationService:
                 self.session_flags["file_operations"] = True
             return ConfirmationResult(confirmed=True, dont_ask_again=True)
         # selection == "no"
-        return ConfirmationResult(confirmed=False, feedback="Operation cancelled by user")
+        return ConfirmationResult(
+            confirmed=False, feedback="User denied permission for this operation"
+        )
 
     def set_ui(self, ui: Any) -> None:
         """Inject the UI object to enable prompt_toolkit-backed input."""

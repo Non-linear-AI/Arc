@@ -745,6 +745,7 @@ async def run_interactive_mode(
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
         ui = InteractiveInterface()
         from contextlib import suppress
+
         with suppress(Exception):
             ConfirmationService.get_instance().set_ui(ui)
 
