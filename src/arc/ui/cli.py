@@ -714,18 +714,19 @@ async def _ml_data_processing(
         raise CommandError(f"Data processing file not found: {yaml_path}")
 
     try:
-        ui.show_info(f"📊 Loading data processing pipeline from {yaml_path}")
+        ui.show_info(f"Data Processing: {yaml_path}")
 
         # Parse the YAML specification
         spec = DataSourceSpec.from_yaml_file(str(yaml_file))
 
-        ui.show_info(f"✅ Loaded pipeline with {len(spec.steps)} steps")
+        ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
 
         # Get execution order (topologically sorted)
         ordered_steps = spec.get_execution_order()
 
         # Execute all steps and track intermediate views for cleanup
-        ui.show_info(f"⚡ Executing pipeline with {len(ordered_steps)} steps...")
+        ui.show_info("")
+        ui.show_info("Executing pipeline...")
 
         # Get the database manager for direct access
         db_manager = runtime.services.db_manager
@@ -734,23 +735,24 @@ async def _ml_data_processing(
 
         try:
             for i, step in enumerate(ordered_steps, 1):
-                ui.show_info(f"🔄 Step {i}/{step_count}: {step.name}")
+                # Determine if this is an output step (should create table) or
+                # intermediate (view)
+                step_type = "table" if step.name in spec.outputs else "view"
+                ui.show_info(f"  Step {i}/{step_count}: {step.name} ({step_type})")
 
                 # Substitute variables in SQL
                 sql = spec.substitute_vars(step.sql)
-                # Strip trailing semicolons (they cause syntax errors in CREATE TABLE/VIEW AS)
-                sql = sql.rstrip().rstrip(';').rstrip()
+                # Strip trailing semicolons (they cause syntax errors in
+                # CREATE TABLE/VIEW AS)
+                sql = sql.rstrip().rstrip(";").rstrip()
 
                 try:
-                    # Determine if this is an output step (should create table) or intermediate (view)
                     if step.name in spec.outputs:
                         # Create persistent table for output steps
                         create_sql = f"CREATE TABLE {step.name} AS ({sql})"
-                        ui.show_info(f"   Creating table '{step.name}'...")
                     else:
                         # Create regular view for intermediate steps (allows debugging)
                         create_sql = f"CREATE VIEW {step.name} AS ({sql})"
-                        ui.show_info(f"   Creating view '{step.name}'...")
                         intermediate_views.append(step.name)  # Track for cleanup
 
                     # Execute using database manager directly to ensure same session
@@ -758,11 +760,6 @@ async def _ml_data_processing(
                         db_manager.system_execute(create_sql)
                     else:
                         db_manager.user_execute(create_sql)
-
-                    if step.name in spec.outputs:
-                        ui.show_info(f"✅ Table {step.name} created")
-                    else:
-                        ui.show_info(f"✅ View {step.name} created (available for debugging)")
 
                 except Exception as step_error:
                     raise CommandError(
@@ -772,7 +769,6 @@ async def _ml_data_processing(
         finally:
             # Clean up intermediate views
             if intermediate_views:
-                ui.show_info(f"🧹 Cleaning up {len(intermediate_views)} intermediate views...")
                 for view_name in intermediate_views:
                     try:
                         cleanup_sql = f"DROP VIEW IF EXISTS {view_name}"
@@ -782,23 +778,27 @@ async def _ml_data_processing(
                             db_manager.user_execute(cleanup_sql)
                     except Exception:
                         # Don't fail the entire pipeline if cleanup fails
-                        ui.show_info(f"⚠️  Warning: Could not clean up view '{view_name}'")
-                ui.show_info("✅ Intermediate views cleaned up")
+                        ui.show_info(f"Warning: Could not clean up view '{view_name}'")
 
         # Show completion summary
+        ui.show_info("")
+        ui.show_info("Pipeline completed successfully")
         output_list = ", ".join(spec.outputs)
-        ui.show_system_success(
-            f"✨ Data processing completed! Outputs: {output_list}"
-        )
+        ui.show_info(f"Output tables: {output_list}")
 
         if target_db == "user":
-            ui.show_info("💡 Query your results with: /sql SELECT * FROM <table_name>")
-            ui.show_info("💡 Intermediate views are cleaned up after execution")
+            ui.show_info(
+                "Note: Intermediate views have been cleaned up. Query results "
+                "with: /sql SELECT * FROM <table_name>"
+            )
 
     except ValueError as parse_error:
-        raise CommandError(f"Invalid YAML specification: {str(parse_error)}") from parse_error
+        raise CommandError(
+            f"Invalid YAML specification: {str(parse_error)}"
+        ) from parse_error
     except Exception as exc:
         raise CommandError(f"Data processing failed: {exc}") from exc
+
 
 async def run_headless_mode(
     prompt: str,

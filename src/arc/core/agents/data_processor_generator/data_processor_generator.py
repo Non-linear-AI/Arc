@@ -25,10 +25,14 @@ class DataProcessorGeneratorAgent:
     # System message for data processing generation
     SYSTEM_MESSAGE = (
         "You are an expert SQL data engineer specializing in feature engineering "
-        "and data transformation pipelines. Generate only valid JSON configurations "
-        "for data processing pipelines. Follow the exact JSON schema provided in "
-        "the prompt. Do not include any explanations or markdown formatting - "
-        "return only the JSON object."
+        "and data transformation pipelines. Generate COMPLETE, PRODUCTION-READY "
+        "JSON configurations for data processing pipelines with concrete SQL queries. "
+        "Your generated configuration must be comprehensive and require no further "
+        "modifications or enhancements. Follow the exact JSON schema provided in the "
+        "prompt. Write specific, concrete SQL without variables or placeholders. "
+        "Include all necessary data cleaning, validation, and transformation steps. "
+        "Do not include any explanations or markdown formatting - return only the "
+        "complete JSON object."
     )
 
     def __init__(
@@ -136,32 +140,36 @@ class DataProcessorGeneratorAgent:
                 for table_name in target_tables:
                     if schema_info.table_exists(table_name):
                         columns = schema_info.get_columns_for_table(table_name)
-                        context["tables"].append({
-                            "name": table_name,
+                        context["tables"].append(
+                            {
+                                "name": table_name,
+                                "columns": [
+                                    {
+                                        "name": col.column_name,
+                                        "type": col.data_type,
+                                        "nullable": col.is_nullable,
+                                    }
+                                    for col in columns
+                                ],
+                            }
+                        )
+            else:
+                # Get basic info for all tables
+                for table in schema_info.tables[:10]:  # Limit to first 10 tables
+                    columns = schema_info.get_columns_for_table(table.name)
+                    context["tables"].append(
+                        {
+                            "name": table.name,
                             "columns": [
                                 {
                                     "name": col.column_name,
                                     "type": col.data_type,
                                     "nullable": col.is_nullable,
                                 }
-                                for col in columns
+                                for col in columns[:5]  # Limit to first 5 columns
                             ],
-                        })
-            else:
-                # Get basic info for all tables
-                for table in schema_info.tables[:10]:  # Limit to first 10 tables
-                    columns = schema_info.get_columns_for_table(table.name)
-                    context["tables"].append({
-                        "name": table.name,
-                        "columns": [
-                            {
-                                "name": col.column_name,
-                                "type": col.data_type,
-                                "nullable": col.is_nullable,
-                            }
-                            for col in columns[:5]  # Limit to first 5 columns
-                        ],
-                    })
+                        }
+                    )
 
             return context
 
@@ -259,9 +267,7 @@ class DataProcessorGeneratorAgent:
             return json_content.strip()
 
         except Exception as e:
-            raise DataProcessorGeneratorError(
-                f"LLM generation failed: {e}"
-            ) from e
+            raise DataProcessorGeneratorError(f"LLM generation failed: {e}") from e
 
     async def _retry_generation_with_feedback(
         self,
@@ -282,18 +288,15 @@ class DataProcessorGeneratorAgent:
         try:
             # Add error feedback to the conversation
             retry_messages = original_messages + [
-                {
-                    "role": "assistant",
-                    "content": failed_json
-                },
+                {"role": "assistant", "content": failed_json},
                 {
                     "role": "user",
                     "content": (
                         f"Your previous response failed to parse with this error: "
                         f"{error_message}\n\nPlease fix the JSON and try again. "
                         f"Ensure it's valid JSON that matches the schema exactly."
-                    )
-                }
+                    ),
+                },
             ]
 
             json_content = await self._generate_json_with_llm(retry_messages)
@@ -305,4 +308,3 @@ class DataProcessorGeneratorAgent:
         except Exception:
             # If retry also fails, return None to fall back to original error
             return None
-

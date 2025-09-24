@@ -529,13 +529,16 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="data_processing",
+            name="data_processor_generator",
             description=(
-                "Create reusable data processing pipelines from natural language. "
-                "Analyzes your database schema and generates optimized YAML configurations "
-                "for data cleaning, transformation, and feature engineering. "
-                "Use this when users want reusable configurations, templates, "
-                "or pipeline definitions rather than one-time data operations."
+                "Generate reusable YAML configurations for data processing workflows. "
+                "Use this tool ONLY when users explicitly request configuration "
+                "generation, such as: creating reusable pipelines, documenting "
+                "workflows, persisting steps, or generating templates. Do NOT use "
+                "for immediate data operations - those should be executed directly "
+                "with database_query. This tool uses specialized LLM agents to "
+                "generate optimized configurations. Examples: 'create a reusable "
+                "config', 'persist these steps as YAML', 'document this workflow'."
             ),
             parameters={
                 "type": "object",

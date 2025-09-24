@@ -11,7 +11,7 @@ from openai.types.chat import ChatCompletionMessageParam
 from ..tools import (
     BashTool,
     DatabaseQueryTool,
-    DataProcessingTool,
+    DataProcessorGeneratorTool,
     FileEditorTool,
     MLCreateModelTool,
     MLModelGeneratorTool,
@@ -141,8 +141,8 @@ class ArcAgent:
             if services
             else None
         )
-        self.data_processing_tool = (
-            DataProcessingTool(
+        self.data_processor_generator_tool = (
+            DataProcessorGeneratorTool(
                 services,
                 self.api_key,
                 self.base_url,
@@ -649,9 +649,9 @@ class ArcAgent:
                     "ML predictor generator tool not available. "
                     "Database services not initialized."
                 )
-            elif tool_call.name == "data_processing":
-                if self.data_processing_tool:
-                    return await self.data_processing_tool.execute(
+            elif tool_call.name == "data_processor_generator":
+                if self.data_processor_generator_tool:
+                    return await self.data_processor_generator_tool.execute(
                         action=args.get("action", "generate"),
                         context=args.get("context"),
                         target_tables=args.get("target_tables"),
@@ -660,7 +660,7 @@ class ArcAgent:
                         yaml_content=args.get("yaml_content"),
                     )
                 return ToolResult.error_result(
-                    "Data processing tool not available. "
+                    "Data processor generator tool not available. "
                     "Database services not initialized."
                 )
             else:

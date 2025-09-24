@@ -24,16 +24,22 @@ else:
         DataProcessorGeneratorError = Exception
 
 
-class DataProcessingTool(BaseTool):
-    """Tool for generating data processing YAML configurations from natural language using LLM.
+class DataProcessorGeneratorTool(BaseTool):
+    """Tool for generating data processing YAML configurations from natural language.
 
     This tool has a single purpose: convert natural language descriptions into
     structured SQL data processing pipelines using LLM generation.
     It requires an API key and uses the DataProcessorGeneratorAgent.
     """
 
-    def __init__(self, services: ServiceContainer, api_key: str, base_url: str | None = None, model: str | None = None):
-        """Initialize DataProcessingTool.
+    def __init__(
+        self,
+        services: ServiceContainer,
+        api_key: str,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
+        """Initialize DataProcessorGeneratorTool.
 
         Args:
             services: ServiceContainer instance providing database access
@@ -47,8 +53,9 @@ class DataProcessingTool(BaseTool):
         """
         if not api_key:
             raise ValueError(
-                "API key is required for DataProcessingTool. "
-                "This tool uses LLM-powered generation and cannot function without an API key."
+                "API key is required for DataProcessorGeneratorTool. "
+                "This tool uses LLM-powered generation and cannot function "
+                "without an API key."
             )
 
         if DataProcessorGeneratorAgent is None:
@@ -65,15 +72,13 @@ class DataProcessingTool(BaseTool):
         # Initialize the generator agent (required)
         try:
             self.generator_agent = DataProcessorGeneratorAgent(
-                services=services,
-                api_key=api_key,
-                base_url=base_url,
-                model=model
+                services=services, api_key=api_key, base_url=base_url, model=model
             )
         except Exception as e:
             raise RuntimeError(
                 f"Failed to initialize DataProcessorGeneratorAgent: {str(e)}. "
-                "This tool requires a working LLM connection for data processing generation."
+                "This tool requires a working LLM connection for data processing "
+                "generation."
             ) from e
 
     async def generate(
@@ -117,13 +122,24 @@ class DataProcessingTool(BaseTool):
             schema_info = schema_service.get_schema_info(target_db)
 
             if target_tables:
-                available_tables = [t for t in target_tables if schema_info.table_exists(t)]
-                progress_lines.append(f"📊 Found {len(available_tables)} specified tables with detailed schema")
+                available_tables = [
+                    t for t in target_tables if schema_info.table_exists(t)
+                ]
+                progress_lines.append(
+                    f"📊 Found {len(available_tables)} specified tables with "
+                    "detailed schema"
+                )
                 if len(available_tables) != len(target_tables):
                     missing = set(target_tables) - set(available_tables)
-                    progress_lines.append(f"⚠️  Note: {len(missing)} tables not found: {', '.join(missing)}")
+                    progress_lines.append(
+                        f"⚠️  Note: {len(missing)} tables not found: "
+                        f"{', '.join(missing)}"
+                    )
             else:
-                progress_lines.append(f"📊 Discovered {len(schema_info.tables)} available tables in {target_db} database")
+                progress_lines.append(
+                    f"📊 Discovered {len(schema_info.tables)} available tables in "
+                    f"{target_db} database"
+                )
 
             progress_lines.append("🤖 Generating optimized SQL pipeline with LLM...")
 
@@ -131,10 +147,11 @@ class DataProcessingTool(BaseTool):
             # progress_result = ToolResult.success_result("\n".join(progress_lines))
 
             # Generate using LLM (generator_agent is guaranteed to exist)
-            spec, yaml_content = await self.generator_agent.generate_data_processing_yaml(
-                context=context,
-                target_tables=target_tables,
-                target_db=target_db
+            (
+                spec,
+                yaml_content,
+            ) = await self.generator_agent.generate_data_processing_yaml(
+                context=context, target_tables=target_tables, target_db=target_db
             )
 
             # Save to file if path provided
@@ -143,27 +160,31 @@ class DataProcessingTool(BaseTool):
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 output_file.write_text(yaml_content)
 
+            # Create concise context for header (similar to SQL Query format)
+            context_summary = context[:80] + "..." if len(context) > 80 else context
+
             lines = [
-                "✅ Data processing YAML generated successfully using LLM!",
-                f"📝 Context: {context}",
+                f"Data Processor Generator: {context_summary}",
+                "Generated successfully using LLM",
+                f"Steps: {len(spec.steps)}, Outputs: {', '.join(spec.outputs)}",
             ]
 
             if target_tables:
-                lines.append(f"🎯 Target tables: {', '.join(target_tables)}")
+                lines.append(f"Target tables: {', '.join(target_tables)}")
 
             if output_path:
-                lines.append(f"💾 Saved to: {output_path}")
+                lines.append(f"Saved to: {output_path}")
 
-            # Add some info about the generated spec
-            lines.append(f"🔧 Generated {len(spec.steps)} processing steps")
-            lines.append(f"📤 Final outputs: {', '.join(spec.outputs)}")
             if spec.vars:
-                lines.append(f"⚙️ Variables defined: {', '.join(spec.vars.keys())}")
+                lines.append(f"Variables: {', '.join(spec.vars.keys())}")
 
-            lines.append("\nGenerated YAML:")
-            lines.append("=" * 50)
+            lines.append("")
             lines.append(yaml_content)
-            lines.append("=" * 50)
+            lines.append("")
+            lines.append(
+                "Note: Generated configuration is production-ready and should "
+                "not be modified manually."
+            )
 
             return ToolResult.success_result("\n".join(lines))
 
@@ -178,8 +199,6 @@ class DataProcessingTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         """Execute method for BaseTool compatibility."""
         # Remove action parameter if present and delegate to generate
-        kwargs.pop('action', None)  # Remove deprecated action parameter
-        kwargs.pop('yaml_content', None)  # Remove validation-related parameter
+        kwargs.pop("action", None)  # Remove deprecated action parameter
+        kwargs.pop("yaml_content", None)  # Remove validation-related parameter
         return await self.generate(**kwargs)
-
-

@@ -22,8 +22,9 @@ except ImportError as e:
 
 class ValidationResult(NamedTuple):
     """Result of YAML validation operation."""
+
     success: bool
-    spec: "DataSourceSpec | None"
+    spec: DataSourceSpec | None
     steps_count: int
     outputs_count: int
     variables_count: int
@@ -84,7 +85,7 @@ class DataSourceSpec:
                         f"(assuming it's an existing table)"
                     )
 
-    def _is_table_reference(self, name: str) -> bool:
+    def _is_table_reference(self, _name: str) -> bool:
         """Check if name looks like a table reference (not a step name)."""
         # For now, assume names not in steps are table references
         # Could be enhanced with actual table validation
@@ -137,11 +138,13 @@ class DataSourceSpec:
                 if field not in step_data:
                     raise ValueError(f"Step {i} must have '{field}' field")
 
-            steps.append(DataSourceStep(
-                name=step_data["name"],
-                depends_on=step_data["depends_on"],
-                sql=step_data["sql"]
-            ))
+            steps.append(
+                DataSourceStep(
+                    name=step_data["name"],
+                    depends_on=step_data["depends_on"],
+                    sql=step_data["sql"],
+                )
+            )
 
         # Parse outputs (required)
         if "outputs" not in ds_data:
@@ -213,11 +216,13 @@ class DataSourceSpec:
             if "sql" not in step_data:
                 raise ValueError(f"Step {i} must have 'sql'")
 
-            steps.append(DataSourceStep(
-                name=step_data["name"],
-                depends_on=step_data["depends_on"],
-                sql=step_data["sql"]
-            ))
+            steps.append(
+                DataSourceStep(
+                    name=step_data["name"],
+                    depends_on=step_data["depends_on"],
+                    sql=step_data["sql"],
+                )
+            )
 
         # Parse outputs (required)
         if "outputs" not in ds_data:
@@ -250,8 +255,8 @@ class DataSourceSpec:
         try:
             with open(path, encoding="utf-8") as f:
                 return cls.from_yaml(f.read())
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Data source file not found: {path}")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Data source file not found: {path}") from e
 
     def to_dict(self) -> dict[str, Any]:
         """Convert DataSourceSpec to dictionary.
@@ -259,7 +264,17 @@ class DataSourceSpec:
         Returns:
             Dictionary representation of the data source specification
         """
-        return {"data_source": asdict(self)}
+        # Build dictionary manually to exclude None values and improve formatting
+        data_source_dict = {
+            "steps": [asdict(step) for step in self.steps],
+            "outputs": self.outputs,
+        }
+
+        # Only include vars if it's not None
+        if self.vars is not None:
+            data_source_dict["vars"] = self.vars
+
+        return {"data_source": data_source_dict}
 
     def to_json(self) -> str:
         """Convert DataSourceSpec to JSON string.
@@ -270,12 +285,80 @@ class DataSourceSpec:
         return json.dumps(self.to_dict(), indent=2)
 
     def to_yaml(self) -> str:
-        """Convert DataSourceSpec to YAML string.
+        """Convert DataSourceSpec to YAML string with formatted SQL and step spacing.
 
         Returns:
             YAML string representation of the data source specification
         """
-        return yaml.dump(self.to_dict(), default_flow_style=False)
+
+        class SQLFormattingDumper(yaml.SafeDumper):
+            """Custom YAML dumper that formats SQL strings as literal blocks."""
+
+            def represent_str(self, data):
+                # Check if this looks like SQL (keywords and is long or multiline)
+                sql_keywords = [
+                    "SELECT",
+                    "FROM",
+                    "WHERE",
+                    "JOIN",
+                    "INSERT",
+                    "UPDATE",
+                    "DELETE",
+                ]
+                if (
+                    len(data) > 50
+                    or "\n" in data
+                    or any(keyword in data.upper() for keyword in sql_keywords)
+                ):
+                    return self.represent_scalar(
+                        "tag:yaml.org,2002:str", data, style="|-"
+                    )
+                return self.represent_scalar("tag:yaml.org,2002:str", data)
+
+        # Add the custom string representer
+        SQLFormattingDumper.add_representer(str, SQLFormattingDumper.represent_str)
+
+        # Generate base YAML
+        yaml_content = yaml.dump(
+            self.to_dict(),
+            Dumper=SQLFormattingDumper,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        )
+
+        # Add spacing between steps for better readability
+        lines = yaml_content.split("\n")
+        result_lines = []
+        in_steps_section = False
+
+        for i, line in enumerate(lines):
+            result_lines.append(line)
+
+            # Track if we're in the steps section
+            if line.strip() == "steps:" or (
+                line.strip().startswith("steps:") and ":" in line
+            ):
+                in_steps_section = True
+            elif line.startswith("  outputs:") or (
+                line.strip() and not line.startswith(" ")
+            ):
+                in_steps_section = False
+
+            # Add blank line after each step (after the sql block ends)
+            if (
+                in_steps_section
+                and line.strip()
+                and not line.startswith("  - name:")
+                and not line.startswith("    depends_on:")
+                and not line.startswith("    sql:")
+                and not line.startswith("      ")  # SQL content lines
+                and i < len(lines) - 1
+                and lines[i + 1].startswith("  - name:")
+            ):
+                result_lines.append("")
+
+        return "\n".join(result_lines)
 
     def to_yaml_file(self, path: str) -> None:
         """Save DataSourceSpec to YAML file.
@@ -302,13 +385,15 @@ class DataSourceSpec:
             return sql
 
         # Find all ${var} patterns
-        pattern = r'\$\{([^}]+)\}'
+        pattern = r"\$\{([^}]+)\}"
         matches = re.findall(pattern, sql)
 
         # Check that all referenced variables are defined
         for var_name in matches:
             if var_name not in self.vars:
-                raise ValueError(f"Variable '${{{var_name}}}' not defined in vars section")
+                raise ValueError(
+                    f"Variable '${{{var_name}}}' not defined in vars section"
+                )
 
         # Substitute variables
         result = sql
@@ -366,9 +451,8 @@ class DataSourceSpec:
             return False
 
         for step in self.steps:
-            if step.name not in visited:
-                if has_cycle(step.name):
-                    raise ValueError("Circular dependency detected in steps")
+            if step.name not in visited and has_cycle(step.name):
+                raise ValueError("Circular dependency detected in steps")
 
     def get_execution_order(self) -> list[DataSourceStep]:
         """Get steps in topological order for execution.
@@ -386,7 +470,7 @@ class DataSourceSpec:
         step_map = {step.name: step for step in self.steps}
         step_names = set(step_map.keys())
 
-        in_degree = {name: 0 for name in step_names}
+        in_degree = dict.fromkeys(step_names, 0)
 
         for step in self.steps:
             for dep in step.depends_on:
@@ -404,7 +488,6 @@ class DataSourceSpec:
             result.append(step_map[current])
 
             # For each step that depends on the current step
-            current_step = step_map[current]
             for step in self.steps:
                 if current in step.depends_on:
                     in_degree[step.name] -= 1
@@ -418,7 +501,7 @@ class DataSourceSpec:
         return result
 
     @classmethod
-    def validate_yaml_string(cls, yaml_str: str) -> "ValidationResult":
+    def validate_yaml_string(cls, yaml_str: str) -> ValidationResult:
         """Validate YAML string and return detailed results.
 
         Args:
@@ -440,7 +523,7 @@ class DataSourceSpec:
                 variables_count=len(spec.vars) if spec.vars else 0,
                 execution_order=[step.name for step in ordered_steps],
                 outputs=spec.outputs,
-                error=None
+                error=None,
             )
         except ValueError as e:
             return ValidationResult(
@@ -451,7 +534,7 @@ class DataSourceSpec:
                 variables_count=0,
                 execution_order=[],
                 outputs=[],
-                error=f"YAML validation failed: {str(e)}"
+                error=f"YAML validation failed: {str(e)}",
             )
         except Exception as e:
             return ValidationResult(
@@ -462,11 +545,11 @@ class DataSourceSpec:
                 variables_count=0,
                 execution_order=[],
                 outputs=[],
-                error=f"Unexpected validation error: {str(e)}"
+                error=f"Unexpected validation error: {str(e)}",
             )
 
     @classmethod
-    def validate_yaml_file(cls, file_path: str) -> "ValidationResult":
+    def validate_yaml_file(cls, file_path: str) -> ValidationResult:
         """Validate YAML file and return detailed results.
 
         Args:
@@ -488,7 +571,7 @@ class DataSourceSpec:
                     variables_count=0,
                     execution_order=[],
                     outputs=[],
-                    error=f"YAML file not found: {file_path}"
+                    error=f"YAML file not found: {file_path}",
                 )
 
             spec = cls.from_yaml_file(file_path)
@@ -503,7 +586,7 @@ class DataSourceSpec:
                 variables_count=len(spec.vars) if spec.vars else 0,
                 execution_order=[step.name for step in ordered_steps],
                 outputs=spec.outputs,
-                error=None
+                error=None,
             )
         except ValueError as e:
             return ValidationResult(
@@ -514,7 +597,7 @@ class DataSourceSpec:
                 variables_count=0,
                 execution_order=[],
                 outputs=[],
-                error=f"YAML validation failed: {str(e)}"
+                error=f"YAML validation failed: {str(e)}",
             )
         except Exception as e:
             return ValidationResult(
@@ -525,7 +608,7 @@ class DataSourceSpec:
                 variables_count=0,
                 execution_order=[],
                 outputs=[],
-                error=f"Unexpected validation error: {str(e)}"
+                error=f"Unexpected validation error: {str(e)}",
             )
 
     @classmethod
@@ -543,11 +626,6 @@ class DataSourceSpec:
                     "type": "object",
                     "required": ["steps", "outputs"],
                     "properties": {
-                        "vars": {
-                            "type": "object",
-                            "additionalProperties": {"type": "string"},
-                            "description": "Optional variables for SQL substitution using ${var_name} syntax"
-                        },
                         "steps": {
                             "type": "array",
                             "items": {
@@ -556,27 +634,41 @@ class DataSourceSpec:
                                 "properties": {
                                     "name": {
                                         "type": "string",
-                                        "description": "Unique name for this processing step"
+                                        "description": (
+                                            "Unique name for this processing step"
+                                        ),
                                     },
                                     "depends_on": {
                                         "type": "array",
                                         "items": {"type": "string"},
-                                        "description": "List of table names or step names this step depends on"
+                                        "description": (
+                                            "List of table names or step names this "
+                                            "step depends on"
+                                        ),
                                     },
                                     "sql": {
                                         "type": "string",
-                                        "description": "SQL query for this transformation step"
-                                    }
-                                }
+                                        "description": (
+                                            "Concrete SQL query for this "
+                                            "transformation step"
+                                        ),
+                                    },
+                                },
                             },
-                            "description": "List of data processing steps to execute in dependency order"
+                            "description": (
+                                "List of data processing steps to execute in "
+                                "dependency order"
+                            ),
                         },
                         "outputs": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of step names that should be materialized as final output tables"
-                        }
-                    }
+                            "description": (
+                                "List of step names that should be materialized "
+                                "as final output tables"
+                            ),
+                        },
+                    },
                 }
-            }
+            },
         }

@@ -224,7 +224,10 @@ class InteractiveInterface:
                     "/ml create-model --name NAME --schema PATH",
                     "Register an Arc-Graph model",
                 ),
-                ("/ml train --model NAME --data TABLE", "Launch a training job"),
+                (
+                    "/ml data-processing --yaml PATH",
+                    "Process data based on the Arc-formatYAML specification",
+                )("/ml train --model NAME --data TABLE", "Launch a training job"),
                 (
                     "/ml predict --model NAME --data TABLE --output TABLE",
                     "Run inference and save predictions",
@@ -252,6 +255,7 @@ class InteractiveInterface:
             "ml_model_generator": "Model Generator",
             "ml_trainer_generator": "Trainer Generator",
             "ml_predictor_generator": "Predictor Generator",
+            "data_processor_generator": "Data Processor Generator",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -291,6 +295,8 @@ class InteractiveInterface:
             "ml_predictor_generator",
         ]:
             return "green"  # ML operations (success/completion focused)
+        elif tool_name in ["data_processor_generator"]:
+            return "bright_yellow"
         else:
             return "white"  # Default/neutral informational output
 
