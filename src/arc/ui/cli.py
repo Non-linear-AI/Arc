@@ -6,7 +6,6 @@ import os
 import shlex
 import sys
 import time
-from contextlib import suppress
 from pathlib import Path
 
 import click
@@ -745,6 +744,9 @@ async def run_interactive_mode(
     try:
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
         ui = InteractiveInterface()
+        from contextlib import suppress
+        with suppress(Exception):
+            ConfirmationService.get_instance().set_ui(ui)
 
         # Database context for SQL commands - defaults to system database
         current_database = "system"

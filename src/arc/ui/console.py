@@ -4,15 +4,13 @@ import asyncio
 import sys
 import threading
 from contextlib import contextmanager, suppress
-from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from rich import box
 from rich.align import Align
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-from rich.tree import Tree
 
 from ..database import QueryResult
 from .printer import Printer
@@ -55,6 +53,7 @@ class InteractiveInterface:
             self,
             loop: asyncio.AbstractEventLoop | None = None,
             event: asyncio.Event | None = None,
+            is_input_active: Callable[[], bool] | None = None,
         ):
             self._pressed = threading.Event()
             self._stop = threading.Event()
@@ -63,6 +62,7 @@ class InteractiveInterface:
             self._orig_attrs = None
             self._loop = loop
             self._event = event
+            self._is_input_active = is_input_active
 
         def start(self):
             if not sys.stdin.isatty():
@@ -77,13 +77,16 @@ class InteractiveInterface:
                 self._fd = sys.stdin.fileno()
                 self._orig_attrs = termios.tcgetattr(self._fd)
                 tty.setcbreak(self._fd)
-                attrs = termios.tcgetattr(self._fd)
-                attrs[3] = attrs[3] & ~termios.ECHO  # lflags: turn off echo
-                termios.tcsetattr(self._fd, termios.TCSADRAIN, attrs)
+                # Keep terminal echo enabled to avoid interfering with prompts
 
                 def _run():
                     try:
                         while not self._stop.is_set():
+                            # If an input prompt is active, don't consume stdin
+                            if self._is_input_active and self._is_input_active():
+                                # Sleep briefly to yield
+                                self._stop.wait(0.05)
+                                continue
                             r, _, _ = self._select.select([sys.stdin], [], [], 0.05)
                             if r:
                                 ch = sys.stdin.read(1)
@@ -142,7 +145,7 @@ class InteractiveInterface:
             def is_pressed(self) -> bool:
                 return self._watcher.is_pressed()
 
-        watcher = self._EscWatcher(loop, event)
+        watcher = self._EscWatcher(loop, event, is_input_active=self._printer.is_input_active)
         watcher.start()
         try:
             yield EscHandle(watcher, event)
@@ -514,138 +517,6 @@ class InteractiveInterface:
             # Ensure cleanup even if an exception occurs (no final rendering here)
             handler._finish_assistant_streaming(final=False)
 
-    def show_edit_summary(self, strategy_stats: dict[str, dict[str, Any]]):
-        """Show editing strategy statistics."""
-        stats_table = Table(title="📊 Editing Strategy Performance")
-        stats_table.add_column("Strategy", style="bold")
-        stats_table.add_column("Success", style="green")
-        stats_table.add_column("Failures", style="red")
-        stats_table.add_column("Success Rate", style="cyan")
-        stats_table.add_column("Total Ops", style="yellow")
-
-        for strategy_name, stats in strategy_stats.items():
-            success_rate = f"{stats['success_rate']:.1%}"
-            stats_table.add_row(
-                strategy_name.replace("_", " ").title(),
-                str(stats["success_count"]),
-                str(stats["failure_count"]),
-                success_rate,
-                str(stats["total_operations"]),
-            )
-
-        with self._printer.section(color="blue") as p:
-            p.print(stats_table)
-
-    def show_performance_metrics(
-        self, metrics: dict[str, Any], error_stats: dict[str, Any] | None = None
-    ):
-        """Show performance metrics dashboard."""
-        perf_table = Table(title="🚀 Performance Metrics")
-        perf_table.add_column("Metric", style="bold cyan")
-        perf_table.add_column("Value", style="yellow")
-        perf_table.add_column("Description", style="dim")
-
-        perf_table.add_row(
-            "Cache Hit Rate",
-            f"{metrics.get('cache_hit_rate', 0):.1%}",
-            "Percentage of requests served from cache",
-        )
-        perf_table.add_row(
-            "Cache Hits",
-            str(metrics.get("cache_hits", 0)),
-            "Number of successful cache retrievals",
-        )
-        perf_table.add_row(
-            "Cache Misses",
-            str(metrics.get("cache_misses", 0)),
-            "Number of cache misses requiring computation",
-        )
-        perf_table.add_row(
-            "Avg Response Time",
-            f"{metrics.get('avg_response_time', 0):.3f}s",
-            "Average time per request",
-        )
-        perf_table.add_row(
-            "Total Requests",
-            str(metrics.get("total_requests", 0)),
-            "Total number of processed requests",
-        )
-        perf_table.add_row(
-            "File Operations",
-            str(metrics.get("file_operations", 0)),
-            "Number of file operations performed",
-        )
-        perf_table.add_row(
-            "Tool Executions",
-            str(metrics.get("tool_executions", 0)),
-            "Number of tool executions",
-        )
-        perf_table.add_row(
-            "Memory Cache Size",
-            str(metrics.get("memory_cache_size", 0)),
-            "Number of items in memory cache",
-        )
-        perf_table.add_row(
-            "File Cache Size",
-            str(metrics.get("file_cache_size", 0)),
-            "Number of items in persistent cache",
-        )
-
-        with self._printer.section(color="green") as p:
-            p.print(perf_table)
-
-        # Show error statistics if available
-        if error_stats and error_stats.get("total_errors", 0) > 0:
-            error_table = Table(title="⚠️ Error Statistics")
-            error_table.add_column("Category", style="bold red")
-            error_table.add_column("Count", style="yellow")
-
-            for category, count in error_stats.get("by_category", {}).items():
-                error_table.add_row(category.replace("_", " ").title(), str(count))
-
-            with self._printer.section(color="red") as p:
-                p.print(error_table)
-
-    def show_file_tree(self, directory: str, max_depth: int = 3):
-        """Display file tree for current directory."""
-        try:
-            tree = Tree(f"📁 {directory}")
-            self._build_tree(Path(directory), tree, max_depth, 0)
-
-            with self._printer.section(color="blue") as p:
-                p.print_panel(Panel(tree))
-        except Exception as e:
-            with self._printer.section(color="red") as p:
-                p.print(f"❌ Error building file tree: {e}")
-
-    def _build_tree(self, path: Path, tree: Tree, max_depth: int, current_depth: int):
-        """Recursively build file tree."""
-        if current_depth >= max_depth:
-            return
-
-        try:
-            items = sorted(path.iterdir())[:20]  # Limit to 20 items per directory
-
-            for item in items:
-                if item.is_dir():
-                    branch = tree.add(f"📁 {item.name}/")
-                    if current_depth < max_depth - 1:
-                        self._build_tree(item, branch, max_depth, current_depth + 1)
-                else:
-                    # Add file with size info
-                    size = item.stat().st_size
-                    size_str = self._format_file_size(size)
-                    tree.add(f"📄 {item.name} ({size_str})")
-        except PermissionError:
-            tree.add("❌ Permission denied")
-
-    def _format_file_size(self, size: int) -> str:
-        """Format file size in human readable form."""
-        for unit in ["B", "KB", "MB", "GB"]:
-            if size < 1024:
-                return f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{size:.1f} TB"
 
     def _format_args(self, args: dict[str, Any]) -> str:
         """Format tool arguments for display."""

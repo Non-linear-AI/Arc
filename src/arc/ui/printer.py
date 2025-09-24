@@ -239,6 +239,7 @@ class Printer:
         # Advanced input handling
         self._prompt_session = None
         self._prompt_enabled = True
+        self._input_active = False
 
         # Set up history file path
         self._history_file = Path.home() / ".arc_history"
@@ -462,7 +463,7 @@ class Printer:
         try:
             if not self._prompt_session:
                 self._prompt_session = self._create_prompt_session()
-
+            self._input_active = True
             return self._prompt_session.prompt(prompt)
         except KeyboardInterrupt:
             # Ctrl+C exits the application
@@ -470,6 +471,8 @@ class Printer:
         except EOFError:
             # Handle Ctrl+D (EOF)
             raise SystemExit("EOF received, exiting...") from None
+        finally:
+            self._input_active = False
 
     async def get_input_async(self, prompt: str = "") -> str:
         """Async version of get_input for use in async contexts.
@@ -483,16 +486,10 @@ class Printer:
         try:
             if not self._prompt_session:
                 self._prompt_session = self._create_prompt_session()
-
-            # Use prompt_toolkit's async API properly
-            from prompt_toolkit.application import create_app_session
-            from prompt_toolkit.input import create_input
-            from prompt_toolkit.output import create_output
-
-            # Create a new app session for async compatibility
-            with create_app_session(input=create_input(), output=create_output()):
-                result = await self._prompt_session.prompt_async(prompt)
-                return result
+            self._input_active = True
+            # Use prompt_toolkit's async API directly with persistent session
+            result = await self._prompt_session.prompt_async(prompt)
+            return result
 
         except KeyboardInterrupt:
             # Ctrl+C exits the application
@@ -503,6 +500,11 @@ class Printer:
         except Exception:
             # If prompt_toolkit fails, fall back to basic input
             return self.console.input(prompt)
+        finally:
+            self._input_active = False
+
+    def is_input_active(self) -> bool:
+        return self._input_active
 
     def _is_real_terminal(self) -> bool:
         """Check if we're running in a real terminal that supports advanced input."""
