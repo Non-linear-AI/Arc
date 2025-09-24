@@ -532,15 +532,10 @@ class InteractiveInterface:
         return ", ".join(formatted)
 
     def prompt_confirmation(self, message: str) -> bool:
-        """Confirmation prompt that avoids prompt_toolkit conflicts.
-
-        Uses basic console input to ensure compatibility when prompt_toolkit
-        is active elsewhere.
-        """
+        """Confirmation prompt using prompt_toolkit via Printer."""
         while True:
             try:
-                prompt = f"🤔 {message} [y/N]: "
-                resp = self._printer.console.input(prompt).strip().lower()
+                resp = self._printer.get_input(f"🤔 {message} [y/N]: ").strip().lower()
             except (KeyboardInterrupt, EOFError):
                 return False
 
@@ -551,9 +546,9 @@ class InteractiveInterface:
             self._printer.print("Please enter 'y' or 'n'.")
 
     def prompt_input(self, message: str, default: str | None = None) -> str:
-        """Simple input prompt using console.input to avoid conflicts."""
+        """Simple input prompt using prompt_toolkit via Printer."""
         try:
-            value = self._printer.console.input(
+            value = self._printer.get_input(
                 f"💭 {message}{' [' + default + ']' if default else ''}: "
             )
         except (KeyboardInterrupt, EOFError):

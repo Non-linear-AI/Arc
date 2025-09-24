@@ -686,8 +686,8 @@ async def run_headless_mode(
     try:
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
 
-        # Configure confirmation service for headless mode
-        confirmation_service = ConfirmationService()
+        # Configure confirmation service for headless mode (singleton)
+        confirmation_service = ConfirmationService.get_instance()
         confirmation_service.set_session_flag("allOperations", True)
 
         # Process the user message

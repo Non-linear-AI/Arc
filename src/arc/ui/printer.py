@@ -442,64 +442,30 @@ class Printer:
             self.console.print("")
 
     def get_input(self, prompt: str = "") -> str:
-        """Enhanced input method with history, cursor movement, and interruption."""
-        if not self._prompt_enabled or not self._is_real_terminal():
-            # Fallback to basic console input if prompt_toolkit is disabled
-            # or we're not in a real terminal
-            return self.console.input(prompt)
-
-        # Check if we're in an async context - if so, fall back to basic input
-        # to avoid event loop conflicts
-        try:
-            import asyncio
-
-            asyncio.get_running_loop()
-            # We're in an async context, use basic input to avoid conflicts
-            return self.console.input(prompt)
-        except RuntimeError:
-            # No event loop running, safe to use prompt_toolkit
-            pass
-
+        """Enhanced input using prompt_toolkit PromptSession (sync)."""
         try:
             if not self._prompt_session:
                 self._prompt_session = self._create_prompt_session()
             self._input_active = True
             return self._prompt_session.prompt(prompt)
         except KeyboardInterrupt:
-            # Ctrl+C exits the application
             raise SystemExit(0) from None
         except EOFError:
-            # Handle Ctrl+D (EOF)
             raise SystemExit("EOF received, exiting...") from None
         finally:
             self._input_active = False
 
     async def get_input_async(self, prompt: str = "") -> str:
-        """Async version of get_input for use in async contexts.
-
-        Uses prompt_toolkit's async API when in a proper terminal,
-        falls back gracefully otherwise.
-        """
-        if not self._prompt_enabled or not self._is_real_terminal():
-            return self.console.input(prompt)
-
+        """Async input using prompt_toolkit PromptSession (non-blocking)."""
         try:
             if not self._prompt_session:
                 self._prompt_session = self._create_prompt_session()
             self._input_active = True
-            # Use prompt_toolkit's async API directly with persistent session
-            result = await self._prompt_session.prompt_async(prompt)
-            return result
-
+            return await self._prompt_session.prompt_async(prompt)
         except KeyboardInterrupt:
-            # Ctrl+C exits the application
             raise SystemExit(0) from None
         except EOFError:
-            # Handle Ctrl+D (EOF)
             raise SystemExit("EOF received, exiting...") from None
-        except Exception:
-            # If prompt_toolkit fails, fall back to basic input
-            return self.console.input(prompt)
         finally:
             self._input_active = False
 
@@ -507,10 +473,8 @@ class Printer:
         return self._input_active
 
     def _is_real_terminal(self) -> bool:
-        """Check if we're running in a real terminal that supports advanced input."""
-        return (
-            sys.stdin.isatty() and sys.stdout.isatty() and hasattr(sys.stdin, "fileno")
-        )
+        """Deprecated; kept for compatibility but unused."""
+        return True
 
     def _create_prompt_session(self) -> PromptSession:
         """Create a PromptSession with advanced key bindings and history."""
