@@ -208,7 +208,7 @@ class ArcCompleter(Completer):
                 ("/ml", "Machine learning commands"),
                 ("/sql", "Database operations"),
                 ("/report", "Report a bug or feedback"),
-                ("/config", "Configuration"),
+                ("/config", "Configuration (view/edit)"),
                 ("/clear", "Clear screen"),
                 ("/exit", "Exit application"),
             ]
