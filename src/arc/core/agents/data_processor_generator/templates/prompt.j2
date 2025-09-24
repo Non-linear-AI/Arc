@@ -1,53 +1,93 @@
-You are an expert SQL data engineer specializing in feature engineering and data transformation pipelines.
-
 ## TASK
-Generate a data processing YAML configuration for:
+Generate a data processing JSON configuration for:
 - **User Requirements**: {{ user_context }}
-{% if target_tables %}
-- **Target Tables**: {{ target_tables | join(", ") }}
-{% endif %}
-- **Database**: {{ schema_info.database }}
+{% if target_tables %}- **Target Tables**: {{ target_tables | join(", ") }}
+{% endif %}- **Database**: {{ schema_info.database }}
 
 ## Available Tables
-{% if schema_info.tables %}
-{% for table in schema_info.tables %}
-**{{ table.name }}**:
-{% for column in table.columns %}
-  - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
+{% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**:
+{% for column in table.columns %}  - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
 {% endfor %}
 
-{% endfor %}
-{% else %}
-No table schema information available.
+{% endfor %}{% else %}No table schema information available.
 {% endif %}
+## JSON Schema
+You must generate JSON that follows this exact schema:
 
-## Format Requirements
-Generate a YAML configuration with this exact structure:
+```json
+{
+  "type": "object",
+  "required": ["data_source"],
+  "properties": {
+    "data_source": {
+      "type": "object",
+      "required": ["steps", "outputs"],
+      "properties": {
+        "vars": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Optional variables for SQL substitution using ${var_name} syntax"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "depends_on", "sql"],
+            "properties": {
+              "name": {"type": "string", "description": "Unique name for this processing step"},
+              "depends_on": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "List of table names or step names this step depends on"
+              },
+              "sql": {"type": "string", "description": "SQL query for this transformation step"}
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of step names that should be materialized as final output tables"
+        }
+      }
+    }
+  }
+}
+```
 
-```yaml
-data_source:
-  vars:
-    parameter_name: "value"        # Optional: variables for ${parameter_name} substitution
-
-  steps:
-    - name: step_name              # Unique step identifier (becomes table/view name)
-      depends_on: [table_or_step]  # List of dependencies (existing tables or previous steps)
-      sql: |                      # SQL query for this transformation
-        SELECT column1, column2
-        FROM source_table
-        WHERE condition = '${parameter_name}'
-
-  outputs:
-    - step_name                   # Which steps should be materialized as persistent tables
+## Example JSON Structure
+```json
+{
+  "data_source": {
+    "vars": {
+      "min_date": "2023-01-01",
+      "threshold": "100"
+    },
+    "steps": [
+      {
+        "name": "clean_data",
+        "depends_on": ["source_table"],
+        "sql": "SELECT * FROM source_table WHERE date >= '${min_date}' AND amount > ${threshold}"
+      },
+      {
+        "name": "user_aggregates",
+        "depends_on": ["clean_data"],
+        "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
+      }
+    ],
+    "outputs": ["user_aggregates"]
+  }
+}
 ```
 
 ## Rules
 1. **Step Names**: Use descriptive names (clean_data, user_aggregates, final_features)
-2. **Dependencies**: Each step must list all tables/steps it depends on
+2. **Dependencies**: Each step must list all tables/steps it depends on in the depends_on array
 3. **SQL Quality**: Write clean, efficient SQL with proper formatting
-4. **Variables**: Use ${var_name} for parameterization when helpful
-5. **Outputs**: Only list steps that should be persisted as tables
+4. **Variables**: Use ${var_name} for parameterization when helpful, define in vars object
+5. **Outputs**: Only list steps that should be persisted as tables in the outputs array
 6. **Execution Order**: Steps will be executed in dependency order automatically
+7. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
 
 ## Common Patterns
 - **Data Cleaning**: Filter nulls, invalid values, standardize formats
@@ -56,9 +96,15 @@ data_source:
 - **Joins**: Combine data from multiple tables
 - **Windowing**: Running totals, rankings, time-based calculations
 
-## Output Format
-- YAML only, no markdown blocks or explanations
-- Start with `data_source:` section
-- Ensure valid YAML syntax
+## SQL String Formatting
+- Use proper JSON string escaping for SQL (escape quotes as backslash-quote)
+- For multi-line SQL, use backslash-n for line breaks within the JSON string
+- Keep SQL readable but valid within JSON format
+
+## Output Requirements
+- Generate only valid JSON, no markdown blocks or explanations
+- Start with the root object containing data_source
+- Ensure all strings are properly escaped
+- Follow the exact schema structure above
 
 Generate the data processing configuration:

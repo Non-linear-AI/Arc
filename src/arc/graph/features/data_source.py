@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 try:
     import yaml
@@ -13,6 +13,23 @@ except ImportError as e:
         "PyYAML is required for Arc-Graph. "
         "Install with 'uv add pyyaml' or 'pip install pyyaml'."
     ) from e
+
+try:
+    import json
+except ImportError as e:
+    raise RuntimeError("JSON support is required") from e
+
+
+class ValidationResult(NamedTuple):
+    """Result of YAML validation operation."""
+    success: bool
+    spec: "DataSourceSpec | None"
+    steps_count: int
+    outputs_count: int
+    variables_count: int
+    execution_order: list[str]
+    outputs: list[str]
+    error: str | None
 
 
 @dataclass
@@ -72,6 +89,73 @@ class DataSourceSpec:
         # For now, assume names not in steps are table references
         # Could be enhanced with actual table validation
         return True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DataSourceSpec:
+        """Create DataSourceSpec from dictionary.
+
+        Args:
+            data: Dictionary containing data source specification
+
+        Returns:
+            DataSourceSpec: Parsed and validated data source specification
+
+        Raises:
+            ValueError: If data doesn't contain valid spec
+        """
+        if not isinstance(data, dict):
+            raise ValueError("Data must be a dictionary")
+
+        if "data_source" not in data:
+            raise ValueError("Data must contain 'data_source' section")
+
+        ds_data = data["data_source"]
+
+        if not isinstance(ds_data, dict):
+            raise ValueError("data_source must be a mapping")
+
+        # Parse vars (optional)
+        vars_dict = ds_data.get("vars")
+        if vars_dict is not None and not isinstance(vars_dict, dict):
+            raise ValueError("vars must be a mapping")
+
+        # Parse steps (required)
+        if "steps" not in ds_data:
+            raise ValueError("data_source must contain 'steps'")
+
+        steps_data = ds_data["steps"]
+        if not isinstance(steps_data, list):
+            raise ValueError("steps must be a list")
+
+        steps = []
+        for i, step_data in enumerate(steps_data):
+            if not isinstance(step_data, dict):
+                raise ValueError(f"Step {i} must be a mapping")
+
+            required_fields = ["name", "depends_on", "sql"]
+            for field in required_fields:
+                if field not in step_data:
+                    raise ValueError(f"Step {i} must have '{field}' field")
+
+            steps.append(DataSourceStep(
+                name=step_data["name"],
+                depends_on=step_data["depends_on"],
+                sql=step_data["sql"]
+            ))
+
+        # Parse outputs (required)
+        if "outputs" not in ds_data:
+            raise ValueError("data_source must contain 'outputs'")
+
+        outputs = ds_data["outputs"]
+        if not isinstance(outputs, list):
+            raise ValueError("outputs must be a list")
+
+        return cls(
+            steps=steps,
+            outputs=outputs,
+            vars=vars_dict,
+        )
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> DataSourceSpec:
@@ -169,14 +253,29 @@ class DataSourceSpec:
         except FileNotFoundError:
             raise FileNotFoundError(f"Data source file not found: {path}")
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert DataSourceSpec to dictionary.
+
+        Returns:
+            Dictionary representation of the data source specification
+        """
+        return {"data_source": asdict(self)}
+
+    def to_json(self) -> str:
+        """Convert DataSourceSpec to JSON string.
+
+        Returns:
+            JSON string representation of the data source specification
+        """
+        return json.dumps(self.to_dict(), indent=2)
+
     def to_yaml(self) -> str:
         """Convert DataSourceSpec to YAML string.
 
         Returns:
             YAML string representation of the data source specification
         """
-        data = {"data_source": asdict(self)}
-        return yaml.dump(data, default_flow_style=False)
+        return yaml.dump(self.to_dict(), default_flow_style=False)
 
     def to_yaml_file(self, path: str) -> None:
         """Save DataSourceSpec to YAML file.
@@ -317,3 +416,167 @@ class DataSourceSpec:
             raise ValueError("Circular dependency detected in steps")
 
         return result
+
+    @classmethod
+    def validate_yaml_string(cls, yaml_str: str) -> "ValidationResult":
+        """Validate YAML string and return detailed results.
+
+        Args:
+            yaml_str: YAML string to validate
+
+        Returns:
+            ValidationResult with success status and details
+        """
+        try:
+            spec = cls.from_yaml(yaml_str)
+            spec.validate_dependencies()
+            ordered_steps = spec.get_execution_order()
+
+            return ValidationResult(
+                success=True,
+                spec=spec,
+                steps_count=len(spec.steps),
+                outputs_count=len(spec.outputs),
+                variables_count=len(spec.vars) if spec.vars else 0,
+                execution_order=[step.name for step in ordered_steps],
+                outputs=spec.outputs,
+                error=None
+            )
+        except ValueError as e:
+            return ValidationResult(
+                success=False,
+                spec=None,
+                steps_count=0,
+                outputs_count=0,
+                variables_count=0,
+                execution_order=[],
+                outputs=[],
+                error=f"YAML validation failed: {str(e)}"
+            )
+        except Exception as e:
+            return ValidationResult(
+                success=False,
+                spec=None,
+                steps_count=0,
+                outputs_count=0,
+                variables_count=0,
+                execution_order=[],
+                outputs=[],
+                error=f"Unexpected validation error: {str(e)}"
+            )
+
+    @classmethod
+    def validate_yaml_file(cls, file_path: str) -> "ValidationResult":
+        """Validate YAML file and return detailed results.
+
+        Args:
+            file_path: Path to YAML file to validate
+
+        Returns:
+            ValidationResult with success status and details
+        """
+        from pathlib import Path
+
+        try:
+            yaml_file = Path(file_path)
+            if not yaml_file.exists():
+                return ValidationResult(
+                    success=False,
+                    spec=None,
+                    steps_count=0,
+                    outputs_count=0,
+                    variables_count=0,
+                    execution_order=[],
+                    outputs=[],
+                    error=f"YAML file not found: {file_path}"
+                )
+
+            spec = cls.from_yaml_file(file_path)
+            spec.validate_dependencies()
+            ordered_steps = spec.get_execution_order()
+
+            return ValidationResult(
+                success=True,
+                spec=spec,
+                steps_count=len(spec.steps),
+                outputs_count=len(spec.outputs),
+                variables_count=len(spec.vars) if spec.vars else 0,
+                execution_order=[step.name for step in ordered_steps],
+                outputs=spec.outputs,
+                error=None
+            )
+        except ValueError as e:
+            return ValidationResult(
+                success=False,
+                spec=None,
+                steps_count=0,
+                outputs_count=0,
+                variables_count=0,
+                execution_order=[],
+                outputs=[],
+                error=f"YAML validation failed: {str(e)}"
+            )
+        except Exception as e:
+            return ValidationResult(
+                success=False,
+                spec=None,
+                steps_count=0,
+                outputs_count=0,
+                variables_count=0,
+                execution_order=[],
+                outputs=[],
+                error=f"Unexpected validation error: {str(e)}"
+            )
+
+    @classmethod
+    def get_json_schema(cls) -> dict[str, Any]:
+        """Get JSON schema for DataSourceSpec for LLM prompts.
+
+        Returns:
+            JSON schema dictionary that can be used in LLM prompts
+        """
+        return {
+            "type": "object",
+            "required": ["data_source"],
+            "properties": {
+                "data_source": {
+                    "type": "object",
+                    "required": ["steps", "outputs"],
+                    "properties": {
+                        "vars": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                            "description": "Optional variables for SQL substitution using ${var_name} syntax"
+                        },
+                        "steps": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["name", "depends_on", "sql"],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Unique name for this processing step"
+                                    },
+                                    "depends_on": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "List of table names or step names this step depends on"
+                                    },
+                                    "sql": {
+                                        "type": "string",
+                                        "description": "SQL query for this transformation step"
+                                    }
+                                }
+                            },
+                            "description": "List of data processing steps to execute in dependency order"
+                        },
+                        "outputs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of step names that should be materialized as final output tables"
+                        }
+                    }
+                }
+            }
+        }

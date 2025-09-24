@@ -21,6 +21,7 @@ You have access to these tools:
 - ml_model_generator: Generate Arc-Graph model YAML specifications using the generator agent
 - ml_trainer_generator: Generate Arc-Graph trainer YAML specifications given a model
 - ml_predictor_generator: Generate Arc-Graph predictor YAML specifications for registered models
+- data_processing: Create reusable data processing pipeline configurations from natural language descriptions
 
 IMPORTANT TOOL USAGE RULES:
 - NEVER use create_file on files that already exist - this will overwrite them completely
@@ -39,6 +40,12 @@ DATABASE OPERATIONS:
 - schema_discovery: Explore user database schema when you need to understand user's data structure
 - System database schema is already provided above - no need to discover it
 - For user database, always use schema_discovery first to understand table structure before querying
+
+DATA PROCESSING OPERATIONS:
+- data_processing: Use for creating reusable YAML configurations, data pipelines, or templates
+- Use this tool when users mention: "reusable", "configuration", "YAML", "pipeline", "template", or want reproducible workflows
+- For one-time data operations, use database_query directly
+- For complex multi-step transformations that should be repeatable, prefer data_processing tool
 
 When a user asks you to edit, update, modify, or change an existing file:
 1. First use view_file to see the current contents

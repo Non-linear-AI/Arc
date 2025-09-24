@@ -1,4 +1,4 @@
-"""Data processor generator agent for creating SQL feature engineering configurations."""
+"""Data processor generator agent for creating SQL feature configurations."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import jinja2
 
-from ...client import ArcClient
 from ....graph.features.data_source import DataSourceSpec
+from ...client import ArcClient
 
 if TYPE_CHECKING:
     from ...database.services.container import ServiceContainer
@@ -20,7 +20,16 @@ class DataProcessorGeneratorError(Exception):
 
 
 class DataProcessorGeneratorAgent:
-    """Agent for generating data processing YAML configurations from natural language."""
+    """Agent for generating data processing YAML from natural language."""
+
+    # System message for data processing generation
+    SYSTEM_MESSAGE = (
+        "You are an expert SQL data engineer specializing in feature engineering "
+        "and data transformation pipelines. Generate only valid JSON configurations "
+        "for data processing pipelines. Follow the exact JSON schema provided in "
+        "the prompt. Do not include any explanations or markdown formatting - "
+        "return only the JSON object."
+    )
 
     def __init__(
         self,
@@ -66,19 +75,31 @@ class DataProcessorGeneratorAgent:
             # Get schema information for available tables
             schema_info = await self._get_schema_context(target_tables, target_db)
 
-            # Load and render the prompt template
-            prompt = await self._render_prompt(context, schema_info, target_tables)
+            # Render prompt and build messages
+            user_prompt = await self._render_prompt(context, schema_info, target_tables)
+            messages = [
+                {"role": "system", "content": self.SYSTEM_MESSAGE},
+                {"role": "user", "content": user_prompt},
+            ]
 
-            # Generate YAML using LLM
-            yaml_content = await self._generate_with_llm(prompt)
+            # Generate JSON using LLM
+            json_content = await self._generate_json_with_llm(messages)
 
-            # Parse and validate the generated YAML
+            # Parse JSON and create DataSourceSpec
             try:
-                spec = DataSourceSpec.from_yaml(yaml_content)
+                data = json.loads(json_content)
+                spec = DataSourceSpec.from_dict(data)
+                yaml_content = spec.to_yaml()
                 return spec, yaml_content
-            except ValueError as e:
+            except (json.JSONDecodeError, ValueError) as e:
+                # Try to retry with error feedback
+                retry_result = await self._retry_generation_with_feedback(
+                    messages, json_content, str(e)
+                )
+                if retry_result:
+                    return retry_result
                 raise DataProcessorGeneratorError(
-                    f"Generated invalid YAML configuration: {e}"
+                    f"Generated invalid JSON configuration: {e}"
                 ) from e
 
         except Exception as e:
@@ -164,7 +185,10 @@ class DataProcessorGeneratorAgent:
             target_tables: Target tables list
 
         Returns:
-            Rendered prompt string
+            Rendered prompt string for user message
+
+        Raises:
+            DataProcessorGeneratorError: If template cannot be loaded or rendered
         """
         template_path = Path(__file__).parent / "templates" / "prompt.j2"
 
@@ -179,66 +203,106 @@ class DataProcessorGeneratorAgent:
 
             # Load and render template
             template = env.get_template("prompt.j2")
-            return template.render(
+            prompt = template.render(
                 user_context=context,
                 schema_info=schema_info,
                 target_tables=target_tables or [],
             )
 
+            return prompt
+
+        except jinja2.TemplateNotFound as e:
+            raise DataProcessorGeneratorError(
+                f"Prompt template not found: {template_path}. "
+                "This is a configuration error in the DataProcessorGeneratorAgent."
+            ) from e
+        except jinja2.TemplateError as e:
+            raise DataProcessorGeneratorError(
+                f"Failed to render prompt template: {e}. "
+                "Check the template syntax in {template_path}."
+            ) from e
         except Exception as e:
-            # Fallback to basic prompt if template loading fails
-            return f"""Generate a SQL data processing pipeline YAML configuration based on this description:
+            raise DataProcessorGeneratorError(
+                f"Unexpected error loading prompt template: {e}"
+            ) from e
 
-Context: {context}
-
-Available tables: {', '.join(table['name'] for table in schema_info.get('tables', []))}
-
-Create a YAML configuration with the following structure:
-- data_source section
-- vars for parameter substitution (optional)
-- steps with name, depends_on, and sql
-- outputs listing final tables to materialize
-
-Generate YAML only, no explanations."""
-
-    async def _generate_with_llm(self, prompt: str) -> str:
-        """Generate YAML content using LLM.
+    async def _generate_json_with_llm(self, messages: list[dict[str, str]]) -> str:
+        """Generate JSON content using LLM.
 
         Args:
-            prompt: The prompt to send to the LLM
+            messages: List of message dictionaries for LLM chat
 
         Returns:
-            Generated YAML content
+            Generated JSON content
 
         Raises:
             DataProcessorGeneratorError: If LLM generation fails
         """
         try:
-            messages = [
-                {"role": "system", "content": "You are an expert SQL data engineer. Generate only valid YAML configurations for data processing pipelines."},
-                {"role": "user", "content": prompt}
-            ]
-
             response = await self.client.chat(messages, tools=[])
 
             if not response.content:
                 raise DataProcessorGeneratorError("LLM returned empty response")
 
-            # Extract YAML from response (handle cases where LLM adds markdown)
-            yaml_content = response.content.strip()
+            # Extract JSON from response (handle cases where LLM adds markdown)
+            json_content = response.content.strip()
 
             # Remove markdown code blocks if present
-            if yaml_content.startswith("```yaml"):
-                yaml_content = yaml_content[7:]
-            elif yaml_content.startswith("```"):
-                yaml_content = yaml_content[3:]
+            if json_content.startswith("```json"):
+                json_content = json_content[7:]
+            elif json_content.startswith("```"):
+                json_content = json_content[3:]
 
-            if yaml_content.endswith("```"):
-                yaml_content = yaml_content[:-3]
+            if json_content.endswith("```"):
+                json_content = json_content[:-3]
 
-            return yaml_content.strip()
+            return json_content.strip()
 
         except Exception as e:
             raise DataProcessorGeneratorError(
                 f"LLM generation failed: {e}"
             ) from e
+
+    async def _retry_generation_with_feedback(
+        self,
+        original_messages: list[dict[str, str]],
+        failed_json: str,
+        error_message: str,
+    ) -> tuple[DataSourceSpec, str] | None:
+        """Retry generation with feedback about the error.
+
+        Args:
+            original_messages: The original messages that were sent
+            failed_json: The JSON that failed to parse
+            error_message: The error message from parsing failure
+
+        Returns:
+            Tuple of (DataSourceSpec, YAML) if retry succeeds, None otherwise
+        """
+        try:
+            # Add error feedback to the conversation
+            retry_messages = original_messages + [
+                {
+                    "role": "assistant",
+                    "content": failed_json
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response failed to parse with this error: "
+                        f"{error_message}\n\nPlease fix the JSON and try again. "
+                        f"Ensure it's valid JSON that matches the schema exactly."
+                    )
+                }
+            ]
+
+            json_content = await self._generate_json_with_llm(retry_messages)
+            data = json.loads(json_content)
+            spec = DataSourceSpec.from_dict(data)
+            yaml_content = spec.to_yaml()
+            return spec, yaml_content
+
+        except Exception:
+            # If retry also fails, return None to fall back to original error
+            return None
+

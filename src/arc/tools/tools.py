@@ -530,7 +530,13 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="data_processing",
-            description="Generate or validate SQL data processing YAML configurations",
+            description=(
+                "Create reusable data processing pipelines from natural language. "
+                "Analyzes your database schema and generates optimized YAML configurations "
+                "for data cleaning, transformation, and feature engineering. "
+                "Use this when users want reusable configurations, templates, "
+                "or pipeline definitions rather than one-time data operations."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -538,22 +544,24 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "string",
                         "enum": ["generate", "validate"],
                         "description": (
-                            "Action to perform: 'generate' creates YAML from natural language, "
-                            "'validate' checks existing YAML configuration"
+                            "Action to perform: 'generate' creates YAML from "
+                            "natural language (default), 'validate' checks "
+                            "existing YAML configuration"
                         ),
                     },
                     "context": {
                         "type": "string",
                         "description": (
-                            "Natural language description of data processing requirements "
-                            "(required for 'generate' action)"
+                            "Natural language description of data processing "
+                            "requirements (required for 'generate' action)"
                         ),
                     },
                     "target_tables": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "List of database tables to analyze for generation (optional)"
+                            "List of database tables to analyze for generation "
+                            "(optional)"
                         ),
                     },
                     "output_path": {
@@ -566,14 +574,15 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "string",
                         "enum": ["system", "user"],
                         "description": (
-                            "Target database for schema discovery: 'system' for Arc metadata, "
-                            "'user' for training data (default: user)"
+                            "Target database for schema discovery: 'system' for "
+                            "Arc metadata, 'user' for training data (default: user)"
                         ),
                     },
                     "yaml_content": {
                         "type": "string",
                         "description": (
-                            "Raw YAML content for validation (alternative to output_path)"
+                            "Raw YAML content for validation "
+                            "(alternative to output_path)"
                         ),
                     },
                 },
