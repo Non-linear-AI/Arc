@@ -86,17 +86,22 @@ class ConfirmationService:
 
         # Choices match the main prompt behavior; Esc cancels globally
         options = [
-            ("yes", "1. Yes"),
-            ("yes_session", "2. Yes, and don't ask again this session"),
-            ("no", "3. No"),
+            ("yes", "Yes"),
+            ("yes_session", "Yes, and don't ask again this session"),
+            ("no", "No"),
         ]
 
-        # Pass global escape trigger so ESC terminates the entire task
-        selection = await ui._printer.get_choice_async(options, default="yes")
+        # Suspend ESC watcher to prevent race condition during choice dialog
+        ui.suspend_escape()
 
-        ui._printer.add_separator("space")
-        # Reset prompt session to ensure consistent state after nested prompt
-        ui._printer.reset_prompt_session()
+        try:
+            # Pass global escape trigger so ESC terminates the entire task
+            selection = await ui._printer.get_choice_async(options, default="yes")
+        finally:
+            # Always reset state regardless of outcome
+            ui._printer.add_separator("space")
+            # Reset prompt session to ensure consistent state after nested prompt
+            ui._printer.reset_prompt_session()
 
         # Handle ESC as cancellation (same as "no")
         if selection == "__esc__":

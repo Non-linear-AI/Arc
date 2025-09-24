@@ -168,49 +168,38 @@ class InteractiveInterface:
             self._active_watcher = None
 
     def trigger_escape(self) -> None:
-        """Programmatically trigger an ESC event to cancel the current task.
-
-        When a prompt_toolkit widget handles Esc locally, use this to propagate
-        the cancel up to the global streaming loop so the whole task stops.
-        """
+        """Programmatically trigger an ESC event to cancel the current task."""
         watcher = getattr(self, "_active_watcher", None)
         if watcher is not None:
-            try:
-                if getattr(watcher, "_event", None) is not None:
-                    watcher._event.set()
-                if getattr(watcher, "_pressed", None) is not None:
-                    watcher._pressed.set()
-            except Exception:
-                pass
+            if hasattr(watcher, "_event") and watcher._event is not None:
+                watcher._event.set()
+            if hasattr(watcher, "_pressed") and watcher._pressed is not None:
+                watcher._pressed.set()
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
         with self._printer.section(color="blue") as p:
-            p.print("[bold]System Commands[/bold]")
-            p.print(
-                "  [dim]Commands require '/' prefix. "
-                "Regular text without '/' is sent to the AI.[/dim]"
-            )
+            p.print("How to Use Arc")
+            p.print("  [dim]Ask questions in natural language or use slash commands below.[/dim]")
+            p.print("  [dim]Examples: 'analyze my data', 'help me train a model', '/config'[/dim]")
+
+            p.print()
+            p.print("  System Commands")
             commands = [
                 ("/help", "Show available commands and features"),
                 ("/config", "View current configuration"),
                 (
                     "/sql use [system|user] | /sql <query>",
-                    "Switch database or execute SQL query "
-                    "(system: read-only, user: full access)",
+                    "Switch database or execute SQL query ",
                 ),
                 ("/clear", "Clear the screen"),
                 ("/exit", "Exit the application"),
             ]
             for cmd, desc in commands:
-                p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
+                p.print(f"  - [cyan]{cmd}[/cyan]: {desc}")
 
             p.print()
-            p.print("[blue]⏺[/blue] [bold]ML Commands[/bold]")
-            p.print(
-                "  [dim]Commands require '/' prefix. "
-                "Regular text without '/' is sent to the AI.[/dim]"
-            )
+            p.print("  ML Commands")
             ml_commands = [
                 (
                     "/ml generate-model --name NAME --context DESC --data-table TABLE",
@@ -234,10 +223,10 @@ class InteractiveInterface:
                     "Run inference and save predictions",
                 ),
                 ("/ml jobs list", "Show recent ML jobs"),
-                ("/ml jobs status <job_id>", "Inspect an individual job"),
+                ("/ml jobs status JOB_ID", "Inspect an individual job"),
             ]
             for cmd, desc in ml_commands:
-                p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
+                p.print(f"  - [cyan]{cmd}[/cyan]: {desc}")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
@@ -386,14 +375,14 @@ class InteractiveInterface:
         target.print(f"  [dim]⎿ {first}[/dim]")
 
         # Show up to 2 more lines with proper indentation
-        rest = lines[1:3]  # Only show 2 more lines max
+        rest = lines[1:5]  # Only show 2 more lines max
         for ln in rest:
             if ln.strip():  # Skip empty lines
                 target.print(f"     [dim]{ln.rstrip()}[/dim]")
 
         # Show ellipsis if there are more lines
-        if len(lines) > 3:
-            remaining = len(lines) - 3
+        if len(lines) > 5:
+            remaining = len(lines) - 5
             target.print(f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]")
 
     def show_user_message(self, content: str):
