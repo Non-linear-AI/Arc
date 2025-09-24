@@ -193,7 +193,7 @@ class InteractiveInterface:
             p.print("  System Commands")
             commands = [
                 ("/help", "Show available commands and features"),
-                ("/config", "View current configuration"),
+                ("/config", "View or edit configuration"),
                 ("/report", "Report a bug or feedback on GitHub"),
                 (
                     "/sql use [system|user] | /sql <query>",
@@ -720,7 +720,14 @@ class InteractiveInterface:
 
     def show_config_panel(self, config_text: str) -> None:
         with self._printer.section(color="blue") as p:
-            p.print_panel(Panel(config_text, expand=False, border_style="color(240)"))
+            p.print_panel(
+                Panel(
+                    config_text,
+                    expand=False,
+                    border_style="color(240)",
+                    title="Configuration (edit via /config; env vars override)",
+                )
+            )
 
     def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         table = Table(title=title, box=box.SIMPLE_HEAVY)

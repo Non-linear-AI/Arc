@@ -84,13 +84,6 @@ def chat(
     settings_manager = SettingsManager()
 
     api_key = api_key or settings_manager.get_api_key()
-    if not api_key:
-        ui.show_system_error(
-            "API key required. Set ARC_API_KEY environment variable, "
-            "use --api-key flag, or save to ~/.arc/user-settings.json"
-        )
-        sys.exit(1)
-
     base_url = base_url or settings_manager.get_base_url()
     model = model or settings_manager.get_current_model()
 
@@ -111,6 +104,13 @@ def chat(
 
     # Run the appropriate mode
     if prompt:
+        # Headless mode requires an API key
+        if not api_key:
+            ui.show_system_error(
+                "API key required for headless mode. Set ARC_API_KEY, "
+                "use --api-key, or run /config in interactive mode."
+            )
+            sys.exit(1)
         asyncio.run(
             run_headless_mode(
                 prompt, api_key, base_url, model, max_tool_rounds, services
@@ -739,7 +739,7 @@ async def run_headless_mode(
 
 
 async def run_interactive_mode(
-    api_key: str,
+    api_key: str | None,
     base_url: str | None,
     model: str | None,
     max_tool_rounds: int,
@@ -747,8 +747,49 @@ async def run_interactive_mode(
 ):
     """Run in interactive mode with enhanced UX."""
     try:
-        agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
         ui = InteractiveInterface()
+        settings_manager = SettingsManager()
+
+        # Explicitly prompt to configure if no settings file exists
+        if not settings_manager.settings_file.exists():
+            ui.show_warning("No configuration found at ~/.arc/user-settings.json")
+            resp = (
+                (
+                    await ui.get_user_input_async(
+                        "Configure API key, Base URL, and Model now? (Y/n): "
+                    )
+                )
+                .strip()
+                .lower()
+            )
+            if not resp or resp.startswith("y"):
+                # Collect values; allow skip
+                new_api = await ui.get_user_input_async(
+                    "API key (leave blank to skip): "
+                )
+                if new_api.strip():
+                    settings_manager.update_user_setting("apiKey", new_api.strip())
+                    api_key = new_api.strip()
+                    ui.show_system_success("API key saved to ~/.arc/user-settings.json")
+                new_url = await ui.get_user_input_async(
+                    f"Base URL [{base_url or ''}]: "
+                )
+                if new_url.strip():
+                    settings_manager.update_user_setting("baseURL", new_url.strip())
+                    base_url = new_url.strip()
+                    ui.show_system_success(
+                        "Base URL saved to ~/.arc/user-settings.json"
+                    )
+                new_model = await ui.get_user_input_async(f"Model [{model or ''}]: ")
+                if new_model.strip():
+                    settings_manager.update_user_setting("model", new_model.strip())
+                    model = new_model.strip()
+                    ui.show_system_success("Model saved to ~/.arc/user-settings.json")
+
+        # Initialize agent only if API key is available
+        agent: ArcAgent | None = None
+        if api_key:
+            agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
         from contextlib import suppress
 
         with suppress(Exception):
@@ -758,7 +799,12 @@ async def run_interactive_mode(
         current_database = "system"
 
         # Show enhanced welcome screen
-        ui.show_welcome(agent.get_current_model(), agent.get_current_directory())
+        # Provide welcome even if agent is not yet initialized
+        current_model_name = (
+            agent.get_current_model() if agent else (model or "Not set")
+        )
+        current_dir = agent.get_current_directory() if agent else os.getcwd()
+        ui.show_welcome(current_model_name, current_dir)
 
         while True:
             try:
@@ -789,7 +835,7 @@ async def run_interactive_mode(
                         ui.clear_screen()
                         continue
                     elif cmd == "config":
-                        # Show current configuration with fresh settings
+                        # Show and optionally edit configuration
                         settings_manager = SettingsManager()
                         current_api_key = settings_manager.get_api_key()
                         current_base_url = settings_manager.get_base_url()
@@ -797,11 +843,89 @@ async def run_interactive_mode(
 
                         config_text = (
                             f"API Key: {'*' * 8 if current_api_key else 'Not set'}\n"
-                            f"Base URL: {current_base_url}\n"
+                            f"Base URL: {current_base_url or 'Not set'}\n"
                             f"Model: {current_model or 'Not set'}\n"
                             f"Max Tool Rounds: {max_tool_rounds}"
                         )
                         ui.show_config_panel(config_text)
+
+                        # Offer inline editing of baseURL, model, and apiKey
+                        edit_resp = (
+                            (
+                                await ui.get_user_input_async(
+                                    "Edit configuration values now? (y/N): "
+                                )
+                            )
+                            .strip()
+                            .lower()
+                        )
+                        if edit_resp.startswith("y"):
+                            # Note: environment variables override settings at runtime.
+                            # Editing here updates ~/.arc/user-settings.json.
+                            new_api = await ui.get_user_input_async(
+                                "API key (leave blank to keep current): "
+                            )
+                            if new_api.strip():
+                                settings_manager.update_user_setting(
+                                    "apiKey", new_api.strip()
+                                )
+                                ui.show_system_success(
+                                    "API key saved to ~/.arc/user-settings.json"
+                                )
+
+                            new_url = await ui.get_user_input_async(
+                                f"Base URL [{current_base_url or ''}]: "
+                            )
+                            if new_url.strip():
+                                settings_manager.update_user_setting(
+                                    "baseURL", new_url.strip()
+                                )
+                                ui.show_system_success(
+                                    "Base URL saved to ~/.arc/user-settings.json"
+                                )
+
+                            new_model = await ui.get_user_input_async(
+                                f"Model [{current_model or ''}]: "
+                            )
+                            if new_model.strip():
+                                settings_manager.update_user_setting(
+                                    "model", new_model.strip()
+                                )
+                                ui.show_system_success(
+                                    "Model saved to ~/.arc/user-settings.json"
+                                )
+
+                            # Refresh and show the updated configuration
+                            updated_api = settings_manager.get_api_key()
+                            updated_base = settings_manager.get_base_url()
+                            updated_model = settings_manager.get_current_model()
+                            updated_text = (
+                                f"API Key: {'*' * 8 if updated_api else 'Not set'}\n"
+                                f"Base URL: {updated_base or 'Not set'}\n"
+                                f"Model: {updated_model or 'Not set'}\n"
+                                f"Max Tool Rounds: {max_tool_rounds}"
+                            )
+                            ui.show_config_panel(updated_text)
+
+                            # Initialize agent if missing and API key set
+                            if agent is None and updated_api:
+                                try:
+                                    nonlocal_agent = ArcAgent(
+                                        updated_api,
+                                        updated_base,
+                                        updated_model,
+                                        max_tool_rounds,
+                                        services,
+                                    )
+                                    agent = nonlocal_agent
+                                    ui.show_system_success(
+                                        "AI chat is now enabled with the configured "
+                                        "settings."
+                                    )
+                                except Exception as init_exc:
+                                    ui.show_system_error(
+                                        f"Failed to initialize agent: {init_exc}"
+                                    )
                         continue
                     elif cmd.startswith("sql"):
                         # Handle SQL queries and update current database context
@@ -865,6 +989,14 @@ async def run_interactive_mode(
                 # No special exit without slash; only /exit is supported
 
                 if not user_input:
+                    continue
+
+                # If no agent and user typed free text, require configuration
+                if not user_input.startswith("/") and agent is None:
+                    ui.show_system_error(
+                        "API key not configured. Use /config to set apiKey, "
+                        "baseURL, and model."
+                    )
                     continue
 
                 # Process streaming response with clean context management
