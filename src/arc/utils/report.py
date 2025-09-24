@@ -6,12 +6,10 @@ It intentionally avoids UI dependencies; callers (e.g., CLI) handle prompts.
 
 from __future__ import annotations
 
-import os
 import platform
 import sys
 import urllib.parse
 import webbrowser
-from typing import Optional
 
 GITHUB_ISSUES_URL = "https://github.com/non-linear-ai/arc/issues/new"
 
@@ -69,7 +67,7 @@ def get_arc_version() -> str:
         return "unknown"
 
 
-def compose_issue_body(user_text: str, model: Optional[str] = None) -> str:
+def compose_issue_body(user_text: str, model: str | None = None) -> str:
     """Compose a GitHub-friendly issue body with clear sections.
 
     - System details are grouped in a fenced block under a header.
@@ -95,10 +93,7 @@ def compose_issue_body(user_text: str, model: Optional[str] = None) -> str:
         + db_info
     )
 
-    sys_section = (
-        "### System Information\n\n"
-        "```\n" + system_info.strip() + "\n```\n"
-    )
+    sys_section = "### System Information\n\n```\n" + system_info.strip() + "\n```\n"
 
     user_section = ""
     if user_text and user_text.strip():
@@ -107,7 +102,7 @@ def compose_issue_body(user_text: str, model: Optional[str] = None) -> str:
     return sys_section + user_section
 
 
-def build_issue_url(title: Optional[str], body: str) -> str:
+def build_issue_url(title: str | None, body: str) -> str:
     """Construct the GitHub issue URL with prefilled title and body."""
     params = {"body": body}
     params["title"] = title or "Bug report"

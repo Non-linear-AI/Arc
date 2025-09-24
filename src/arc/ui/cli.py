@@ -20,12 +20,12 @@ from ..database import DatabaseError, DatabaseManager, QueryValidationError
 from ..database.services import ServiceContainer
 from ..ml.runtime import MLRuntime, MLRuntimeError
 from ..utils import ConfirmationService
-from .console import InteractiveInterface
 from ..utils.report import (
     build_issue_url,
     compose_issue_body,
     open_in_browser,
 )
+from .console import InteractiveInterface
 
 # Load environment variables
 load_dotenv()
@@ -833,18 +833,24 @@ async def run_interactive_mode(
                         issue_url = build_issue_url(title, body)
 
                         confirm = (
-                            await ui.get_user_input_async(
-                                "Open browser to create the issue? (Y/n): "
+                            (
+                                await ui.get_user_input_async(
+                                    "Open browser to create the issue? (Y/n): "
+                                )
                             )
-                        ).strip().lower()
+                            .strip()
+                            .lower()
+                        )
                         yes = (not confirm) or confirm.startswith("y")
                         if yes:
                             opened = open_in_browser(issue_url)
                             if opened:
-                                ui.show_system_success("Opened browser to GitHub issues page.")
+                                ui.show_system_success(
+                                    "Opened browser to GitHub issues page."
+                                )
                             else:
                                 ui.show_warning(
-                                    "Could not open browser automatically. Use the URL below."
+                                    "Could not open browser. Please use the URL below."
                                 )
                         else:
                             ui.show_info("Okay, not opening the browser.")
