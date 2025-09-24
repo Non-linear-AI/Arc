@@ -180,8 +180,14 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         with self._printer.section(color="blue") as p:
             p.print("How to Use Arc")
-            p.print("  [dim]Ask questions in natural language or use slash commands below.[/dim]")
-            p.print("  [dim]Examples: 'analyze my data', 'help me train a model', '/config'[/dim]")
+            p.print(
+                "  [dim]Ask questions in natural language or use slash commands "
+                "below.[/dim]"
+            )
+            p.print(
+                "  [dim]Examples: 'analyze my data', 'help me train a model', "
+                "'/config'[/dim]"
+            )
 
             p.print()
             p.print("  System Commands")
