@@ -44,6 +44,9 @@ outputs:
 {% if data_profile.columns -%}
 **Available Columns**: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
 **Column Count**: {{ data_profile.columns | length }}
+
+**REQUIRED**: You MUST use these exact column names: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
+**REQUIRED**: You MUST set shape to [null, {{ data_profile.columns | length }}]
 {% endif %}
 
 ## Example
@@ -52,16 +55,14 @@ outputs:
 ```
 
 ## Rules
-1. **Use ONLY columns that exist in the dataset**
-2. **Match shape [null, N] with in_features=N and actual column count**
-3. **Binary classification**: torch.nn.Linear + torch.nn.Sigmoid
-4. **Multiclass/regression**: torch.nn.Linear only (no activation)
-5. **Use meaningful names**, not generic "features"
-6. **torch.nn.* namespace required**
+1. **CRITICAL: Use ONLY columns that exist in the dataset - NEVER make up column names**
+2. **Use meaningful names**, not generic "features"
+3. **torch.nn.* namespace required for layer type**
 
 ## Output Format
 - YAML only, no markdown blocks or explanations
 - Start with `inputs:` section
-- Focus only on model architecture
+- **MUST be complete and valid YAML**
+- **NEVER leave fields empty or incomplete**
 
 Generate the model specification:

@@ -49,6 +49,7 @@ class ModelGeneratorAgent(BaseAgent):
         name: str,
         user_context: str,
         table_name: str,
+        exclude_columns: list[str] | None = None,
     ) -> tuple[ModelSpec, str]:
         """Generate Arc model specification based on data and user context.
 
@@ -56,6 +57,7 @@ class ModelGeneratorAgent(BaseAgent):
             name: Model name for the specification
             user_context: User description of desired model
             table_name: Database table name for data exploration
+            exclude_columns: Optional list of column names to exclude from model inputs
 
         Returns:
             Tuple of (parsed ModelSpec object, YAML string)
@@ -64,7 +66,7 @@ class ModelGeneratorAgent(BaseAgent):
             ModelGeneratorError: If generation fails
         """
         # Build simple context for LLM
-        data_profile = await self._profile_data(table_name)
+        data_profile = await self._profile_data(table_name, exclude_columns)
         context = {
             "model_name": name,
             "user_intent": user_context,
@@ -186,6 +188,30 @@ class ModelGeneratorAgent(BaseAgent):
         inputs = model_dict.get("inputs", {})
         for input_name, input_spec in inputs.items():
             columns = input_spec.get("columns", [])
+
+
+            # Check for incomplete fields
+            shape = input_spec.get("shape")
+            if shape is None:
+                errors.append(
+                    f"Input '{input_name}' has incomplete 'shape' field - "
+                    f"must specify [null, N] where N is column count"
+                )
+
+            if columns is None:
+                errors.append(
+                    f"Input '{input_name}' has incomplete 'columns' field - "
+                    f"must specify actual column names"
+                )
+                continue
+
+            if isinstance(columns, list) and len(columns) == 0:
+                errors.append(
+                    f"Input '{input_name}' has empty 'columns' field - "
+                    f"must specify actual column names"
+                )
+                continue
+
             for col in columns:
                 if col not in available_columns:
                     errors.append(
@@ -210,8 +236,10 @@ class ModelGeneratorAgent(BaseAgent):
         )
         return [{"schema": ex.schema, "name": ex.name} for ex in examples]
 
-    async def _profile_data(self, table_name: str) -> dict[str, Any]:
-        """Get basic data profile for the table."""
+    async def _profile_data(
+        self, table_name: str, exclude_columns: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Get basic data profile for the table with optional column exclusion."""
         try:
             # Use ML data service instead of raw SQL/db manager
             dataset_info = self.services.ml_data.get_dataset_info(table_name)
@@ -219,10 +247,20 @@ class ModelGeneratorAgent(BaseAgent):
             if dataset_info is None:
                 return {"error": f"Table {table_name} not found or invalid"}
 
-            # Return only essential, non-duplicated fields
+            # Filter out excluded columns if specified
+            available_columns = dataset_info.columns
+            if exclude_columns:
+                excluded_set = set(exclude_columns)
+                filtered_columns = [
+                    col for col in available_columns if col["name"] not in excluded_set
+                ]
+            else:
+                filtered_columns = available_columns
+
+            # Return essential fields with filtered columns
             return {
                 "table_name": dataset_info.name,
-                "columns": dataset_info.columns,
+                "columns": filtered_columns,
             }
 
         except Exception as e:

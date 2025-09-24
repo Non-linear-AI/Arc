@@ -209,7 +209,8 @@ class InteractiveInterface:
             p.print("  ML Commands")
             ml_commands = [
                 (
-                    "/ml generate-model --name NAME --context DESC --data-table TABLE",
+                    "/ml generate-model --name NAME --context DESC --data-table TABLE "
+                    "[--exclude-columns COL1,COL2]",
                     "Generate an Arc-Graph model specification",
                 ),
                 (
