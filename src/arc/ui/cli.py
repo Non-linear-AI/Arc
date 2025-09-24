@@ -21,6 +21,11 @@ from ..database.services import ServiceContainer
 from ..ml.runtime import MLRuntime, MLRuntimeError
 from ..utils import ConfirmationService
 from .console import InteractiveInterface
+from ..utils.report import (
+    build_issue_url,
+    compose_issue_body,
+    open_in_browser,
+)
 
 # Load environment variables
 load_dotenv()
@@ -803,6 +808,49 @@ async def run_interactive_mode(
                         current_database = await handle_sql_command(
                             services.query, ui, user_input, current_database
                         )
+                        continue
+                    elif cmd.startswith("report"):
+                        # Simple interactive GitHub issue reporter
+                        # Optional initial title after /report
+                        initial = user_input[7:].strip() if len(user_input) > 7 else ""
+                        ui.show_info(
+                            "This will open a prefilled GitHub issue in your browser."
+                        )
+                        title_prompt = "Issue title (optional): "
+                        title = await ui.get_user_input_async(title_prompt)
+                        if not title and initial:
+                            title = initial
+
+                        desc = await ui.get_user_input_async(
+                            "Brief description (one line): "
+                        )
+
+                        try:
+                            model_name = agent.get_current_model()
+                        except Exception:
+                            model_name = None
+                        body = compose_issue_body(desc, model=model_name)
+                        issue_url = build_issue_url(title, body)
+
+                        confirm = (
+                            await ui.get_user_input_async(
+                                "Open browser to create the issue? (Y/n): "
+                            )
+                        ).strip().lower()
+                        yes = (not confirm) or confirm.startswith("y")
+                        if yes:
+                            opened = open_in_browser(issue_url)
+                            if opened:
+                                ui.show_system_success("Opened browser to GitHub issues page.")
+                            else:
+                                ui.show_warning(
+                                    "Could not open browser automatically. Use the URL below."
+                                )
+                        else:
+                            ui.show_info("Okay, not opening the browser.")
+
+                        ui.show_info("You can also open this URL to file the issue:")
+                        ui.show_info(issue_url)
                         continue
                     else:
                         ui.show_system_error(f"Unknown system command: /{cmd}")

@@ -194,6 +194,7 @@ class InteractiveInterface:
             commands = [
                 ("/help", "Show available commands and features"),
                 ("/config", "View current configuration"),
+                ("/report", "Report a bug or feedback on GitHub"),
                 (
                     "/sql use [system|user] | /sql <query>",
                     "Switch database or execute SQL query "

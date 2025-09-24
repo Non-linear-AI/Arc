@@ -31,6 +31,7 @@ class ArcCompleter(Completer):
         self.base_commands = [
             "/help",
             "/config",
+            "/report",
             "/clear",
             "/exit",
         ]
@@ -206,6 +207,7 @@ class ArcCompleter(Completer):
                 ("/help", "Show help information"),
                 ("/ml", "Machine learning commands"),
                 ("/sql", "Database operations"),
+                ("/report", "Report a bug or feedback"),
                 ("/config", "Configuration"),
                 ("/clear", "Clear screen"),
                 ("/exit", "Exit application"),
