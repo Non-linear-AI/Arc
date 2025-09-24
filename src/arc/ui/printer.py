@@ -4,14 +4,230 @@
 - Provides streaming helpers for incremental output.
 - Delegates actual rendering to rich.console.Console, but keeps formatting
   decisions out of CLI business logic.
+- Enhanced with prompt_toolkit for advanced input handling including history,
+  cursor movement, and interruption support.
 """
 
 from contextlib import contextmanager, suppress
+from pathlib import Path
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion, WordCompleter
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
+from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+
+
+class ArcCompleter(Completer):
+    """Custom completer for Arc CLI commands with context-aware suggestions."""
+
+    def __init__(self):
+        # Base commands
+        self.base_commands = [
+            "/help",
+            "/config",
+            "/clear",
+            "/exit",
+        ]
+
+        # SQL commands
+        self.sql_commands = ["/sql use system", "/sql use user", "/sql"]
+
+        # ML base commands
+        self.ml_base_commands = [
+            "/ml generate-model",
+            "/ml generate-trainer",
+            "/ml generate-predictor",
+            "/ml create-model",
+            "/ml train",
+            "/ml predict",
+            "/ml jobs",
+        ]
+
+        # ML subcommands for jobs
+        self.ml_jobs_subcommands = ["list", "status"]
+
+        # Command-specific parameters with descriptions
+        self.ml_command_params = {
+            "generate-model": [
+                ("--name", "Model name (required)"),
+                ("--context", "Model description and context (required)"),
+                ("--data-table", "Database table name for data (required)"),
+                ("--model", "AI model to use (optional)"),
+            ],
+            "generate-trainer": [
+                ("--name", "Trainer name (required)"),
+                ("--context", "Training context and requirements (required)"),
+                ("--model-spec", "Path to model specification file (required)"),
+                ("--model", "AI model to use (optional)"),
+            ],
+            "generate-predictor": [
+                ("--model-spec", "Path to model specification file (required)"),
+                ("--context", "Prediction requirements and use case (required)"),
+                ("--trainer-spec", "Path to trainer specification file (optional)"),
+                ("--output", "Output file path (optional)"),
+                ("--model", "AI model to use (optional)"),
+            ],
+            "create-model": [
+                ("--name", "Model name (required)"),
+                ("--schema", "Path to model schema file (required)"),
+            ],
+            "train": [
+                ("--model", "Model name (required)"),
+                ("--data", "Data table name (required)"),
+            ],
+            "predict": [
+                ("--model", "Model name (required)"),
+                ("--data", "Input data table name (required)"),
+                ("--output", "Output table name (required)"),
+            ],
+        }
+
+        # All available options for fallback completion
+        all_options = set()
+        for params in self.ml_command_params.values():
+            all_options.update(param[0] for param in params)
+        self.common_options = list(all_options)
+
+        # Create word completer for simple cases
+        all_completions = (
+            self.base_commands
+            + self.sql_commands
+            + self.ml_base_commands
+            + self.common_options
+        )
+        self.word_completer = WordCompleter(all_completions, ignore_case=True)
+
+    def get_completions(self, document, _complete_event):
+        """Generate completions based on current input context."""
+        text = document.text.lower()
+        word_before_cursor = document.get_word_before_cursor().lower()
+        text_parts = text.split()
+
+        # Handle different completion contexts
+        if len(text_parts) >= 2 and text_parts[0] == "/ml" and text_parts[1] == "jobs":
+            # Complete ML jobs subcommands when we have "/ml jobs"
+            # Show options when there's a trailing space or typing third word
+            if len(text_parts) >= 3 or text.endswith(" "):
+                for subcommand in self.ml_jobs_subcommands:
+                    if subcommand.startswith(word_before_cursor):
+                        yield Completion(
+                            subcommand,
+                            start_position=-len(word_before_cursor),
+                            display_meta="ML jobs command",
+                        )
+            # If user typed exactly "/ml jobs" + tab, show subcommands
+            elif len(text_parts) == 2 and text.strip() == "/ml jobs":
+                for subcommand in self.ml_jobs_subcommands:
+                    yield Completion(
+                        " " + subcommand,  # Add space before subcommand
+                        start_position=0,
+                        display_meta="ML jobs command",
+                    )
+
+        elif text.startswith("/ml ") and len(text_parts) >= 2:
+            # Check if we're completing parameters for a specific ML command
+            if len(text_parts) >= 3 and text_parts[1] in self.ml_command_params:
+                # Complete parameters for the specific ML command
+                command = text_parts[1]
+                available_params = self.ml_command_params[command]
+
+                # Check which parameters are already used in the command
+                used_params = set()
+                for i in range(2, len(text_parts)):
+                    if text_parts[i].startswith("--"):
+                        used_params.add(text_parts[i])
+
+                # Suggest unused parameters
+                if word_before_cursor.startswith("--") or text.endswith(" "):
+                    for param, description in available_params:
+                        if param not in used_params and param.startswith(
+                            word_before_cursor
+                        ):
+                            yield Completion(
+                                param,
+                                start_position=-len(word_before_cursor),
+                                display_meta=description,
+                            )
+
+            # If we have "/ml <subcommand>" and valid command, show parameters
+            elif len(text_parts) == 2 and text_parts[1] in self.ml_command_params:
+                command = text_parts[1]
+                available_params = self.ml_command_params[command]
+                for param, description in available_params:
+                    yield Completion(
+                        " " + param,  # Add space before parameter
+                        start_position=0,
+                        display_meta=description,
+                    )
+
+            else:
+                # Complete ML subcommands
+                ml_subcommands = [
+                    ("generate-model", "Generate ML model specification"),
+                    ("generate-trainer", "Generate training configuration"),
+                    ("generate-predictor", "Generate prediction service"),
+                    ("create-model", "Create model from schema"),
+                    ("train", "Start training job"),
+                    ("predict", "Run prediction"),
+                    ("jobs", "Manage ML jobs"),
+                ]
+                for subcommand, description in ml_subcommands:
+                    if subcommand.startswith(word_before_cursor):
+                        yield Completion(
+                            subcommand,
+                            start_position=-len(word_before_cursor),
+                            display_meta=description,
+                        )
+
+        elif text.startswith("/sql ") and len(text.split()) >= 2:
+            # Complete SQL specific options
+            sql_options = [
+                ("use system", "Switch to system database"),
+                ("use user", "Switch to user database"),
+            ]
+            remaining_text = text[5:].strip()  # Remove '/sql '
+            for option, description in sql_options:
+                if option.startswith(remaining_text):
+                    yield Completion(
+                        option,
+                        start_position=-len(remaining_text),
+                        display_meta=description,
+                    )
+
+        elif text.startswith("/") and len(text.split()) == 1:
+            # Complete base commands
+            all_commands = [
+                ("/help", "Show help information"),
+                ("/ml", "Machine learning commands"),
+                ("/sql", "Database operations"),
+                ("/config", "Configuration"),
+                ("/clear", "Clear screen"),
+                ("/exit", "Exit application"),
+            ]
+            for command, description in all_commands:
+                if command.startswith(text):
+                    yield Completion(
+                        command, start_position=-len(text), display_meta=description
+                    )
+
+        elif word_before_cursor.startswith("--"):
+            # Complete command options
+            for option in self.common_options:
+                if option.startswith(word_before_cursor):
+                    yield Completion(
+                        option,
+                        start_position=-len(word_before_cursor),
+                        display_meta="Command option",
+                    )
+
+        # If no specific context matches, don't suggest anything to avoid clutter
+        # This prevents random word completion when typing regular text
 
 
 class Printer:
@@ -19,6 +235,14 @@ class Printer:
         self.console = Console()
         self._is_streaming = False
         self._section_started = False
+
+        # Advanced input handling
+        self._prompt_session = None
+        self._prompt_enabled = True
+        self._input_active = False
+
+        # Set up history file path
+        self._history_file = Path.home() / ".arc_history"
 
     @contextmanager
     def output_section(self, separator_style: str = "blank"):
@@ -218,8 +442,192 @@ class Printer:
             self.console.print("")
 
     def get_input(self, prompt: str = "") -> str:
-        # No spinner; just return input via rich console
-        return self.console.input(prompt)
+        """Enhanced input using prompt_toolkit PromptSession (sync)."""
+        try:
+            if not self._prompt_session:
+                self._prompt_session = self._create_prompt_session()
+            self._input_active = True
+            return self._prompt_session.prompt(prompt)
+        except KeyboardInterrupt:
+            raise SystemExit(0) from None
+        except EOFError:
+            raise SystemExit("EOF received, exiting...") from None
+        finally:
+            self._input_active = False
+
+    async def get_input_async(self, prompt: str = "") -> str:
+        """Async input using prompt_toolkit PromptSession (non-blocking)."""
+        try:
+            if not self._prompt_session:
+                self._prompt_session = self._create_prompt_session()
+            self._input_active = True
+            return await self._prompt_session.prompt_async(prompt)
+        except KeyboardInterrupt:
+            raise SystemExit(0) from None
+        except EOFError:
+            raise SystemExit("EOF received, exiting...") from None
+        finally:
+            self._input_active = False
+
+    def is_input_active(self) -> bool:
+        return self._input_active
+
+    async def get_choice_async(
+        self,
+        options: list[tuple[str, str]],
+        default: str | None = None,
+    ) -> str:
+        """Show a simple choice selector using prompt_toolkit.
+
+        Args:
+            options: list of (value, label) tuples
+            default: default value key
+            on_escape: optional callback when Esc is pressed
+        Returns the selected value, or "__esc__" if escaped.
+        """
+        # Add ESC handling - always allow ESC to cancel with __esc__ result
+        from prompt_toolkit.key_binding import KeyBindings
+
+        key_bindings = KeyBindings()
+
+        try:
+            self._input_active = True
+            choice = ChoiceInput(
+                message=" Use arrows/enter to select (or type number):",
+                options=options,
+                default=default,
+                show_frame=False,
+                key_bindings=key_bindings,
+            )
+            result = await choice.prompt_async()
+            return result
+        finally:
+            self._input_active = False
+
+    def reset_prompt_session(self) -> None:
+        """Reset the prompt session to ensure a clean state after nested prompts."""
+        self._prompt_session = None
+
+    def _is_real_terminal(self) -> bool:
+        """Deprecated; kept for compatibility but unused."""
+        return True
+
+    def _create_prompt_session(self) -> PromptSession:
+        """Create a PromptSession with advanced key bindings and history."""
+        kb = self._create_key_bindings()
+        completer = ArcCompleter()
+
+        # Create Arc CLI-styled completion menu to match the existing design
+        arc_style = Style.from_dict(
+            {
+                # Completion menu styling - subtle, professional look
+                # Dark background, light text (VS Code-like)
+                "completion-menu.completion": "bg:#1e1e1e fg:#d4d4d4",
+                # Cyan-600 selection (matches Arc cyan theme)
+                "completion-menu.completion.current": "bg:#0e7490 fg:#ffffff bold",
+                # Dimmed text for descriptions (matches "dim" style)
+                "completion-menu.meta.completion": "bg:#1e1e1e fg:#888888",
+                # Light cyan for selected description
+                "completion-menu.meta.completion.current": "bg:#0e7490 fg:#f0f9ff",
+                # Consistent with dim text
+                "completion-menu.multi-column-meta": "bg:#1e1e1e fg:#888888",
+                "completion-menu.scrollbar": "bg:#404040",  # Subtle scrollbar
+                "completion-menu": "bg:#1e1e1e",  # Overall menu background
+                # Keep input text styling clean
+                "": "",  # Use terminal defaults for input text
+            }
+        )
+
+        return PromptSession(
+            history=FileHistory(str(self._history_file)),
+            key_bindings=kb,
+            completer=completer,
+            multiline=False,
+            wrap_lines=True,
+            mouse_support=False,  # Keep it simple for CLI
+            complete_style="column",
+            style=arc_style,
+        )
+
+    def _create_key_bindings(self) -> KeyBindings:
+        """Create comprehensive key bindings for input handling."""
+        kb = KeyBindings()
+
+        # History navigation (Ctrl+Up/Down like aider)
+        @kb.add("c-up")
+        def _(event):
+            """Navigate backward through history"""
+            event.current_buffer.history_backward()
+
+        @kb.add("c-down")
+        def _(event):
+            """Navigate forward through history"""
+            event.current_buffer.history_forward()
+
+        # Let prompt_toolkit handle up/down arrows automatically:
+        # - When completions are shown: navigate completions
+        # - When no completions: navigate history
+        # This provides better UX than forcing history navigation
+
+        # Cursor movement
+        @kb.add("left")
+        def _(event):
+            """Move cursor left"""
+            event.current_buffer.cursor_left()
+
+        @kb.add("right")
+        def _(event):
+            """Move cursor right"""
+            event.current_buffer.cursor_right()
+
+        # Word movement (Ctrl+Left/Right)
+        @kb.add("c-left")
+        def _(event):
+            """Move cursor to beginning of previous word"""
+            # document.find_previous_word_beginning() returns a negative offset
+            event.current_buffer.cursor_position += (
+                event.current_buffer.document.find_previous_word_beginning()
+            )
+
+        @kb.add("c-right")
+        def _(event):
+            """Move cursor to end of next word"""
+            event.current_buffer.cursor_position += (
+                event.current_buffer.document.find_next_word_ending()
+            )
+
+        # Line navigation
+        @kb.add("home")
+        @kb.add("c-a")
+        def _(event):
+            """Move cursor to beginning of line"""
+            event.current_buffer.cursor_position = 0
+
+        @kb.add("end")
+        @kb.add("c-e")
+        def _(event):
+            """Move cursor to end of line"""
+            event.current_buffer.cursor_position = len(event.current_buffer.text)
+
+        # Text deletion
+        @kb.add("c-k")
+        def _(event):
+            """Delete from cursor to end of line"""
+            buffer = event.current_buffer
+            buffer.delete(count=len(buffer.text) - buffer.cursor_position)
+
+        @kb.add("c-u")
+        def _(event):
+            """Delete from beginning of line to cursor"""
+            buffer = event.current_buffer
+            buffer.delete(count=-buffer.cursor_position)
+
+        # ESC: interrupt current input and return control to caller
+        @kb.add("escape")
+        def _(event):
+            event.app.exit(result="")
+
+        return kb
 
     def clear(self) -> None:
         """Clear the screen without any section management."""
@@ -246,7 +654,3 @@ class Printer:
                 self.console.print(message, style=style)
             else:
                 self.console.print(message)
-
-    def cleanup(self) -> None:
-        # No background resources to cleanup now
-        pass

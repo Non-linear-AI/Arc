@@ -6,7 +6,6 @@ import os
 import shlex
 import sys
 import time
-from contextlib import suppress
 from pathlib import Path
 
 import click
@@ -19,9 +18,8 @@ from ..core.agents.predictor_generator import PredictorGeneratorAgent
 from ..core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
 from ..database.services import ServiceContainer
-from ..error_handling import error_handler
 from ..ml.runtime import MLRuntime, MLRuntimeError
-from ..utils import ConfirmationService, performance_manager
+from ..utils import ConfirmationService
 from .console import InteractiveInterface
 
 # Load environment variables
@@ -166,7 +164,7 @@ async def handle_sql_command(
 
         # Display results using the UI formatter
         execution_time = getattr(result, "query_execution_time", result.execution_time)
-        ui.show_sql_result(result, current_database, query, execution_time)
+        ui.show_sql_result(result, current_database, execution_time)
 
     except QueryValidationError as e:
         ui.show_system_error(f"Query Error: {str(e)}")
@@ -688,8 +686,8 @@ async def run_headless_mode(
     try:
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
 
-        # Configure confirmation service for headless mode
-        confirmation_service = ConfirmationService()
+        # Configure confirmation service for headless mode (singleton)
+        confirmation_service = ConfirmationService.get_instance()
         confirmation_service.set_session_flag("allOperations", True)
 
         # Process the user message
@@ -746,6 +744,10 @@ async def run_interactive_mode(
     try:
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services)
         ui = InteractiveInterface()
+        from contextlib import suppress
+
+        with suppress(Exception):
+            ConfirmationService.get_instance().set_ui(ui)
 
         # Database context for SQL commands - defaults to system database
         current_database = "system"
@@ -756,7 +758,7 @@ async def run_interactive_mode(
         while True:
             try:
                 # Get user input with styled prompt
-                user_input = ui.get_user_input()
+                user_input = await ui.get_user_input_async()
 
                 # Display the user message in chat history with different coloring
                 ui.show_user_message(user_input)
@@ -771,25 +773,13 @@ async def run_interactive_mode(
                         1:
                     ].lower()  # Remove the / prefix and convert to lowercase
 
-                    if cmd in ["exit", "quit", "bye"]:
+                    if cmd == "exit":
                         ui.show_goodbye()
                         break
                     elif cmd == "help":
                         ui.show_commands()
                         continue
-                    elif cmd == "stats":
-                        # Show editing statistics if available
-                        if hasattr(agent.file_editor, "editor_manager"):
-                            stats = (
-                                agent.file_editor.editor_manager.get_strategy_stats()
-                            )
-                            ui.show_edit_summary(stats)
-                        else:
-                            ui.show_info("📊 No editing statistics available yet.")
-                        continue
-                    elif cmd == "tree":
-                        ui.show_file_tree(agent.get_current_directory())
-                        continue
+
                     elif cmd == "clear":
                         ui.clear_screen()
                         continue
@@ -808,12 +798,6 @@ async def run_interactive_mode(
                         )
                         ui.show_config_panel(config_text)
                         continue
-                    elif cmd == "performance":
-                        # Show performance metrics
-                        metrics = performance_manager.get_metrics()
-                        error_stats = error_handler.get_error_stats()
-                        ui.show_performance_metrics(metrics, error_stats)
-                        continue
                     elif cmd.startswith("sql"):
                         # Handle SQL queries and update current database context
                         current_database = await handle_sql_command(
@@ -824,10 +808,7 @@ async def run_interactive_mode(
                         ui.show_system_error(f"Unknown system command: /{cmd}")
                         continue
 
-                    # Handle special exit commands without prefix (for convenience)
-                elif user_input.lower() in ["exit", "quit", "bye"]:
-                    ui.show_goodbye()
-                    break
+                # No special exit without slash; only /exit is supported
 
                 if not user_input:
                     continue
@@ -835,9 +816,37 @@ async def run_interactive_mode(
                 # Process streaming response with clean context management
                 start_time = time.time()
 
-                with ui.stream_response(start_time) as handler:
-                    async for chunk in agent.process_user_message_stream(user_input):
-                        handler.handle_chunk(chunk)
+                with ui.escape_watcher() as esc:
+                    interrupted = False
+                    with ui.stream_response(start_time) as handler:
+                        agen = agent.process_user_message_stream(user_input).__aiter__()
+                        esc_task = asyncio.create_task(esc.event.wait())
+                        try:
+                            while True:
+                                next_task = asyncio.create_task(agen.__anext__())
+                                done, _ = await asyncio.wait(
+                                    {esc_task, next_task},
+                                    return_when=asyncio.FIRST_COMPLETED,
+                                )
+
+                                if esc_task in done:
+                                    interrupted = True
+                                    next_task.cancel()
+                                    with suppress(Exception):
+                                        await agen.aclose()
+                                    break
+
+                                # Otherwise, next_task completed
+                                chunk = next_task.result()
+                                handler.handle_chunk(chunk)
+                        except StopAsyncIteration:
+                            pass
+                        finally:
+                            if not esc_task.done():
+                                esc_task.cancel()
+
+                if interrupted:
+                    ui.show_info("⏹ Interrupted.")
 
             except KeyboardInterrupt:
                 ui.show_goodbye()

@@ -1,11 +1,10 @@
-"""Confirmation service for user operations."""
+"""Confirmation service for user operations.
 
-from typing import Optional
+Always uses the UI's Printer (prompt_toolkit) for interactive confirmations.
+If no UI is present (e.g., headless), auto-approves silently.
+"""
 
-from rich.console import Console
-from rich.prompt import Prompt
-
-console = Console()
+from typing import Any, Optional
 
 
 class ConfirmationResult:
@@ -30,6 +29,7 @@ class ConfirmationService:
             "bash_commands": False,
             "all_operations": False,
         }
+        self._ui: Any | None = None  # Injected UI for prompting (InteractiveInterface)
 
     @classmethod
     def get_instance(cls) -> "ConfirmationService":
@@ -63,67 +63,65 @@ class ConfirmationService:
     ) -> ConfirmationResult:
         """Show the confirmation dialog."""
 
-        # Add spacing before confirmation
-        console.print()
+        # UI is required for interactive confirmations; if missing, auto-approve
+        ui = self._ui
+        if ui is None or getattr(ui, "_printer", None) is None:
+            return ConfirmationResult(confirmed=True)
 
-        # Show operation header with magenta dot (like arc-cli)
-        console.print(f"[magenta]⏺[/magenta] [white]{operation}({target})[/white]")
+        # Add spacing before confirmation and show header
+        with ui._printer.section(color="yellow") as p:
+            p.print(f"{operation}({target})")
+            if content:
+                p.print("  [dim]⎿ Requesting user confirmation[/dim]")
+                lines = content.split("\n")
+                p.print(f"  [dim]⎿ {lines[0]}[/dim]")
+                if len(lines) > 1:
+                    for line in lines[1:3]:  # Show up to 2 more lines
+                        if line.strip():
+                            p.print(f"      [dim]{line}[/dim]")
+                    if len(lines) > 3:
+                        p.print(f"      [dim]… +{len(lines) - 3} more lines[/dim]")
+            else:
+                p.print("  [dim]⎿ Requesting user confirmation[/dim]")
 
-        # Show content preview if provided
-        if content:
-            console.print("  [dim]⎿ Requesting user confirmation[/dim]")
-            lines = content.split("\n")
-            console.print(f"  [dim]⎿ {lines[0]}[/dim]")
-            if len(lines) > 1:
-                for line in lines[1:3]:  # Show up to 2 more lines
-                    if line.strip():
-                        console.print(f"      [dim]{line}[/dim]")
-                if len(lines) > 3:
-                    console.print(f"      [dim]… +{len(lines) - 3} more lines[/dim]")
-        else:
-            console.print("  [dim]⎿ Requesting user confirmation[/dim]")
+        # Choices match the main prompt behavior; Esc cancels globally
+        options = [
+            ("yes", "1. Yes"),
+            ("yes_session", "2. Yes, and don't ask again this session"),
+            ("no", "3. No"),
+        ]
 
-        console.print()
-        console.print("Do you want to proceed with this operation?")
-        console.print()
+        # Pass global escape trigger so ESC terminates the entire task
+        selection = await ui._printer.get_choice_async(options, default="yes")
 
-        # Show options
-        options = ["1. Yes", "2. Yes, and don't ask again this session", "3. No"]
+        ui._printer.add_separator("space")
+        # Reset prompt session to ensure consistent state after nested prompt
+        ui._printer.reset_prompt_session()
 
-        for option in options:
-            console.print(f"  {option}")
+        # Handle ESC as cancellation (same as "no")
+        if selection == "__esc__":
+            return ConfirmationResult(confirmed=False, feedback="Cancelled by user")
 
-        console.print()
-        console.print("[dim]Enter option number (1-3):[/dim]")
+        if selection == "yes":
+            return ConfirmationResult(confirmed=True)
+        if selection == "yes_session":
+            if "bash" in operation.lower():
+                self.session_flags["bash_commands"] = True
+            elif (
+                "file" in operation.lower()
+                or "create" in operation.lower()
+                or "edit" in operation.lower()
+            ):
+                self.session_flags["file_operations"] = True
+            return ConfirmationResult(confirmed=True, dont_ask_again=True)
+        # selection == "no"
+        return ConfirmationResult(
+            confirmed=False, feedback="User denied permission for this operation"
+        )
 
-        # Get user choice
-        while True:
-            try:
-                choice = Prompt.ask("", default="1").strip()
-                choice_num = int(choice)
-
-                if choice_num == 1:
-                    return ConfirmationResult(confirmed=True)
-                elif choice_num == 2:
-                    # Set appropriate session flag
-                    if "bash" in operation.lower():
-                        self.session_flags["bash_commands"] = True
-                    elif (
-                        "file" in operation.lower()
-                        or "create" in operation.lower()
-                        or "edit" in operation.lower()
-                    ):
-                        self.session_flags["file_operations"] = True
-                    return ConfirmationResult(confirmed=True, dont_ask_again=True)
-                elif choice_num == 3:
-                    return ConfirmationResult(
-                        confirmed=False, feedback="Operation cancelled by user"
-                    )
-                else:
-                    console.print("[red]Please enter a number between 1 and 3[/red]")
-
-            except (ValueError, KeyboardInterrupt):
-                console.print("[red]Please enter a valid number (1-3)[/red]")
+    def set_ui(self, ui: Any) -> None:
+        """Inject the UI object to enable prompt_toolkit-backed input."""
+        self._ui = ui
 
     def reset_session(self):
         """Reset all session flags."""

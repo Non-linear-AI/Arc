@@ -1,16 +1,17 @@
 """Enhanced UX components for Arc CLI."""
 
+import asyncio
+import sys
+import threading
+from collections.abc import Callable
 from contextlib import contextmanager, suppress
-from pathlib import Path
 from typing import Any
 
 from rich import box
 from rich.align import Align
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
-from rich.tree import Tree
 
 from ..database import QueryResult
 from .printer import Printer
@@ -44,8 +45,143 @@ class InteractiveInterface:
         self._printer.print(Align.left(panel))
 
         # Single concise hint
-        self._printer.print(" Use /help for more information.")
+        self._printer.print(" Use /help for more information. Press Esc to interrupt.")
         self._printer.add_separator()
+
+    # Lightweight ESC watcher used during streaming (no prompt active)
+    class _EscWatcher:
+        def __init__(
+            self,
+            loop: asyncio.AbstractEventLoop | None = None,
+            event: asyncio.Event | None = None,
+            is_input_active: Callable[[], bool] | None = None,
+        ):
+            self._pressed = threading.Event()
+            self._stop = threading.Event()
+            self._thread: threading.Thread | None = None
+            self._fd = None
+            self._orig_attrs = None
+            self._loop = loop
+            self._event = event
+            self._is_input_active = is_input_active
+
+        def start(self):
+            if not sys.stdin.isatty():
+                return
+            try:
+                import select
+                import termios
+                import tty
+
+                self._termios = termios  # store for stop()
+                self._select = select
+                self._fd = sys.stdin.fileno()
+                self._orig_attrs = termios.tcgetattr(self._fd)
+                tty.setcbreak(self._fd)
+                # Keep terminal echo enabled to avoid interfering with prompts
+
+                def _run():
+                    try:
+                        while not self._stop.is_set():
+                            # If an input prompt is active, don't consume stdin
+                            if self._is_input_active and self._is_input_active():
+                                # Sleep briefly to yield
+                                self._stop.wait(0.05)
+                                continue
+                            r, _, _ = self._select.select([sys.stdin], [], [], 0.05)
+                            if r:
+                                ch = sys.stdin.read(1)
+                                if ch == "\x1b":  # ESC
+                                    self._pressed.set()
+                                    # Notify asyncio side immediately if available
+                                    if (
+                                        self._loop is not None
+                                        and self._event is not None
+                                    ):
+                                        with suppress(Exception):
+                                            self._loop.call_soon_threadsafe(
+                                                self._event.set
+                                            )
+                                    break
+                    except Exception:
+                        pass
+
+                self._thread = threading.Thread(target=_run, daemon=True)
+                self._thread.start()
+            except Exception:
+                # Best-effort only; if unavailable, do nothing
+                pass
+
+        def is_pressed(self) -> bool:
+            return self._pressed.is_set()
+
+        def stop(self):
+            try:
+                self._stop.set()
+                if self._thread:
+                    self._thread.join(timeout=0.2)
+                if self._orig_attrs is not None and self._fd is not None:
+                    self._termios.tcsetattr(
+                        self._fd, self._termios.TCSADRAIN, self._orig_attrs
+                    )
+            except Exception:
+                pass
+
+    @contextmanager
+    def escape_watcher(self):
+        """Start an ESC watcher during streaming and restore terminal state on exit.
+
+        Yields an object with:
+          - is_pressed(): bool (thread-side immediate flag)
+          - event: asyncio.Event (fires promptly on ESC)
+        """
+        loop = asyncio.get_running_loop()
+        event = asyncio.Event()
+
+        class EscHandle:
+            def __init__(self, watcher, event):
+                self._watcher = watcher
+                self.event = event
+
+            def is_pressed(self) -> bool:
+                return self._watcher.is_pressed()
+
+        watcher = self._EscWatcher(
+            loop, event, is_input_active=self._printer.is_input_active
+        )
+        watcher.start()
+        # Track active watcher so we can suspend it during interactive menus
+        self._active_watcher = watcher
+        try:
+            yield EscHandle(watcher, event)
+        finally:
+            watcher.stop()
+            if getattr(self, "_active_watcher", None) is watcher:
+                self._active_watcher = None
+
+    def suspend_escape(self) -> None:
+        """Stop any active ESC watcher to avoid stealing input (e.g., menus)."""
+        watcher = getattr(self, "_active_watcher", None)
+        if watcher is not None:
+            with suppress(Exception):
+                watcher.stop()
+            self._active_watcher = None
+
+    def trigger_escape(self) -> None:
+        """Programmatically trigger an ESC event to cancel the current task.
+
+        When a prompt_toolkit widget handles Esc locally, use this to propagate
+        the cancel up to the global streaming loop so the whole task stops.
+        """
+        watcher = getattr(self, "_active_watcher", None)
+        if watcher is not None:
+            try:
+                if getattr(watcher, "_event", None) is not None:
+                    watcher._event.set()
+                if getattr(watcher, "_pressed", None) is not None:
+                    watcher._pressed.set()
+            except Exception:
+                pass
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
@@ -57,9 +193,6 @@ class InteractiveInterface:
             )
             commands = [
                 ("/help", "Show available commands and features"),
-                ("/stats", "Show editing strategy statistics"),
-                ("/performance", "Show performance metrics and cache statistics"),
-                ("/tree", "Show directory structure"),
                 ("/config", "View current configuration"),
                 (
                     "/sql use [system|user] | /sql <query>",
@@ -67,7 +200,7 @@ class InteractiveInterface:
                     "(system: read-only, user: full access)",
                 ),
                 ("/clear", "Clear the screen"),
-                ("/exit or /quit", "Exit the application"),
+                ("/exit", "Exit the application"),
             ]
             for cmd, desc in commands:
                 p.print(f"  • [bold cyan]{cmd}[/bold cyan]: {desc}")
@@ -134,17 +267,25 @@ class InteractiveInterface:
         return mapping.get(tool_name, tool_name)
 
     def _get_dot_color(self, tool_name: str) -> str:
-        """Get color for the dot based on action type."""
+        """Get color for the dot based on semantic action type.
+
+        Color scheme:
+        - Blue: System operations, configuration, databases
+        - Green: Success operations, ML training/prediction
+        - Yellow: File operations, search, user attention
+        - Red: System commands, potentially risky operations
+        - Default: Neutral tool output, informational
+        """
         if tool_name in ["create_todo_list", "update_todo_list"]:
-            return "blue"  # Plan operations
+            return "blue"  # Planning/system operations
         elif tool_name in ["bash"]:
-            return "red"  # System operations
+            return "red"  # System commands (potentially risky)
         elif tool_name in ["search"]:
-            return "yellow"  # Search operations
+            return "yellow"  # Search operations (attention/discovery)
         elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
-            return "magenta"  # File operations
+            return "yellow"  # File operations (user attention needed)
         elif tool_name in ["database_query", "schema_discovery"]:
-            return "green"  # Database operations
+            return "blue"  # Database/system operations
         elif tool_name in [
             "ml_create_model",
             "ml_train",
@@ -153,9 +294,9 @@ class InteractiveInterface:
             "ml_trainer_generator",
             "ml_predictor_generator",
         ]:
-            return "green"
+            return "green"  # ML operations (success/completion focused)
         else:
-            return "cyan"  # Default/messages
+            return "white"  # Default/neutral informational output
 
     def show_tool_execution(self, _tool_name: str, _args: dict[str, Any]):
         """Show tool execution line that will be replaced with result."""
@@ -415,139 +556,6 @@ class InteractiveInterface:
             # Ensure cleanup even if an exception occurs (no final rendering here)
             handler._finish_assistant_streaming(final=False)
 
-    def show_edit_summary(self, strategy_stats: dict[str, dict[str, Any]]):
-        """Show editing strategy statistics."""
-        stats_table = Table(title="📊 Editing Strategy Performance")
-        stats_table.add_column("Strategy", style="bold")
-        stats_table.add_column("Success", style="green")
-        stats_table.add_column("Failures", style="red")
-        stats_table.add_column("Success Rate", style="cyan")
-        stats_table.add_column("Total Ops", style="yellow")
-
-        for strategy_name, stats in strategy_stats.items():
-            success_rate = f"{stats['success_rate']:.1%}"
-            stats_table.add_row(
-                strategy_name.replace("_", " ").title(),
-                str(stats["success_count"]),
-                str(stats["failure_count"]),
-                success_rate,
-                str(stats["total_operations"]),
-            )
-
-        with self._printer.section(color="blue") as p:
-            p.print(stats_table)
-
-    def show_performance_metrics(
-        self, metrics: dict[str, Any], error_stats: dict[str, Any] | None = None
-    ):
-        """Show performance metrics dashboard."""
-        perf_table = Table(title="🚀 Performance Metrics")
-        perf_table.add_column("Metric", style="bold cyan")
-        perf_table.add_column("Value", style="yellow")
-        perf_table.add_column("Description", style="dim")
-
-        perf_table.add_row(
-            "Cache Hit Rate",
-            f"{metrics.get('cache_hit_rate', 0):.1%}",
-            "Percentage of requests served from cache",
-        )
-        perf_table.add_row(
-            "Cache Hits",
-            str(metrics.get("cache_hits", 0)),
-            "Number of successful cache retrievals",
-        )
-        perf_table.add_row(
-            "Cache Misses",
-            str(metrics.get("cache_misses", 0)),
-            "Number of cache misses requiring computation",
-        )
-        perf_table.add_row(
-            "Avg Response Time",
-            f"{metrics.get('avg_response_time', 0):.3f}s",
-            "Average time per request",
-        )
-        perf_table.add_row(
-            "Total Requests",
-            str(metrics.get("total_requests", 0)),
-            "Total number of processed requests",
-        )
-        perf_table.add_row(
-            "File Operations",
-            str(metrics.get("file_operations", 0)),
-            "Number of file operations performed",
-        )
-        perf_table.add_row(
-            "Tool Executions",
-            str(metrics.get("tool_executions", 0)),
-            "Number of tool executions",
-        )
-        perf_table.add_row(
-            "Memory Cache Size",
-            str(metrics.get("memory_cache_size", 0)),
-            "Number of items in memory cache",
-        )
-        perf_table.add_row(
-            "File Cache Size",
-            str(metrics.get("file_cache_size", 0)),
-            "Number of items in persistent cache",
-        )
-
-        with self._printer.section(color="green") as p:
-            p.print(perf_table)
-
-        # Show error statistics if available
-        if error_stats and error_stats.get("total_errors", 0) > 0:
-            error_table = Table(title="⚠️ Error Statistics")
-            error_table.add_column("Category", style="bold red")
-            error_table.add_column("Count", style="yellow")
-
-            for category, count in error_stats.get("by_category", {}).items():
-                error_table.add_row(category.replace("_", " ").title(), str(count))
-
-            with self._printer.section(color="red") as p:
-                p.print(error_table)
-
-    def show_file_tree(self, directory: str, max_depth: int = 3):
-        """Display file tree for current directory."""
-        try:
-            tree = Tree(f"📁 {directory}")
-            self._build_tree(Path(directory), tree, max_depth, 0)
-
-            with self._printer.section(color="blue") as p:
-                p.print_panel(Panel(tree))
-        except Exception as e:
-            with self._printer.section(color="red") as p:
-                p.print(f"❌ Error building file tree: {e}")
-
-    def _build_tree(self, path: Path, tree: Tree, max_depth: int, current_depth: int):
-        """Recursively build file tree."""
-        if current_depth >= max_depth:
-            return
-
-        try:
-            items = sorted(path.iterdir())[:20]  # Limit to 20 items per directory
-
-            for item in items:
-                if item.is_dir():
-                    branch = tree.add(f"📁 {item.name}/")
-                    if current_depth < max_depth - 1:
-                        self._build_tree(item, branch, max_depth, current_depth + 1)
-                else:
-                    # Add file with size info
-                    size = item.stat().st_size
-                    size_str = self._format_file_size(size)
-                    tree.add(f"📄 {item.name} ({size_str})")
-        except PermissionError:
-            tree.add("❌ Permission denied")
-
-    def _format_file_size(self, size: int) -> str:
-        """Format file size in human readable form."""
-        for unit in ["B", "KB", "MB", "GB"]:
-            if size < 1024:
-                return f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{size:.1f} TB"
-
     def _format_args(self, args: dict[str, Any]) -> str:
         """Format tool arguments for display."""
         if not args:
@@ -562,12 +570,29 @@ class InteractiveInterface:
         return ", ".join(formatted)
 
     def prompt_confirmation(self, message: str) -> bool:
-        """Enhanced confirmation prompt."""
-        return Confirm.ask(f"🤔 {message}")
+        """Confirmation prompt using prompt_toolkit via Printer."""
+        while True:
+            try:
+                resp = self._printer.get_input(f"🤔 {message} [y/N]: ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                return False
+
+            if resp in ("y", "yes"):
+                return True
+            if resp in ("n", "no", ""):
+                return False
+            self._printer.print("Please enter 'y' or 'n'.")
 
     def prompt_input(self, message: str, default: str | None = None) -> str:
-        """Enhanced input prompt."""
-        return Prompt.ask(f"💭 {message}", default=default)
+        """Simple input prompt using prompt_toolkit via Printer."""
+        try:
+            value = self._printer.get_input(
+                f"💭 {message}{' [' + default + ']' if default else ''}: "
+            )
+        except (KeyboardInterrupt, EOFError):
+            return default or ""
+        value = value.strip()
+        return value if value else (default or "")
 
     def show_code_diff(self, old_code: str, new_code: str, language: str = "python"):
         """Show code diff with syntax highlighting."""
@@ -606,7 +631,6 @@ class InteractiveInterface:
         self,
         result: QueryResult,
         target_db: str,
-        query: str,
         execution_time: float | None = None,
     ) -> None:
         """Display SQL query results in a formatted table."""
@@ -619,16 +643,6 @@ class InteractiveInterface:
             # Header
             p.print(f"{header}")
 
-            # Query panel
-            p.print_panel(
-                Panel(
-                    Syntax(query.strip(), "sql", theme="monokai", word_wrap=True),
-                    title="Query",
-                    border_style="blue",
-                    padding=(0, 1),
-                )
-            )
-
             if result.empty():
                 p.print_panel(
                     Panel(
@@ -639,16 +653,19 @@ class InteractiveInterface:
                 )
                 return
 
-            # Create table
+            # Build clean table for panel display
             table = Table(
-                show_header=True, header_style="bold magenta", box=box.ROUNDED
+                show_header=True,
+                header_style="bold",
+                border_style="color(240)",
+                box=box.HORIZONTALS,
             )
 
             # Add columns from first row
             first_row = result.first()
             if first_row:
                 for column_name in first_row:
-                    table.add_column(str(column_name), style="cyan", no_wrap=False)
+                    table.add_column(str(column_name), no_wrap=False)
 
             # Add data rows (limit to avoid overwhelming output)
             max_rows = 100
@@ -677,14 +694,14 @@ class InteractiveInterface:
 
                 table.add_row(*row_values)
 
-            # Show the table and summary
+            # Show the table and summary in a compact panel
             p.print(table)
             total_rows = result.count()
             if total_rows > max_rows:
-                p.print(f"\n[dim]Showing {max_rows} of {total_rows} rows[/dim]")
+                p.print(f" [dim]Showing {max_rows} of {total_rows} rows[/dim]")
             else:
                 row_text = "row" if total_rows == 1 else "rows"
-                p.print(f"\n[dim]{total_rows} {row_text} returned[/dim]")
+                p.print(f" [dim]{total_rows} {row_text} returned[/dim]")
 
     # System and misc helpers using Printer
     def show_system_error(self, message: str) -> None:
@@ -692,6 +709,9 @@ class InteractiveInterface:
 
     def show_system_success(self, message: str) -> None:
         self._printer.show_message(f"✅ {message}", use_section=False)
+
+    def show_warning(self, message: str) -> None:
+        self._printer.show_message(f"⚠️ {message}", style="yellow", use_section=False)
 
     def show_goodbye(self) -> None:
         self._printer.show_message("👋 Goodbye!", style="cyan", use_section=False)
@@ -704,7 +724,7 @@ class InteractiveInterface:
 
     def show_config_panel(self, config_text: str) -> None:
         with self._printer.section(color="blue") as p:
-            p.print_panel(Panel(config_text))
+            p.print_panel(Panel(config_text, expand=False, border_style="color(240)"))
 
     def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         table = Table(title=title, box=box.SIMPLE_HEAVY)
@@ -717,7 +737,7 @@ class InteractiveInterface:
             for row in rows:
                 table.add_row(*row)
 
-        with self._printer.section(color="cyan") as p:
+        with self._printer.section(color="blue") as p:
             p.print(table)
 
     def show_key_values(self, title: str, pairs: list[list[str]]) -> None:
@@ -729,11 +749,16 @@ class InteractiveInterface:
             if len(pair) >= 2:
                 table.add_row(pair[0], pair[1])
 
-        with self._printer.section(color="cyan") as p:
+        with self._printer.section(color="blue") as p:
             p.print(table)
 
-    def get_user_input(self, prompt: str = "\n[bold green]>[/bold green] ") -> str:
+    def get_user_input(self, prompt: str = "\n> ") -> str:
         return self._printer.get_input(prompt).strip()
+
+    async def get_user_input_async(self, prompt: str = "\n> ") -> str:
+        """Async version of get_user_input for use in async contexts."""
+        result = await self._printer.get_input_async(prompt)
+        return result.strip()
 
     def cleanup(self) -> None:
         self._printer.cleanup()
