@@ -473,7 +473,7 @@ class MLModelGeneratorTool(BaseTool):
             syntax = Syntax(
                 yaml_content,
                 "yaml",
-                theme="monokai",
+                theme="github-dark",
                 line_numbers=True,
                 word_wrap=False,
             )
