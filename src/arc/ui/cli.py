@@ -18,6 +18,7 @@ from ..core.agents.predictor_generator import PredictorGeneratorAgent
 from ..core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
 from ..database.services import ServiceContainer
+from ..graph.features.data_source import DataSourceSpec
 from ..ml.runtime import MLRuntime, MLRuntimeError
 from ..utils import ConfirmationService
 from ..utils.report import (
@@ -224,7 +225,7 @@ async def handle_ml_command(
     if len(tokens) < 2:
         ui.show_system_error(
             "Usage: /ml <create-model|train|predict|jobs|generate-model|"
-            "generate-trainer|generate-predictor> ..."
+            "generate-trainer|generate-predictor|data-processing> ..."
         )
         return
 
@@ -246,6 +247,8 @@ async def handle_ml_command(
             await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "generate-predictor":
             await _ml_generate_predictor(args, ui, runtime)
+        elif subcommand == "data-processing":
+            await _ml_data_processing(args, ui, runtime)
         else:
             raise CommandError(f"Unknown ML command: {subcommand}")
     except CommandError as e:
@@ -677,6 +680,123 @@ async def _ml_generate_predictor(
 
     except Exception as exc:
         raise CommandError(f"Predictor generation failed: {exc}") from exc
+
+
+async def _ml_data_processing(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
+    """Handle data processing pipeline execution command."""
+    options = _parse_options(
+        args,
+        {
+            "yaml": True,
+            "target-db": True,
+        },
+    )
+
+    yaml_path = options.get("yaml")
+    target_db = options.get("target-db", "user")
+
+    if not yaml_path:
+        raise CommandError(
+            "/ml data-processing requires --yaml <path> to specify the pipeline file"
+        )
+
+    # Validate target database
+    if target_db not in ["system", "user"]:
+        raise CommandError(
+            "Invalid target database. Use --target-db system or --target-db user"
+        )
+
+    yaml_file = Path(str(yaml_path))
+    if not yaml_file.exists():
+        raise CommandError(f"Data processing file not found: {yaml_path}")
+
+    try:
+        ui.show_info(f"Data Processing: {yaml_path}")
+
+        # Parse the YAML specification
+        spec = DataSourceSpec.from_yaml_file(str(yaml_file))
+
+        ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
+
+        # Get execution order (topologically sorted)
+        ordered_steps = spec.get_execution_order()
+
+        # Execute all steps and track intermediate views for cleanup
+        ui.show_info("")
+        ui.show_info("Executing pipeline...")
+
+        # Get the database manager for direct access
+        db_manager = runtime.services.db_manager
+        step_count = len(ordered_steps)
+        intermediate_views = []  # Track views that need cleanup
+
+        try:
+            for i, step in enumerate(ordered_steps, 1):
+                # Determine if this is an output step (should create table) or
+                # intermediate (view)
+                step_type = "table" if step.name in spec.outputs else "view"
+                ui.show_info(f"  Step {i}/{step_count}: {step.name} ({step_type})")
+
+                # Substitute variables in SQL
+                sql = spec.substitute_vars(step.sql)
+                # Strip trailing semicolons (they cause syntax errors in
+                # CREATE TABLE/VIEW AS)
+                sql = sql.rstrip().rstrip(";").rstrip()
+
+                try:
+                    if step.name in spec.outputs:
+                        # Create persistent table for output steps
+                        create_sql = f"CREATE TABLE {step.name} AS ({sql})"
+                    else:
+                        # Create regular view for intermediate steps (allows debugging)
+                        create_sql = f"CREATE VIEW {step.name} AS ({sql})"
+                        intermediate_views.append(step.name)  # Track for cleanup
+
+                    # Execute using database manager directly to ensure same session
+                    if target_db == "system":
+                        db_manager.system_execute(create_sql)
+                    else:
+                        db_manager.user_execute(create_sql)
+
+                except Exception as step_error:
+                    raise CommandError(
+                        f"Failed to execute step '{step.name}': {str(step_error)}"
+                    ) from step_error
+
+        finally:
+            # Clean up intermediate views
+            if intermediate_views:
+                for view_name in intermediate_views:
+                    try:
+                        cleanup_sql = f"DROP VIEW IF EXISTS {view_name}"
+                        if target_db == "system":
+                            db_manager.system_execute(cleanup_sql)
+                        else:
+                            db_manager.user_execute(cleanup_sql)
+                    except Exception:
+                        # Don't fail the entire pipeline if cleanup fails
+                        ui.show_info(f"Warning: Could not clean up view '{view_name}'")
+
+        # Show completion summary
+        ui.show_info("")
+        ui.show_info("Pipeline completed successfully")
+        output_list = ", ".join(spec.outputs)
+        ui.show_info(f"Output tables: {output_list}")
+
+        if target_db == "user":
+            ui.show_info(
+                "Note: Intermediate views have been cleaned up. Query results "
+                "with: /sql SELECT * FROM <table_name>"
+            )
+
+    except ValueError as parse_error:
+        raise CommandError(
+            f"Invalid YAML specification: {str(parse_error)}"
+        ) from parse_error
+    except Exception as exc:
+        raise CommandError(f"Data processing failed: {exc}") from exc
 
 
 async def run_headless_mode(

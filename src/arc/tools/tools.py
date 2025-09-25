@@ -528,4 +528,68 @@ def get_base_tools() -> list[ArcTool]:
                 "required": ["context", "model_spec_path"],
             },
         ),
+        ArcTool(
+            name="data_processor_generator",
+            description=(
+                "Generate reusable YAML configurations for data processing workflows. "
+                "Use this tool ONLY when users explicitly request configuration "
+                "generation, such as: creating reusable pipelines, documenting "
+                "workflows, persisting steps, or generating templates. Do NOT use "
+                "for immediate data operations - those should be executed directly "
+                "with database_query. This tool uses specialized LLM agents to "
+                "generate optimized configurations. Examples: 'create a reusable "
+                "config', 'persist these steps as YAML', 'document this workflow'."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["generate", "validate"],
+                        "description": (
+                            "Action to perform: 'generate' creates YAML from "
+                            "natural language (default), 'validate' checks "
+                            "existing YAML configuration"
+                        ),
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Natural language description of data processing "
+                            "requirements (required for 'generate' action)"
+                        ),
+                    },
+                    "target_tables": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "List of database tables to analyze for generation "
+                            "(optional)"
+                        ),
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": (
+                            "Path to save generated YAML or validate existing YAML file"
+                        ),
+                    },
+                    "target_db": {
+                        "type": "string",
+                        "enum": ["system", "user"],
+                        "description": (
+                            "Target database for schema discovery: 'system' for "
+                            "Arc metadata, 'user' for training data (default: user)"
+                        ),
+                    },
+                    "yaml_content": {
+                        "type": "string",
+                        "description": (
+                            "Raw YAML content for validation "
+                            "(alternative to output_path)"
+                        ),
+                    },
+                },
+                "required": ["action"],
+            },
+        ),
     ]
