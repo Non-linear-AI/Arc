@@ -23,7 +23,7 @@ from arc.core.agents.trainer_generator import (
 )
 from arc.graph.model import ModelValidationError, validate_model_dict
 from arc.ml.runtime import MLRuntime, MLRuntimeError
-from arc.base import BaseTool, ToolResult
+from arc.tools.base import BaseTool, ToolResult
 
 
 def _as_optional_int(value: Any, field_name: str) -> int | None:
