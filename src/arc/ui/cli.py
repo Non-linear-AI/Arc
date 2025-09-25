@@ -18,7 +18,6 @@ from ..core.agents.predictor_generator import PredictorGeneratorAgent
 from ..core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from ..database import DatabaseError, DatabaseManager, QueryValidationError
 from ..database.services import ServiceContainer
-from ..error_handling import error_handler
 from ..graph.features.data_source import DataSourceSpec
 from ..ml.runtime import MLRuntime, MLRuntimeError
 from ..utils import ConfirmationService
