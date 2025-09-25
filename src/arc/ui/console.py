@@ -209,7 +209,8 @@ class InteractiveInterface:
             p.print("  ML Commands")
             ml_commands = [
                 (
-                    "/ml generate-model --name NAME --context DESC --data-table TABLE",
+                    "/ml generate-model --name NAME --context DESC --data-table TABLE "
+                    "[--exclude-columns COL1,COL2]",
                     "Generate an Arc-Graph model specification",
                 ),
                 (
@@ -607,7 +608,9 @@ class InteractiveInterface:
             with self._printer.section(color="red") as p:
                 p.print_panel(
                     Panel(
-                        Syntax(old_code, language, theme="monokai", line_numbers=True),
+                        Syntax(
+                            old_code, language, theme="github-dark", line_numbers=True
+                        ),
                         title="🔴 Before",
                         border_style="red",
                     )
@@ -618,7 +621,9 @@ class InteractiveInterface:
             with self._printer.section(color="green") as p:
                 p.print_panel(
                     Panel(
-                        Syntax(new_code, language, theme="monokai", line_numbers=True),
+                        Syntax(
+                            new_code, language, theme="github-dark", line_numbers=True
+                        ),
                         title="🟢 After",
                         border_style="green",
                     )

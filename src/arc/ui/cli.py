@@ -12,8 +12,7 @@ import click
 from dotenv import load_dotenv
 
 from arc.core import ArcAgent, SettingsManager
-from arc.core.agents import ModelGeneratorAgent, TrainerGeneratorAgent
-from arc.core.agents.model_generator.model_generator import ModelGeneratorError
+from arc.core.agents import TrainerGeneratorAgent
 from arc.core.agents.predictor_generator import PredictorGeneratorAgent
 from arc.core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
@@ -432,6 +431,7 @@ async def _ml_generate_model(
             "context": True,
             "data-table": True,
             "output": True,
+            "exclude-columns": True,  # Comma-separated list of columns
         },
     )
 
@@ -439,6 +439,12 @@ async def _ml_generate_model(
     context = options.get("context")
     data_table = options.get("data-table")
     output_path = options.get("output")
+    exclude_columns_str = options.get("exclude-columns", "")
+    exclude_columns = (
+        [col.strip() for col in exclude_columns_str.split(",") if col.strip()]
+        if exclude_columns_str
+        else []
+    )
 
     if not name or not context or not data_table:
         raise CommandError(
@@ -450,11 +456,10 @@ async def _ml_generate_model(
         output_path = f"{name}_model.yaml"
 
     try:
-        ui.show_info(f"🤖 Generating model specification for '{name}'...")
-        ui.show_info(f"📊 Analyzing data table '{data_table}'...")
+        # Use the MLModelGeneratorTool which includes confirmation workflow
+        from arc.tools.ml import MLModelGeneratorTool
 
-        # Get the agent from the runtime or create one for model generation
-        services = runtime.services
+        # Get settings for tool initialization
         settings_manager = SettingsManager()
         api_key = settings_manager.get_api_key()
         base_url = settings_manager.get_base_url()
@@ -463,41 +468,25 @@ async def _ml_generate_model(
         if not api_key:
             raise CommandError("API key required for model generation")
 
-        # Create model generator agent (no ArcAgent dependency)
-        model_generator = ModelGeneratorAgent(services, api_key, base_url, model)
+        # Show initial UI feedback
+        ui.show_info(f"🤖 Generating model specification for '{name}'...")
+        ui.show_info(f"📊 Analyzing data table '{data_table}'...")
 
-        # Generate the model specification
-        model_spec, model_yaml = await model_generator.generate_model(
-            name=str(name),
-            user_context=str(context),
-            table_name=str(data_table),
+        # Create the tool with proper dependencies
+        tool = MLModelGeneratorTool(runtime.services, api_key, base_url, model, ui)
+
+        # Execute the tool with confirmation workflow
+        result = await tool.execute(
+            name=name,
+            context=context,
+            data_table=data_table,
+            exclude_columns=exclude_columns,
+            output_path=output_path,
         )
 
-        # Save to file
-        Path(output_path).write_text(model_yaml)
+        if not result.success:
+            raise CommandError(f"Model generation failed: {result.error}")
 
-        ui.show_system_success("✅ Model specification generated successfully!")
-        ui.show_info(f"📄 Saved to: {output_path}")
-        ui.show_info(f"🏗️ Model: {name}")
-
-        # Show brief summary of generated model
-        input_count = len(model_spec.inputs)
-        node_count = len(model_spec.graph)
-        output_count = len(model_spec.outputs)
-
-        ui.show_info(f"📥 Inputs: {input_count}")
-        ui.show_info(f"🧠 Model nodes: {node_count}")
-        ui.show_info(f"📤 Outputs: {output_count}")
-
-        # Suggest next steps
-        ui.show_info("\n💡 Next steps:")
-        ui.show_info(
-            f"   /ml generate-trainer --name {name}_trainer --context "
-            f"'training config' --model-spec {output_path}"
-        )
-
-    except ModelGeneratorError as exc:
-        raise CommandError(f"Model generation failed: {exc}") from exc
     except Exception as exc:
         raise CommandError(f"Unexpected error during model generation: {exc}") from exc
 
@@ -1180,6 +1169,11 @@ if __name__ == "__main__":
 @click.option("-n", "--name", required=True, help="Model name")
 @click.option("-c", "--context", required=True, help="Model description and context")
 @click.option("-t", "--data-table", required=True, help="Database table name for data")
+@click.option(
+    "-e",
+    "--exclude-columns",
+    help="Comma-separated column names to exclude from model inputs",
+)
 @click.option("-o", "--output", help="Output file path (default: {name}_model.yaml)")
 @click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
 @click.option("-u", "--base-url", help="Arc API base URL")
@@ -1188,6 +1182,7 @@ def generate_model(
     name: str,
     context: str,
     data_table: str,
+    exclude_columns: str | None,
     output: str | None,
     api_key: str | None,
     base_url: str | None,
@@ -1215,10 +1210,24 @@ def generate_model(
     services = ServiceContainer(db_manager)
     runtime = MLRuntime(services)
 
+    # Parse exclude columns
+    exclude_columns_list = []
+    if exclude_columns:
+        exclude_columns_list = [col.strip() for col in exclude_columns.split(",")]
+
     # Run model generation
     asyncio.run(
         _ml_generate_model_cli(
-            name, context, data_table, output, api_key, base_url, ai_model, ui, runtime
+            name,
+            context,
+            data_table,
+            exclude_columns_list,
+            output,
+            api_key,
+            base_url,
+            ai_model,
+            ui,
+            runtime,
         )
     )
 
@@ -1337,6 +1346,7 @@ async def _ml_generate_model_cli(
     name: str,
     context: str,
     data_table: str,
+    exclude_columns: list[str],
     output_path: str | None,
     _api_key: str,
     _base_url: str | None,
@@ -1347,6 +1357,8 @@ async def _ml_generate_model_cli(
     """CLI wrapper for model generation."""
     try:
         args = ["--name", name, "--context", context, "--data-table", data_table]
+        if exclude_columns:
+            args.extend(["--exclude-columns", ",".join(exclude_columns)])
         if output_path:
             args.extend(["--output", output_path])
 

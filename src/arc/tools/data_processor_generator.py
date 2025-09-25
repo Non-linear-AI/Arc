@@ -5,17 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .base import BaseTool, ToolResult
+from arc.tools.base import BaseTool, ToolResult
 
 if TYPE_CHECKING:
-    from ..core.agents.data_processor_generator.data_processor_generator import (
+    from arc.core.agents.data_processor_generator.data_processor_generator import (
         DataProcessorGeneratorAgent,
     )
-    from ..database.services.container import ServiceContainer
+    from arc.database.services.container import ServiceContainer
 else:
     # Avoid circular imports at runtime
     try:
-        from ..core.agents.data_processor_generator.data_processor_generator import (
+        from arc.core.agents.data_processor_generator.data_processor_generator import (
             DataProcessorGeneratorAgent,
             DataProcessorGeneratorError,
         )

@@ -161,14 +161,6 @@ class ArcAgent:
 
     def _initialize_system_message(self) -> None:
         """Initialize the system message with instructions."""
-        custom_instructions = self._load_custom_instructions()
-        custom_instructions_section = (
-            f"\n\nCUSTOM INSTRUCTIONS:\n{custom_instructions}\n\n"
-            "The above custom instructions should be followed alongside "
-            "the standard instructions below."
-            if custom_instructions
-            else ""
-        )
 
         # Generate system schema if services are available
         system_schema = None
@@ -197,25 +189,16 @@ class ArcAgent:
             # Load and render template
             template = env.get_template("system_prompt.j2")
             system_content = template.render(
-                custom_instructions_section=custom_instructions_section,
                 current_directory=os.getcwd(),
                 system_schema=system_schema,
             )
-        except Exception:
-            # Fallback to basic system prompt if template loading fails
-            system_content = (
-                f"You are Arc CLI, an AI assistant for file editing and "
-                f"system operations.{custom_instructions_section}\n\n"
-                f"Current working directory: {os.getcwd()}"
-            )
+        except Exception as e:
+            # Raise exception with error details instead of using fallback
+            raise RuntimeError(
+                f"Failed to load system prompt template: {str(e)}"
+            ) from e
 
         self.messages.append({"role": "system", "content": system_content})
-
-    def _load_custom_instructions(self) -> str | None:
-        """Load custom instructions from settings."""
-        # This would typically load from a config file
-        # For now, return None as we don't have the settings infrastructure
-        return None
 
     async def process_user_message_stream(self, message: str):
         """Process a user message with streaming response."""

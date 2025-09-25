@@ -59,7 +59,8 @@ class ArcCompleter(Completer):
                 ("--name", "Model name (required)"),
                 ("--context", "Model description and context (required)"),
                 ("--data-table", "Database table name for data (required)"),
-                ("--model", "AI model to use (optional)"),
+                ("--exclude-columns", "Column names to exclude from model inputs"),
+                ("--output-path", "File path to save the generated model YAML"),
             ],
             "generate-trainer": [
                 ("--name", "Trainer name (required)"),
