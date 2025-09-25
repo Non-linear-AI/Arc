@@ -4,7 +4,6 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import jinja2
 from openai.types.chat import ChatCompletionMessageParam
@@ -28,9 +27,6 @@ from arc.tools import (
     ToolResult,
 )
 from arc.utils import TokenCounter
-
-if TYPE_CHECKING:
-    pass
 
 
 class ChatEntry:
