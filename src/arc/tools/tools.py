@@ -471,13 +471,6 @@ def get_base_tools() -> list[ArcTool]:
                             "Optional file path to save the generated model YAML"
                         ),
                     },
-                    "auto_confirm": {
-                        "type": "boolean",
-                        "description": (
-                            "Skip interactive confirmation and save directly "
-                            "(default: false)"
-                        ),
-                    },
                 },
                 "required": ["name", "context", "data_table"],
             },

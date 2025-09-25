@@ -608,7 +608,9 @@ class InteractiveInterface:
             with self._printer.section(color="red") as p:
                 p.print_panel(
                     Panel(
-                        Syntax(old_code, language, theme="github-dark", line_numbers=True),
+                        Syntax(
+                            old_code, language, theme="github-dark", line_numbers=True
+                        ),
                         title="🔴 Before",
                         border_style="red",
                     )
@@ -619,7 +621,9 @@ class InteractiveInterface:
             with self._printer.section(color="green") as p:
                 p.print_panel(
                     Panel(
-                        Syntax(new_code, language, theme="github-dark", line_numbers=True),
+                        Syntax(
+                            new_code, language, theme="github-dark", line_numbers=True
+                        ),
                         title="🟢 After",
                         border_style="green",
                     )

@@ -12,8 +12,7 @@ import click
 from dotenv import load_dotenv
 
 from arc.core import ArcAgent, SettingsManager
-from arc.core.agents import ModelGeneratorAgent, TrainerGeneratorAgent
-from arc.core.agents.model_generator.model_generator import ModelGeneratorError
+from arc.core.agents import TrainerGeneratorAgent
 from arc.core.agents.predictor_generator import PredictorGeneratorAgent
 from arc.core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
