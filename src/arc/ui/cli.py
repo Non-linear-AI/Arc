@@ -474,9 +474,7 @@ async def _ml_generate_model(
         ui.show_info(f"📊 Analyzing data table '{data_table}'...")
 
         # Create the tool with proper dependencies
-        tool = MLModelGeneratorTool(
-            runtime.services, api_key, base_url, model, ui
-        )
+        tool = MLModelGeneratorTool(runtime.services, api_key, base_url, model, ui)
 
         # Execute the tool with confirmation workflow
         result = await tool.execute(

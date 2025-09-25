@@ -438,6 +438,7 @@ class MLModelGeneratorTool(BaseTool):
 
     async def _display_model_preview(self, model_spec, model_yaml: str) -> None:
         """Display formatted model preview."""
+
         def output(text):
             if self.ui:
                 self.ui.show_info(text)
@@ -474,7 +475,7 @@ class MLModelGeneratorTool(BaseTool):
                 "yaml",
                 theme="monokai",
                 line_numbers=True,
-                word_wrap=False
+                word_wrap=False,
             )
 
             # Display using Rich console
@@ -511,11 +512,12 @@ class MLModelGeneratorTool(BaseTool):
         """Interactive YAML editing with automatic editor detection."""
         # Try to detect and use system editor automatically
 
-        editor = os.environ.get('EDITOR')
+        editor = os.environ.get("EDITOR")
         if not editor:
             # Try common editors in order of preference
             import shutil
-            common_editors = ['code', 'nano', 'vim', 'vi', 'emacs']
+
+            common_editors = ["code", "nano", "vim", "vi", "emacs"]
             for ed in common_editors:
                 if shutil.which(ed):
                     editor = ed

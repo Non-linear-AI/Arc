@@ -189,7 +189,6 @@ class ModelGeneratorAgent(BaseAgent):
         for input_name, input_spec in inputs.items():
             columns = input_spec.get("columns", [])
 
-
             # Check for incomplete fields
             shape = input_spec.get("shape")
             if shape is None:
