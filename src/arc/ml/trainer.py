@@ -13,9 +13,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from ..graph.trainer import TrainingConfig
-from ..plugins import get_plugin_manager
-from .metrics import MetricsTracker
+from arc.graph.trainer import TrainingConfig
+from arc.ml.metrics import MetricsTracker
+from arc.plugins import get_plugin_manager
 
 logger = logging.getLogger(__name__)
 

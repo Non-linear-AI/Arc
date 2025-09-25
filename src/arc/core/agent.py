@@ -8,7 +8,9 @@ from pathlib import Path
 import jinja2
 from openai.types.chat import ChatCompletionMessageParam
 
-from ..tools import (
+from arc.core.client import ArcClient, ArcToolCall
+from arc.core.config import SettingsManager
+from arc.tools import (
     BashTool,
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
@@ -24,10 +26,7 @@ from ..tools import (
     TodoTool,
     ToolResult,
 )
-from ..tools.tools import get_base_tools
-from ..utils import TokenCounter
-from .client import ArcClient, ArcToolCall
-from .config import SettingsManager
+from arc.utils import TokenCounter
 
 
 class ChatEntry:
@@ -228,6 +227,8 @@ class ArcAgent:
         yield StreamingChunk(type="user_message", content=message)
 
         try:
+            from arc.tools.tools import get_base_tools
+
             tools = get_base_tools()
             tool_rounds = 0
 
@@ -371,6 +372,8 @@ class ArcAgent:
         tool_rounds = 0
 
         try:
+            from arc.tools.tools import get_base_tools
+
             tools = get_base_tools()
             current_response = await self.arc_client.chat(
                 self.messages,

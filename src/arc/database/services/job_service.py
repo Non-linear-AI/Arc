@@ -4,9 +4,9 @@ from dataclasses import asdict
 from datetime import UTC
 from typing import Any
 
-from ...jobs.models import Job, JobStatus, JobType
-from ..base import DatabaseError
-from .base import BaseService
+from arc.database.base import DatabaseError
+from arc.database.services.base import BaseService
+from arc.jobs.models import Job, JobStatus, JobType
 
 
 class JobService(BaseService):

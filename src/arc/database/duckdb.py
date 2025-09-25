@@ -6,7 +6,7 @@ from typing import Any
 
 import duckdb
 
-from .base import Database, DatabaseError, QueryResult
+from arc.database.base import Database, DatabaseError, QueryResult
 
 
 class DuckDBDatabase(Database):

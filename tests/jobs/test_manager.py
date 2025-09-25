@@ -2,10 +2,10 @@
 
 import pytest
 
-from src.arc.database.manager import DatabaseManager
-from src.arc.database.services.job_service import JobService
-from src.arc.jobs.manager import JobManager
-from src.arc.jobs.models import JobStatus, JobType
+from arc.database.manager import DatabaseManager
+from arc.database.services.job_service import JobService
+from arc.jobs.manager import JobManager
+from arc.jobs.models import JobStatus, JobType
 
 
 @pytest.fixture

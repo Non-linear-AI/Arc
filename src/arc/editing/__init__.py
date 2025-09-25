@@ -1,10 +1,10 @@
 """Multi-strategy editing system for Arc CLI."""
 
-from .base import EditInstruction, EditResult, EditStrategy
-from .diff_editor import DiffEditor
-from .editor_manager import EditorManager
-from .search_replace import SearchReplaceEditor
-from .whole_file import WholeFileEditor
+from arc.editing.base import EditInstruction, EditResult, EditStrategy
+from arc.editing.diff_editor import DiffEditor
+from arc.editing.editor_manager import EditorManager
+from arc.editing.search_replace import SearchReplaceEditor
+from arc.editing.whole_file import WholeFileEditor
 
 __all__ = [
     "EditStrategy",

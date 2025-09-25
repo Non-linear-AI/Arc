@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .components import get_layer_class, validate_layer_params
+from arc.graph.model.components import get_layer_class, validate_layer_params
 
 
 class ModelValidationError(ValueError):

@@ -47,7 +47,7 @@ class FeatureSpec:
         Raises:
             ValueError: If YAML is invalid or doesn't contain valid features spec
         """
-        from .validator import validate_features_dict
+        from arc.graph.features.validator import validate_features_dict
 
         data = yaml.safe_load(yaml_str)
         if not isinstance(data, dict):

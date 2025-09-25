@@ -6,9 +6,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ....database.services import ServiceContainer
-from ..shared.base_agent import AgentError, BaseAgent
-from ..shared.example_repository import ExampleRepository
+from arc.core.agents.shared.base_agent import AgentError, BaseAgent
+from arc.core.agents.shared.example_repository import ExampleRepository
+from arc.database.services import ServiceContainer
 
 logger = logging.getLogger(__name__)
 

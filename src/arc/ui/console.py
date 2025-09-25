@@ -13,8 +13,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
-from ..database import QueryResult
-from .printer import Printer
+from arc.database import QueryResult
+from arc.ui.printer import Printer
 
 
 class InteractiveInterface:
@@ -227,7 +227,8 @@ class InteractiveInterface:
                 (
                     "/ml data-processing --yaml PATH",
                     "Process data based on the Arc-formatYAML specification",
-                )("/ml train --model NAME --data TABLE", "Launch a training job"),
+                ),
+                ("/ml train --model NAME --data TABLE", "Launch a training job"),
                 (
                     "/ml predict --model NAME --data TABLE --output TABLE",
                     "Run inference and save predictions",

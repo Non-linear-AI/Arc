@@ -6,8 +6,8 @@ import threading
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 
-from .manager import JobManager
-from .models import Job, JobStatus, JobType
+from arc.jobs.manager import JobManager
+from arc.jobs.models import Job, JobStatus, JobType
 
 logger = logging.getLogger(__name__)
 

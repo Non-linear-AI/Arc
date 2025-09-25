@@ -7,15 +7,15 @@ from typing import Any
 
 import yaml
 
-from ....database.services import ServiceContainer
-from ....graph.trainer import (
+from arc.core.agents.shared.base_agent import AgentError, BaseAgent
+from arc.core.agents.shared.example_repository import ExampleRepository
+from arc.database.services import ServiceContainer
+from arc.graph.trainer import (
     CORE_LOSSES,
     CORE_OPTIMIZERS,
     TrainerSpec,
     validate_trainer_dict,
 )
-from ..shared.base_agent import AgentError, BaseAgent
-from ..shared.example_repository import ExampleRepository
 
 
 class TrainerGeneratorError(AgentError):

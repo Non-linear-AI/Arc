@@ -393,7 +393,7 @@ def get_layer_class(layer_type: str) -> type[ArcLayerBase]:
         ValueError: If layer type is not registered
     """
     # Resolve via plugin system only; core layers provided by builtin plugin
-    from ..plugins import get_plugin_manager
+    from arc.plugins import get_plugin_manager
 
     plugin_manager = get_plugin_manager()
     layer_class = plugin_manager.get_layer(layer_type)

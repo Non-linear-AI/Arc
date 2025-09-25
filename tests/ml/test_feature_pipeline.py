@@ -9,9 +9,9 @@ import pandas as pd
 import pytest
 import torch
 
-from src.arc.database.base import Database, QueryResult
-from src.arc.ml.data import DataProcessor
-from src.arc.ml.processors.base import ProcessorError
+from arc.database.base import Database, QueryResult
+from arc.ml.data import DataProcessor
+from arc.ml.processors.base import ProcessorError
 
 
 @dataclass

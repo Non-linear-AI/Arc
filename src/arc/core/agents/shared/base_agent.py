@@ -15,8 +15,8 @@ from typing import Any
 import jinja2
 import yaml
 
-from ....database.services import ServiceContainer
-from ...client import ArcClient
+from arc.core.client import ArcClient
+from arc.database.services import ServiceContainer
 
 
 class AgentError(Exception):

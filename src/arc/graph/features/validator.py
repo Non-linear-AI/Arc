@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .components import get_processor_class, validate_processor_params
+from arc.graph.features.components import get_processor_class, validate_processor_params
 
 
 class FeaturesValidationError(ValueError):

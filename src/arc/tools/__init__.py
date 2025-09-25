@@ -1,11 +1,11 @@
 """Tool implementations for Arc CLI."""
 
-from .base import ToolResult
-from .bash import BashTool
-from .data_processor_generator import DataProcessorGeneratorTool
-from .database_query import DatabaseQueryTool
-from .file_editor import FileEditorTool
-from .ml import (
+from arc.tools.base import ToolResult
+from arc.tools.bash import BashTool
+from arc.tools.data_processor_generator import DataProcessorGeneratorTool
+from arc.tools.database_query import DatabaseQueryTool
+from arc.tools.file_editor import FileEditorTool
+from arc.tools.ml import (
     MLCreateModelTool,
     MLModelGeneratorTool,
     MLPredictorGeneratorTool,
@@ -13,9 +13,9 @@ from .ml import (
     MLTrainerGeneratorTool,
     MLTrainTool,
 )
-from .schema_discovery import SchemaDiscoveryTool
-from .search import SearchTool
-from .todo import TodoTool
+from arc.tools.schema_discovery import SchemaDiscoveryTool
+from arc.tools.search import SearchTool
+from arc.tools.todo import TodoTool
 
 __all__ = [
     "ToolResult",

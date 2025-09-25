@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .base import BaseTool, ToolResult
+from arc.tools.base import BaseTool, ToolResult
 
 
 class TodoItem:

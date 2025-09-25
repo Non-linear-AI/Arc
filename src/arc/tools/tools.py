@@ -1,6 +1,6 @@
 """Tool definitions and management."""
 
-from ..core.client import ArcTool
+from arc.core.client import ArcTool
 
 
 def get_base_tools() -> list[ArcTool]:

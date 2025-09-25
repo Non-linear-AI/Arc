@@ -2,8 +2,13 @@
 
 import time
 
-from ..base import DatabaseError, QueryResult, QueryValidationError, TimedQueryResult
-from .base import BaseService
+from arc.database.base import (
+    DatabaseError,
+    QueryResult,
+    QueryValidationError,
+    TimedQueryResult,
+)
+from arc.database.services.base import BaseService
 
 
 class InteractiveQueryService(BaseService):

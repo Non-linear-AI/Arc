@@ -3,9 +3,9 @@
 from datetime import datetime
 from typing import Any
 
-from ..base import DatabaseError
-from ..models.model import Model
-from .base import BaseService
+from arc.database.base import DatabaseError
+from arc.database.models.model import Model
+from arc.database.services.base import BaseService
 
 
 class ModelService(BaseService):

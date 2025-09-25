@@ -1,8 +1,8 @@
 """Model specification and components for Arc-Graph."""
 
-from .components import CORE_LAYERS, get_layer_class
-from .spec import GraphNode, ModelInput, ModelSpec
-from .validator import ModelValidationError, validate_model_dict
+from arc.graph.model.components import CORE_LAYERS, get_layer_class
+from arc.graph.model.spec import GraphNode, ModelInput, ModelSpec
+from arc.graph.model.validator import ModelValidationError, validate_model_dict
 
 
 def load_model_from_yaml(file_path: str) -> ModelSpec:

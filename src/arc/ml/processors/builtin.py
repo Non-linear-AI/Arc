@@ -7,8 +7,12 @@ from typing import Any
 import pandas as pd
 import torch
 
-from ...database.base import Database
-from .base import NormalizationProcessor, ProcessorError, StatefulProcessor
+from arc.database.base import Database
+from arc.ml.processors.base import (
+    NormalizationProcessor,
+    ProcessorError,
+    StatefulProcessor,
+)
 
 
 class StandardNormalizationProcessor(NormalizationProcessor):

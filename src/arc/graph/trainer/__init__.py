@@ -1,13 +1,18 @@
 """Trainer specification and components for Arc-Graph."""
 
-from .components import (
+from arc.graph.trainer.components import (
     CORE_LOSSES,
     CORE_OPTIMIZERS,
     get_loss_class,
     get_optimizer_class,
 )
-from .spec import LossConfig, OptimizerConfig, TrainerSpec, TrainingConfig
-from .validator import TrainerValidationError, validate_trainer_dict
+from arc.graph.trainer.spec import (
+    LossConfig,
+    OptimizerConfig,
+    TrainerSpec,
+    TrainingConfig,
+)
+from arc.graph.trainer.validator import TrainerValidationError, validate_trainer_dict
 
 
 def load_trainer_from_yaml(file_path: str) -> TrainerSpec:

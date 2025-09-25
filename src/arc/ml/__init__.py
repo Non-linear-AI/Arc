@@ -1,13 +1,13 @@
 """Arc ML package for PyTorch model building and training."""
 
-from .artifacts import ModelArtifact, ModelArtifactManager
-from .builder import ArcModel, ModelBuilder
-from .layers import get_layer_class
-from .metrics import MetricsTracker, create_metrics_for_task
-from .predictor import ArcPredictor, PredictionError
-from .trainer import ArcTrainer, TrainingConfig, TrainingResult
-from .training_service import TrainingJobConfig, TrainingService
-from .utils import auto_detect_input_size, validate_tensor_shape
+from arc.ml.artifacts import ModelArtifact, ModelArtifactManager
+from arc.ml.builder import ArcModel, ModelBuilder
+from arc.ml.layers import get_layer_class
+from arc.ml.metrics import MetricsTracker, create_metrics_for_task
+from arc.ml.predictor import ArcPredictor, PredictionError
+from arc.ml.trainer import ArcTrainer, TrainingConfig, TrainingResult
+from arc.ml.training_service import TrainingJobConfig, TrainingService
+from arc.ml.utils import auto_detect_input_size, validate_tensor_shape
 
 __all__ = [
     "ModelBuilder",

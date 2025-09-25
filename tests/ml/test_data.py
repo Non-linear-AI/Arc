@@ -1,8 +1,8 @@
 import pytest
 import torch
 
-from src.arc.ml.data import ArcDataset, DataProcessor
-from src.arc.ml.utils import create_sample_data
+from arc.ml.data import ArcDataset, DataProcessor
+from arc.ml.utils import create_sample_data
 
 
 class TestArcDataset:

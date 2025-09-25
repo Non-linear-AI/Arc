@@ -5,8 +5,8 @@ a plugin-based architecture. Processors can learn parameters from
 the entire database and apply transformations consistently.
 """
 
-from .base import ProcessorError, StatefulProcessor
-from .builtin import (
+from arc.ml.processors.base import ProcessorError, StatefulProcessor
+from arc.ml.processors.builtin import (
     CategoricalEncodingProcessor,
     MinMaxNormalizationProcessor,
     RobustNormalizationProcessor,

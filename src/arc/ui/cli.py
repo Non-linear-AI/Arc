@@ -11,22 +11,22 @@ from pathlib import Path
 import click
 from dotenv import load_dotenv
 
-from ..core import ArcAgent, SettingsManager
-from ..core.agents import ModelGeneratorAgent, TrainerGeneratorAgent
-from ..core.agents.model_generator.model_generator import ModelGeneratorError
-from ..core.agents.predictor_generator import PredictorGeneratorAgent
-from ..core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
-from ..database import DatabaseError, DatabaseManager, QueryValidationError
-from ..database.services import ServiceContainer
-from ..graph.features.data_source import DataSourceSpec
-from ..ml.runtime import MLRuntime, MLRuntimeError
-from ..utils import ConfirmationService
-from ..utils.report import (
+from arc.core import ArcAgent, SettingsManager
+from arc.core.agents import ModelGeneratorAgent, TrainerGeneratorAgent
+from arc.core.agents.model_generator.model_generator import ModelGeneratorError
+from arc.core.agents.predictor_generator import PredictorGeneratorAgent
+from arc.core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
+from arc.database import DatabaseError, DatabaseManager, QueryValidationError
+from arc.database.services import ServiceContainer
+from arc.graph.features.data_source import DataSourceSpec
+from arc.ml.runtime import MLRuntime, MLRuntimeError
+from arc.ui.console import InteractiveInterface
+from arc.utils import ConfirmationService
+from arc.utils.report import (
     build_issue_url,
     compose_issue_body,
     open_in_browser,
 )
-from .console import InteractiveInterface
 
 # Load environment variables
 load_dotenv()

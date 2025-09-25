@@ -1,6 +1,6 @@
 """Predictor specification package."""
 
-from .spec import (
+from arc.graph.predictor.spec import (
     PredictorSpec,
     PredictorValidationError,
     load_predictor_from_yaml,

@@ -1,7 +1,7 @@
 """Arc-Graph parsing and validation package."""
 
 # New separated architecture imports
-from .features import (
+from arc.graph.features import (
     CORE_PROCESSORS,
     FeatureSpec,
     FeaturesValidationError,
@@ -9,7 +9,7 @@ from .features import (
     get_processor_class,
     validate_features_dict,
 )
-from .model import (
+from arc.graph.model import (
     CORE_LAYERS,
     GraphNode,
     ModelInput,
@@ -18,12 +18,12 @@ from .model import (
     get_layer_class,
     validate_model_dict,
 )
-from .predictor import (
+from arc.graph.predictor import (
     PredictorSpec,
     PredictorValidationError,
     validate_predictor_dict,
 )
-from .trainer import (
+from arc.graph.trainer import (
     CORE_LOSSES,
     CORE_OPTIMIZERS,
     LossConfig,

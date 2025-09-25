@@ -8,7 +8,7 @@ from enum import Enum
 from functools import wraps
 from typing import Any
 
-from .tools.base import ToolResult
+from arc.tools.base import ToolResult
 
 
 class ErrorSeverity(Enum):

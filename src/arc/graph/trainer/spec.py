@@ -99,7 +99,7 @@ class TrainerSpec:
         Raises:
             ValueError: If YAML is invalid or doesn't contain valid trainer spec
         """
-        from .validator import validate_trainer_dict
+        from arc.graph.trainer.validator import validate_trainer_dict
 
         data = yaml.safe_load(yaml_str)
         if not isinstance(data, dict):

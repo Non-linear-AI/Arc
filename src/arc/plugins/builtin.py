@@ -31,7 +31,7 @@ class BuiltinLayerPlugin:
     @hookimpl
     def register_layers(self) -> dict[str, type]:
         """Register built-in layer implementations."""
-        from ..ml.layers import (
+        from arc.ml.layers import (
             AddLayer,
             BatchNorm1dLayer,
             ConcatenateLayer,
@@ -218,7 +218,7 @@ class BuiltinProcessorPlugin:
     @hookimpl
     def register_processors(self) -> dict[str, type]:
         """Register built-in processor implementations."""
-        from ..ml.processors.builtin import (
+        from arc.ml.processors.builtin import (
             CategoricalEncodingProcessor,
             MinMaxNormalizationProcessor,
             RobustNormalizationProcessor,

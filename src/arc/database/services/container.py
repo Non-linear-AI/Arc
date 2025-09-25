@@ -3,15 +3,15 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ...ml.runtime import MLRuntime
-    from ..manager import DatabaseManager
+    from arc.database.manager import DatabaseManager
+    from arc.ml.runtime import MLRuntime
 
-from .interactive_query_service import InteractiveQueryService
-from .job_service import JobService
-from .ml_data_service import MLDataService
-from .model_service import ModelService
-from .plugin_service import PluginService
-from .schema_service import SchemaService
+from arc.database.services.interactive_query_service import InteractiveQueryService
+from arc.database.services.job_service import JobService
+from arc.database.services.ml_data_service import MLDataService
+from arc.database.services.model_service import ModelService
+from arc.database.services.plugin_service import PluginService
+from arc.database.services.schema_service import SchemaService
 
 
 class ServiceContainer:
@@ -87,7 +87,7 @@ class ServiceContainer:
     def ml_runtime(self) -> "MLRuntime":
         """Get the ML runtime service."""
         if self._ml_runtime is None:
-            from ...ml.runtime import MLRuntime
+            from arc.ml.runtime import MLRuntime
 
             self._ml_runtime = MLRuntime(self, self.artifacts_dir)
         return self._ml_runtime
