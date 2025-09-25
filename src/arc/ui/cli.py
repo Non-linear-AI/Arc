@@ -18,6 +18,7 @@ from arc.core.agents.predictor_generator import PredictorGeneratorAgent
 from arc.core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
+from arc.graph.features.data_source import DataSourceSpec
 from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.ui.console import InteractiveInterface
 from arc.utils import ConfirmationService

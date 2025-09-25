@@ -227,7 +227,8 @@ class InteractiveInterface:
                 (
                     "/ml data-processing --yaml PATH",
                     "Process data based on the Arc-formatYAML specification",
-                )("/ml train --model NAME --data TABLE", "Launch a training job"),
+                ),
+                ("/ml train --model NAME --data TABLE", "Launch a training job"),
                 (
                     "/ml predict --model NAME --data TABLE --output TABLE",
                     "Run inference and save predictions",
