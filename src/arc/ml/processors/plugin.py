@@ -6,7 +6,7 @@ from typing import Any
 
 import pluggy
 
-from .builtin import (
+from arc.ml.processors.builtin import (
     CategoricalEncodingProcessor,
     MinMaxNormalizationProcessor,
     RobustNormalizationProcessor,

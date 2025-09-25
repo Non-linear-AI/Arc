@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from ..base import DatabaseError
-from .base import BaseService
+from arc.database.base import DatabaseError
+from arc.database.services.base import BaseService
 
 
 @dataclass

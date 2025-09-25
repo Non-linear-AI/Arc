@@ -13,9 +13,9 @@ from typing import Any
 import pandas as pd
 import torch
 
-from ..base import QueryResult
-from ..manager import DatabaseManager
-from .base import BaseService
+from arc.database.base import QueryResult
+from arc.database.manager import DatabaseManager
+from arc.database.services.base import BaseService
 
 
 class DatasetInfo:

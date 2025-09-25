@@ -7,9 +7,13 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ..graph import GraphNode, ModelSpec
-from .layers import get_layer_class
-from .utils import ShapeInferenceError, ShapeValidator, resolve_variable_references
+from arc.graph import GraphNode, ModelSpec
+from arc.ml.layers import get_layer_class
+from arc.ml.utils import (
+    ShapeInferenceError,
+    ShapeValidator,
+    resolve_variable_references,
+)
 
 
 class ArcModel(nn.Module):

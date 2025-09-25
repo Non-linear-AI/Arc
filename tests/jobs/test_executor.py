@@ -4,11 +4,11 @@ import asyncio
 
 import pytest
 
-from src.arc.database.manager import DatabaseManager
-from src.arc.database.services.job_service import JobService
-from src.arc.jobs.executor import JobExecutor
-from src.arc.jobs.manager import JobManager
-from src.arc.jobs.models import Job, JobStatus, JobType
+from arc.database.manager import DatabaseManager
+from arc.database.services.job_service import JobService
+from arc.jobs.executor import JobExecutor
+from arc.jobs.manager import JobManager
+from arc.jobs.models import Job, JobStatus, JobType
 
 
 @pytest.fixture

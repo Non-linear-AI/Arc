@@ -11,17 +11,17 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from ..database import DatabaseError
-from ..database.models.model import Model
-from ..graph.model import ModelSpec
-from .artifacts import ModelArtifactManager
-from .predictor import ArcPredictor
-from .training_service import TrainingJobConfig, TrainingService
+from arc.database import DatabaseError
+from arc.database.models.model import Model
+from arc.graph.model import ModelSpec
+from arc.ml.artifacts import ModelArtifactManager
+from arc.ml.predictor import ArcPredictor
+from arc.ml.training_service import TrainingJobConfig, TrainingService
 
 MODEL_ID_PATTERN = re.compile(r"^(?P<base>.+?)-v(?P<version>\d+)$")
 
 if TYPE_CHECKING:  # pragma: no cover - import heavy modules only for typing
-    from ..database.services.container import ServiceContainer
+    from arc.database.services.container import ServiceContainer
 
 
 class MLRuntimeError(Exception):

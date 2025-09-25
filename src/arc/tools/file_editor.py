@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from ..editing import EditInstruction, EditorManager
-from ..utils.confirmation import ConfirmationService
-from ..utils.performance import cached, performance_manager, timed
-from .base import BaseTool, ToolResult
+from arc.editing import EditInstruction, EditorManager
+from arc.tools.base import BaseTool, ToolResult
+from arc.utils.confirmation import ConfirmationService
+from arc.utils.performance import cached, performance_manager, timed
 
 
 class FileEditorTool(BaseTool):

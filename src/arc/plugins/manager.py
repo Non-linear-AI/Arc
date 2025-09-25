@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pluggy
 
-from .hookspecs import (
+from arc.plugins.hookspecs import (
     DataSourceHookSpec,
     ExportHookSpec,
     LayerHookSpec,
@@ -24,7 +24,7 @@ from .hookspecs import (
 )
 
 if TYPE_CHECKING:
-    from ..ml.layers import ArcLayerBase
+    from arc.ml.layers import ArcLayerBase
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +323,7 @@ class PluginManager:
 
     def _register_builtin_plugins(self) -> None:
         """Register built-in Arc Graph plugins."""
-        from .builtin import (
+        from arc.plugins.builtin import (
             BuiltinLayerPlugin,
             BuiltinLossPlugin,
             BuiltinOptimizerPlugin,

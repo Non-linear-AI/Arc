@@ -1,8 +1,8 @@
 """Utility modules for Arc CLI."""
 
-from .confirmation import ConfirmationService
-from .performance import performance_manager
-from .tokens import TokenCounter
+from arc.utils.confirmation import ConfirmationService
+from arc.utils.performance import performance_manager
+from arc.utils.tokens import TokenCounter
 
 __all__ = [
     "ConfirmationService",

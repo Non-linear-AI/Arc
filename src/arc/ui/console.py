@@ -13,8 +13,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
-from ..database import QueryResult
-from .printer import Printer
+from arc.database import QueryResult
+from arc.ui.printer import Printer
 
 
 class InteractiveInterface:

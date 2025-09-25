@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from ...database.base import Database
+from arc.database.base import Database
 
 
 class ProcessorError(Exception):

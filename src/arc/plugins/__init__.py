@@ -24,7 +24,7 @@ Example Usage:
     layers = pm.get_layers()
 """
 
-from .hookspecs import (
+from arc.plugins.hookspecs import (
     DataSourceHookSpec,
     ExportHookSpec,
     LayerHookSpec,
@@ -33,7 +33,7 @@ from .hookspecs import (
     ProcessorHookSpec,
     ValidatorHookSpec,
 )
-from .manager import PluginManager, get_plugin_manager
+from arc.plugins.manager import PluginManager, get_plugin_manager
 
 __all__ = [
     "PluginManager",

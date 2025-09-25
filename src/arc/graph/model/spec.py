@@ -54,7 +54,7 @@ class ModelSpec:
         Raises:
             ValueError: If YAML is invalid or doesn't contain valid model spec
         """
-        from .validator import validate_model_dict
+        from arc.graph.model.validator import validate_model_dict
 
         data = yaml.safe_load(yaml_str)
         if not isinstance(data, dict):

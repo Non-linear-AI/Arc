@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.arc.ml.utils import (
+from arc.ml.utils import (
     auto_detect_input_size,
     count_parameters,
     create_sample_data,

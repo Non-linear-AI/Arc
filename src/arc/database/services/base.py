@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..manager import DatabaseManager
+    from arc.database.manager import DatabaseManager
 
 
 class BaseService:

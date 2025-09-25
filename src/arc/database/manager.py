@@ -4,8 +4,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from .base import Database, DatabaseError, QueryResult
-from .duckdb import DuckDBDatabase
+from arc.database.base import Database, DatabaseError, QueryResult
+from arc.database.duckdb import DuckDBDatabase
 
 
 class DatabaseManager:

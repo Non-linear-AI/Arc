@@ -1,6 +1,6 @@
 """Tests for the example repository system."""
 
-from src.arc.core.agents.shared.example_repository import (
+from arc.core.agents.shared.example_repository import (
     ExampleRepository,
     ModelExample,
 )

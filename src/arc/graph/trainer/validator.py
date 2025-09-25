@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .components import (
+from arc.graph.trainer.components import (
     get_loss_class,
     get_optimizer_class,
     validate_loss_params,

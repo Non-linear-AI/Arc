@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ....database.services import ServiceContainer
-from ....graph.model import CORE_LAYERS, ModelSpec, validate_model_dict
-from ..shared.base_agent import AgentError, BaseAgent
-from ..shared.example_repository import ExampleRepository
+from arc.core.agents.shared.base_agent import AgentError, BaseAgent
+from arc.core.agents.shared.example_repository import ExampleRepository
+from arc.database.services import ServiceContainer
+from arc.graph.model import CORE_LAYERS, ModelSpec, validate_model_dict
 
 
 class ModelGeneratorError(AgentError):

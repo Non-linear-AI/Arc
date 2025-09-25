@@ -1,14 +1,14 @@
 """Database module for Arc."""
 
-from .base import (
+from arc.database.base import (
     Database,
     DatabaseError,
     QueryResult,
     QueryValidationError,
     TimedQueryResult,
 )
-from .duckdb import DuckDBDatabase
-from .manager import DatabaseManager
+from arc.database.duckdb import DuckDBDatabase
+from arc.database.manager import DatabaseManager
 
 __all__ = [
     "Database",

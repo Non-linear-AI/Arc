@@ -3,8 +3,8 @@
 import asyncio
 import os
 
-from ..utils.confirmation import ConfirmationService
-from .base import BaseTool, ToolResult
+from arc.tools.base import BaseTool, ToolResult
+from arc.utils.confirmation import ConfirmationService
 
 
 class BashTool(BaseTool):

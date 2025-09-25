@@ -12,9 +12,9 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from ..database.services import MLDataService
-from ..plugins import get_plugin_manager
-from .processors.base import ProcessorError, StatefulProcessor
+from arc.database.services import MLDataService
+from arc.ml.processors.base import ProcessorError, StatefulProcessor
+from arc.plugins import get_plugin_manager
 
 
 class ArcDataset(Dataset):

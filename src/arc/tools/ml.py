@@ -5,19 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..core.agents.model_generator import ModelGeneratorAgent, ModelGeneratorError
-from ..core.agents.predictor_generator import (
-    PredictorGeneratorAgent,
-    PredictorGeneratorError,
-)
-from ..core.agents.trainer_generator import (
-    TrainerGeneratorAgent,
-    TrainerGeneratorError,
-)
-from ..ml.runtime import MLRuntime, MLRuntimeError
-from .base import BaseTool, ToolResult
+from arc.ml.runtime import MLRuntime, MLRuntimeError
+from arc.tools.base import BaseTool, ToolResult
+
+if TYPE_CHECKING:
+    pass
 
 
 def _as_optional_int(value: Any, field_name: str) -> int | None:
@@ -270,6 +264,8 @@ class MLModelGeneratorTool(BaseTool):
                 "to generate a model specification."
             )
 
+        from arc.core.agents.model_generator import ModelGeneratorAgent
+
         agent = ModelGeneratorAgent(
             self.services,
             self.api_key,
@@ -283,9 +279,12 @@ class MLModelGeneratorTool(BaseTool):
                 user_context=str(context),
                 table_name=str(data_table),
             )
-        except ModelGeneratorError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Import here to avoid circular imports
+            from arc.core.agents.model_generator import ModelGeneratorError
+
+            if isinstance(exc, ModelGeneratorError):
+                return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during model generation: {exc}"
             )
@@ -356,6 +355,8 @@ class MLTrainerGeneratorTool(BaseTool):
                 f"Model specification file not found: {model_spec_path}"
             )
 
+        from arc.core.agents.trainer_generator import TrainerGeneratorAgent
+
         agent = TrainerGeneratorAgent(
             self.services,
             self.api_key,
@@ -369,9 +370,12 @@ class MLTrainerGeneratorTool(BaseTool):
                 user_context=str(context),
                 model_spec_path=str(model_spec_path),
             )
-        except TrainerGeneratorError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Import here to avoid circular imports
+            from arc.core.agents.trainer_generator import TrainerGeneratorError
+
+            if isinstance(exc, TrainerGeneratorError):
+                return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during trainer generation: {exc}"
             )
@@ -444,6 +448,8 @@ class MLPredictorGeneratorTool(BaseTool):
                 f"Trainer specification file not found: {trainer_spec_path}"
             )
 
+        from arc.core.agents.predictor_generator import PredictorGeneratorAgent
+
         agent = PredictorGeneratorAgent(
             self.services,
             self.api_key,
@@ -457,9 +463,12 @@ class MLPredictorGeneratorTool(BaseTool):
                 model_spec_path=str(model_spec_path),
                 trainer_spec_path=str(trainer_spec_path) if trainer_spec_path else None,
             )
-        except PredictorGeneratorError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Import here to avoid circular imports
+            from arc.core.agents.predictor_generator import PredictorGeneratorError
+
+            if isinstance(exc, PredictorGeneratorError):
+                return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during predictor generation: {exc}"
             )

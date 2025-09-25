@@ -12,19 +12,19 @@ from pathlib import Path
 from threading import Event
 from typing import Any
 
-from ..database import DatabaseError
-from ..database.services.job_service import JobService
-from ..database.services.ml_data_service import MLDataService
-from ..graph import FeatureSpec, ModelSpec, TrainerSpec
-from ..jobs.models import Job, JobStatus, JobType
-from .artifacts import (
+from arc.database import DatabaseError
+from arc.database.services.job_service import JobService
+from arc.database.services.ml_data_service import MLDataService
+from arc.graph import FeatureSpec, ModelSpec, TrainerSpec
+from arc.jobs.models import Job, JobStatus, JobType
+from arc.ml.artifacts import (
     ModelArtifact,
     ModelArtifactManager,
     create_artifact_from_training,
 )
-from .builder import ArcModel, ModelBuilder
-from .data import DataProcessor
-from .trainer import ArcTrainer, ProgressCallback, TrainingResult
+from arc.ml.builder import ArcModel, ModelBuilder
+from arc.ml.data import DataProcessor
+from arc.ml.trainer import ArcTrainer, ProgressCallback, TrainingResult
 
 logger = logging.getLogger(__name__)
 
@@ -369,7 +369,7 @@ class TrainingService:
                 trainer_spec = config.trainer_spec
             else:
                 # Create default trainer spec if none provided
-                from ..graph.trainer import LossConfig, OptimizerConfig, TrainerSpec
+                from arc.graph.trainer import LossConfig, OptimizerConfig, TrainerSpec
 
                 trainer_spec = TrainerSpec(
                     optimizer=OptimizerConfig(

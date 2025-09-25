@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .base import EditInstruction, EditResult, EditStrategy
+from arc.editing.base import EditInstruction, EditResult, EditStrategy
 
 
 class SearchReplaceEditor(EditStrategy):

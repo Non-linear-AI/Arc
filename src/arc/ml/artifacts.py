@@ -12,8 +12,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ..graph import TrainingConfig
-from .trainer import TrainingResult
+from arc.graph import TrainingConfig
+from arc.ml.trainer import TrainingResult
 
 
 @dataclass

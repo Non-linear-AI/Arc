@@ -4,10 +4,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .base import EditInstruction, EditResult, EditStrategy
-from .diff_editor import DiffEditor
-from .search_replace import SearchReplaceEditor
-from .whole_file import WholeFileEditor
+from arc.editing.base import EditInstruction, EditResult, EditStrategy
+from arc.editing.diff_editor import DiffEditor
+from arc.editing.search_replace import SearchReplaceEditor
+from arc.editing.whole_file import WholeFileEditor
 
 logger = logging.getLogger(__name__)
 

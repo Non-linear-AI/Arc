@@ -1,8 +1,8 @@
 """Features specification and components for Arc-Graph."""
 
-from .components import CORE_PROCESSORS, get_processor_class
-from .spec import FeatureSpec, ProcessorConfig
-from .validator import FeaturesValidationError, validate_features_dict
+from arc.graph.features.components import CORE_PROCESSORS, get_processor_class
+from arc.graph.features.spec import FeatureSpec, ProcessorConfig
+from arc.graph.features.validator import FeaturesValidationError, validate_features_dict
 
 __all__ = [
     "ProcessorConfig",

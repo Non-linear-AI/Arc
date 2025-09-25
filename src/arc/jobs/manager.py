@@ -3,8 +3,8 @@
 import logging
 from typing import Any
 
-from ..database.services.job_service import JobService
-from .models import Job, JobStatus, JobType
+from arc.database.services.job_service import JobService
+from arc.jobs.models import Job, JobStatus, JobType
 
 logger = logging.getLogger(__name__)
 

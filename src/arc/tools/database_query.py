@@ -3,11 +3,11 @@
 import time
 from typing import TYPE_CHECKING
 
-from ..database.base import DatabaseError, QueryValidationError
-from .base import BaseTool, ToolResult
+from arc.database.base import DatabaseError, QueryValidationError
+from arc.tools.base import BaseTool, ToolResult
 
 if TYPE_CHECKING:
-    from ..database.services.container import ServiceContainer
+    from arc.database.services.container import ServiceContainer
 
 
 class DatabaseQueryTool(BaseTool):
