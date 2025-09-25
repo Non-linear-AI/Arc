@@ -457,7 +457,7 @@ async def _ml_generate_model(
 
     try:
         # Use the MLModelGeneratorTool which includes confirmation workflow
-        from ..tools.ml import MLModelGeneratorTool
+        from arc.tools.ml import MLModelGeneratorTool
 
         # Get settings for tool initialization
         settings_manager = SettingsManager()

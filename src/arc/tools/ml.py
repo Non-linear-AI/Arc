@@ -278,7 +278,6 @@ class MLModelGeneratorTool(BaseTool):
                 "to generate a model specification."
             )
 
-
         agent = ModelGeneratorAgent(
             self.services,
             self.api_key,
@@ -407,8 +406,9 @@ class MLModelGeneratorTool(BaseTool):
                     edited_dict = yaml.safe_load(edited_yaml)
                     validate_model_dict(edited_dict)
                     model_yaml = edited_yaml  # Use edited version
+
                     # Update model_spec for preview
-                    from ..graph.model import ModelSpec
+                    from arc.graph.model import ModelSpec
 
                     model_spec = ModelSpec.from_dict(edited_dict)
                     continue  # Show updated preview and confirmation
@@ -650,7 +650,6 @@ class MLTrainerGeneratorTool(BaseTool):
                 f"Model specification file not found: {model_spec_path}"
             )
 
-
         agent = TrainerGeneratorAgent(
             self.services,
             self.api_key,
@@ -741,7 +740,6 @@ class MLPredictorGeneratorTool(BaseTool):
             return ToolResult.error_result(
                 f"Trainer specification file not found: {trainer_spec_path}"
             )
-
 
         agent = PredictorGeneratorAgent(
             self.services,

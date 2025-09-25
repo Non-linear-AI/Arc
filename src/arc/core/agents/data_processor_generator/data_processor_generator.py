@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 
 import jinja2
 
-from ....graph.features.data_source import DataSourceSpec
-from ...client import ArcClient
+from arc.core.client import ArcClient
+from arc.graph.features.data_source import DataSourceSpec
 
 if TYPE_CHECKING:
-    from ...database.services.container import ServiceContainer
+    from arc.database.services.container import ServiceContainer
 
 
 class DataProcessorGeneratorError(Exception):
