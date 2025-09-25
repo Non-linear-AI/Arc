@@ -284,8 +284,95 @@ class DataSourceSpec:
         """
         return json.dumps(self.to_dict(), indent=2)
 
-    def to_yaml(self) -> str:
-        """Convert DataSourceSpec to YAML string with formatted SQL and step spacing.
+    def _format_sql(self, sql: str, format_sql: bool = True) -> str:
+        """Format SQL string with proper indentation and alignment.
+
+        Args:
+            sql: SQL string to format
+            format_sql: Whether to apply SQL formatting
+
+        Returns:
+            Formatted SQL string
+        """
+        if not format_sql or not sql.strip():
+            return sql
+
+        # First, unescape any escaped newlines and other sequences
+        # This handles SQL that comes pre-escaped from LLM JSON responses
+        unescaped_sql = (
+            sql.replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+            .replace("\\'", "'")
+        )
+
+        # Simple but effective SQL formatting
+        # Normalize whitespace first (but preserve intentional newlines now)
+        sql = " ".join(unescaped_sql.split())
+
+        # Keywords that should start on new lines (order matters - longer first)
+        keywords = [
+            "LEFT JOIN",
+            "RIGHT JOIN",
+            "INNER JOIN",
+            "FULL JOIN",
+            "OUTER JOIN",
+            "GROUP BY",
+            "ORDER BY",
+            "SELECT",
+            "FROM",
+            "WHERE",
+            "HAVING",
+            "LIMIT",
+            "UNION",
+            "JOIN",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "WITH",
+        ]
+
+        # Start formatting
+        result = sql
+
+        # Replace keywords with newline + keyword (case-insensitive)
+        for keyword in keywords:
+            # Use word boundaries to avoid matching parts of other words
+            import re
+
+            pattern = r"\b" + re.escape(keyword) + r"\b"
+            replacement = "\n" + keyword
+            result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+
+        # Clean up and format lines
+        lines = [line.strip() for line in result.split("\n") if line.strip()]
+        formatted_lines = []
+
+        for line in lines:
+            line_upper = line.upper()
+
+            # Handle SELECT specially - format columns
+            if line_upper.startswith("SELECT "):
+                select_part = line[7:]  # Remove 'SELECT '
+                if "," in select_part:
+                    columns = [col.strip() for col in select_part.split(",")]
+                    formatted_lines.append("SELECT")
+                    for i, col in enumerate(columns):
+                        suffix = "," if i < len(columns) - 1 else ""
+                        formatted_lines.append(f"  {col}{suffix}")
+                else:
+                    formatted_lines.append(line)
+            else:
+                formatted_lines.append(line)
+
+        return "\n".join(formatted_lines)
+
+    def to_yaml(self, format_sql: bool = True, add_comments: bool = False) -> str:
+        """Convert DataSourceSpec to YAML string with enhanced formatting.
+
+        Args:
+            format_sql: Whether to format SQL statements for better readability
+            add_comments: Whether to add section comments
 
         Returns:
             YAML string representation of the data source specification
@@ -295,59 +382,86 @@ class DataSourceSpec:
             """Custom YAML dumper that formats SQL strings as literal blocks."""
 
             def represent_str(self, data):
-                # Check if this looks like SQL (keywords and is long or multiline)
-                sql_keywords = [
-                    "SELECT",
-                    "FROM",
-                    "WHERE",
-                    "JOIN",
-                    "INSERT",
-                    "UPDATE",
-                    "DELETE",
-                ]
-                if (
-                    len(data) > 50
-                    or "\n" in data
-                    or any(keyword in data.upper() for keyword in sql_keywords)
-                ):
-                    return self.represent_scalar(
-                        "tag:yaml.org,2002:str", data, style="|-"
-                    )
+                # For now, use default representation - we'll post-process SQL blocks
                 return self.represent_scalar("tag:yaml.org,2002:str", data)
 
         # Add the custom string representer
         SQLFormattingDumper.add_representer(str, SQLFormattingDumper.represent_str)
 
+        # Create a copy of the data with formatted SQL if requested
+        data_dict = self.to_dict()
+        if format_sql:
+            for step_data in data_dict["data_source"]["steps"]:
+                if "sql" in step_data:
+                    step_data["sql"] = self._format_sql(step_data["sql"], format_sql)
+
         # Generate base YAML
         yaml_content = yaml.dump(
-            self.to_dict(),
+            data_dict,
             Dumper=SQLFormattingDumper,
             default_flow_style=False,
             allow_unicode=True,
             sort_keys=False,
+            width=120,  # Wider lines for better SQL formatting
         )
 
-        # Add spacing between steps for better readability
+        # Enhanced post-processing for better structure
         lines = yaml_content.split("\n")
         result_lines = []
-        in_steps_section = False
+        current_section = None
 
         for i, line in enumerate(lines):
+            # Add section comments if requested
+            if add_comments:
+                if line.strip() == "data_source:":
+                    result_lines.append("# Arc Data Processing Configuration")
+                    result_lines.append(line)
+                    continue
+                elif line.strip().startswith("vars:"):
+                    result_lines.append("")
+                    result_lines.append("  # Variable definitions")
+                    result_lines.append(line)
+                    continue
+                elif line.strip() == "steps:":
+                    result_lines.append("")
+                    result_lines.append("  # Processing steps")
+                    result_lines.append(line)
+                    continue
+                elif line.strip().startswith("outputs:"):
+                    result_lines.append("")
+                    result_lines.append("  # Output tables")
+                    result_lines.append(line)
+                    continue
+
             result_lines.append(line)
 
-            # Track if we're in the steps section
-            if line.strip() == "steps:" or (
-                line.strip().startswith("steps:") and ":" in line
-            ):
-                in_steps_section = True
-            elif line.startswith("  outputs:") or (
-                line.strip() and not line.startswith(" ")
-            ):
-                in_steps_section = False
+            # Track current section for spacing
+            if "data_source:" in line:
+                current_section = "data_source"
+            elif line.strip().startswith("vars:"):
+                current_section = "vars"
+            elif line.strip() == "steps:":
+                current_section = "steps"
+            elif line.strip().startswith("outputs:"):
+                current_section = "outputs"
 
-            # Add blank line after each step (after the sql block ends)
+            # Add spacing between major sections
             if (
-                in_steps_section
+                current_section
+                and not add_comments
+                and (
+                    line.strip().startswith("vars:")
+                    or line.strip() == "steps:"
+                    or line.strip().startswith("outputs:")
+                )
+                and result_lines
+                and result_lines[-2].strip()
+            ):
+                result_lines.insert(-1, "")
+
+            # Add spacing between steps
+            if (
+                current_section == "steps"
                 and line.strip()
                 and not line.startswith("  - name:")
                 and not line.startswith("    depends_on:")
@@ -358,16 +472,104 @@ class DataSourceSpec:
             ):
                 result_lines.append("")
 
-        return "\n".join(result_lines)
+        # Clean up excessive blank lines
+        final_lines = []
+        prev_blank = False
+        for line in result_lines:
+            is_blank = not line.strip()
+            if is_blank and prev_blank:
+                continue  # Skip multiple consecutive blank lines
+            final_lines.append(line)
+            prev_blank = is_blank
 
-    def to_yaml_file(self, path: str) -> None:
+        # Post-process to convert SQL quoted strings to literal blocks
+        final_yaml = "\n".join(final_lines)
+        if format_sql:
+            final_yaml = self._post_process_sql_blocks(final_yaml)
+
+        return final_yaml
+
+    def _post_process_sql_blocks(self, yaml_content: str) -> str:
+        """Post-process YAML to convert SQL quoted strings to literal blocks.
+
+        Args:
+            yaml_content: YAML string content
+
+        Returns:
+            YAML with SQL strings as literal blocks
+        """
+        import re
+
+        lines = yaml_content.split("\n")
+        processed_lines = []
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            # Look for SQL field start: "    sql: "..."
+            sql_start_match = re.match(r'^(\s+)sql:\s*"(.*)$', line)
+            if sql_start_match:
+                indent = sql_start_match.group(1)
+                sql_content = sql_start_match.group(2)
+
+                # Collect the entire multi-line quoted string
+                if not sql_content.endswith('"'):
+                    # Multi-line quoted string - collect all lines until closing quote
+                    i += 1
+                    while i < len(lines) and not lines[i].rstrip().endswith('"'):
+                        sql_content += lines[i]
+                        i += 1
+                    if i < len(lines):
+                        # Add the final line with closing quote
+                        final_line = lines[i].rstrip()
+                        if final_line.endswith('"'):
+                            sql_content += final_line[:-1]  # Remove closing quote
+
+                # Remove trailing quote from single-line case
+                if sql_content.endswith('"'):
+                    sql_content = sql_content[:-1]
+
+                # Check if this looks like SQL and has newlines (escaped or real)
+                sql_keywords = ["SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE"]
+                if any(kw in sql_content.upper() for kw in sql_keywords) and (
+                    "\\n" in sql_content or "\n" in sql_content
+                ):
+                    # Unescape the SQL content and clean up continuation chars
+                    unescaped_sql = (
+                        sql_content.replace("\\n", "\n")
+                        .replace("\\t", "\t")
+                        .replace('\\"', '"')
+                        .replace("\\'", "'")
+                        .replace("\\ ", "")  # Remove line continuation chars
+                    )
+
+                    # Create literal block
+                    processed_lines.append(f"{indent}sql: |-")
+                    for sql_line in unescaped_sql.split("\n"):
+                        processed_lines.append(f"{indent}  {sql_line}")
+                else:
+                    # Not SQL, keep original format
+                    processed_lines.append(f'{indent}sql: "{sql_content}"')
+            else:
+                processed_lines.append(line)
+
+            i += 1
+
+        return "\n".join(processed_lines)
+
+    def to_yaml_file(
+        self, path: str, format_sql: bool = True, add_comments: bool = False
+    ) -> None:
         """Save DataSourceSpec to YAML file.
 
         Args:
             path: Path to save the YAML file
+            format_sql: Whether to format SQL statements for better readability
+            add_comments: Whether to add section comments
         """
         with open(path, "w", encoding="utf-8") as f:
-            f.write(self.to_yaml())
+            f.write(self.to_yaml(format_sql=format_sql, add_comments=add_comments))
 
     def substitute_vars(self, sql: str) -> str:
         """Substitute variables in SQL query.
