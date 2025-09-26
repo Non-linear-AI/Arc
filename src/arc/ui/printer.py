@@ -657,3 +657,128 @@ class Printer:
                 self.console.print(message, style=style)
             else:
                 self.console.print(message)
+
+    def display_yaml_with_diff(self, yaml_content: str, file_path: str = None) -> None:
+        """Display YAML content using Rich syntax highlighting or diff if file exists.
+
+        Args:
+            yaml_content: The YAML content to display
+            file_path: Optional file path to check for existing content and show diff
+        """
+        from pathlib import Path
+
+        from rich.panel import Panel
+        from rich.syntax import Syntax
+
+        try:
+            # Check if file exists and has content to compare against
+            if file_path:
+                path_obj = Path(file_path)
+                if path_obj.exists() and path_obj.is_file():
+                    try:
+                        existing_content = path_obj.read_text(encoding="utf-8")
+                        if (
+                            existing_content.strip()
+                            and existing_content != yaml_content
+                        ):
+                            # Show diff using Rich
+                            self._display_yaml_diff(
+                                existing_content, yaml_content, file_path
+                            )
+                            return
+                    except Exception:
+                        # If we can't read the existing file, fall back to
+                        # regular display
+                        pass
+
+            # No existing file or no diff needed - show syntax highlighted YAML
+            syntax = Syntax(
+                yaml_content,
+                "yaml",
+                theme="github-dark",
+                line_numbers=True,
+                word_wrap=False,
+            )
+
+            with self.section(add_dot=False) as p:
+                p.print_panel(Panel(syntax, border_style="color(240)"))
+
+        except ImportError:
+            # Fallback to plain text if Rich is not available
+            with self.section(add_dot=False) as p:
+                p.print(yaml_content)
+        except Exception as e:
+            # Fallback on any error
+            with self.section(add_dot=False) as p:
+                p.print(f"Error displaying YAML: {e}")
+                p.print(yaml_content)
+
+    def _display_yaml_diff(
+        self, old_content: str, new_content: str, file_path: str
+    ) -> None:
+        """Display YAML diff in unified format with more context."""
+        try:
+            import difflib
+            from pathlib import Path
+
+            from rich.panel import Panel
+            from rich.syntax import Syntax
+
+            # Generate unified diff with more context (10 lines instead of default 3)
+            old_lines = old_content.splitlines(keepends=True)
+            new_lines = new_content.splitlines(keepends=True)
+
+            diff = difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile=f"a/{Path(file_path).name}",
+                tofile=f"b/{Path(file_path).name}",
+                lineterm="",
+                n=10,  # Show 10 lines of context around changes
+            )
+
+            # Convert to string and clean up
+            diff_text = "".join(diff)
+
+            if diff_text:
+                # Use Rich syntax highlighting for the diff
+                diff_syntax = Syntax(
+                    diff_text,
+                    "diff",
+                    theme="github-dark",
+                    word_wrap=False,
+                )
+
+                with self.section(add_dot=False) as p:
+                    p.print_panel(
+                        Panel(
+                            diff_syntax,
+                            title=f"📝 Changes to {Path(file_path).name}",
+                            border_style="yellow",
+                        )
+                    )
+            else:
+                # No differences found
+                with self.section(add_dot=False) as p:
+                    p.print(f"✓ No changes detected in {Path(file_path).name}")
+
+        except Exception:
+            # Fallback to simple diff display
+            with self.section(add_dot=False) as p:
+                p.print(f"📝 File diff for: {file_path}")
+                p.print("Lines being changed:")
+
+                # Simple line-by-line comparison
+                old_lines = old_content.splitlines()
+                new_lines = new_content.splitlines()
+
+                max_lines = max(len(old_lines), len(new_lines))
+                for i in range(max_lines):
+                    old_line = old_lines[i] if i < len(old_lines) else ""
+                    new_line = new_lines[i] if i < len(new_lines) else ""
+
+                    if old_line != new_line:
+                        if old_line:
+                            p.print(f"[red]-{old_line}[/red]")
+                        if new_line:
+                            p.print(f"[green]+{new_line}[/green]")
