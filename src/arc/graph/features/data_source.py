@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, NamedTuple
@@ -13,11 +14,6 @@ except ImportError as e:
         "PyYAML is required for Arc-Graph. "
         "Install with 'uv add pyyaml' or 'pip install pyyaml'."
     ) from e
-
-try:
-    import json
-except ImportError as e:
-    raise RuntimeError("JSON support is required") from e
 
 try:
     from sql_formatter.core import format_sql as sql_format
