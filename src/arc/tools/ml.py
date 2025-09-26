@@ -320,7 +320,7 @@ class MLModelGeneratorTool(BaseTool):
         # Interactive confirmation workflow (unless auto_confirm is True)
         if not auto_confirm:
             proceed, final_yaml = await self._interactive_confirmation_workflow(
-                model_spec, model_yaml, str(name), output_path
+                model_yaml, str(name), output_path
             )
             if not proceed:
                 return ToolResult.success_result(
@@ -361,7 +361,7 @@ class MLModelGeneratorTool(BaseTool):
         return ToolResult.success_result("\n".join(lines))
 
     async def _interactive_confirmation_workflow(
-        self, model_spec, model_yaml: str, name: str, output_path: str = None
+        self, model_yaml: str, name: str, output_path: str = None
     ) -> tuple[bool, str]:
         """Interactive confirmation workflow with editing support.
 
@@ -370,7 +370,7 @@ class MLModelGeneratorTool(BaseTool):
         """
         while True:
             # Display preview
-            await self._display_model_preview(model_spec, model_yaml, output_path)
+            await self._display_model_preview(model_yaml, output_path)
 
             # Get user choice using UI choice selection
             options = [
@@ -407,11 +407,8 @@ class MLModelGeneratorTool(BaseTool):
                     validate_model_dict(edited_dict)
                     model_yaml = edited_yaml  # Use edited version
 
-                    # Update model_spec for preview
-                    from arc.graph.model import ModelSpec
-
-                    model_spec = ModelSpec.from_dict(edited_dict)
-                    continue  # Show updated preview and confirmation
+                    # Continue to show updated preview and confirmation
+                    continue
                 except (yaml.YAMLError, ModelValidationError) as e:
                     error_msg = f"❌ Validation error in edited model: {e}"
                     instruction_msg = "Please edit again or cancel."
@@ -434,7 +431,9 @@ class MLModelGeneratorTool(BaseTool):
                     pass
                 continue
 
-    async def _display_model_preview(self, model_spec, model_yaml: str, output_path: str = None) -> None:
+    async def _display_model_preview(
+        self, model_yaml: str, output_path: str = None
+    ) -> None:
         """Display formatted model preview."""
 
         def output(text):
@@ -449,7 +448,6 @@ class MLModelGeneratorTool(BaseTool):
         # Use printer to display YAML with diff support
         if self.ui:
             self.ui._printer.display_yaml_with_diff(model_yaml, output_path)
-
 
     async def _edit_yaml_interactive(self, yaml_content: str) -> str | None:
         """Interactive YAML editing with automatic editor detection."""

@@ -666,8 +666,9 @@ class Printer:
             file_path: Optional file path to check for existing content and show diff
         """
         from pathlib import Path
-        from rich.syntax import Syntax
+
         from rich.panel import Panel
+        from rich.syntax import Syntax
 
         try:
             # Check if file exists and has content to compare against
@@ -675,13 +676,19 @@ class Printer:
                 path_obj = Path(file_path)
                 if path_obj.exists() and path_obj.is_file():
                     try:
-                        existing_content = path_obj.read_text(encoding='utf-8')
-                        if existing_content.strip() and existing_content != yaml_content:
+                        existing_content = path_obj.read_text(encoding="utf-8")
+                        if (
+                            existing_content.strip()
+                            and existing_content != yaml_content
+                        ):
                             # Show diff using Rich
-                            self._display_yaml_diff(existing_content, yaml_content, file_path)
+                            self._display_yaml_diff(
+                                existing_content, yaml_content, file_path
+                            )
                             return
                     except Exception:
-                        # If we can't read the existing file, fall back to regular display
+                        # If we can't read the existing file, fall back to
+                        # regular display
                         pass
 
             # No existing file or no diff needed - show syntax highlighted YAML
@@ -706,13 +713,16 @@ class Printer:
                 p.print(f"Error displaying YAML: {e}")
                 p.print(yaml_content)
 
-    def _display_yaml_diff(self, old_content: str, new_content: str, file_path: str) -> None:
+    def _display_yaml_diff(
+        self, old_content: str, new_content: str, file_path: str
+    ) -> None:
         """Display YAML diff in unified format with more context."""
         try:
             import difflib
             from pathlib import Path
-            from rich.syntax import Syntax
+
             from rich.panel import Panel
+            from rich.syntax import Syntax
 
             # Generate unified diff with more context (10 lines instead of default 3)
             old_lines = old_content.splitlines(keepends=True)
@@ -724,11 +734,11 @@ class Printer:
                 fromfile=f"a/{Path(file_path).name}",
                 tofile=f"b/{Path(file_path).name}",
                 lineterm="",
-                n=10  # Show 10 lines of context around changes
+                n=10,  # Show 10 lines of context around changes
             )
 
             # Convert to string and clean up
-            diff_text = ''.join(diff)
+            diff_text = "".join(diff)
 
             if diff_text:
                 # Use Rich syntax highlighting for the diff
