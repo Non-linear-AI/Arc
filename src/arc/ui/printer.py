@@ -707,53 +707,68 @@ class Printer:
                 p.print(yaml_content)
 
     def _display_yaml_diff(self, old_content: str, new_content: str, file_path: str) -> None:
-        """Display YAML diff using Rich."""
+        """Display YAML diff in unified format with more context."""
         try:
+            import difflib
             from pathlib import Path
             from rich.syntax import Syntax
             from rich.panel import Panel
-            from rich.columns import Columns
 
-            # Create syntax-highlighted versions of both contents
-            old_syntax = Syntax(
-                old_content,
-                "yaml",
-                theme="github-dark",
-                line_numbers=True,
-                word_wrap=False,
+            # Generate unified diff with more context (10 lines instead of default 3)
+            old_lines = old_content.splitlines(keepends=True)
+            new_lines = new_content.splitlines(keepends=True)
+
+            diff = difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile=f"a/{Path(file_path).name}",
+                tofile=f"b/{Path(file_path).name}",
+                lineterm="",
+                n=10  # Show 10 lines of context around changes
             )
 
-            new_syntax = Syntax(
-                new_content,
-                "yaml",
-                theme="github-dark",
-                line_numbers=True,
-                word_wrap=False,
-            )
+            # Convert to string and clean up
+            diff_text = ''.join(diff)
 
-            # Create side-by-side panels
-            old_panel = Panel(
-                old_syntax,
-                title=f"🔴 Current: {Path(file_path).name}",
-                border_style="red",
-            )
+            if diff_text:
+                # Use Rich syntax highlighting for the diff
+                diff_syntax = Syntax(
+                    diff_text,
+                    "diff",
+                    theme="github-dark",
+                    word_wrap=False,
+                )
 
-            new_panel = Panel(
-                new_syntax,
-                title="🟢 New Content",
-                border_style="green",
-            )
-
-            with self.section(add_dot=False) as p:
-                # Show side-by-side comparison
-                columns = Columns([old_panel, new_panel], equal=True)
-                p.print(columns)
+                with self.section(add_dot=False) as p:
+                    p.print_panel(
+                        Panel(
+                            diff_syntax,
+                            title=f"📝 Changes to {Path(file_path).name}",
+                            border_style="yellow",
+                        )
+                    )
+            else:
+                # No differences found
+                with self.section(add_dot=False) as p:
+                    p.print(f"✓ No changes detected in {Path(file_path).name}")
 
         except Exception:
-            # Fallback to simple before/after display
+            # Fallback to simple diff display
             with self.section(add_dot=False) as p:
                 p.print(f"📝 File diff for: {file_path}")
-                p.print("🔴 Current content:")
-                p.print(old_content)
-                p.print("\n🟢 New content:")
-                p.print(new_content)
+                p.print("Lines being changed:")
+
+                # Simple line-by-line comparison
+                old_lines = old_content.splitlines()
+                new_lines = new_content.splitlines()
+
+                max_lines = max(len(old_lines), len(new_lines))
+                for i in range(max_lines):
+                    old_line = old_lines[i] if i < len(old_lines) else ""
+                    new_line = new_lines[i] if i < len(new_lines) else ""
+
+                    if old_line != new_line:
+                        if old_line:
+                            p.print(f"[red]-{old_line}[/red]")
+                        if new_line:
+                            p.print(f"[green]+{new_line}[/green]")

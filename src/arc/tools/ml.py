@@ -320,7 +320,7 @@ class MLModelGeneratorTool(BaseTool):
         # Interactive confirmation workflow (unless auto_confirm is True)
         if not auto_confirm:
             proceed, final_yaml = await self._interactive_confirmation_workflow(
-                model_spec, model_yaml, str(name)
+                model_spec, model_yaml, str(name), output_path
             )
             if not proceed:
                 return ToolResult.success_result(
@@ -361,7 +361,7 @@ class MLModelGeneratorTool(BaseTool):
         return ToolResult.success_result("\n".join(lines))
 
     async def _interactive_confirmation_workflow(
-        self, model_spec, model_yaml: str, name: str
+        self, model_spec, model_yaml: str, name: str, output_path: str = None
     ) -> tuple[bool, str]:
         """Interactive confirmation workflow with editing support.
 
@@ -370,7 +370,7 @@ class MLModelGeneratorTool(BaseTool):
         """
         while True:
             # Display preview
-            await self._display_model_preview(model_spec, model_yaml)
+            await self._display_model_preview(model_spec, model_yaml, output_path)
 
             # Get user choice using UI choice selection
             options = [
@@ -434,7 +434,7 @@ class MLModelGeneratorTool(BaseTool):
                     pass
                 continue
 
-    async def _display_model_preview(self, model_spec, model_yaml: str) -> None:
+    async def _display_model_preview(self, model_spec, model_yaml: str, output_path: str = None) -> None:
         """Display formatted model preview."""
 
         def output(text):
@@ -446,9 +446,9 @@ class MLModelGeneratorTool(BaseTool):
         output("¶ Arc-Graph Model Specification")
         output("=" * 50)
 
-        # Use printer to display YAML
+        # Use printer to display YAML with diff support
         if self.ui:
-            self.ui._printer.display_yaml_with_diff(model_yaml)
+            self.ui._printer.display_yaml_with_diff(model_yaml, output_path)
 
 
     async def _edit_yaml_interactive(self, yaml_content: str) -> str | None:
