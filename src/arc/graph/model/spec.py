@@ -86,7 +86,7 @@ class ModelSpec:
 
         # Parse modules section if present
         modules = None
-        if "modules" in data:
+        if "modules" in data and data["modules"] is not None:
             modules = {}
             for module_name, module_data in data["modules"].items():
                 # Parse module graph nodes

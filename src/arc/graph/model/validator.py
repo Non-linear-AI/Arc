@@ -23,14 +23,15 @@ def _require(obj: dict[str, Any], key: str, msg: str | None = None) -> Any:
     return obj[key]
 
 
-def resolve_node_reference(ref: str) -> tuple[str, str, int | None]:
-    """Parse node references like 'node.output', 'node.output.0', etc.
+def resolve_node_reference(ref: str) -> tuple[str, str, list[int] | None]:
+    """Parse node references like 'node.output', 'node.output.0', 'node.output.1.0' etc.
 
     Args:
         ref: Node reference string
 
     Returns:
-        Tuple of (node_name, attribute, tuple_index)
+        Tuple of (node_name, attribute, tuple_indices)
+        tuple_indices is a list of indices for nested tuple access, or None
 
     Raises:
         ModelValidationError: If reference format is invalid
@@ -42,9 +43,10 @@ def resolve_node_reference(ref: str) -> tuple[str, str, int | None]:
     elif len(parts) == 2:
         # node.attribute
         return parts[0], parts[1], None
-    elif len(parts) == 3 and parts[2].isdigit():
-        # node.attribute.0 (tuple indexing)
-        return parts[0], parts[1], int(parts[2])
+    elif len(parts) >= 3 and all(p.isdigit() for p in parts[2:]):
+        # node.attribute.0 or node.attribute.1.0 (tuple indexing)
+        indices = [int(p) for p in parts[2:]]
+        return parts[0], parts[1], indices
     else:
         raise ModelValidationError(f"Invalid node reference format: {ref}")
 
@@ -78,7 +80,7 @@ def validate_module_definition(module_name: str, module_data: dict[str, Any]) ->
     if not isinstance(outputs, dict):
         raise ModelValidationError(f"module.{module_name}.outputs must be a mapping")
 
-    # Validate internal graph nodes (we'll do full validation later)
+    # Validate internal graph nodes
     available_nodes = set(inputs)  # Input parameters are available as nodes
     for i, node in enumerate(graph):
         if not isinstance(node, dict):
@@ -89,6 +91,33 @@ def validate_module_definition(module_name: str, module_data: dict[str, Any]) ->
         node_name = _require(
             node, "name", f"module.{module_name}.graph[{i}].name required"
         )
+
+        # Validate node inputs reference available nodes
+        if "inputs" in node and node["inputs"] is not None:
+            node_inputs = node["inputs"]
+
+            # Support both dict and list input formats
+            if isinstance(node_inputs, dict):
+                # Dict format: {arg_name: source_ref}
+                for input_key, source_ref in node_inputs.items():
+                    validate_node_reference(
+                        source_ref,
+                        available_nodes,
+                        f"module.{module_name}.graph[{i}].inputs.{input_key}",
+                    )
+            elif isinstance(node_inputs, list):
+                # List format: [source_ref1, source_ref2, ...]
+                for j, source_ref in enumerate(node_inputs):
+                    validate_node_reference(
+                        source_ref,
+                        available_nodes,
+                        f"module.{module_name}.graph[{i}].inputs[{j}]",
+                    )
+            else:
+                raise ModelValidationError(
+                    f"module.{module_name}.graph[{i}].inputs must be a mapping or list"
+                )
+
         available_nodes.add(node_name)
 
     # Validate output references point to valid nodes

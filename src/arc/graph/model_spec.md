@@ -32,7 +32,7 @@ graph: [ ... ]
 outputs: { ... }
 ```
 
-## **3\. Schema Components in Detail**
+## **3. Schema Components in Detail**
 
 ### **3.1. The Model Interface: inputs and outputs**
 
@@ -112,7 +112,7 @@ modules:
       <output_name>: "<internal_node.output>" # The module's return value
 ```
 
-## **4\. Formal JSON Schema**
+## **4. Formal JSON Schema**
 
 This JSON schema provides the formal definition for validating an Arc-Graph YAML file.
 

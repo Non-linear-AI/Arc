@@ -13,6 +13,17 @@ from arc.graph.model.spec import GraphNode, ModelSpec, ModuleDefinition
 from arc.graph.model.validator import resolve_node_reference
 
 
+def _apply_tuple_indices(value, indices):
+    """Apply a list of indices to a value for nested tuple access."""
+    if indices is None:
+        return value
+
+    current = value
+    for idx in indices:
+        current = current[idx]
+    return current
+
+
 class ArcGraphModel(nn.Module):
     """PyTorch model built from Arc-Graph specification."""
 
@@ -45,11 +56,49 @@ class ArcGraphModel(nn.Module):
             Dictionary of built PyTorch modules
         """
         built_modules = {}
+        remaining_modules = modules.copy()
 
-        for module_name, module_def in modules.items():
-            built_modules[module_name] = self._build_module_from_definition(
-                module_def, module_name
-            )
+        # Build modules in multiple passes to handle dependencies
+        max_passes = len(modules) + 1  # Safety limit
+        pass_count = 0
+
+        while remaining_modules and pass_count < max_passes:
+            built_in_this_pass = []
+
+            for module_name, module_def in list(remaining_modules.items()):
+                # Check if all dependencies are satisfied
+                dependencies_satisfied = True
+                for node in module_def.graph:
+                    if node.type.startswith("module."):
+                        dep_name = node.type[7:]
+                        if dep_name not in built_modules:
+                            dependencies_satisfied = False
+                            break
+
+                if dependencies_satisfied:
+                    # Temporarily set self.custom_modules for nested module building
+                    old_custom_modules = getattr(self, 'custom_modules', {})
+                    self.custom_modules = built_modules
+
+                    built_modules[module_name] = self._build_module_from_definition(
+                        module_def, module_name
+                    )
+                    built_in_this_pass.append(module_name)
+
+                    # Restore old custom_modules
+                    self.custom_modules = old_custom_modules
+
+            # Remove built modules from remaining
+            for module_name in built_in_this_pass:
+                del remaining_modules[module_name]
+
+            # If no modules were built in this pass and we still have remaining modules,
+            # there might be circular dependencies or missing modules
+            if not built_in_this_pass and remaining_modules:
+                remaining_names = list(remaining_modules.keys())
+                raise ValueError(f"Cannot resolve module dependencies: {remaining_names}")
+
+            pass_count += 1
 
         return built_modules
 
@@ -75,7 +124,7 @@ class ArcGraphModel(nn.Module):
 
                 # Build internal graph
                 component_dict, self.execution_order = builder._build_graph_modules(
-                    module_def.graph, set(module_def.inputs), {}
+                    module_def.graph, set(module_def.inputs), builder.custom_modules
                 )
                 self.internal_modules = component_dict["modules"]
                 self.internal_functions = component_dict["functions"]
@@ -156,18 +205,16 @@ class ArcGraphModel(nn.Module):
                 # Return specified outputs
                 if len(self.output_names) == 1:
                     output_ref = module_def.outputs[self.output_names[0]]
-                    node_name, attr, idx = resolve_node_reference(output_ref)
+                    node_name, attr, indices = resolve_node_reference(output_ref)
                     output = node_outputs[node_name]
-                    if idx is not None:
-                        output = output[idx]
+                    output = _apply_tuple_indices(output, indices)
                     return output
                 else:
                     results = {}
                     for output_name, output_ref in module_def.outputs.items():
-                        node_name, attr, idx = resolve_node_reference(output_ref)
+                        node_name, attr, indices = resolve_node_reference(output_ref)
                         output = node_outputs[node_name]
-                        if idx is not None:
-                            output = output[idx]
+                        output = _apply_tuple_indices(output, indices)
                         results[output_name] = output
                     return results
 
@@ -225,6 +272,8 @@ class ArcGraphModel(nn.Module):
             elif component_kind == "custom_module":
                 # Reference to custom module
                 module_name = node.type[7:]  # Remove "module." prefix
+                if module_name not in custom_modules:
+                    raise ValueError(f"Referenced module '{module_name}' not found in available modules")
                 modules[node.name] = copy.deepcopy(custom_modules[module_name])
 
             elif component_kind == "stack":
@@ -265,20 +314,18 @@ class ArcGraphModel(nn.Module):
             # Named inputs
             prepared = {}
             for arg_name, source_ref in node.inputs.items():
-                node_name, attr, idx = resolve_node_reference(source_ref)
+                node_name, attr, indices = resolve_node_reference(source_ref)
                 value = available_outputs[node_name]
-                if idx is not None:
-                    value = value[idx]
+                value = _apply_tuple_indices(value, indices)
                 prepared[arg_name] = value
             return prepared
         else:
             # Positional inputs (list)
             prepared = []
             for source_ref in node.inputs:
-                node_name, attr, idx = resolve_node_reference(source_ref)
+                node_name, attr, indices = resolve_node_reference(source_ref)
                 value = available_outputs[node_name]
-                if idx is not None:
-                    value = value[idx]
+                value = _apply_tuple_indices(value, indices)
                 prepared.append(value)
             return prepared
 
@@ -351,19 +398,17 @@ class ArcGraphModel(nn.Module):
             # Single output - return tensor directly
             output_name = self.output_names[0]
             output_ref = self.spec.outputs[output_name]
-            node_name, attr, idx = resolve_node_reference(output_ref)
+            node_name, attr, indices = resolve_node_reference(output_ref)
             output = node_outputs[node_name]
-            if idx is not None:
-                output = output[idx]
+            output = _apply_tuple_indices(output, indices)
             return output
         else:
             # Multiple outputs - return dictionary
             results = {}
             for output_name, output_ref in self.spec.outputs.items():
-                node_name, attr, idx = resolve_node_reference(output_ref)
+                node_name, attr, indices = resolve_node_reference(output_ref)
                 output = node_outputs[node_name]
-                if idx is not None:
-                    output = output[idx]
+                output = _apply_tuple_indices(output, indices)
                 results[output_name] = output
             return results
 
