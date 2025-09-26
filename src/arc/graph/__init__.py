@@ -11,10 +11,15 @@ from arc.graph.features import (
 )
 from arc.graph.model import (
     CORE_LAYERS,
+    ArcGraphModel,
     GraphNode,
     ModelInput,
     ModelSpec,
     ModelValidationError,
+    ModuleDefinition,
+    build_model_from_file,
+    build_model_from_spec,
+    build_model_from_yaml,
     get_layer_class,
     validate_model_dict,
 )
@@ -41,6 +46,11 @@ __all__ = [
     "ModelSpec",
     "ModelInput",
     "GraphNode",
+    "ModuleDefinition",
+    "ArcGraphModel",
+    "build_model_from_spec",
+    "build_model_from_yaml",
+    "build_model_from_file",
     "validate_model_dict",
     "ModelValidationError",
     "get_layer_class",

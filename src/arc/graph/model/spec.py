@@ -28,9 +28,20 @@ class GraphNode:
     """Specification for a model graph node (layer)."""
 
     name: str
-    type: str  # Direct PyTorch class name with pytorch prefix
+    type: str  # torch.nn.*, torch.nn.functional.*, torch.*, module.*, arc.stack
     params: dict[str, Any] | None = None
-    inputs: dict[str, str] | None = None
+    inputs: dict[str, str] | list[str] | None = (
+        None  # Support both dict and list formats
+    )
+
+
+@dataclass
+class ModuleDefinition:
+    """Specification for a reusable module/sub-graph."""
+
+    inputs: list[str]  # Parameter names for the module
+    graph: list[GraphNode]  # Internal computation graph
+    outputs: dict[str, str]  # Named outputs from internal nodes
 
 
 @dataclass
@@ -40,6 +51,7 @@ class ModelSpec:
     inputs: dict[str, ModelInput]
     graph: list[GraphNode]
     outputs: dict[str, str]
+    modules: dict[str, ModuleDefinition] | None = None  # Optional reusable modules
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> ModelSpec:
@@ -72,7 +84,30 @@ class ModelSpec:
                 columns=input_spec.get("columns"),
             )
 
-        # Parse graph nodes
+        # Parse modules section if present
+        modules = None
+        if "modules" in data:
+            modules = {}
+            for module_name, module_data in data["modules"].items():
+                # Parse module graph nodes
+                module_graph = []
+                for node_data in module_data["graph"]:
+                    module_graph.append(
+                        GraphNode(
+                            name=node_data["name"],
+                            type=node_data["type"],
+                            params=node_data.get("params"),
+                            inputs=node_data.get("inputs"),
+                        )
+                    )
+
+                modules[module_name] = ModuleDefinition(
+                    inputs=module_data["inputs"],
+                    graph=module_graph,
+                    outputs=module_data["outputs"],
+                )
+
+        # Parse main graph nodes
         graph = []
         for node_data in data["graph"]:
             graph.append(
@@ -87,7 +122,7 @@ class ModelSpec:
         # Parse outputs
         outputs = data["outputs"]
 
-        return cls(inputs=inputs, graph=graph, outputs=outputs)
+        return cls(inputs=inputs, graph=graph, outputs=outputs, modules=modules)
 
     @classmethod
     def from_yaml_file(cls, path: str) -> ModelSpec:
@@ -112,7 +147,11 @@ class ModelSpec:
         Returns:
             YAML string representation of the model specification
         """
-        return yaml.dump(asdict(self), default_flow_style=False)
+        # Convert to dict, filtering out None modules
+        spec_dict = asdict(self)
+        if spec_dict.get("modules") is None:
+            del spec_dict["modules"]
+        return yaml.dump(spec_dict, default_flow_style=False)
 
     def to_yaml_file(self, path: str) -> None:
         """Save ModelSpec to YAML file.
