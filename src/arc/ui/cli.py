@@ -470,7 +470,6 @@ async def _ml_generate_model(
 
         # Show initial UI feedback
         ui.show_info(f"🤖 Generating model specification for '{name}'...")
-        ui.show_info(f"📊 Analyzing data table '{data_table}'...")
 
         # Create the tool with proper dependencies
         tool = MLModelGeneratorTool(runtime.services, api_key, base_url, model, ui)

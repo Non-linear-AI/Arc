@@ -324,7 +324,7 @@ class MLModelGeneratorTool(BaseTool):
             )
             if not proceed:
                 return ToolResult.success_result(
-                    "❌ Model generation cancelled by user."
+                    "✗ Model generation cancelled by user."
                 )
             model_yaml = final_yaml
 
@@ -345,18 +345,18 @@ class MLModelGeneratorTool(BaseTool):
         )
 
         lines = [
-            f"✅ Model specification generated for '{name}'.",
+            f"✓ Model specification generated for '{name}'.",
             summary,
         ]
 
         if output_path:
-            lines.append(f"💾 Saved to: {output_path}")
+            lines.append(f" Saved to: {output_path}")
 
         if auto_confirm:
-            lines.append("\n📝 YAML:")
+            lines.append("\n YAML:")
             lines.append(model_yaml.strip())
         else:
-            lines.append("✅ Model approved and ready for use.")
+            lines.append("✓ Model approved and ready for use.")
 
         return ToolResult.success_result("\n".join(lines))
 
@@ -374,7 +374,7 @@ class MLModelGeneratorTool(BaseTool):
 
             # Get user choice using UI choice selection
             options = [
-                ("save", "Yes - Save this model"),
+                ("save", "Yes - Save this model specification and proceed"),
                 ("edit", "Edit - Modify the YAML before saving"),
                 ("cancel", "No - Cancel generation"),
             ]
@@ -385,10 +385,10 @@ class MLModelGeneratorTool(BaseTool):
                     options, default="save"
                 )
             else:
-                # Fallback for non-UI usage
-                print(f"\n🤖 Confirm model specification for '{name}'")
+                # Fallback for non-UI usage - use simple display
+                fallback_text = f"\n Confirm model specification for '{name}'"
                 for i, (_, label) in enumerate(options, 1):
-                    print(f"  {i}. {label}")
+                    fallback_text += f"\n  {i}. {label}"
                 choice_input = input("Enter choice (1-3): ").strip()
                 choice_map = {"1": "save", "2": "edit", "3": "cancel"}
                 choice = choice_map.get(choice_input, "cancel")
@@ -419,8 +419,8 @@ class MLModelGeneratorTool(BaseTool):
                         self.ui.show_system_error(error_msg)
                         self.ui.show_info(instruction_msg)
                     else:
-                        print(error_msg)
-                        print(instruction_msg)
+                        # Fallback when no UI available
+                        pass
                     continue
             elif choice == "cancel" or choice == "__esc__":
                 # User cancelled
@@ -430,7 +430,8 @@ class MLModelGeneratorTool(BaseTool):
                 if self.ui:
                     self.ui.show_system_error("❌ Invalid choice. Please try again.")
                 else:
-                    print("❌ Invalid choice. Please try again.")
+                    # Fallback when no UI available
+                    pass
                 continue
 
     async def _display_model_preview(self, model_spec, model_yaml: str) -> None:
@@ -439,71 +440,16 @@ class MLModelGeneratorTool(BaseTool):
         def output(text):
             if self.ui:
                 self.ui.show_info(text)
-            else:
-                print(text)
+            # No fallback needed - if no UI, skip output
 
         output("\n" + "=" * 50)
-        output("🤖 Arc-Graph Model Preview")
+        output("¶ Arc-Graph Model Specification")
         output("=" * 50)
-        input_count = len(model_spec.inputs)
-        node_count = len(model_spec.graph)
-        output_count = len(model_spec.outputs)
-        output(
-            f"📊 Inputs: {input_count} • 🔗 Nodes: {node_count} • "
-            f"📤 Outputs: {output_count}"
-        )
-        output("\n📝 YAML Specification:")
 
-        # Use Rich syntax highlighting for YAML display
-        await self._display_yaml_with_rich_syntax(model_yaml)
+        # Use printer to display YAML
+        if self.ui:
+            self.ui._printer.display_yaml_with_diff(model_yaml)
 
-    async def _display_yaml_with_rich_syntax(self, yaml_content: str) -> None:
-        """Display YAML using Rich syntax highlighting with line numbers."""
-        try:
-            from rich.console import Console
-            from rich.syntax import Syntax
-
-            # Create Rich console
-            console = Console()
-
-            # Create syntax-highlighted YAML with line numbers
-            syntax = Syntax(
-                yaml_content,
-                "yaml",
-                theme="github-dark",
-                line_numbers=True,
-                word_wrap=False,
-            )
-
-            # Display using Rich console
-            console.print(syntax)
-
-        except ImportError:
-            # Fallback to simple display if Rich is not available
-            if self.ui:
-                self.ui.show_system_error(
-                    "Rich library not available, using simple display"
-                )
-            else:
-                print("Rich library not available, using simple display")
-            self._display_yaml_simple(yaml_content)
-        except Exception as e:
-            # Fallback to simple display on any error
-            if self.ui:
-                self.ui.show_system_error(f"Error with Rich display: {e}")
-            else:
-                print(f"Error with Rich display: {e}")
-            self._display_yaml_simple(yaml_content)
-
-    def _display_yaml_simple(self, yaml_content: str) -> None:
-        """Simple fallback YAML display without Rich."""
-        lines = yaml_content.strip().split("\n")
-        for i, line in enumerate(lines, 1):
-            line_with_number = f"{i:4d}: {line}"
-            if self.ui:
-                self.ui.show_info(line_with_number)
-            else:
-                print(line_with_number)
 
     async def _edit_yaml_interactive(self, yaml_content: str) -> str | None:
         """Interactive YAML editing with automatic editor detection."""
@@ -533,9 +479,8 @@ class MLModelGeneratorTool(BaseTool):
                 self.ui.show_info("   2. Install a text editor: brew install nano")
                 self.ui.show_info("   3. Cancel this edit and try again")
             else:
-                print(
-                    "❌ No text editor found. Please set $EDITOR or install nano/vim."
-                )
+                # Fallback when no UI available
+                pass
             return None
 
         # Use the detected/configured editor
@@ -586,7 +531,8 @@ class MLModelGeneratorTool(BaseTool):
                 if self.ui:
                     self.ui.show_system_error(error_msg)
                 else:
-                    print(error_msg)
+                    # Fallback when no UI available
+                    pass
                 return None
 
         except Exception as e:
@@ -594,7 +540,8 @@ class MLModelGeneratorTool(BaseTool):
             if self.ui:
                 self.ui.show_system_error(error_msg)
             else:
-                print(error_msg)
+                # Fallback when no UI available
+                pass
             return None
         finally:
             # Cleanup temp file

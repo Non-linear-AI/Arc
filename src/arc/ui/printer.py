@@ -657,3 +657,103 @@ class Printer:
                 self.console.print(message, style=style)
             else:
                 self.console.print(message)
+
+    def display_yaml_with_diff(self, yaml_content: str, file_path: str = None) -> None:
+        """Display YAML content using Rich syntax highlighting or diff if file exists.
+
+        Args:
+            yaml_content: The YAML content to display
+            file_path: Optional file path to check for existing content and show diff
+        """
+        from pathlib import Path
+        from rich.syntax import Syntax
+        from rich.panel import Panel
+
+        try:
+            # Check if file exists and has content to compare against
+            if file_path:
+                path_obj = Path(file_path)
+                if path_obj.exists() and path_obj.is_file():
+                    try:
+                        existing_content = path_obj.read_text(encoding='utf-8')
+                        if existing_content.strip() and existing_content != yaml_content:
+                            # Show diff using Rich
+                            self._display_yaml_diff(existing_content, yaml_content, file_path)
+                            return
+                    except Exception:
+                        # If we can't read the existing file, fall back to regular display
+                        pass
+
+            # No existing file or no diff needed - show syntax highlighted YAML
+            syntax = Syntax(
+                yaml_content,
+                "yaml",
+                theme="github-dark",
+                line_numbers=True,
+                word_wrap=False,
+            )
+
+            with self.section(add_dot=False) as p:
+                p.print_panel(Panel(syntax, border_style="color(240)"))
+
+        except ImportError:
+            # Fallback to plain text if Rich is not available
+            with self.section(add_dot=False) as p:
+                p.print(yaml_content)
+        except Exception as e:
+            # Fallback on any error
+            with self.section(add_dot=False) as p:
+                p.print(f"Error displaying YAML: {e}")
+                p.print(yaml_content)
+
+    def _display_yaml_diff(self, old_content: str, new_content: str, file_path: str) -> None:
+        """Display YAML diff using Rich."""
+        try:
+            from pathlib import Path
+            from rich.syntax import Syntax
+            from rich.panel import Panel
+            from rich.columns import Columns
+
+            # Create syntax-highlighted versions of both contents
+            old_syntax = Syntax(
+                old_content,
+                "yaml",
+                theme="github-dark",
+                line_numbers=True,
+                word_wrap=False,
+            )
+
+            new_syntax = Syntax(
+                new_content,
+                "yaml",
+                theme="github-dark",
+                line_numbers=True,
+                word_wrap=False,
+            )
+
+            # Create side-by-side panels
+            old_panel = Panel(
+                old_syntax,
+                title=f"🔴 Current: {Path(file_path).name}",
+                border_style="red",
+            )
+
+            new_panel = Panel(
+                new_syntax,
+                title="🟢 New Content",
+                border_style="green",
+            )
+
+            with self.section(add_dot=False) as p:
+                # Show side-by-side comparison
+                columns = Columns([old_panel, new_panel], equal=True)
+                p.print(columns)
+
+        except Exception:
+            # Fallback to simple before/after display
+            with self.section(add_dot=False) as p:
+                p.print(f"📝 File diff for: {file_path}")
+                p.print("🔴 Current content:")
+                p.print(old_content)
+                p.print("\n🟢 New content:")
+                p.print(new_content)
