@@ -58,12 +58,12 @@ You must generate JSON that follows this exact schema:
       {
         "name": "clean_data",
         "depends_on": ["source_table"],
-        "sql": "SELECT\n  *\nFROM source_table\nWHERE date >= '2023-01-01'\n  AND amount > 100"
+        "sql": "SELECT * FROM source_table WHERE date >= '2023-01-01' AND amount > 100"
       },
       {
         "name": "user_aggregates",
         "depends_on": ["clean_data"],
-        "sql": "SELECT\n  user_id,\n  COUNT(*) as transaction_count,\n  SUM(amount) as total_amount\nFROM clean_data\nGROUP BY user_id"
+        "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
       }
     ],
     "outputs": ["user_aggregates"]
@@ -74,12 +74,11 @@ You must generate JSON that follows this exact schema:
 ## Rules
 1. **Step Names**: Use descriptive names (clean_data, user_aggregates, final_features)
 2. **Dependencies**: Each step must list all tables/steps it depends on in the depends_on array
-3. **SQL Quality**: Write clean, efficient SQL with proper multi-line formatting and concrete values
-4. **SQL Formatting**: Always format SQL with line breaks - put SELECT, FROM, WHERE, etc. on separate lines with proper indentation
-5. **Concrete SQL**: Write specific SQL queries with actual values, dates, and thresholds - no variables or placeholders
-6. **Outputs**: Only list steps that should be persisted as tables in the outputs array
-7. **Execution Order**: Steps will be executed in dependency order automatically
-8. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
+3. **SQL Quality**: Write clean, efficient SQL with concrete values
+4. **Concrete SQL**: Write specific SQL queries with actual values, dates, and thresholds - no variables or placeholders
+5. **Outputs**: Only list steps that should be persisted as tables in the outputs array
+6. **Execution Order**: Steps will be executed in dependency order automatically
+7. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
 
 ## Production-Ready Configuration Requirements
 9. **Completeness**: Generate a COMPREHENSIVE configuration that requires NO further modifications
@@ -95,13 +94,6 @@ You must generate JSON that follows this exact schema:
 - **Joins**: Combine data from multiple tables
 - **Windowing**: Running totals, rankings, time-based calculations
 
-## SQL String Formatting
-- Use proper JSON string escaping for SQL (escape quotes as backslash-quote)
-- Format SQL queries with proper line breaks using \n for readability:
-  - Put SELECT, FROM, WHERE, JOIN, GROUP BY, ORDER BY on separate lines
-  - Indent column lists and conditions appropriately
-  - Use multi-line formatting even for simple queries to improve readability
-- Example: "SELECT\n  column1,\n  column2\nFROM table_name\nWHERE condition = 'value'"
 
 ## Output Requirements
 - Generate only valid JSON, no markdown blocks or explanations
