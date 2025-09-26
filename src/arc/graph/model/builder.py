@@ -77,7 +77,7 @@ class ArcGraphModel(nn.Module):
 
                 if dependencies_satisfied:
                     # Temporarily set self.custom_modules for nested module building
-                    old_custom_modules = getattr(self, 'custom_modules', {})
+                    old_custom_modules = getattr(self, "custom_modules", {})
                     self.custom_modules = built_modules
 
                     built_modules[module_name] = self._build_module_from_definition(
@@ -96,7 +96,9 @@ class ArcGraphModel(nn.Module):
             # there might be circular dependencies or missing modules
             if not built_in_this_pass and remaining_modules:
                 remaining_names = list(remaining_modules.keys())
-                raise ValueError(f"Cannot resolve module dependencies: {remaining_names}")
+                raise ValueError(
+                    f"Cannot resolve module dependencies: {remaining_names}"
+                )
 
             pass_count += 1
 
@@ -273,7 +275,10 @@ class ArcGraphModel(nn.Module):
                 # Reference to custom module
                 module_name = node.type[7:]  # Remove "module." prefix
                 if module_name not in custom_modules:
-                    raise ValueError(f"Referenced module '{module_name}' not found in available modules")
+                    raise ValueError(
+                        f"Referenced module '{module_name}' not found in available "
+                        f"modules"
+                    )
                 modules[node.name] = copy.deepcopy(custom_modules[module_name])
 
             elif component_kind == "stack":

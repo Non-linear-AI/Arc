@@ -273,7 +273,7 @@ class TestModulesAndStacking:
         model = build_model_from_yaml(yaml_content)
 
         # Check that the stack has 5 layers
-        stack_module = model.graph_modules['deep_stack']
+        stack_module = model.graph_modules["deep_stack"]
         assert len(stack_module) == 5
 
         # Test forward pass
@@ -450,7 +450,11 @@ class TestAdvancedFeatures:
         outputs = model(sequence=test_input)
 
         assert outputs["sequence_output"].shape == (2, 10, 32)
-        assert outputs["final_hidden"].shape == (1, 2, 32)  # LSTM hidden has shape (num_layers, batch, hidden_size)
+        assert outputs["final_hidden"].shape == (
+            1,
+            2,
+            32,
+        )  # LSTM hidden has shape (num_layers, batch, hidden_size)
         assert outputs["final_cell"].shape == (1, 2, 32)
         assert outputs["classification"].shape == (2, 10)
 
@@ -564,7 +568,9 @@ class TestErrorHandling:
           result: invalid_stack.output
         """
 
-        with pytest.raises(ModelValidationError, match="count must be a positive integer"):
+        with pytest.raises(
+            ModelValidationError, match="count must be a positive integer"
+        ):
             build_model_from_yaml(yaml_content)
 
     def test_missing_required_inputs(self):

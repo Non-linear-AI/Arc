@@ -564,7 +564,9 @@ class TestArcGraphV1Features:
 
         # Check TransformerBlock uses other modules
         transformer_block = model_spec.modules["TransformerBlock"]
-        attention_node = next(n for n in transformer_block.graph if n.name == "self_attention")
+        attention_node = next(
+            n for n in transformer_block.graph if n.name == "self_attention"
+        )
         assert attention_node.type == "module.Attention"
 
         ff_node = next(n for n in transformer_block.graph if n.name == "feedforward")
@@ -589,14 +591,11 @@ class TestModelSpecValidation:
                 {
                     "name": "stack",
                     "type": "arc.stack",
-                    "params": {
-                        "module": "NonExistentModule",
-                        "count": 3
-                    },
-                    "inputs": {"input": "data"}
+                    "params": {"module": "NonExistentModule", "count": 3},
+                    "inputs": {"input": "data"},
                 }
             ],
-            "outputs": {"result": "stack.output"}
+            "outputs": {"result": "stack.output"},
         }
 
         with pytest.raises(ModelValidationError, match="references undefined module"):
@@ -614,10 +613,10 @@ class TestModelSpecValidation:
                             "name": "linear",
                             "type": "torch.nn.Linear",
                             "params": {"in_features": 10, "out_features": 10},
-                            "inputs": {"input": "x"}
+                            "inputs": {"input": "x"},
                         }
                     ],
-                    "outputs": {"output": "linear.output"}
+                    "outputs": {"output": "linear.output"},
                 }
             },
             "graph": [
@@ -626,15 +625,17 @@ class TestModelSpecValidation:
                     "type": "arc.stack",
                     "params": {
                         "module": "TestModule",
-                        "count": -1  # Invalid negative count
+                        "count": -1,  # Invalid negative count
                     },
-                    "inputs": {"input": "data"}
+                    "inputs": {"input": "data"},
                 }
             ],
-            "outputs": {"result": "stack.output"}
+            "outputs": {"result": "stack.output"},
         }
 
-        with pytest.raises(ModelValidationError, match="count must be a positive integer"):
+        with pytest.raises(
+            ModelValidationError, match="count must be a positive integer"
+        ):
             validate_model_dict(invalid_dict)
 
     def test_validate_module_internal_references(self):
@@ -649,20 +650,20 @@ class TestModelSpecValidation:
                             "name": "linear",
                             "type": "torch.nn.Linear",
                             "params": {"in_features": 10, "out_features": 5},
-                            "inputs": {"input": "undefined_input"}  # Invalid reference
+                            "inputs": {"input": "undefined_input"},  # Invalid reference
                         }
                     ],
-                    "outputs": {"output": "linear.output"}
+                    "outputs": {"output": "linear.output"},
                 }
             },
             "graph": [
                 {
                     "name": "module_instance",
                     "type": "module.BadModule",
-                    "inputs": {"x": "data"}
+                    "inputs": {"x": "data"},
                 }
             ],
-            "outputs": {"result": "module_instance.output"}
+            "outputs": {"result": "module_instance.output"},
         }
 
         with pytest.raises(ModelValidationError, match="references undefined node"):

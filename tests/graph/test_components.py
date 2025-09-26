@@ -120,7 +120,7 @@ class TestComponentValidation:
             "in_channels": 3,
             "out_channels": 64,
             "kernel_size": 3,
-            "padding": 1
+            "padding": 1,
         }
         assert validate_component_params("torch.nn.Conv2d", valid_params)
 
@@ -135,7 +135,7 @@ class TestComponentValidation:
             "input_size": 100,
             "hidden_size": 256,
             "num_layers": 2,
-            "batch_first": True
+            "batch_first": True,
         }
         assert validate_component_params("torch.nn.LSTM", valid_params)
 
@@ -156,16 +156,16 @@ class TestComponentValidation:
     def test_validate_transformer_encoder_layer_params(self):
         """Test validation of TransformerEncoderLayer parameters."""
         # Valid parameters
-        valid_params = {
-            "d_model": 512,
-            "nhead": 8,
-            "dim_feedforward": 2048
-        }
-        assert validate_component_params("torch.nn.TransformerEncoderLayer", valid_params)
+        valid_params = {"d_model": 512, "nhead": 8, "dim_feedforward": 2048}
+        assert validate_component_params(
+            "torch.nn.TransformerEncoderLayer", valid_params
+        )
 
         # Missing required parameters
         with pytest.raises(ValueError, match="Missing required parameters"):
-            validate_component_params("torch.nn.TransformerEncoderLayer", {"dim_feedforward": 2048})
+            validate_component_params(
+                "torch.nn.TransformerEncoderLayer", {"dim_feedforward": 2048}
+            )
 
     def test_validate_embedding_params(self):
         """Test validation of Embedding layer parameters."""
@@ -297,7 +297,9 @@ class TestBackwardCompatibility:
         from arc.graph.model.components import validate_layer_params
 
         # Should work the same as validate_component_params for modules
-        assert validate_layer_params("torch.nn.Linear", {"in_features": 10, "out_features": 5})
+        assert validate_layer_params(
+            "torch.nn.Linear", {"in_features": 10, "out_features": 5}
+        )
 
         with pytest.raises(ValueError, match="Missing required parameters"):
             validate_layer_params("torch.nn.Linear", {"bias": True})
