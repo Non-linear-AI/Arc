@@ -259,6 +259,7 @@ class MLModelGeneratorTool(BaseTool):
         exclude_columns: list[str] | None = None,
         output_path: str | None = None,
         auto_confirm: bool = False,
+        category: str | None = None,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -291,6 +292,7 @@ class MLModelGeneratorTool(BaseTool):
                 user_context=str(context),
                 table_name=str(data_table),
                 exclude_columns=exclude_columns,
+                category=category,
             )
         except Exception as exc:
             # Import here to avoid circular imports

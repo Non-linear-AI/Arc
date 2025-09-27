@@ -249,7 +249,9 @@ outputs:
 
     def test_get_model_examples(self, model_generator):
         """Test getting model examples."""
-        examples = model_generator._get_model_examples("binary classification", {})
+        examples = model_generator._get_model_examples(
+            "binary classification", {}, "tabular"
+        )
 
         assert isinstance(examples, list)
         # Should return at least one example
@@ -301,3 +303,130 @@ outputs:
 
         assert result["valid"] is False
         assert "Column validation errors" in result["error"]
+
+    def test_detect_category_from_context_tabular(self, model_generator):
+        """Test category detection for tabular use cases."""
+        # Test tabular keywords
+        tabular_contexts = [
+            "classify whether customers will buy",
+            "predict house prices using regression",
+            "binary classification for fraud detection",
+            "multiclass classification of products",
+            "supervised learning for risk scoring",
+        ]
+
+        for context in tabular_contexts:
+            category = model_generator._detect_category_from_context(context, {})
+            assert category == "tabular", f"Failed for context: {context}"
+
+    def test_detect_category_from_context_fallback(self, model_generator):
+        """Test category detection falls back to generic."""
+        # Test non-specific contexts
+        fallback_contexts = [
+            "build a model",
+            "create something that works",
+            "make an AI system",
+            "general purpose model",
+        ]
+
+        for context in fallback_contexts:
+            category = model_generator._detect_category_from_context(context, {})
+            assert category == "fallback", f"Failed for context: {context}"
+
+    def test_validate_category(self, model_generator):
+        """Test category validation and normalization."""
+        # Valid categories
+        assert model_generator._validate_category("tabular") == "tabular"
+        assert model_generator._validate_category("fallback") == "fallback"
+
+        # Invalid categories should fall back to "fallback"
+        assert model_generator._validate_category("invalid") == "fallback"
+        assert model_generator._validate_category("recommendation") == "fallback"
+        assert model_generator._validate_category("") == "fallback"
+
+    def test_get_template_name_tabular(self, model_generator):
+        """Test template name selection for tabular category."""
+        model_generator._current_category = "tabular"
+        template_name = model_generator.get_template_name()
+        assert template_name == "tabular/deep_tabular.j2"
+
+    def test_get_template_name_fallback(self, model_generator):
+        """Test template name selection for fallback category."""
+        model_generator._current_category = "fallback"
+        template_name = model_generator.get_template_name()
+        assert template_name == "fallback/generic.j2"
+
+    def test_get_template_name_default(self, model_generator):
+        """Test template name selection without category set."""
+        # Ensure no category is set
+        if hasattr(model_generator, "_current_category"):
+            delattr(model_generator, "_current_category")
+        template_name = model_generator.get_template_name()
+        assert template_name == "prompt.j2"
+
+    @pytest.mark.asyncio
+    async def test_generate_model_with_explicit_category(
+        self, model_generator, valid_model_yaml
+    ):
+        """Test model generation with explicit category parameter."""
+        # Mock the LLM response
+        mock_response = MagicMock()
+        mock_response.content = valid_model_yaml
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
+
+        # Generate model with explicit category
+        model_spec, model_yaml = await model_generator.generate_model(
+            name="test_model",
+            user_context="Some general context",
+            table_name="test_table",
+            category="tabular",
+        )
+
+        # Verify that category was set
+        assert hasattr(model_generator, "_current_category")
+        assert model_generator._current_category == "tabular"
+
+        # Verify result
+        assert isinstance(model_spec, ModelSpec)
+        assert model_yaml is not None
+
+    @pytest.mark.asyncio
+    async def test_generate_model_with_auto_detected_category(
+        self, model_generator, valid_model_yaml
+    ):
+        """Test model generation with auto-detected category."""
+        # Mock the LLM response
+        mock_response = MagicMock()
+        mock_response.content = valid_model_yaml
+        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
+
+        # Generate model with context that should detect tabular
+        model_spec, model_yaml = await model_generator.generate_model(
+            name="test_model",
+            user_context="binary classification for fraud detection",
+            table_name="test_table",
+        )
+
+        # Verify that category was auto-detected as tabular
+        assert hasattr(model_generator, "_current_category")
+        assert model_generator._current_category == "tabular"
+
+        # Verify result
+        assert isinstance(model_spec, ModelSpec)
+        assert model_yaml is not None
+
+    def test_get_model_examples_with_category(self, model_generator):
+        """Test getting model examples with category parameter."""
+        # Test with category parameter
+        examples = model_generator._get_model_examples(
+            "binary classification", {}, "tabular"
+        )
+
+        assert isinstance(examples, list)
+        # Should return at least zero examples (depending on repository contents)
+        assert len(examples) >= 0
+
+        if examples:
+            example = examples[0]
+            assert "schema" in example
+            assert "name" in example

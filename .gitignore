@@ -156,3 +156,4 @@ cython_debug/
 
 # Model artifacts
 /artifacts/
+/prompt_outputs/

@@ -44,12 +44,44 @@ class ModelGeneratorAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
+    def _get_template_path(self, category: str) -> Path:
+        """Get the template path for a specific category.
+
+        Args:
+            category: Model category ("mlp", "transformer", etc.)
+
+        Returns:
+            Path to the base template (now architecture-agnostic)
+        """
+        base_dir = self.get_template_directory()
+        return base_dir / "base.j2"
+
+    def get_template_name(self) -> str:
+        """Get the name of the template file based on current category.
+
+        Returns:
+            Template filename relative to the template directory
+        """
+        # Check if we have a current category set
+        if hasattr(self, "_current_category"):
+            category = self._current_category
+            if category == "tabular":
+                return "tabular/deep_tabular.j2"
+            elif category == "fallback":
+                return "fallback/generic.j2"
+
+        # Fallback to original template
+        return "prompt.j2"
+
     async def generate_model(
         self,
         name: str,
         user_context: str,
         table_name: str,
         exclude_columns: list[str] | None = None,
+        category: str | None = None,
+        existing_yaml: str | None = None,
+        editing_instructions: str | None = None,
     ) -> tuple[ModelSpec, str]:
         """Generate Arc model specification based on data and user context.
 
@@ -58,6 +90,9 @@ class ModelGeneratorAgent(BaseAgent):
             user_context: User description of desired model
             table_name: Database table name for data exploration
             exclude_columns: Optional list of column names to exclude from model inputs
+            category: Optional category hint ("mlp", "transformer", etc.)
+            existing_yaml: Optional existing YAML to edit
+            editing_instructions: Optional instructions for editing existing YAML
 
         Returns:
             Tuple of (parsed ModelSpec object, YAML string)
@@ -67,13 +102,35 @@ class ModelGeneratorAgent(BaseAgent):
         """
         # Build simple context for LLM
         data_profile = await self._profile_data(table_name, exclude_columns)
+
+        # Determine category (explicit or auto-detected)
+        resolved_category = category or self._detect_category_from_context(
+            user_context, data_profile
+        )
+
+        # Architecture display names
+        display_names = {
+            "mlp": "Multi-Layer Perceptron (Feedforward Neural Network)",
+            "transformer": "Transformer (Attention-based Neural Network)",
+            "dcn": "Deep & Cross Network",
+            "mmoe": "Multi-gate Mixture of Experts"
+        }
+
         context = {
             "model_name": name,
             "user_intent": user_context,
             "data_profile": data_profile,
+            "architecture_type": resolved_category,
+            "architecture_display_name": display_names.get(resolved_category, resolved_category.upper()),
             "available_components": self._get_model_components(),
-            "examples": self._get_model_examples(user_context, data_profile),
+            "architecture_guides": self._load_architecture_guides([resolved_category]),
+            "existing_yaml": existing_yaml,
+            "editing_instructions": editing_instructions,
+            "is_editing": existing_yaml is not None,
         }
+
+        # Store category for template selection
+        self._current_category = resolved_category
 
         # Use the base agent validation loop with default max_iterations
         try:
@@ -85,6 +142,78 @@ class ModelGeneratorAgent(BaseAgent):
 
         except AgentError as e:
             raise ModelGeneratorError(str(e)) from e
+
+    def _detect_category_from_context(
+        self, user_context: str, _data_profile: dict[str, Any]
+    ) -> str:
+        """Detect model category from context and data characteristics.
+
+        Args:
+            user_context: User description of desired model
+            _data_profile: Data profile information (reserved for future use)
+
+        Returns:
+            Detected category: "mlp", "dcn", "mmoe", or "transformer"
+        """
+        context_lower = user_context.lower()
+
+        # Deep & Cross Network indicators
+        if any(keyword in context_lower for keyword in [
+            "feature cross", "interaction", "ctr", "click-through", "recommendation"
+        ]):
+            return "dcn"
+
+        # Multi-gate Mixture of Experts indicators
+        if any(keyword in context_lower for keyword in [
+            "multi-task", "multiple task", "multitask", "shared representation"
+        ]):
+            return "mmoe"
+
+        # Transformer indicators
+        if any(keyword in context_lower for keyword in [
+            "attention", "sequence", "transformer", "self-attention", "encoder"
+        ]):
+            return "transformer"
+
+        # Default to MLP for tabular data
+        mlp_keywords = [
+            "classify",
+            "classification",
+            "predict",
+            "prediction",
+            "regression",
+            "binary",
+            "multiclass",
+            "categorical",
+            "numerical",
+            "features",
+            "target",
+            "label",
+            "supervised",
+            "risk",
+            "score",
+            "fraud",
+        ]
+
+        if any(keyword in context_lower for keyword in mlp_keywords):
+            return "mlp"
+
+        # Default to MLP for general cases
+        return "mlp"
+
+    def _validate_category(self, category: str) -> str:
+        """Validate and normalize category input.
+
+        Args:
+            category: Category string to validate
+
+        Returns:
+            Validated category ("tabular" or "fallback")
+        """
+        valid_categories = {"tabular", "fallback"}
+        if category in valid_categories:
+            return category
+        return "fallback"  # Safe fallback
 
     def _validate_model_comprehensive(
         self, model_yaml: str, context: dict[str, Any]
@@ -222,14 +351,42 @@ class ModelGeneratorAgent(BaseAgent):
     def _get_model_components(self) -> dict[str, Any]:
         """Get available model components from the new architecture."""
         try:
-            return {"node_types": list(CORE_LAYERS.keys())}
+            return {
+                "node_types": list(CORE_LAYERS.keys()),
+                "description": "PyTorch components available in Arc-Graph include layers (instantiated once, used in forward pass) and functions (applied as operations). All standard PyTorch neural network components are supported."
+            }
         except Exception as e:
             raise RuntimeError(f"Failed to load model components: {e}") from e
 
+    def _load_architecture_guides(self, architecture_types: list[str]) -> dict[str, str]:
+        """Load architecture-specific content from files."""
+        architecture_guides = {}
+
+        for arch_type in architecture_types:
+            content_path = self.get_template_directory() / "architectures" / f"{arch_type}.md"
+            try:
+                with open(content_path, 'r') as f:
+                    architecture_guides[arch_type.upper()] = f.read()
+            except FileNotFoundError:
+                architecture_guides[arch_type.upper()] = f"*Content not found for {arch_type}*"
+
+        return architecture_guides
+
     def _get_model_examples(
-        self, user_context: str, data_profile: dict[str, Any]
+        self, user_context: str, data_profile: dict[str, Any], _category: str
     ) -> list[dict[str, Any]]:
-        """Get relevant model examples."""
+        """Get relevant model examples based on category.
+
+        Args:
+            user_context: User description of desired model
+            data_profile: Data profile information
+            _category: Model category for targeted examples (reserved for future use)
+
+        Returns:
+            List of relevant model examples
+        """
+        # For now, use existing example retrieval but we can enhance this
+        # to be category-aware in the future
         examples = self.example_repository.retrieve_relevant_model_examples(
             user_context, data_profile, max_examples=1
         )
