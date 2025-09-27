@@ -3,7 +3,8 @@
 **Key Insights**:
 - **Layer sizing**: Start 2-4x input size, gradually decrease (128→64→32)
 - **Regularization**: BatchNorm after linear layers, dropout 0.1-0.5 increasing with depth
-- **Activations**: ReLU (standard), GELU (deeper networks), Sigmoid/Softmax (outputs)
+- **Activations**: ReLU (standard), GELU (deeper networks)
+- **Output activations**: Sigmoid (binary classification), Softmax (multi-class classification), None (regression)
 
 ### **Pattern 1: Simple Binary Classifier**
 
@@ -123,8 +124,13 @@ graph:
     params: { in_features: 64, out_features: 3 }
     inputs: { input: dropout2.output }
 
+  - name: softmax
+    type: torch.nn.functional.softmax
+    params: { dim: 1 }
+    inputs: { input: output.output }
+
 outputs:
-  logits: output.output
+  probabilities: softmax.output
 ```
 
 

@@ -304,10 +304,10 @@ outputs:
         assert result["valid"] is False
         assert "Column validation errors" in result["error"]
 
-    def test_detect_category_from_context_tabular(self, model_generator):
-        """Test category detection for tabular use cases."""
-        # Test tabular keywords
-        tabular_contexts = [
+    def test_detect_category_from_context_mlp(self, model_generator):
+        """Test category detection for MLP use cases."""
+        # Test MLP keywords
+        mlp_contexts = [
             "classify whether customers will buy",
             "predict house prices using regression",
             "binary classification for fraud detection",
@@ -315,54 +315,82 @@ outputs:
             "supervised learning for risk scoring",
         ]
 
-        for context in tabular_contexts:
+        for context in mlp_contexts:
             category = model_generator._detect_category_from_context(context, {})
-            assert category == "tabular", f"Failed for context: {context}"
+            assert category == "mlp", f"Failed for context: {context}"
 
-    def test_detect_category_from_context_fallback(self, model_generator):
-        """Test category detection falls back to generic."""
-        # Test non-specific contexts
-        fallback_contexts = [
+    def test_detect_category_from_context_default(self, model_generator):
+        """Test category detection falls back to MLP."""
+        # Test non-specific contexts that should default to MLP
+        default_contexts = [
             "build a model",
             "create something that works",
             "make an AI system",
             "general purpose model",
         ]
 
-        for context in fallback_contexts:
+        for context in default_contexts:
             category = model_generator._detect_category_from_context(context, {})
-            assert category == "fallback", f"Failed for context: {context}"
+            assert category == "mlp", f"Failed for context: {context}"
+
+    def test_detect_category_from_context_dcn(self, model_generator):
+        """Test category detection for DCN use cases."""
+        # Test DCN keywords
+        dcn_contexts = [
+            "feature crossing for recommendation",
+            "click-through rate prediction",
+            "feature interaction modeling",
+            "CTR prediction with interactions",
+        ]
+
+        for context in dcn_contexts:
+            category = model_generator._detect_category_from_context(context, {})
+            assert category == "dcn", f"Failed for context: {context}"
+
+    def test_detect_category_from_context_mmoe(self, model_generator):
+        """Test category detection for MMoE use cases."""
+        # Test MMoE keywords
+        mmoe_contexts = [
+            "multi-task learning with shared representation",
+            "multiple task prediction",
+            "multitask recommendation system",
+            "shared representation for multiple tasks",
+        ]
+
+        for context in mmoe_contexts:
+            category = model_generator._detect_category_from_context(context, {})
+            assert category == "mmoe", f"Failed for context: {context}"
+
+    def test_detect_category_from_context_transformer(self, model_generator):
+        """Test category detection for Transformer use cases."""
+        # Test Transformer keywords
+        transformer_contexts = [
+            "attention-based model for sequences",
+            "transformer encoder for classification",
+            "self-attention mechanism",
+            "sequence modeling with attention",
+        ]
+
+        for context in transformer_contexts:
+            category = model_generator._detect_category_from_context(context, {})
+            assert category == "transformer", f"Failed for context: {context}"
 
     def test_validate_category(self, model_generator):
         """Test category validation and normalization."""
-        # Valid categories
-        assert model_generator._validate_category("tabular") == "tabular"
-        assert model_generator._validate_category("fallback") == "fallback"
+        # Valid new categories
+        assert model_generator._validate_category("mlp") == "mlp"
+        assert model_generator._validate_category("dcn") == "dcn"
+        assert model_generator._validate_category("mmoe") == "mmoe"
+        assert model_generator._validate_category("transformer") == "transformer"
 
-        # Invalid categories should fall back to "fallback"
-        assert model_generator._validate_category("invalid") == "fallback"
-        assert model_generator._validate_category("recommendation") == "fallback"
-        assert model_generator._validate_category("") == "fallback"
+        # Legacy categories should map to new ones
+        assert model_generator._validate_category("tabular") == "mlp"
+        assert model_generator._validate_category("fallback") == "mlp"
 
-    def test_get_template_name_tabular(self, model_generator):
-        """Test template name selection for tabular category."""
-        model_generator._current_category = "tabular"
-        template_name = model_generator.get_template_name()
-        assert template_name == "tabular/deep_tabular.j2"
-
-    def test_get_template_name_fallback(self, model_generator):
-        """Test template name selection for fallback category."""
-        model_generator._current_category = "fallback"
-        template_name = model_generator.get_template_name()
-        assert template_name == "fallback/generic.j2"
-
-    def test_get_template_name_default(self, model_generator):
-        """Test template name selection without category set."""
-        # Ensure no category is set
-        if hasattr(model_generator, "_current_category"):
-            delattr(model_generator, "_current_category")
-        template_name = model_generator.get_template_name()
-        assert template_name == "prompt.j2"
+        # Invalid categories should fall back to "mlp"
+        assert model_generator._validate_category("invalid") == "mlp"
+        assert model_generator._validate_category("recommendation") == "mlp"
+        assert model_generator._validate_category("") == "mlp"
 
     @pytest.mark.asyncio
     async def test_generate_model_with_explicit_category(

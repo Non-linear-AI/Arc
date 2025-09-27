@@ -8,7 +8,7 @@ from typing import Any
 from arc.core.agents.shared.base_agent import AgentError, BaseAgent
 from arc.core.agents.shared.example_repository import ExampleRepository
 from arc.database.services import ServiceContainer
-from arc.graph.model import CORE_LAYERS, ModelSpec, validate_model_dict
+from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS, ModelSpec, validate_model_dict
 
 
 class ModelGeneratorError(AgentError):
@@ -62,16 +62,8 @@ class ModelGeneratorAgent(BaseAgent):
         Returns:
             Template filename relative to the template directory
         """
-        # Check if we have a current category set
-        if hasattr(self, "_current_category"):
-            category = self._current_category
-            if category == "tabular":
-                return "tabular/deep_tabular.j2"
-            elif category == "fallback":
-                return "fallback/generic.j2"
-
-        # Fallback to original template
-        return "prompt.j2"
+        # Always use the base template now (architecture-agnostic)
+        return "base.j2"
 
     async def generate_model(
         self,
@@ -208,12 +200,13 @@ class ModelGeneratorAgent(BaseAgent):
             category: Category string to validate
 
         Returns:
-            Validated category ("tabular" or "fallback")
+            Validated category ("mlp", "dcn", "mmoe", "transformer")
         """
-        valid_categories = {"tabular", "fallback"}
+        valid_categories = {"mlp", "dcn", "mmoe", "transformer"}
         if category in valid_categories:
             return category
-        return "fallback"  # Safe fallback
+
+        return "mlp"  # Default to MLP
 
     def _validate_model_comprehensive(
         self, model_yaml: str, context: dict[str, Any]
@@ -351,8 +344,10 @@ class ModelGeneratorAgent(BaseAgent):
     def _get_model_components(self) -> dict[str, Any]:
         """Get available model components from the new architecture."""
         try:
+            # Combine both CORE_LAYERS (nn.Module classes) and TORCH_FUNCTIONS (functional components)
+            all_components = list(CORE_LAYERS.keys()) + list(TORCH_FUNCTIONS.keys())
             return {
-                "node_types": list(CORE_LAYERS.keys()),
+                "node_types": all_components,
                 "description": "PyTorch components available in Arc-Graph include layers (instantiated once, used in forward pass) and functions (applied as operations). All standard PyTorch neural network components are supported."
             }
         except Exception as e:

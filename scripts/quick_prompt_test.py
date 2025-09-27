@@ -24,6 +24,26 @@ sys.path.insert(0, str(project_root / "src"))
 from jinja2 import Environment, FileSystemLoader
 
 
+def load_actual_components():
+    """Load available components using the exact same logic as ModelGeneratorAgent._get_model_components()."""
+    try:
+        # Import and use exact same logic as ModelGeneratorAgent._get_model_components()
+        from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS
+        # Combine both CORE_LAYERS (nn.Module classes) and TORCH_FUNCTIONS (functional components)
+        all_components = list(CORE_LAYERS.keys()) + list(TORCH_FUNCTIONS.keys())
+        return {
+            "node_types": all_components,
+            "description": "PyTorch components available in Arc-Graph include layers (instantiated once, used in forward pass) and functions (applied as operations). All standard PyTorch neural network components are supported."
+        }
+    except Exception as e:
+        print(f"Warning: Could not load components: {e}")
+        # Minimal fallback
+        return {
+            "node_types": ["torch.nn.Linear", "torch.nn.functional.sigmoid"],
+            "description": "PyTorch components available in Arc-Graph include layers and functions."
+        }
+
+
 def load_architecture_content(architecture_types):
     """Load architecture-specific content from files."""
     if isinstance(architecture_types, str):
@@ -83,14 +103,7 @@ def create_sample_data(architecture_types):
                 {"name": "years_with_bank", "type": "int"},
             ]
         },
-        "available_components": {
-            "node_types": [
-                "torch.nn.Linear", "torch.nn.Dropout", "torch.nn.BatchNorm1d",
-                "torch.nn.functional.relu", "torch.nn.functional.sigmoid",
-                "torch.cat", "torch.stack", "arc.stack"
-            ],
-            "description": "PyTorch components available in Arc-Graph include layers (instantiated once, used in forward pass) and functions (applied as operations). All standard PyTorch neural network components are supported."
-        },
+        "available_components": load_actual_components(),
         "architecture_guides": load_architecture_content(architecture_types)
     }
 
