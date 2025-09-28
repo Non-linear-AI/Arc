@@ -432,6 +432,7 @@ async def _ml_generate_model(
             "data-table": True,
             "output": True,
             "exclude-columns": True,  # Comma-separated list of columns
+            "target-column": True,  # Target column for task-aware generation
         },
     )
 
@@ -445,6 +446,7 @@ async def _ml_generate_model(
         if exclude_columns_str
         else []
     )
+    target_column = options.get("target-column")
 
     if not name or not context or not data_table:
         raise CommandError(
@@ -480,6 +482,7 @@ async def _ml_generate_model(
             context=context,
             data_table=data_table,
             exclude_columns=exclude_columns,
+            target_column=target_column,
             output_path=output_path,
         )
 
@@ -1173,6 +1176,11 @@ if __name__ == "__main__":
     "--exclude-columns",
     help="Comma-separated column names to exclude from model inputs",
 )
+@click.option(
+    "-g",
+    "--target-column",
+    help="Target column name for task-aware model generation",
+)
 @click.option("-o", "--output", help="Output file path (default: {name}_model.yaml)")
 @click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
 @click.option("-u", "--base-url", help="Arc API base URL")
@@ -1182,6 +1190,7 @@ def generate_model(
     context: str,
     data_table: str,
     exclude_columns: str | None,
+    target_column: str | None,
     output: str | None,
     api_key: str | None,
     base_url: str | None,
@@ -1221,6 +1230,7 @@ def generate_model(
             context,
             data_table,
             exclude_columns_list,
+            target_column,
             output,
             api_key,
             base_url,
@@ -1346,6 +1356,7 @@ async def _ml_generate_model_cli(
     context: str,
     data_table: str,
     exclude_columns: list[str],
+    target_column: str | None,
     output_path: str | None,
     _api_key: str,
     _base_url: str | None,
@@ -1358,6 +1369,8 @@ async def _ml_generate_model_cli(
         args = ["--name", name, "--context", context, "--data-table", data_table]
         if exclude_columns:
             args.extend(["--exclude-columns", ",".join(exclude_columns)])
+        if target_column:
+            args.extend(["--target-column", target_column])
         if output_path:
             args.extend(["--output", output_path])
 

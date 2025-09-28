@@ -71,6 +71,7 @@ class ModelGeneratorAgent(BaseAgent):
         user_context: str,
         table_name: str,
         exclude_columns: list[str] | None = None,
+        target_column: str | None = None,
         category: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
@@ -82,6 +83,7 @@ class ModelGeneratorAgent(BaseAgent):
             user_context: User description of desired model
             table_name: Database table name for data exploration
             exclude_columns: Optional list of column names to exclude from model inputs
+            target_column: Optional target column name for task-aware generation
             category: Optional category hint ("mlp", "transformer", etc.)
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
@@ -92,8 +94,8 @@ class ModelGeneratorAgent(BaseAgent):
         Raises:
             ModelGeneratorError: If generation fails
         """
-        # Build simple context for LLM
-        data_profile = await self._profile_data(table_name, exclude_columns)
+        # Build unified data profile with target-aware analysis
+        data_profile = await self._get_unified_data_profile(table_name, exclude_columns, target_column)
 
         # Determine category (explicit or auto-detected)
         resolved_category = category or self._detect_category_from_context(
@@ -248,7 +250,7 @@ class ModelGeneratorAgent(BaseAgent):
             model_dict = self._validate_yaml_syntax(model_yaml)
 
             # Check required top-level fields for model
-            required_fields = ["inputs", "graph", "outputs"]
+            required_fields = ["inputs", "graph", "outputs", "loss"]
             missing_fields = [
                 field for field in required_fields if field not in model_dict
             ]
@@ -324,9 +326,9 @@ class ModelGeneratorAgent(BaseAgent):
         data_profile = context.get("data_profile", {})
         available_columns = []
 
-        # Extract available columns from data profile
-        if "columns" in data_profile:
-            available_columns = [col["name"] for col in data_profile["columns"]]
+        # Extract available columns from unified data profile structure
+        if "feature_columns" in data_profile:
+            available_columns = [col["name"] for col in data_profile["feature_columns"]]
 
         # Check input column references
         inputs = model_dict.get("inputs", {})
@@ -420,32 +422,114 @@ class ModelGeneratorAgent(BaseAgent):
         )
         return [{"schema": ex.schema, "name": ex.name} for ex in examples]
 
-    async def _profile_data(
-        self, table_name: str, exclude_columns: list[str] | None = None
+    async def _get_unified_data_profile(
+        self,
+        table_name: str,
+        exclude_columns: list[str] | None = None,
+        target_column: str | None = None
     ) -> dict[str, Any]:
-        """Get basic data profile for the table with optional column exclusion."""
+        """Get unified data profile with target-aware analysis for LLM context.
+
+        Args:
+            table_name: Database table name
+            exclude_columns: Optional columns to exclude from features (for backward compatibility)
+            target_column: Optional target column for task-aware analysis
+
+        Returns:
+            Unified data profile with target and feature information
+        """
         try:
-            # Use ML data service instead of raw SQL/db manager
+            # Use ML data service for dataset information
             dataset_info = self.services.ml_data.get_dataset_info(table_name)
 
             if dataset_info is None:
                 return {"error": f"Table {table_name} not found or invalid"}
 
-            # Filter out excluded columns if specified
-            available_columns = dataset_info.columns
-            if exclude_columns:
-                excluded_set = set(exclude_columns)
-                filtered_columns = [
-                    col for col in available_columns if col["name"] not in excluded_set
-                ]
-            else:
-                filtered_columns = available_columns
+            # Build exclude set from both sources
+            exclude_set = set(exclude_columns or [])
+            if target_column:
+                exclude_set.add(target_column)
 
-            # Return essential fields with filtered columns
-            return {
+            # Separate target and feature columns
+            all_columns = dataset_info.columns
+            feature_columns = [
+                col for col in all_columns
+                if col["name"] not in exclude_set
+            ]
+
+            # Base profile structure
+            profile = {
                 "table_name": dataset_info.name,
-                "columns": filtered_columns,
+                "feature_columns": feature_columns,
+                "total_columns": len(all_columns),
+                "feature_count": len(feature_columns),
             }
+
+            # Add target analysis if target column specified
+            if target_column:
+                target_analysis = await self._analyze_target_column(table_name, target_column)
+                profile["target_analysis"] = target_analysis
+
+            return profile
 
         except Exception as e:
             return {"error": f"Failed to analyze table {table_name}: {str(e)}"}
+
+    async def _analyze_target_column(
+        self, table_name: str, target_column: str
+    ) -> dict[str, Any]:
+        """Analyze target column to provide factual information for LLM decision making.
+
+        Args:
+            table_name: Database table name
+            target_column: Target column to analyze
+
+        Returns:
+            Dictionary with target column facts for LLM context
+        """
+        try:
+            # Get target column basic info
+            dataset_info = self.services.ml_data.get_dataset_info(table_name)
+            if not dataset_info:
+                return {"error": f"Table {table_name} not found"}
+
+            # Find target column in dataset
+            target_col_info = None
+            for col in dataset_info.columns:
+                if col["name"] == target_column:
+                    target_col_info = col
+                    break
+
+            if not target_col_info:
+                return {"error": f"Target column '{target_column}' not found in table"}
+
+            # Get statistical analysis using ML data service
+            stats = self.services.ml_data.analyze_target_column(table_name, target_column)
+
+            # Build factual analysis for LLM
+            analysis = {
+                "column_name": target_column,
+                "data_type": target_col_info["type"],
+                "unique_values": stats.get("unique_count", 0),
+                "null_values": stats.get("null_count", 0),
+                "total_rows": stats.get("total_count", 0),
+            }
+
+            # Add type-specific facts
+            if stats.get("is_numeric", False):
+                analysis.update({
+                    "is_numeric": True,
+                    "min_value": stats.get("min_value"),
+                    "max_value": stats.get("max_value"),
+                    "mean_value": stats.get("mean_value"),
+                })
+            else:
+                analysis.update({
+                    "is_numeric": False,
+                    "sample_values": stats.get("sample_values", []),
+                })
+
+            return analysis
+
+        except Exception as e:
+            return {"error": f"Failed to analyze target column {target_column}: {str(e)}"}

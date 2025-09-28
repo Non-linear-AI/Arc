@@ -14,7 +14,7 @@ from arc.graph.model.components import (
     get_supported_component_types,
     validate_component_params,
 )
-from arc.graph.model.spec import GraphNode, ModelInput, ModelSpec, ModuleDefinition
+from arc.graph.model.spec import GraphNode, LossSpec, ModelInput, ModelSpec, ModuleDefinition
 from arc.graph.model.validator import ModelValidationError, validate_model_dict
 
 
@@ -34,6 +34,7 @@ __all__ = [
     "ModelInput",
     "GraphNode",
     "ModuleDefinition",
+    "LossSpec",
     "ModelSpec",
     "ArcGraphModel",
     "build_model_from_spec",

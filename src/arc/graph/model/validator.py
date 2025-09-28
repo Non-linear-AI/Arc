@@ -213,6 +213,59 @@ def validate_model_dict(data: dict[str, Any]) -> None:
                 f"model.outputs.{output_name} has invalid reference: {source_ref}"
             ) from e
 
+    # Validate loss section if present (optional for backward compatibility)
+    if "loss" in data:
+        loss = data["loss"]
+        if not isinstance(loss, dict):
+            raise ModelValidationError("model.loss must be a mapping")
+
+        # Validate loss type
+        loss_type = _require(loss, "type", "model.loss.type required")
+        if not isinstance(loss_type, str):
+            raise ModelValidationError("model.loss.type must be a string")
+
+        # Validate loss type is a supported component
+        try:
+            get_component_class_or_function(loss_type)
+        except ValueError as e:
+            raise ModelValidationError(f"model.loss.type: {e}") from e
+
+        # Validate loss inputs
+        if "inputs" in loss:
+            loss_inputs = loss["inputs"]
+            if not isinstance(loss_inputs, dict):
+                raise ModelValidationError("model.loss.inputs must be a mapping")
+
+            # Validate each loss input
+            for input_name, source_ref in loss_inputs.items():
+                if input_name == "target":
+                    # Target should be a column name (string), not a node reference
+                    if not isinstance(source_ref, str):
+                        raise ModelValidationError(
+                            f"model.loss.inputs.target must be a string (column name), got: {type(source_ref).__name__}"
+                        )
+                    # No further validation needed for target - it's a column name
+                else:
+                    # Other inputs must reference output field names only
+                    if not isinstance(source_ref, str):
+                        raise ModelValidationError(
+                            f"model.loss.inputs.{input_name} must be a string, got: {type(source_ref).__name__}"
+                        )
+
+                    if source_ref not in outputs:
+                        raise ModelValidationError(
+                            f"model.loss.inputs.{input_name} must reference an output field. "
+                            f"'{source_ref}' is not defined in outputs section. "
+                            f"Available outputs: {list(outputs.keys())}"
+                        )
+
+        # Validate loss parameters if present
+        if "params" in loss and loss["params"] is not None:
+            try:
+                validate_component_params(loss_type, loss["params"])
+            except ValueError as e:
+                raise ModelValidationError(f"model.loss.params: {e}") from e
+
 
 def validate_graph_nodes(
     graph: list[dict[str, Any]],

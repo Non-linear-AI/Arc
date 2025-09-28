@@ -70,7 +70,12 @@ graph:
     inputs:
       input: linear.output
 outputs:
-  prediction: sigmoid.output"""
+  prediction: sigmoid.output
+loss:
+  type: torch.nn.functional.binary_cross_entropy
+  inputs:
+    input: prediction
+    target: target"""
 
     @pytest.mark.asyncio
     async def test_generate_model_success(self, model_generator, valid_model_yaml):
@@ -189,21 +194,14 @@ outputs:
         """Test successful data profiling."""
         import asyncio
 
-        # Mock successful database query
-        mock_services.db_manager.user_query.return_value = [
-            {"name": "feature1", "type": "REAL", "notnull": 0},
-            {"name": "feature2", "type": "INTEGER", "notnull": 1},
-            {"name": "target", "type": "INTEGER", "notnull": 1},
-        ]
-
-        # Call the private method directly for testing
-        result = asyncio.run(model_generator._profile_data("test_table"))
+        # Call the new unified data profiling method
+        result = asyncio.run(model_generator._get_unified_data_profile("test_table"))
 
         assert result["table_name"] == "test_table"
-        assert len(result["columns"]) == 3
+        assert len(result["feature_columns"]) == 3
 
         # Check that specific columns are present
-        column_names = [col["name"] for col in result["columns"]]
+        column_names = [col["name"] for col in result["feature_columns"]]
         assert "feature1" in column_names
         assert "feature2" in column_names
         assert "target" in column_names
@@ -215,7 +213,7 @@ outputs:
         # Mock None result (table not found)
         mock_services.ml_data.get_dataset_info.return_value = None
 
-        result = asyncio.run(model_generator._profile_data("nonexistent_table"))
+        result = asyncio.run(model_generator._get_unified_data_profile("nonexistent_table"))
 
         assert "error" in result
         assert "not found" in result["error"]
@@ -229,7 +227,7 @@ outputs:
             "Invalid table name"
         )
 
-        result = asyncio.run(model_generator._profile_data("invalid-table-name!"))
+        result = asyncio.run(model_generator._get_unified_data_profile("invalid-table-name!"))
 
         assert "error" in result
         assert "Failed to analyze table" in result["error"]
@@ -268,7 +266,7 @@ outputs:
         """Test comprehensive model validation with valid input."""
         context = {
             "data_profile": {
-                "columns": [
+                "feature_columns": [
                     {"name": "feature1", "type": "REAL"},
                     {"name": "feature2", "type": "REAL"},
                 ]
@@ -291,7 +289,7 @@ outputs:
     ):
         """Test comprehensive model validation with invalid column references."""
         context = {
-            "data_profile": {"columns": [{"name": "different_column", "type": "REAL"}]},
+            "data_profile": {"feature_columns": [{"name": "different_column", "type": "REAL"}]},
             "available_components": {
                 "node_types": ["torch.nn.Linear", "torch.nn.Sigmoid"]
             },
