@@ -3,18 +3,15 @@
 **Key Insights**:
 
   * **Layer Sizing**: Start with a hidden layer 2-4x the input size, then gradually decrease (e.g., 128 → 64 → 32).
-  * **Regularization**: Use **`BatchNorm1d`** after the linear layer (and before activation) to stabilize training. Apply **`Dropout`** with a rate of 0.1-0.5, often increasing the rate for deeper layers.
-  * **Activations**: **`ReLU`** is a robust default. Consider **`GELU`** or **`SiLU`** for deeper or more complex networks.
-  * **Output for Training**: For maximum numerical stability, always output raw values and use a loss function that handles the final transformation:
-      * **Binary Classification**: Output **logits** and use **`BCEWithLogitsLoss`**.
-      * **Multi-Class Classification**: Output **logits** and use **`CrossEntropyLoss`**.
-      * **Regression**: Output a **prediction** and use a loss like **`MSELoss`**.
+  * **Regularization**: Use **`BatchNorm1d`** after linear layers to stabilize training. **`Dropout`** can help prevent overfitting in complex datasets or deeper networks.
+  * **Activations**: **`ReLU`** is a robust default. Consider **`GELU`** or **`SiLU`** for deeper networks.
+  * **Dual Outputs**: Provide both raw **logits** (for training loss) and **probabilities** (for inference/prediction).
 
 -----
 
 ### **Pattern 1: MLP for Binary Classification**
 
-This is the standard pattern for "yes/no" or "true/false" predictions. It includes a hidden layer with activation and dropout, making it suitable for both simple and moderately complex datasets.
+This is the standard pattern for "yes/no" or "true/false" predictions. Simple architecture suitable for most binary classification tasks.
 
 **When to use**: Fraud detection, customer churn prediction, medical diagnosis, or any binary outcome task.
 
@@ -35,17 +32,18 @@ graph:
   - name: activation
     type: torch.nn.functional.relu
     inputs: { input: hidden_layer.output }
-  - name: dropout
-    type: torch.nn.Dropout
-    params: { p: 0.3 }
-    inputs: { input: activation.output }
   - name: output_layer
     type: torch.nn.Linear
     params: { in_features: 64, out_features: 1 }
-    inputs: { input: dropout.output }
+    inputs: { input: activation.output }
+
+  - name: probabilities
+    type: torch.nn.functional.sigmoid
+    inputs: { input: output_layer.output }
 
 outputs:
   logits: output_layer.output
+  probabilities: probabilities.output
 
 loss:
   type: torch.nn.functional.binary_cross_entropy_with_logits
@@ -58,7 +56,7 @@ loss:
 
 ### **Pattern 2: Deep MLP for Multi-Class Classification**
 
-For classifying items into one of three or more categories. Deeper networks can learn more complex, hierarchical features from the data.
+For classifying items into one of three or more categories. Deeper networks with regularization (BatchNorm + Dropout) handle complex, hierarchical features.
 
 **When to use**: Product categorization, image classification (with flattened images), or any task with multiple exclusive outcomes.
 
@@ -108,9 +106,14 @@ graph:
     type: torch.nn.Linear
     params: { in_features: 64, out_features: 3 }
     inputs: { input: dropout2.output }
+  - name: probabilities
+    type: torch.nn.functional.softmax
+    params: { dim: 1 }
+    inputs: { input: output_layer.output }
 
 outputs:
   logits: output_layer.output
+  probabilities: probabilities.output
 
 loss:
   type: torch.nn.functional.cross_entropy
@@ -123,7 +126,7 @@ loss:
 
 ### **Pattern 3: MLP for Regression**
 
-This pattern is used for predicting a continuous numerical value instead of a class. The key differences are the single output neuron (with no activation) and the use of a regression-specific loss function like Mean Squared Error (`MSELoss`).
+This pattern predicts continuous numerical values. Key differences: single output neuron with no activation function.
 
 **When to use**: Predicting house prices, stock values, temperature, age, or any other continuous quantity.
 
