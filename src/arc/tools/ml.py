@@ -31,14 +31,22 @@ class YamlStateManager:
         self.temp_file = None
         self.model_context = {}
 
-    def save_yaml(self, yaml_content: str, model_name: str, context: str,
-                  table_name: str, exclude_columns: list[str] | None = None,
-                  category: str | None = None) -> Path:
+    def save_yaml(
+        self,
+        yaml_content: str,
+        model_name: str,
+        context: str,
+        table_name: str,
+        exclude_columns: list[str] | None = None,
+        category: str | None = None,
+    ) -> Path:
         """Save YAML content to temporary file and store context for editing."""
         if not self.temp_file:
-            self.temp_file = tempfile.NamedTemporaryFile(
-                mode="w+", suffix=".arc-model.yaml", prefix=f"arc_{model_name}_",
-                delete=False
+            self.temp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
+                mode="w+",
+                suffix=".arc-model.yaml",
+                prefix=f"arc_{model_name}_",
+                delete=False,
             )
 
         # Write YAML content to file
@@ -382,8 +390,12 @@ class MLModelGeneratorTool(BaseTool):
         # Save initial YAML and context to state manager for potential editing
         try:
             self.yaml_state.save_yaml(
-                model_yaml, str(name), str(context), str(data_table),
-                exclude_columns, category
+                model_yaml,
+                str(name),
+                str(context),
+                str(data_table),
+                exclude_columns,
+                category,
             )
 
             # Interactive confirmation workflow (unless auto_confirm is True)
@@ -463,14 +475,21 @@ class MLModelGeneratorTool(BaseTool):
                 for i, (_, label) in enumerate(options, 1):
                     fallback_text += f"\n  {i}. {label}"
                 choice_input = input("Enter choice (1-4): ").strip()
-                choice_map = {"1": "save", "2": "edit_ai", "3": "edit_manual", "4": "cancel"}
+                choice_map = {
+                    "1": "save",
+                    "2": "edit_ai",
+                    "3": "edit_manual",
+                    "4": "cancel",
+                }
                 choice = choice_map.get(choice_input, "cancel")
 
             if choice == "save":
                 return True, model_yaml
             elif choice == "edit_ai":
                 # User wants AI-assisted editing
-                edited_yaml = await self._edit_yaml_with_ai_feedback(model_yaml, str(name))
+                edited_yaml = await self._edit_yaml_with_ai_feedback(
+                    model_yaml, str(name)
+                )
                 if edited_yaml is None:
                     continue  # Edit cancelled, show confirmation again
 
@@ -644,13 +663,18 @@ class MLModelGeneratorTool(BaseTool):
                 with contextlib.suppress(OSError):
                     os.unlink(temp_path)
 
-    async def _edit_yaml_with_ai_feedback(self, yaml_content: str, model_name: str) -> str | None:
+    async def _edit_yaml_with_ai_feedback(
+        self, yaml_content: str, _model_name: str
+    ) -> str | None:
         """AI-assisted YAML editing with user feedback collection."""
 
         # Collect user feedback about what they want to change
         if self.ui:
             self.ui.show_info("🤖 Describe the changes you want to make to the model:")
-            self.ui.show_info("Examples: 'add dropout layers', 'change to 5 classes', 'use different activation'")
+            self.ui.show_info(
+                "Examples: 'add dropout layers', 'change to 5 classes', "
+                "'use different activation'"
+            )
 
             try:
                 feedback = await self.ui._printer.get_input_async(
@@ -659,7 +683,9 @@ class MLModelGeneratorTool(BaseTool):
 
                 if not feedback.strip():
                     if self.ui:
-                        self.ui.show_system_error("❌ No feedback provided. Edit cancelled.")
+                        self.ui.show_system_error(
+                            "❌ No feedback provided. Edit cancelled."
+                        )
                     return None
 
             except Exception as e:
@@ -701,8 +727,12 @@ class MLModelGeneratorTool(BaseTool):
 
             # Update state manager with new YAML
             self.yaml_state.save_yaml(
-                edited_yaml, context["model_name"], context["context"],
-                context["table_name"], context["exclude_columns"], context["category"]
+                edited_yaml,
+                context["model_name"],
+                context["context"],
+                context["table_name"],
+                context["exclude_columns"],
+                context["category"],
             )
 
             if self.ui:

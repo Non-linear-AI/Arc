@@ -428,16 +428,16 @@ outputs:
         mock_response.content = valid_model_yaml
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
-        # Generate model with context that should detect tabular
+        # Generate model with context that should detect mlp
         model_spec, model_yaml = await model_generator.generate_model(
             name="test_model",
             user_context="binary classification for fraud detection",
             table_name="test_table",
         )
 
-        # Verify that category was auto-detected as tabular
+        # Verify that category was auto-detected as mlp
         assert hasattr(model_generator, "_current_category")
-        assert model_generator._current_category == "tabular"
+        assert model_generator._current_category == "mlp"
 
         # Verify result
         assert isinstance(model_spec, ModelSpec)

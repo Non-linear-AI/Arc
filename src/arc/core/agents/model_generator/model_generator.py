@@ -44,7 +44,7 @@ class ModelGeneratorAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
-    def _get_template_path(self, category: str) -> Path:
+    def _get_template_path(self, _category: str) -> Path:
         """Get the template path for a specific category.
 
         Args:
@@ -105,7 +105,7 @@ class ModelGeneratorAgent(BaseAgent):
             "mlp": "Multi-Layer Perceptron (Feedforward Neural Network)",
             "transformer": "Transformer (Attention-based Neural Network)",
             "dcn": "Deep & Cross Network",
-            "mmoe": "Multi-gate Mixture of Experts"
+            "mmoe": "Multi-gate Mixture of Experts",
         }
 
         context = {
@@ -113,7 +113,9 @@ class ModelGeneratorAgent(BaseAgent):
             "user_intent": user_context,
             "data_profile": data_profile,
             "architecture_type": resolved_category,
-            "architecture_display_name": display_names.get(resolved_category, resolved_category.upper()),
+            "architecture_display_name": display_names.get(
+                resolved_category, resolved_category.upper()
+            ),
             "available_components": self._get_model_components(),
             "architecture_guides": self._load_architecture_guides([resolved_category]),
             "existing_yaml": existing_yaml,
@@ -149,22 +151,42 @@ class ModelGeneratorAgent(BaseAgent):
         """
         context_lower = user_context.lower()
 
-        # Deep & Cross Network indicators
-        if any(keyword in context_lower for keyword in [
-            "feature cross", "interaction", "ctr", "click-through", "recommendation"
-        ]):
-            return "dcn"
-
-        # Multi-gate Mixture of Experts indicators
-        if any(keyword in context_lower for keyword in [
-            "multi-task", "multiple task", "multitask", "shared representation"
-        ]):
+        # Multi-gate Mixture of Experts indicators (check first for priority)
+        if any(
+            keyword in context_lower
+            for keyword in [
+                "multi-task",
+                "multiple task",
+                "multitask",
+                "shared representation",
+            ]
+        ):
             return "mmoe"
 
+        # Deep & Cross Network indicators
+        if any(
+            keyword in context_lower
+            for keyword in [
+                "feature cross",
+                "interaction",
+                "ctr",
+                "click-through",
+                "recommendation",
+            ]
+        ):
+            return "dcn"
+
         # Transformer indicators
-        if any(keyword in context_lower for keyword in [
-            "attention", "sequence", "transformer", "self-attention", "encoder"
-        ]):
+        if any(
+            keyword in context_lower
+            for keyword in [
+                "attention",
+                "sequence",
+                "transformer",
+                "self-attention",
+                "encoder",
+            ]
+        ):
             return "transformer"
 
         # Default to MLP for tabular data
@@ -344,26 +366,37 @@ class ModelGeneratorAgent(BaseAgent):
     def _get_model_components(self) -> dict[str, Any]:
         """Get available model components from the new architecture."""
         try:
-            # Combine both CORE_LAYERS (nn.Module classes) and TORCH_FUNCTIONS (functional components)
+            # Combine both CORE_LAYERS (nn.Module) and TORCH_FUNCTIONS (functional)
             all_components = list(CORE_LAYERS.keys()) + list(TORCH_FUNCTIONS.keys())
             return {
                 "node_types": all_components,
-                "description": "PyTorch components available in Arc-Graph include layers (instantiated once, used in forward pass) and functions (applied as operations). All standard PyTorch neural network components are supported."
+                "description": (
+                    "PyTorch components available in Arc-Graph include layers "
+                    "(instantiated once, used in forward pass) and functions "
+                    "(applied as operations). All standard PyTorch neural "
+                    "network components are supported."
+                ),
             }
         except Exception as e:
             raise RuntimeError(f"Failed to load model components: {e}") from e
 
-    def _load_architecture_guides(self, architecture_types: list[str]) -> dict[str, str]:
+    def _load_architecture_guides(
+        self, architecture_types: list[str]
+    ) -> dict[str, str]:
         """Load architecture-specific content from files."""
         architecture_guides = {}
 
         for arch_type in architecture_types:
-            content_path = self.get_template_directory() / "architectures" / f"{arch_type}.md"
+            content_path = (
+                self.get_template_directory() / "architectures" / f"{arch_type}.md"
+            )
             try:
-                with open(content_path, 'r') as f:
+                with open(content_path) as f:
                     architecture_guides[arch_type.upper()] = f.read()
             except FileNotFoundError:
-                architecture_guides[arch_type.upper()] = f"*Content not found for {arch_type}*"
+                architecture_guides[arch_type.upper()] = (
+                    f"*Content not found for {arch_type}*"
+                )
 
         return architecture_guides
 

@@ -17,30 +17,39 @@ import argparse
 import sys
 from pathlib import Path
 
+from jinja2 import Environment, FileSystemLoader
+
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from jinja2 import Environment, FileSystemLoader
-
 
 def load_actual_components():
-    """Load available components using the exact same logic as ModelGeneratorAgent._get_model_components()."""
+    """Load available components using exact ModelGeneratorAgent logic."""
     try:
         # Import and use exact same logic as ModelGeneratorAgent._get_model_components()
         from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS
-        # Combine both CORE_LAYERS (nn.Module classes) and TORCH_FUNCTIONS (functional components)
+
+        # Combine both CORE_LAYERS (nn.Module) and TORCH_FUNCTIONS (functional)
         all_components = list(CORE_LAYERS.keys()) + list(TORCH_FUNCTIONS.keys())
         return {
             "node_types": all_components,
-            "description": "PyTorch components available in Arc-Graph include layers (instantiated once, used in forward pass) and functions (applied as operations). All standard PyTorch neural network components are supported."
+            "description": (
+                "PyTorch components available in Arc-Graph include layers "
+                "(instantiated once, used in forward pass) and functions "
+                "(applied as operations). All standard PyTorch neural "
+                "network components are supported."
+            ),
         }
     except Exception as e:
         print(f"Warning: Could not load components: {e}")
         # Minimal fallback
         return {
             "node_types": ["torch.nn.Linear", "torch.nn.functional.sigmoid"],
-            "description": "PyTorch components available in Arc-Graph include layers and functions."
+            "description": (
+                "PyTorch components available in Arc-Graph include "
+                "layers and functions."
+            ),
         }
 
 
@@ -51,23 +60,47 @@ def load_architecture_content(architecture_types):
 
     architecture_guides = {}
     for arch_type in architecture_types:
-        content_path = project_root / "src" / "arc" / "core" / "agents" / "model_generator" / "templates" / "architectures" / f"{arch_type}.md"
+        content_path = (
+            project_root
+            / "src"
+            / "arc"
+            / "core"
+            / "agents"
+            / "model_generator"
+            / "templates"
+            / "architectures"
+            / f"{arch_type}.md"
+        )
         try:
-            with open(content_path, 'r') as f:
+            with open(content_path) as f:
                 architecture_guides[arch_type.upper()] = f.read()
         except FileNotFoundError:
-            architecture_guides[arch_type.upper()] = f"*Content not found for {arch_type}*"
+            architecture_guides[arch_type.upper()] = (
+                f"*Content not found for {arch_type}*"
+            )
 
     return architecture_guides
 
+
 def load_examples_content(architecture_type, complexity="simple"):
     """Load relevant examples for the architecture."""
-    examples_path = project_root / "src" / "arc" / "core" / "agents" / "model_generator" / "templates" / "examples" / f"{architecture_type}_{complexity}.md"
+    examples_path = (
+        project_root
+        / "src"
+        / "arc"
+        / "core"
+        / "agents"
+        / "model_generator"
+        / "templates"
+        / "examples"
+        / f"{architecture_type}_{complexity}.md"
+    )
     try:
-        with open(examples_path, 'r') as f:
+        with open(examples_path) as f:
             return f.read()
     except FileNotFoundError:
         return f"## Examples\n*No examples found for {architecture_type}*"
+
 
 def create_sample_data(architecture_types):
     """Create sample data for template rendering with known column information."""
@@ -79,20 +112,26 @@ def create_sample_data(architecture_types):
         "mlp": "Multi-Layer Perceptron (Feedforward Neural Network)",
         "transformer": "Transformer (Attention-based Neural Network)",
         "dcn": "Deep & Cross Network",
-        "mmoe": "Multi-gate Mixture of Experts"
+        "mmoe": "Multi-gate Mixture of Experts",
     }
 
     # Create display name from multiple architectures
     if len(architecture_types) == 1:
-        display_name = display_names.get(architecture_types[0], architecture_types[0].upper())
+        display_name = display_names.get(
+            architecture_types[0], architecture_types[0].upper()
+        )
     else:
-        display_name = " + ".join([display_names.get(arch, arch.upper()) for arch in architecture_types])
+        display_name = " + ".join(
+            [display_names.get(arch, arch.upper()) for arch in architecture_types]
+        )
 
     return {
         "architecture_type": "+".join(architecture_types),
         "architecture_display_name": display_name,
         "model_name": "churn_predictor",
-        "user_intent": "predict customer churn using demographic and behavioral features",
+        "user_intent": (
+            "predict customer churn using demographic and behavioral features"
+        ),
         "data_profile": {
             "table_name": "customers",
             "columns": [
@@ -101,23 +140,36 @@ def create_sample_data(architecture_types):
                 {"name": "credit_score", "type": "int"},
                 {"name": "account_balance", "type": "float"},
                 {"name": "years_with_bank", "type": "int"},
-            ]
+            ],
         },
         "available_components": load_actual_components(),
-        "architecture_guides": load_architecture_content(architecture_types)
+        "architecture_guides": load_architecture_content(architecture_types),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Quick prompt test for manual LLM testing")
-    parser.add_argument("architectures", nargs="+",
-                       choices=["mlp", "transformer", "dcn", "mmoe"],
-                       help="Architecture types (can specify multiple)")
+    parser = argparse.ArgumentParser(
+        description="Quick prompt test for manual LLM testing"
+    )
+    parser.add_argument(
+        "architectures",
+        nargs="+",
+        choices=["mlp", "transformer", "dcn", "mmoe"],
+        help="Architecture types (can specify multiple)",
+    )
 
     args = parser.parse_args()
 
     # Get template directory and set up Jinja2
-    template_dir = project_root / "src" / "arc" / "core" / "agents" / "model_generator" / "templates"
+    template_dir = (
+        project_root
+        / "src"
+        / "arc"
+        / "core"
+        / "agents"
+        / "model_generator"
+        / "templates"
+    )
     env = Environment(loader=FileSystemLoader(template_dir))
 
     # Load base template
