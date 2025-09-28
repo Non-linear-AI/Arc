@@ -145,11 +145,17 @@ TORCH_FUNCTIONS = {
     "torch.nn.functional.adaptive_avg_pool2d": F.adaptive_avg_pool2d,
     # Loss functions (functional versions)
     "torch.nn.functional.mse_loss": F.mse_loss,
+    "torch.nn.functional.l1_loss": F.l1_loss,
+    "torch.nn.functional.smooth_l1_loss": F.smooth_l1_loss,
+    "torch.nn.functional.huber_loss": F.huber_loss,
     "torch.nn.functional.cross_entropy": F.cross_entropy,
+    "torch.nn.functional.nll_loss": F.nll_loss,
     "torch.nn.functional.binary_cross_entropy": F.binary_cross_entropy,
     "torch.nn.functional.binary_cross_entropy_with_logits": (
         F.binary_cross_entropy_with_logits
     ),
+    "torch.nn.functional.kl_div": F.kl_div,
+    "torch.nn.functional.poisson_nll_loss": F.poisson_nll_loss,
     # Convolution functions
     "torch.nn.functional.conv1d": F.conv1d,
     "torch.nn.functional.conv2d": F.conv2d,

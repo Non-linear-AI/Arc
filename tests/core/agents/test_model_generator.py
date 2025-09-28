@@ -190,7 +190,7 @@ loss:
                 name="test_model", user_context="Test model", table_name="test_table"
             )
 
-    def test_profile_data_success(self, model_generator, mock_services):
+    def test_profile_data_success(self, model_generator):
         """Test successful data profiling."""
         import asyncio
 
@@ -213,7 +213,9 @@ loss:
         # Mock None result (table not found)
         mock_services.ml_data.get_dataset_info.return_value = None
 
-        result = asyncio.run(model_generator._get_unified_data_profile("nonexistent_table"))
+        result = asyncio.run(
+            model_generator._get_unified_data_profile("nonexistent_table")
+        )
 
         assert "error" in result
         assert "not found" in result["error"]
@@ -227,7 +229,9 @@ loss:
             "Invalid table name"
         )
 
-        result = asyncio.run(model_generator._get_unified_data_profile("invalid-table-name!"))
+        result = asyncio.run(
+            model_generator._get_unified_data_profile("invalid-table-name!")
+        )
 
         assert "error" in result
         assert "Failed to analyze table" in result["error"]
@@ -289,7 +293,9 @@ loss:
     ):
         """Test comprehensive model validation with invalid column references."""
         context = {
-            "data_profile": {"feature_columns": [{"name": "different_column", "type": "REAL"}]},
+            "data_profile": {
+                "feature_columns": [{"name": "different_column", "type": "REAL"}]
+            },
             "available_components": {
                 "node_types": ["torch.nn.Linear", "torch.nn.Sigmoid"]
             },

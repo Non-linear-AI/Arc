@@ -14,7 +14,13 @@ from arc.graph.model.components import (
     get_supported_component_types,
     validate_component_params,
 )
-from arc.graph.model.spec import GraphNode, LossSpec, ModelInput, ModelSpec, ModuleDefinition
+from arc.graph.model.spec import (
+    GraphNode,
+    LossSpec,
+    ModelInput,
+    ModelSpec,
+    ModuleDefinition,
+)
 from arc.graph.model.validator import ModelValidationError, validate_model_dict
 
 

@@ -142,7 +142,9 @@ class ModelSpec:
                 params=loss_data.get("params"),
             )
 
-        return cls(inputs=inputs, graph=graph, outputs=outputs, modules=modules, loss=loss)
+        return cls(
+            inputs=inputs, graph=graph, outputs=outputs, modules=modules, loss=loss
+        )
 
     @classmethod
     def from_yaml_file(cls, path: str) -> ModelSpec:

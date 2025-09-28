@@ -224,8 +224,10 @@ def validate_model_dict(data: dict[str, Any]) -> None:
         if not isinstance(loss_type, str):
             raise ModelValidationError("model.loss.type must be a string")
 
-        # Validate loss type is a supported component
+        # Validate loss type is a supported loss function
         try:
+            from arc.graph.model.components import get_component_class_or_function
+
             get_component_class_or_function(loss_type)
         except ValueError as e:
             raise ModelValidationError(f"model.loss.type: {e}") from e
@@ -241,27 +243,35 @@ def validate_model_dict(data: dict[str, Any]) -> None:
                 if input_name == "target":
                     # Target should be a column name (string), not a node reference
                     if not isinstance(source_ref, str):
+                        type_name = type(source_ref).__name__
                         raise ModelValidationError(
-                            f"model.loss.inputs.target must be a string (column name), got: {type(source_ref).__name__}"
+                            f"model.loss.inputs.target must be a string (column name), "
+                            f"got: {type_name}"
                         )
                     # No further validation needed for target - it's a column name
                 else:
                     # Other inputs must reference output field names only
                     if not isinstance(source_ref, str):
+                        type_name = type(source_ref).__name__
                         raise ModelValidationError(
-                            f"model.loss.inputs.{input_name} must be a string, got: {type(source_ref).__name__}"
+                            f"model.loss.inputs.{input_name} must be a string, "
+                            f"got: {type_name}"
                         )
 
                     if source_ref not in outputs:
-                        raise ModelValidationError(
-                            f"model.loss.inputs.{input_name} must reference an output field. "
-                            f"'{source_ref}' is not defined in outputs section. "
-                            f"Available outputs: {list(outputs.keys())}"
+                        available_outputs = list(outputs.keys())
+                        msg = (
+                            f"model.loss.inputs.{input_name} must reference "
+                            f"an output field. '{source_ref}' is not defined "
+                            f"in outputs section. Available: {available_outputs}"
                         )
+                        raise ModelValidationError(msg)
 
         # Validate loss parameters if present
         if "params" in loss and loss["params"] is not None:
             try:
+                from arc.graph.model.components import validate_component_params
+
                 validate_component_params(loss_type, loss["params"])
             except ValueError as e:
                 raise ModelValidationError(f"model.loss.params: {e}") from e

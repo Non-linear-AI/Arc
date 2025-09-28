@@ -37,7 +37,6 @@ class YamlStateManager:
         model_name: str,
         context: str,
         table_name: str,
-        exclude_columns: list[str] | None = None,
         target_column: str | None = None,
         category: str | None = None,
     ) -> Path:
@@ -61,7 +60,6 @@ class YamlStateManager:
             "model_name": model_name,
             "context": context,
             "table_name": table_name,
-            "exclude_columns": exclude_columns,
             "target_column": target_column,
             "category": category,
         }
@@ -326,7 +324,6 @@ class MLModelGeneratorTool(BaseTool):
         name: str | None = None,
         context: str | None = None,
         data_table: str | None = None,
-        exclude_columns: list[str] | None = None,
         target_column: str | None = None,
         output_path: str | None = None,
         auto_confirm: bool = False,
@@ -362,7 +359,6 @@ class MLModelGeneratorTool(BaseTool):
                 name=str(name),
                 user_context=str(context),
                 table_name=str(data_table),
-                exclude_columns=exclude_columns,
                 target_column=target_column,
                 category=category,
             )
@@ -398,7 +394,6 @@ class MLModelGeneratorTool(BaseTool):
                 str(name),
                 str(context),
                 str(data_table),
-                exclude_columns,
                 target_column,
                 category,
             )
@@ -724,7 +719,6 @@ class MLModelGeneratorTool(BaseTool):
                 name=context["model_name"],
                 user_context=context["context"],
                 table_name=context["table_name"],
-                exclude_columns=context["exclude_columns"],
                 target_column=context["target_column"],
                 category=context["category"],
                 existing_yaml=yaml_content,
@@ -737,7 +731,6 @@ class MLModelGeneratorTool(BaseTool):
                 context["model_name"],
                 context["context"],
                 context["table_name"],
-                context["exclude_columns"],
                 context["target_column"],
                 context["category"],
             )

@@ -371,11 +371,27 @@ class TrainingService:
                 # Create default trainer spec if none provided
                 from arc.graph.trainer import LossConfig, OptimizerConfig, TrainerSpec
 
+                # Extract loss from model spec if available
+                # Default functional loss
+                model_loss_type = "torch.nn.functional.binary_cross_entropy_with_logits"
+                model_loss_params = {}
+
+                if config.arc_graph and config.arc_graph.loss:
+                    model_loss_type = config.arc_graph.loss.type
+                    if config.arc_graph.loss.params:
+                        model_loss_params = config.arc_graph.loss.params
+
                 trainer_spec = TrainerSpec(
                     optimizer=OptimizerConfig(
                         type="torch.optim.Adam", lr=config.learning_rate
                     ),
-                    loss=LossConfig(type="torch.nn.BCEWithLogitsLoss"),
+                    loss=LossConfig(
+                        type=model_loss_type,
+                        params=model_loss_params,
+                        inputs=config.arc_graph.loss.inputs
+                        if config.arc_graph and config.arc_graph.loss
+                        else None,
+                    ),
                     epochs=config.epochs,
                     batch_size=config.batch_size,
                     learning_rate=config.learning_rate,

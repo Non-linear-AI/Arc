@@ -457,14 +457,6 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "string",
                         "description": "Database table to profile for generation",
                     },
-                    "exclude_columns": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Column names to exclude from model inputs to prevent "
-                            "feature leakage (e.g., target, prediction columns)"
-                        ),
-                    },
                     "output_path": {
                         "type": "string",
                         "description": (

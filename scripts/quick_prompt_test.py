@@ -156,7 +156,7 @@ def create_sample_data(architecture_types):
                 "min_value": 0,
                 "max_value": 1,
                 "mean_value": 0.2037,
-            }
+            },
         },
         "available_components": load_actual_components(),
         "architecture_guides": load_architecture_content(architecture_types),

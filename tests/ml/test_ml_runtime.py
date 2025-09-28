@@ -37,6 +37,12 @@ SIMPLE_GRAPH_YAML = textwrap.dedent(
     outputs:
       logits: linear.output
       prediction: sigmoid.output
+
+    loss:
+      type: torch.nn.functional.binary_cross_entropy
+      inputs:
+        input: prediction
+        target: label
     """
 )
 

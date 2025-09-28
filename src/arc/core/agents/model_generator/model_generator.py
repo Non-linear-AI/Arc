@@ -70,7 +70,6 @@ class ModelGeneratorAgent(BaseAgent):
         name: str,
         user_context: str,
         table_name: str,
-        exclude_columns: list[str] | None = None,
         target_column: str | None = None,
         category: str | None = None,
         existing_yaml: str | None = None,
@@ -82,7 +81,6 @@ class ModelGeneratorAgent(BaseAgent):
             name: Model name for the specification
             user_context: User description of desired model
             table_name: Database table name for data exploration
-            exclude_columns: Optional list of column names to exclude from model inputs
             target_column: Optional target column name for task-aware generation
             category: Optional category hint ("mlp", "transformer", etc.)
             existing_yaml: Optional existing YAML to edit
@@ -95,7 +93,7 @@ class ModelGeneratorAgent(BaseAgent):
             ModelGeneratorError: If generation fails
         """
         # Build unified data profile with target-aware analysis
-        data_profile = await self._get_unified_data_profile(table_name, exclude_columns, target_column)
+        data_profile = await self._get_unified_data_profile(table_name, target_column)
 
         # Determine category (explicit or auto-detected)
         resolved_category = category or self._detect_category_from_context(
@@ -423,16 +421,12 @@ class ModelGeneratorAgent(BaseAgent):
         return [{"schema": ex.schema, "name": ex.name} for ex in examples]
 
     async def _get_unified_data_profile(
-        self,
-        table_name: str,
-        exclude_columns: list[str] | None = None,
-        target_column: str | None = None
+        self, table_name: str, target_column: str | None = None
     ) -> dict[str, Any]:
         """Get unified data profile with target-aware analysis for LLM context.
 
         Args:
             table_name: Database table name
-            exclude_columns: Optional columns to exclude from features (for backward compatibility)
             target_column: Optional target column for task-aware analysis
 
         Returns:
@@ -445,16 +439,15 @@ class ModelGeneratorAgent(BaseAgent):
             if dataset_info is None:
                 return {"error": f"Table {table_name} not found or invalid"}
 
-            # Build exclude set from both sources
-            exclude_set = set(exclude_columns or [])
+            # Build exclude set (only target column)
+            exclude_set = set()
             if target_column:
                 exclude_set.add(target_column)
 
             # Separate target and feature columns
             all_columns = dataset_info.columns
             feature_columns = [
-                col for col in all_columns
-                if col["name"] not in exclude_set
+                col for col in all_columns if col["name"] not in exclude_set
             ]
 
             # Base profile structure
@@ -467,7 +460,9 @@ class ModelGeneratorAgent(BaseAgent):
 
             # Add target analysis if target column specified
             if target_column:
-                target_analysis = await self._analyze_target_column(table_name, target_column)
+                target_analysis = await self._analyze_target_column(
+                    table_name, target_column
+                )
                 profile["target_analysis"] = target_analysis
 
             return profile
@@ -504,7 +499,9 @@ class ModelGeneratorAgent(BaseAgent):
                 return {"error": f"Target column '{target_column}' not found in table"}
 
             # Get statistical analysis using ML data service
-            stats = self.services.ml_data.analyze_target_column(table_name, target_column)
+            stats = self.services.ml_data.analyze_target_column(
+                table_name, target_column
+            )
 
             # Build factual analysis for LLM
             analysis = {
@@ -517,19 +514,25 @@ class ModelGeneratorAgent(BaseAgent):
 
             # Add type-specific facts
             if stats.get("is_numeric", False):
-                analysis.update({
-                    "is_numeric": True,
-                    "min_value": stats.get("min_value"),
-                    "max_value": stats.get("max_value"),
-                    "mean_value": stats.get("mean_value"),
-                })
+                analysis.update(
+                    {
+                        "is_numeric": True,
+                        "min_value": stats.get("min_value"),
+                        "max_value": stats.get("max_value"),
+                        "mean_value": stats.get("mean_value"),
+                    }
+                )
             else:
-                analysis.update({
-                    "is_numeric": False,
-                    "sample_values": stats.get("sample_values", []),
-                })
+                analysis.update(
+                    {
+                        "is_numeric": False,
+                        "sample_values": stats.get("sample_values", []),
+                    }
+                )
 
             return analysis
 
         except Exception as e:
-            return {"error": f"Failed to analyze target column {target_column}: {str(e)}"}
+            return {
+                "error": f"Failed to analyze target column {target_column}: {str(e)}"
+            }
