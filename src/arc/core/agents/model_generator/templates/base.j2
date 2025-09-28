@@ -1,0 +1,195 @@
+You are an expert machine learning engineer specializing in {{ architecture_type.upper() }} architectures.
+
+## TASK
+{% if is_editing -%}
+Edit the existing Arc-Graph {{ architecture_type.upper() }} specification based on the following instructions:
+
+**Editing Instructions**: {{ editing_instructions }}
+
+**Current YAML Specification**:
+```yaml
+{{ existing_yaml }}
+```
+
+**Additional Context**:
+- **Model Name**: {{ model_name }}
+- **User Intent**: {{ user_intent }}
+- **Architecture**: {{ architecture_display_name }}
+- **Available Columns**: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.columns | length }} total)
+{% else -%}
+Generate an Arc-Graph {{ architecture_type.upper() }} specification for:
+- **Model Name**: {{ model_name }}
+- **User Intent**: {{ user_intent }}
+- **Architecture**: {{ architecture_display_name }}
+- **Available Columns**: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.columns | length }} total)
+{% endif %}
+
+## Arc-Graph Schema Validation
+
+### **JSON Schema**
+Your output must validate against this Arc-Graph schema:
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "inputs": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-zA-Z0-9_]+$": {
+          "type": "object",
+          "properties": {
+            "dtype": { "type": "string" },
+            "shape": {
+              "type": "array",
+              "items": { "anyOf": [{ "type": "integer" }, { "type": "null" }] }
+            },
+            "columns": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["dtype", "shape", "columns"]
+        }
+      }
+    },
+    "graph": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-zA-Z0-9_]+$" },
+          "type": { "type": "string", "pattern": "^(torch(\\.(nn(\\.(functional)?)?)?\\.\\w+)|arc\\.stack|module\\.\\w+)$" },
+          "params": { "type": "object" },
+          "inputs": { "oneOf": [{ "type": "object" }, { "type": "array" }] }
+        },
+        "required": ["name", "type", "inputs"]
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-zA-Z0-9_]+$": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_]+(\\.\\w+(\\.\\d+)?)?$"
+        }
+      }
+    }
+  },
+  "required": ["inputs", "graph", "outputs"]
+}
+```
+
+## Arc-Graph Foundation
+
+### **Input Design**
+
+Define how data enters your model. Use the available columns to create meaningful input tensors:
+
+**Single Input Pattern** (all columns together):
+```yaml
+inputs:
+  features:                               # Descriptive name
+    dtype: float32                        # Data type
+    shape: [null, {{ data_profile.columns | length }}]                     # [batch_size, num_features]
+    columns: {{ (data_profile.columns | map(attribute='name') | list) | tojson }}  # Exact column names
+```
+
+**Multiple Input Pattern** (grouped by meaning):
+```yaml
+inputs:
+  demographics:                           # Group related columns
+    dtype: float32
+    shape: [null, N]                      # N = number of demographic columns
+    columns: [age, income, ...]           # Select relevant columns
+
+  financial:                              # Another logical group
+    dtype: float32
+    shape: [null, M]                      # M = number of financial columns
+    columns: [credit_score, balance, ...]  # Select relevant columns
+```
+
+**Input Guidelines**:
+- Group columns by semantic meaning (demographics, financial, behavioral, etc.)
+- Use descriptive input names that reflect the data content
+- Only use columns from the provided list: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
+- Choose shapes that match your column groupings
+
+### **Graph Design**
+
+Define the computation flow using a sequence of nodes. Each node represents an operation:
+
+**Available Components**:
+{{ available_components.description }}
+
+**Available Node Types**:
+{% for node_type in available_components.node_types -%}
+- `{{ node_type }}`
+{% endfor %}
+
+**Arc Components**:
+- `arc.stack`: **Special stacking component** for repeating modules
+  - Parameters: `module` (string): name of module to repeat, `count` (integer): number of repetitions
+  - Example: `type: arc.stack, params: { module: "TransformerBlock", count: 6 }`
+
+**Node Structure**:
+```yaml
+graph:
+  - name: unique_name                     # Reference name for this operation
+    type: torch.nn.Linear                 # Component type (see available components)
+    params: { in_features: 64, out_features: 32 }  # Component parameters
+    inputs: { input: previous_node }      # Input connections
+```
+
+**Module Definition** (optional, for reusable components):
+```yaml
+modules:
+  ModuleName:
+    inputs: [input_arg]                   # Module input arguments
+    graph:                                # Internal computation graph
+      - name: internal_op
+        type: torch.nn.Linear
+        params: { in_features: 64, out_features: 32 }
+        inputs: { input: input_arg }
+    outputs:
+      output: internal_op.output          # Module outputs
+```
+
+### **Output Design**
+
+Define what your model returns:
+
+```yaml
+outputs:
+  prediction: final_node.output           # Main model output
+  confidence: confidence_node.output      # Additional outputs (optional)
+```
+
+## Architecture Guidance
+
+{% for arch_name, arch_content in architecture_guides.items() -%}
+### {{ arch_name }}
+{{ arch_content }}
+
+{% endfor %}
+
+## Requirements
+1. **Schema Compliance**: Valid Arc-Graph YAML structure
+2. **Node Names**: Use descriptive names appropriate for the selected architecture(s)
+3. **Input Specification**: Only use columns from the provided list: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
+4. **Complete Structure**: inputs → graph → outputs (modules optional)
+5. **Architecture-Appropriate Patterns**: Follow architecture-specific best practices
+
+## Output Format
+{% if is_editing -%}
+Generate ONLY the updated YAML specification. No explanations or markdown blocks. Make the requested changes while maintaining the overall structure and ensuring schema compliance.
+
+Generate the updated specification:
+{% else -%}
+Generate ONLY the YAML specification. No explanations or markdown blocks.
+
+Generate the specification:
+{% endif %}

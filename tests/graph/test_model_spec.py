@@ -238,3 +238,433 @@ class TestModelValidation:
 
         with pytest.raises(ModelValidationError, match="references undefined node"):
             validate_model_dict(invalid_dict)
+
+
+class TestArcGraphV1Features:
+    """Test Arc-Graph v1.0 specific features."""
+
+    def test_modules_section_parsing(self):
+        """Test parsing of modules section."""
+        yaml_content = """
+        modules:
+          TestModule:
+            inputs: [x, y]
+            graph:
+              - name: add
+                type: torch.add
+                inputs: [x, y]
+            outputs:
+              result: add
+
+        inputs:
+          a:
+            dtype: float32
+            shape: [null, 5]
+          b:
+            dtype: float32
+            shape: [null, 5]
+
+        graph:
+          - name: custom_op
+            type: module.TestModule
+            inputs:
+              x: a
+              y: b
+
+        outputs:
+          sum: custom_op.result
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check modules were parsed correctly
+        assert model_spec.modules is not None
+        assert "TestModule" in model_spec.modules
+
+        test_module = model_spec.modules["TestModule"]
+        assert test_module.inputs == ["x", "y"]
+        assert len(test_module.graph) == 1
+        assert test_module.graph[0].name == "add"
+        assert test_module.outputs == {"result": "add"}
+
+        # Check main graph references the module
+        assert model_spec.graph[0].type == "module.TestModule"
+
+    def test_list_inputs_in_graph_nodes(self):
+        """Test list input format in graph nodes."""
+        yaml_content = """
+        inputs:
+          tensor1:
+            dtype: float32
+            shape: [null, 3]
+          tensor2:
+            dtype: float32
+            shape: [null, 3]
+
+        graph:
+          - name: concatenate
+            type: torch.cat
+            params:
+              dim: 1
+            inputs: [tensor1, tensor2]
+
+        outputs:
+          combined: concatenate
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check that inputs were parsed as list
+        concat_node = model_spec.graph[0]
+        assert isinstance(concat_node.inputs, list)
+        assert concat_node.inputs == ["tensor1", "tensor2"]
+
+    def test_arc_stack_node_type(self):
+        """Test arc.stack node type parsing."""
+        yaml_content = """
+        modules:
+          Block:
+            inputs: [x]
+            graph:
+              - name: linear
+                type: torch.nn.Linear
+                params:
+                  in_features: 10
+                  out_features: 10
+                inputs:
+                  input: x
+            outputs:
+              output: linear.output
+
+        inputs:
+          data:
+            dtype: float32
+            shape: [null, 10]
+
+        graph:
+          - name: deep_stack
+            type: arc.stack
+            params:
+              module: Block
+              count: 5
+            inputs:
+              input: data
+
+        outputs:
+          result: deep_stack.output
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check arc.stack node was parsed correctly
+        stack_node = model_spec.graph[0]
+        assert stack_node.type == "arc.stack"
+        assert stack_node.params["module"] == "Block"
+        assert stack_node.params["count"] == 5
+
+    def test_pytorch_function_nodes(self):
+        """Test PyTorch function nodes."""
+        yaml_content = """
+        inputs:
+          data:
+            dtype: float32
+            shape: [null, 10, 20]
+
+        graph:
+          - name: mean_pooling
+            type: torch.mean
+            params:
+              dim: 1
+              keepdim: true
+            inputs: [data]
+
+          - name: squeeze_result
+            type: torch.squeeze
+            params:
+              dim: 1
+            inputs: [mean_pooling]
+
+          - name: relu_activation
+            type: torch.nn.functional.relu
+            inputs: [squeeze_result]
+
+        outputs:
+          pooled: mean_pooling
+          squeezed: squeeze_result
+          activated: relu_activation
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check that function nodes were parsed correctly
+        assert model_spec.graph[0].type == "torch.mean"
+        assert model_spec.graph[1].type == "torch.squeeze"
+        assert model_spec.graph[2].type == "torch.nn.functional.relu"
+
+    def test_tuple_output_references(self):
+        """Test tuple output reference parsing (.output.0, .output.1)."""
+        yaml_content = """
+        inputs:
+          sequence:
+            dtype: float32
+            shape: [null, 10, 64]
+
+        graph:
+          - name: lstm
+            type: torch.nn.LSTM
+            params:
+              input_size: 64
+              hidden_size: 32
+              batch_first: true
+            inputs:
+              input: sequence
+
+          - name: process_hidden
+            type: torch.nn.Linear
+            params:
+              in_features: 32
+              out_features: 10
+            inputs:
+              input: lstm.output.1.0
+
+        outputs:
+          sequence_out: lstm.output.0
+          hidden_state: lstm.output.1.0
+          cell_state: lstm.output.1.1
+          processed: process_hidden.output
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check that tuple references were parsed correctly
+        assert model_spec.outputs["sequence_out"] == "lstm.output.0"
+        assert model_spec.outputs["hidden_state"] == "lstm.output.1.0"
+        assert model_spec.outputs["cell_state"] == "lstm.output.1.1"
+
+        # Check that graph node also uses tuple reference
+        assert model_spec.graph[1].inputs["input"] == "lstm.output.1.0"
+
+    def test_backward_compatibility_modules_none(self):
+        """Test backward compatibility with modules: null."""
+        yaml_content = """
+        inputs:
+          data:
+            dtype: float32
+            shape: [null, 10]
+
+        modules: null
+
+        graph:
+          - name: linear
+            type: torch.nn.Linear
+            params:
+              in_features: 10
+              out_features: 5
+            inputs:
+              input: data
+
+        outputs:
+          result: linear.output
+        """
+
+        # Should not raise validation error
+        model_spec = ModelSpec.from_yaml(yaml_content)
+        assert model_spec.modules is None
+
+    def test_complex_nested_modules(self):
+        """Test complex nested module definitions."""
+        yaml_content = """
+        modules:
+          Attention:
+            inputs: [query, key, value]
+            graph:
+              - name: attention
+                type: torch.nn.MultiheadAttention
+                params:
+                  embed_dim: 64
+                  num_heads: 8
+                inputs:
+                  query: query
+                  key: key
+                  value: value
+            outputs:
+              attended: attention.output.0
+              weights: attention.output.1
+
+          FeedForward:
+            inputs: [x]
+            graph:
+              - name: linear1
+                type: torch.nn.Linear
+                params:
+                  in_features: 64
+                  out_features: 256
+                inputs:
+                  input: x
+              - name: activation
+                type: torch.nn.functional.gelu
+                inputs: [linear1.output]
+              - name: linear2
+                type: torch.nn.Linear
+                params:
+                  in_features: 256
+                  out_features: 64
+                inputs:
+                  input: activation
+            outputs:
+              output: linear2.output
+
+          TransformerBlock:
+            inputs: [x]
+            graph:
+              - name: self_attention
+                type: module.Attention
+                inputs:
+                  query: x
+                  key: x
+                  value: x
+              - name: add1
+                type: torch.add
+                inputs: [self_attention.attended, x]
+              - name: feedforward
+                type: module.FeedForward
+                inputs:
+                  x: add1
+              - name: add2
+                type: torch.add
+                inputs: [feedforward.output, add1]
+            outputs:
+              output: add2
+
+        inputs:
+          embeddings:
+            dtype: float32
+            shape: [null, 100, 64]
+
+        graph:
+          - name: transformer_layers
+            type: arc.stack
+            params:
+              module: TransformerBlock
+              count: 6
+            inputs:
+              input: embeddings
+
+        outputs:
+          encoded: transformer_layers.output
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Verify complex module structure
+        assert len(model_spec.modules) == 3
+        assert "Attention" in model_spec.modules
+        assert "FeedForward" in model_spec.modules
+        assert "TransformerBlock" in model_spec.modules
+
+        # Check TransformerBlock uses other modules
+        transformer_block = model_spec.modules["TransformerBlock"]
+        attention_node = next(
+            n for n in transformer_block.graph if n.name == "self_attention"
+        )
+        assert attention_node.type == "module.Attention"
+
+        ff_node = next(n for n in transformer_block.graph if n.name == "feedforward")
+        assert ff_node.type == "module.FeedForward"
+
+        # Check main graph uses arc.stack with the complex module
+        stack_node = model_spec.graph[0]
+        assert stack_node.type == "arc.stack"
+        assert stack_node.params["module"] == "TransformerBlock"
+        assert stack_node.params["count"] == 6
+
+
+class TestModelSpecValidation:
+    """Test enhanced model validation for v1.0 features."""
+
+    def test_validate_invalid_module_reference_in_arc_stack(self):
+        """Test validation error for invalid module reference in arc.stack."""
+        invalid_dict = {
+            "inputs": {"data": {"dtype": "float32", "shape": [None, 10]}},
+            "modules": {},
+            "graph": [
+                {
+                    "name": "stack",
+                    "type": "arc.stack",
+                    "params": {"module": "NonExistentModule", "count": 3},
+                    "inputs": {"input": "data"},
+                }
+            ],
+            "outputs": {"result": "stack.output"},
+        }
+
+        with pytest.raises(ModelValidationError, match="references undefined module"):
+            validate_model_dict(invalid_dict)
+
+    def test_validate_arc_stack_invalid_count(self):
+        """Test validation error for invalid count in arc.stack."""
+        invalid_dict = {
+            "inputs": {"data": {"dtype": "float32", "shape": [None, 10]}},
+            "modules": {
+                "TestModule": {
+                    "inputs": ["x"],
+                    "graph": [
+                        {
+                            "name": "linear",
+                            "type": "torch.nn.Linear",
+                            "params": {"in_features": 10, "out_features": 10},
+                            "inputs": {"input": "x"},
+                        }
+                    ],
+                    "outputs": {"output": "linear.output"},
+                }
+            },
+            "graph": [
+                {
+                    "name": "stack",
+                    "type": "arc.stack",
+                    "params": {
+                        "module": "TestModule",
+                        "count": -1,  # Invalid negative count
+                    },
+                    "inputs": {"input": "data"},
+                }
+            ],
+            "outputs": {"result": "stack.output"},
+        }
+
+        with pytest.raises(
+            ModelValidationError, match="count must be a positive integer"
+        ):
+            validate_model_dict(invalid_dict)
+
+    def test_validate_module_internal_references(self):
+        """Test validation of internal module references."""
+        invalid_dict = {
+            "inputs": {"data": {"dtype": "float32", "shape": [None, 10]}},
+            "modules": {
+                "BadModule": {
+                    "inputs": ["x"],
+                    "graph": [
+                        {
+                            "name": "linear",
+                            "type": "torch.nn.Linear",
+                            "params": {"in_features": 10, "out_features": 5},
+                            "inputs": {"input": "undefined_input"},  # Invalid reference
+                        }
+                    ],
+                    "outputs": {"output": "linear.output"},
+                }
+            },
+            "graph": [
+                {
+                    "name": "module_instance",
+                    "type": "module.BadModule",
+                    "inputs": {"x": "data"},
+                }
+            ],
+            "outputs": {"result": "module_instance.output"},
+        }
+
+        with pytest.raises(ModelValidationError, match="references undefined node"):
+            validate_model_dict(invalid_dict)
