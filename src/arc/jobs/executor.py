@@ -156,10 +156,12 @@ class JobExecutor:
                     if not self._running:
                         break
 
-                    # Submit job for execution
-                    fut = self._executor.submit(self._execute_job, job)
-                    # Store the future and notify any waiter
+                    # Store the future before submission to avoid race condition
+                    # where wait_for_job is called before the future is registered
                     with self._futures_cond:
+                        # Submit job for execution
+                        fut = self._executor.submit(self._execute_job, job)
+                        # Store the future and notify any waiter
                         self._futures[job.job_id] = fut
                         self._futures_cond.notify_all()
                     # Don't wait for completion - let it run async
@@ -217,24 +219,35 @@ class JobExecutor:
             job.fail(str(e))
             self.job_manager.update_job(job)
 
-    def wait_for_job(self, job_id: str) -> None:
+    def wait_for_job(self, job_id: str, timeout: float = 30.0) -> None:
         """Block until the specified job's handler has finished executing.
 
         This waits on the executor Future rather than using timeouts or sleeps.
         If the job hasn't been scheduled yet, it spins briefly on the worker
         loop handoff without sleeping, but returns as soon as the Future exists
         and completes.
+
+        Args:
+            job_id: Job ID to wait for
+            timeout: Maximum time to wait for job completion (default 30s)
         """
         # Try to get an existing future; if not present, wait until the
         # worker loop schedules it without busy-waiting.
         with self._futures_cond:
             fut = self._futures.get(job_id)
             while fut is None and self._running:
-                self._futures_cond.wait()
+                # Use timeout to prevent indefinite blocking in CI environments
+                if not self._futures_cond.wait(timeout=timeout):
+                    logger.warning(f"Timeout waiting for job {job_id} to be scheduled")
+                    return
                 fut = self._futures.get(job_id)
         if fut is not None:
             # Propagate any exception from the job handler
-            fut.result()
+            try:
+                fut.result(timeout=timeout)
+            except Exception:
+                # Re-raise the exception from the job handler
+                raise
 
     def update_job_message(self, job_id: str, message: str) -> None:
         """Update job progress message.

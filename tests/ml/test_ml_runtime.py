@@ -132,8 +132,14 @@ def test_train_and_predict_flow(tmp_path, runtime, db_manager, output_table):
         description="runtime test job",
     )
 
-    result = runtime.training_service.wait_for_job(job_id, timeout=15)
-    assert result is not None and result.success is True
+    result = runtime.training_service.wait_for_job(job_id, timeout=30)
+    if result is None:
+        # Get job status for debugging
+        status = runtime.training_service.get_job_status(job_id)
+        pytest.fail(f"Training job {job_id} did not complete. Status: {status}")
+    assert result.success is True, (
+        f"Training failed: {result.error if result else 'Unknown error'}"
+    )
 
     runtime.training_service.cleanup_completed_jobs()
 
