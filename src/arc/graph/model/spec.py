@@ -45,6 +45,15 @@ class ModuleDefinition:
 
 
 @dataclass
+class LossSpec:
+    """Specification for model loss function."""
+
+    type: str
+    inputs: dict[str, str] | None = None
+    params: dict[str, Any] | None = None
+
+
+@dataclass
 class ModelSpec:
     """Complete model specification."""
 
@@ -52,6 +61,7 @@ class ModelSpec:
     graph: list[GraphNode]
     outputs: dict[str, str]
     modules: dict[str, ModuleDefinition] | None = None  # Optional reusable modules
+    loss: LossSpec | None = None  # Optional loss function specification
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> ModelSpec:
@@ -122,7 +132,19 @@ class ModelSpec:
         # Parse outputs
         outputs = data["outputs"]
 
-        return cls(inputs=inputs, graph=graph, outputs=outputs, modules=modules)
+        # Parse loss section if present
+        loss = None
+        if "loss" in data and data["loss"] is not None:
+            loss_data = data["loss"]
+            loss = LossSpec(
+                type=loss_data["type"],
+                inputs=loss_data.get("inputs"),
+                params=loss_data.get("params"),
+            )
+
+        return cls(
+            inputs=inputs, graph=graph, outputs=outputs, modules=modules, loss=loss
+        )
 
     @classmethod
     def from_yaml_file(cls, path: str) -> ModelSpec:

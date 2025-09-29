@@ -1,90 +1,73 @@
-**Multi-Layer Perceptrons (MLPs)** are feedforward neural networks using `torch.nn.Linear` layers with non-linear activations. They excel at tabular data classification and regression through universal approximation capabilities.
+**Multi-Layer Perceptrons (MLPs)** are feedforward neural networks using `torch.nn.Linear` layers with non-linear activations. They excel at tabular data classification and regression through their universal approximation capabilities.
 
 **Key Insights**:
-- **Layer sizing**: Start 2-4x input size, gradually decrease (128→64→32)
-- **Regularization**: BatchNorm after linear layers, dropout 0.1-0.5 increasing with depth
-- **Activations**: ReLU (standard), GELU (deeper networks)
-- **Output activations**: Sigmoid (binary classification), Softmax (multi-class classification), None (regression)
 
-### **Pattern 1: Simple Binary Classifier**
+  * **Layer Sizing**: Start with a hidden layer 2-4x the input size, then gradually decrease (e.g., 128 → 64 → 32).
+  * **Regularization**: Use **`BatchNorm1d`** after linear layers to stabilize training. **`Dropout`** can help prevent overfitting in complex datasets or deeper networks.
+  * **Activations**: **`ReLU`** is a robust default. Consider **`GELU`** or **`SiLU`** for deeper networks.
+  * **Dual Outputs**: Provide both raw **logits** (for training loss) and **probabilities** (for inference/prediction).
 
-The most basic MLP pattern for binary classification. Ideal for baseline models and simple decision boundaries.
+-----
 
-**When to use**: Quick prototyping, simple linear-separable data, baseline comparisons
+### **Pattern 1: MLP for Binary Classification**
 
-**YAML Example**:
-```yaml
-inputs:
-  features:
-    dtype: float32
-    shape: [null, 5]
-    columns: [age, income, credit_score, account_balance, years_with_bank]
+This is the standard pattern for "yes/no" or "true/false" predictions. Simple architecture suitable for most binary classification tasks.
 
-graph:
-  - name: classifier
-    type: torch.nn.Linear
-    params: { in_features: 5, out_features: 1 }
-    inputs: { input: features }
-
-  - name: sigmoid
-    type: torch.nn.functional.sigmoid
-    inputs: { input: classifier.output }
-
-outputs:
-  probability: sigmoid.output
-```
-
-### **Pattern 2: Two-Layer MLP with Regularization**
-
-Adds a hidden layer with activation and dropout for better pattern learning while preventing overfitting. Use grouped inputs (`torch.cat`) when you have distinct feature types.
-
-**When to use**: Moderate complexity data, when you need some non-linearity but want to keep model simple
+**When to use**: Fraud detection, customer churn prediction, medical diagnosis, or any binary outcome task.
 
 **YAML Example**:
+
 ```yaml
 inputs:
   features:
     dtype: float32
     shape: [null, 8]
-    columns: [age, income, credit_score, account_balance, years_with_bank, num_products, has_credit_card, is_active_member]
+    columns: [age, income, credit_score, account_balance, num_products, has_credit_card, is_active_member, years_with_bank]
 
 graph:
-  - name: hidden
+  - name: hidden_layer
     type: torch.nn.Linear
     params: { in_features: 8, out_features: 64 }
     inputs: { input: features }
-
   - name: activation
     type: torch.nn.functional.relu
-    inputs: { input: hidden.output }
-
-  - name: dropout
-    type: torch.nn.Dropout
-    params: { p: 0.3 }
-    inputs: { input: activation.output }
-
-  - name: output
+    inputs: { input: hidden_layer.output }
+  - name: output_layer
     type: torch.nn.Linear
     params: { in_features: 64, out_features: 1 }
-    inputs: { input: dropout.output }
+    inputs: { input: activation.output }
+
+  - name: probabilities
+    type: torch.nn.functional.sigmoid
+    inputs: { input: output_layer.output }
 
 outputs:
-  prediction: output.output
+  logits: output_layer.output
+  probabilities: probabilities.output
+
+loss:
+  type: torch.nn.functional.binary_cross_entropy_with_logits
+  inputs:
+    input: logits
+    target: churned
 ```
 
-### **Pattern 3: Deep MLP with Multiple Hidden Layers**
+-----
 
-Deep networks can learn hierarchical representations and complex non-linear patterns.
+### **Pattern 2: Deep MLP for Multi-Class Classification**
 
-**When to use**: Complex datasets, large amounts of training data, when you need to learn hierarchical features
+For classifying items into one of three or more categories. Deeper networks with regularization (BatchNorm + Dropout) handle complex, hierarchical features.
+
+**When to use**: Product categorization, image classification (with flattened images), or any task with multiple exclusive outcomes.
 
 **YAML Example**:
+
 ```yaml
 inputs:
   features:
     dtype: float32
     shape: [null, 10]
-    columns: [feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8, feature9, feature10]
+    columns: [age, income, education_years, experience_years, credit_score, debt_ratio, assets_value, employment_status, region_code, risk_score]
 
 graph:
   - name: layer1
@@ -119,18 +102,71 @@ graph:
     params: { p: 0.3 }
     inputs: { input: relu2.output }
 
-  - name: output
+  - name: output_layer
     type: torch.nn.Linear
     params: { in_features: 64, out_features: 3 }
     inputs: { input: dropout2.output }
-
-  - name: softmax
+  - name: probabilities
     type: torch.nn.functional.softmax
     params: { dim: 1 }
-    inputs: { input: output.output }
+    inputs: { input: output_layer.output }
 
 outputs:
-  probabilities: softmax.output
+  logits: output_layer.output
+  probabilities: probabilities.output
+
+loss:
+  type: torch.nn.functional.cross_entropy
+  inputs:
+    input: logits
+    target: product_category
 ```
 
+-----
 
+### **Pattern 3: MLP for Regression**
+
+This pattern predicts continuous numerical values. Key differences: single output neuron with no activation function.
+
+**When to use**: Predicting house prices, stock values, temperature, age, or any other continuous quantity.
+
+**YAML Example**:
+
+```yaml
+inputs:
+  features:
+    dtype: float32
+    shape: [null, 6]
+    columns: [cylinders, horsepower, weight, acceleration, model_year, origin]
+
+graph:
+  - name: hidden_layer_1
+    type: torch.nn.Linear
+    params: { in_features: 6, out_features: 64 }
+    inputs: { input: features }
+  - name: activation_1
+    type: torch.nn.functional.relu
+    inputs: { input: hidden_layer_1.output }
+
+  - name: hidden_layer_2
+    type: torch.nn.Linear
+    params: { in_features: 64, out_features: 32 }
+    inputs: { input: activation_1.output }
+  - name: activation_2
+    type: torch.nn.functional.relu
+    inputs: { input: hidden_layer_2.output }
+    
+  - name: output_layer
+    type: torch.nn.Linear
+    params: { in_features: 32, out_features: 1 } # Single output for the predicted value
+    inputs: { input: activation_2.output }
+
+outputs:
+  prediction: output_layer.output
+
+loss:
+  type: torch.nn.functional.mse_loss # Mean Squared Error for regression
+  inputs:
+    input: prediction
+    target: mpg
+```

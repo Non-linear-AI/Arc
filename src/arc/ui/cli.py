@@ -431,7 +431,7 @@ async def _ml_generate_model(
             "context": True,
             "data-table": True,
             "output": True,
-            "exclude-columns": True,  # Comma-separated list of columns
+            "target-column": True,  # Target column for task-aware generation
         },
     )
 
@@ -439,12 +439,7 @@ async def _ml_generate_model(
     context = options.get("context")
     data_table = options.get("data-table")
     output_path = options.get("output")
-    exclude_columns_str = options.get("exclude-columns", "")
-    exclude_columns = (
-        [col.strip() for col in exclude_columns_str.split(",") if col.strip()]
-        if exclude_columns_str
-        else []
-    )
+    target_column = options.get("target-column")
 
     if not name or not context or not data_table:
         raise CommandError(
@@ -479,7 +474,7 @@ async def _ml_generate_model(
             name=name,
             context=context,
             data_table=data_table,
-            exclude_columns=exclude_columns,
+            target_column=target_column,
             output_path=output_path,
         )
 
@@ -1169,9 +1164,9 @@ if __name__ == "__main__":
 @click.option("-c", "--context", required=True, help="Model description and context")
 @click.option("-t", "--data-table", required=True, help="Database table name for data")
 @click.option(
-    "-e",
-    "--exclude-columns",
-    help="Comma-separated column names to exclude from model inputs",
+    "-g",
+    "--target-column",
+    help="Target column name for task-aware model generation",
 )
 @click.option("-o", "--output", help="Output file path (default: {name}_model.yaml)")
 @click.option("-k", "--api-key", help="Arc API key (or set ARC_API_KEY env var)")
@@ -1181,7 +1176,7 @@ def generate_model(
     name: str,
     context: str,
     data_table: str,
-    exclude_columns: str | None,
+    target_column: str | None,
     output: str | None,
     api_key: str | None,
     base_url: str | None,
@@ -1209,18 +1204,13 @@ def generate_model(
     services = ServiceContainer(db_manager)
     runtime = MLRuntime(services)
 
-    # Parse exclude columns
-    exclude_columns_list = []
-    if exclude_columns:
-        exclude_columns_list = [col.strip() for col in exclude_columns.split(",")]
-
     # Run model generation
     asyncio.run(
         _ml_generate_model_cli(
             name,
             context,
             data_table,
-            exclude_columns_list,
+            target_column,
             output,
             api_key,
             base_url,
@@ -1345,7 +1335,7 @@ async def _ml_generate_model_cli(
     name: str,
     context: str,
     data_table: str,
-    exclude_columns: list[str],
+    target_column: str | None,
     output_path: str | None,
     _api_key: str,
     _base_url: str | None,
@@ -1356,8 +1346,8 @@ async def _ml_generate_model_cli(
     """CLI wrapper for model generation."""
     try:
         args = ["--name", name, "--context", context, "--data-table", data_table]
-        if exclude_columns:
-            args.extend(["--exclude-columns", ",".join(exclude_columns)])
+        if target_column:
+            args.extend(["--target-column", target_column])
         if output_path:
             args.extend(["--output", output_path])
 

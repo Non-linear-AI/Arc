@@ -15,13 +15,15 @@ Edit the existing Arc-Graph {{ architecture_type.upper() }} specification based 
 - **Model Name**: {{ model_name }}
 - **User Intent**: {{ user_intent }}
 - **Architecture**: {{ architecture_display_name }}
-- **Available Columns**: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.columns | length }} total)
+- **Available Columns**: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.feature_count }} total){% if data_profile.target_analysis %}
+- **Target Column**: {{ data_profile.target_analysis.column_name }} ({{ data_profile.target_analysis.data_type }}{% if data_profile.target_analysis.is_numeric %}, numeric, {{ data_profile.target_analysis.unique_values }} unique values{% else %}, categorical, sample values: {{ data_profile.target_analysis.sample_values | join(", ") }}{% endif %}){% endif %}
 {% else -%}
 Generate an Arc-Graph {{ architecture_type.upper() }} specification for:
 - **Model Name**: {{ model_name }}
 - **User Intent**: {{ user_intent }}
 - **Architecture**: {{ architecture_display_name }}
-- **Available Columns**: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.columns | length }} total)
+- **Available Columns**: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.feature_count }} total){% if data_profile.target_analysis %}
+- **Target Column**: {{ data_profile.target_analysis.column_name }} ({{ data_profile.target_analysis.data_type }}{% if data_profile.target_analysis.is_numeric %}, numeric, {{ data_profile.target_analysis.unique_values }} unique values{% else %}, categorical, sample values: {{ data_profile.target_analysis.sample_values | join(", ") }}{% endif %}){% endif %}
 {% endif %}
 
 ## Arc-Graph Schema Validation
@@ -77,9 +79,18 @@ Your output must validate against this Arc-Graph schema:
           "pattern": "^[a-zA-Z0-9_]+(\\.\\w+(\\.\\d+)?)?$"
         }
       }
+    },
+    "loss": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "inputs": { "type": "object" },
+        "params": { "type": "object" }
+      },
+      "required": ["type"]
     }
   },
-  "required": ["inputs", "graph", "outputs"]
+  "required": ["inputs", "graph", "outputs", "loss"]
 }
 ```
 
@@ -94,8 +105,8 @@ Define how data enters your model. Use the available columns to create meaningfu
 inputs:
   features:                               # Descriptive name
     dtype: float32                        # Data type
-    shape: [null, {{ data_profile.columns | length }}]                     # [batch_size, num_features]
-    columns: {{ (data_profile.columns | map(attribute='name') | list) | tojson }}  # Exact column names
+    shape: [null, {{ data_profile.feature_count }}]                     # [batch_size, num_features]
+    columns: {{ (data_profile.feature_columns | map(attribute='name') | list) | tojson }}  # Exact column names
 ```
 
 **Multiple Input Pattern** (grouped by meaning):
@@ -115,7 +126,7 @@ inputs:
 **Input Guidelines**:
 - Group columns by semantic meaning (demographics, financial, behavioral, etc.)
 - Use descriptive input names that reflect the data content
-- Only use columns from the provided list: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
+- Only use columns from the provided list: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }}
 - Choose shapes that match your column groupings
 
 ### **Graph Design**
@@ -168,6 +179,45 @@ outputs:
   confidence: confidence_node.output      # Additional outputs (optional)
 ```
 
+### **Loss Function Design**
+
+Define the loss function for training{% if data_profile.target_analysis %} based on the target column analysis{% endif %}:
+
+```yaml
+loss:
+  type: torch.nn.functional.binary_cross_entropy_with_logits  # Loss function type
+  inputs:
+    input: prediction                     # Must reference an output field name
+    target: target                        # Target column name from dataset
+```
+
+**Common Loss Functions**:
+- `torch.nn.functional.binary_cross_entropy_with_logits`: Binary classification with raw logits (numerically stable)
+- `torch.nn.functional.cross_entropy`: Multi-class classification with raw logits (combines log_softmax + nll_loss internally)
+- `torch.nn.functional.mse_loss`: Regression (continuous targets)
+- `torch.nn.functional.binary_cross_entropy`: Binary classification with sigmoid probabilities (explicit activation required)
+- `torch.nn.functional.nll_loss`: Multi-class with log-probabilities (requires LogSoftmax activation)
+
+**Loss Function Insights**:
+{% if data_profile.target_analysis -%}
+- Target column: {{ data_profile.target_analysis.column_name }} ({{ data_profile.target_analysis.unique_values }} unique values)
+- Binary classification (2 unique values): `binary_cross_entropy_with_logits` handles sigmoid internally for numerical stability
+- Multi-class (>2 unique values): `cross_entropy` combines log_softmax + nll_loss internally, expects raw logits
+- Regression (many unique numeric values): `mse_loss` works directly with continuous outputs
+{% else -%}
+- Binary classification: `binary_cross_entropy_with_logits` combines sigmoid + BCE for numerical stability
+- Multi-class classification: `cross_entropy` combines log_softmax + nll_loss internally, use raw logits
+- Regression: `mse_loss` computes squared differences between predictions and targets
+{% endif -%}
+- Reference output field names (from outputs section) in `input` field for validation
+- Use `target` as the target column name from the dataset
+
+**When Explicit Activations Are Required**:
+- **Inference/Prediction**: Sigmoid (binary) or Softmax (multi-class) to convert logits to probabilities
+- **BCELoss training**: Sigmoid activation required (vs BCEWithLogitsLoss which handles internally)
+- **NLLLoss training**: LogSoftmax activation required (operates on log-probabilities)
+- **Value range constraints**: Tanh (-1 to 1) or Sigmoid (0 to 1) for specific output ranges
+
 ## Architecture Guidance
 
 {% for arch_name, arch_content in architecture_guides.items() -%}
@@ -179,9 +229,10 @@ outputs:
 ## Requirements
 1. **Schema Compliance**: Valid Arc-Graph YAML structure
 2. **Node Names**: Use descriptive names appropriate for the selected architecture(s)
-3. **Input Specification**: Only use columns from the provided list: {{ (data_profile.columns | map(attribute='name') | list) | join(", ") }}
-4. **Complete Structure**: inputs → graph → outputs (modules optional)
-5. **Architecture-Appropriate Patterns**: Follow architecture-specific best practices
+3. **Input Specification**: Only use columns from the provided list: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }}
+4. **Complete Structure**: inputs → graph → outputs → loss (loss section required)
+5. **Loss Function**: {% if data_profile.target_analysis %}Include appropriate loss based on target analysis ({{ data_profile.target_analysis.unique_values }} unique values){% else %}Include appropriate loss function for the task{% endif %}
+6. **Architecture-Appropriate Patterns**: Follow architecture-specific best practices
 
 ## Output Format
 {% if is_editing -%}

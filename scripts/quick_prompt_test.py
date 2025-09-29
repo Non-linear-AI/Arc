@@ -134,16 +134,33 @@ def create_sample_data(architecture_types):
         ),
         "data_profile": {
             "table_name": "customers",
-            "columns": [
-                {"name": "age", "type": "int"},
-                {"name": "income", "type": "float"},
-                {"name": "credit_score", "type": "int"},
-                {"name": "account_balance", "type": "float"},
-                {"name": "years_with_bank", "type": "int"},
+            "feature_columns": [
+                {"name": "age", "type": "INTEGER"},
+                {"name": "income", "type": "REAL"},
+                {"name": "credit_score", "type": "INTEGER"},
+                {"name": "account_balance", "type": "REAL"},
+                {"name": "years_with_bank", "type": "INTEGER"},
+                {"name": "num_products", "type": "INTEGER"},
+                {"name": "has_credit_card", "type": "INTEGER"},
+                {"name": "is_active_member", "type": "INTEGER"},
             ],
+            "total_columns": 9,
+            "feature_count": 8,
+            "target_analysis": {
+                "column_name": "churned",
+                "data_type": "INTEGER",
+                "unique_values": 2,
+                "null_values": 0,
+                "total_rows": 10000,
+                "is_numeric": True,
+                "min_value": 0,
+                "max_value": 1,
+                "mean_value": 0.2037,
+            },
         },
         "available_components": load_actual_components(),
         "architecture_guides": load_architecture_content(architecture_types),
+        "is_editing": False,
     }
 
 

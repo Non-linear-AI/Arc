@@ -838,3 +838,120 @@ class MLDataService(BaseService):
             with contextlib.suppress(Exception):
                 self.db_manager.user_execute(f'DROP TABLE IF EXISTS "{output_table}"')
             raise ValueError(f"Failed to save prediction results: {e}") from e
+
+    def analyze_target_column(
+        self, table_name: str, column_name: str
+    ) -> dict[str, Any]:
+        """Analyze target column to provide factual statistics for model generation.
+
+        Args:
+            table_name: Name of the dataset table
+            column_name: Name of the target column to analyze
+
+        Returns:
+            Dictionary with target column statistics and facts
+
+        Raises:
+            ValueError: If table or column doesn't exist
+        """
+        if not self.dataset_exists(table_name):
+            raise ValueError(f"Table '{table_name}' does not exist")
+
+        if not self._is_valid_column_name(column_name):
+            raise ValueError(f"Invalid column name: {column_name}")
+
+        # Validate column exists
+        dataset_info = self.get_dataset_info(table_name)
+        if column_name not in dataset_info.column_names:
+            raise ValueError(
+                f"Column '{column_name}' not found in table '{table_name}'"
+            )
+
+        try:
+            # Get basic column information
+            target_col_info = None
+            for col in dataset_info.columns:
+                if col["name"] == column_name:
+                    target_col_info = col
+                    break
+
+            # Comprehensive analysis query
+            analysis_sql = f'''
+            SELECT
+                COUNT(*) AS total_count,
+                COUNT("{column_name}") AS non_null_count,
+                COUNT(*) - COUNT("{column_name}") AS null_count,
+                COUNT(DISTINCT "{column_name}") AS unique_count
+            FROM "{table_name}"
+            '''
+
+            result = self.db_manager.user_query(analysis_sql)
+            basic_stats = result.rows[0] if result.rows else {}
+
+            analysis = {
+                "total_count": basic_stats.get("total_count", 0),
+                "non_null_count": basic_stats.get("non_null_count", 0),
+                "null_count": basic_stats.get("null_count", 0),
+                "unique_count": basic_stats.get("unique_count", 0),
+                "data_type": target_col_info["type"] if target_col_info else "UNKNOWN",
+            }
+
+            # Check if column is numeric based on type and values
+            is_numeric = self._is_numeric_column_type(target_col_info["type"])
+
+            if is_numeric:
+                # Get numeric statistics
+                numeric_stats = self._compute_column_statistics(table_name, column_name)
+                if numeric_stats:
+                    analysis.update(
+                        {
+                            "is_numeric": True,
+                            "min_value": numeric_stats.get("min"),
+                            "max_value": numeric_stats.get("max"),
+                            "mean_value": numeric_stats.get("mean"),
+                            "std_value": numeric_stats.get("std"),
+                        }
+                    )
+                else:
+                    analysis["is_numeric"] = False
+            else:
+                # Get sample categorical values
+                sample_values = self.get_unique_values(
+                    table_name, column_name, limit=10
+                )
+                analysis.update(
+                    {
+                        "is_numeric": False,
+                        "sample_values": sample_values,
+                    }
+                )
+
+            return analysis
+
+        except Exception as e:
+            raise ValueError(
+                f"Failed to analyze target column '{column_name}': {e}"
+            ) from e
+
+    def _is_numeric_column_type(self, data_type: str) -> bool:
+        """Check if a data type represents numeric data.
+
+        Args:
+            data_type: SQL data type string
+
+        Returns:
+            True if numeric type, False otherwise
+        """
+        numeric_types = [
+            "INTEGER",
+            "INT",
+            "BIGINT",
+            "SMALLINT",
+            "TINYINT",
+            "DOUBLE",
+            "FLOAT",
+            "REAL",
+            "DECIMAL",
+            "NUMERIC",
+        ]
+        return any(nt in data_type.upper() for nt in numeric_types)

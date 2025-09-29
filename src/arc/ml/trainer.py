@@ -140,24 +140,36 @@ class ArcTrainer:
             )
         return optimizer_class(model.parameters(), **params)
 
-    def _setup_loss_function(self) -> nn.Module:
-        """Setup loss function using exact PyTorch names from plugin system."""
+    def _setup_loss_function(self):
+        """Setup functional loss function."""
+        import torch.nn.functional as F
+
         loss_name = self.config.loss_function
 
-        params = self.config.loss_params
+        # Map functional loss names to functions (using F alias for readability)
+        # All functions are torch.nn.functional.* as specified in loss_name keys
+        functional_losses = {
+            "torch.nn.functional.binary_cross_entropy": F.binary_cross_entropy,
+            "torch.nn.functional.binary_cross_entropy_with_logits": (
+                F.binary_cross_entropy_with_logits
+            ),
+            "torch.nn.functional.cross_entropy": F.cross_entropy,
+            "torch.nn.functional.mse_loss": F.mse_loss,
+            "torch.nn.functional.l1_loss": F.l1_loss,
+            "torch.nn.functional.smooth_l1_loss": F.smooth_l1_loss,
+            "torch.nn.functional.huber_loss": F.huber_loss,
+            "torch.nn.functional.nll_loss": F.nll_loss,
+            "torch.nn.functional.kl_div": F.kl_div,
+            "torch.nn.functional.poisson_nll_loss": F.poisson_nll_loss,
+        }
 
-        # Get loss class from plugin system
-        pm = get_plugin_manager()
-        loss_class = pm.get_loss(loss_name)
-
-        if loss_class is None:
-            losses = pm.get_losses()
+        if loss_name not in functional_losses:
+            available = list(functional_losses.keys())
             raise ValueError(
-                f"Unsupported loss function: {loss_name}. "
-                f"Available: {list(losses.keys())}"
+                f"Unsupported loss function: {loss_name}. Available: {available}"
             )
 
-        return loss_class(**params)
+        return functional_losses[loss_name]
 
     def train(
         self,

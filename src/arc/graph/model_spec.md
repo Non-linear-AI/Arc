@@ -30,6 +30,10 @@ graph: [ ... ]
 # === MODEL OUTPUTS ===
 # Designates the final, named outputs of the graph
 outputs: { ... }
+
+# === LOSS FUNCTION ===
+# Defines the loss function for training
+loss: { ... }
 ```
 
 ## **3. Schema Components in Detail**
@@ -66,8 +70,29 @@ outputs:
   <public_output_name>: "<node_name_in_graph>.output"
 ```
 
-* \<public\_output\_name\>: The name returned by the model (e.g., logits, probabilities).  
+* \<public\_output\_name\>: The name returned by the model (e.g., logits, probabilities).
 * The value is a string reference to a node's output. To access elements of a tuple output (e.g., from MultiheadAttention), use .0, .1, etc. (e.g., "my\_attn.output.0").
+
+#### **3.1.3. loss**
+
+This section defines the loss function used for training the model.
+
+**Structure:**
+
+```yaml
+loss:
+  type: "<loss_function_type>"
+  inputs:
+    input: "<model_output_reference>"
+    target: "<target_column_name>"
+  params: { ... }  # Optional parameters for the loss function
+```
+
+* type: The loss function type (e.g., torch.nn.functional.binary_cross_entropy_with_logits, torch.nn.functional.cross_entropy).
+* inputs: A mapping defining the loss function inputs:
+  * input: Must reference an output field name defined in the outputs section (e.g., "prediction", "logits")
+  * target: The target column name from the dataset (not a node reference)
+* params: Optional parameters for the loss function (e.g., weight, reduction).
 
 ### **3.2. The Core Architecture: graph**
 
@@ -188,9 +213,10 @@ This JSON schema provides the formal definition for validating an Arc-Graph YAML
         }
       }
     },
-    "outputs": { "$ref": "#/definitions/outputs" }
+    "outputs": { "$ref": "#/definitions/outputs" },
+    "loss": { "$ref": "#/definitions/loss" }
   },
-  "required": ["inputs", "graph", "outputs"],
+  "required": ["inputs", "graph", "outputs", "loss"],
   "definitions": {
     "graphNode": {
       "type": "object",
@@ -263,6 +289,40 @@ This JSON schema provides the formal definition for validating an Arc-Graph YAML
         }
       },
       "additionalProperties": false
+    },
+    "loss": {
+      "description": "Defines the loss function for training the model.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "The loss function type (e.g., torch.nn.functional.binary_cross_entropy_with_logits).",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "A mapping defining the loss function inputs.",
+          "type": "object",
+          "properties": {
+            "input": {
+              "description": "Reference to a model output (e.g., 'classifier.output').",
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_]+(\\.\\w+(\\.\\d+)?)?$"
+            },
+            "target": {
+              "description": "The target column name from the dataset.",
+              "type": "string"
+            }
+          },
+          "required": ["input", "target"],
+          "additionalProperties": true
+        },
+        "params": {
+          "description": "Optional parameters for the loss function.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": ["type", "inputs"],
+      "additionalProperties": false
     }
   }
 }
@@ -292,6 +352,12 @@ graph:
 
 outputs:
   probability: sigmoid_activation.output
+
+loss:
+  type: torch.nn.functional.binary_cross_entropy
+  inputs:
+    input: probability
+    target: target_column
 ```
 
 ### 5.2. Example 2: Multi-Layer Perceptron (MLP)
@@ -324,6 +390,12 @@ graph:
 
 outputs:
   logits: output_layer.output
+
+loss:
+  type: torch.nn.functional.cross_entropy
+  inputs:
+    input: logits
+    target: class_labels
 ```
 
 ### 5.3. Example 3: Generative Recommender
@@ -393,6 +465,12 @@ graph:
 
 outputs:
   next_item_logits: output_projection.output
+
+loss:
+  type: torch.nn.functional.cross_entropy
+  inputs:
+    input: next_item_logits
+    target: next_item_id
 ```
 
 ### 5.4. Example 4: Full Transformer for Classification
@@ -439,4 +517,11 @@ graph:
 # === MODEL OUTPUTS ===
 outputs:
   logits: classifier.output
+
+# === LOSS FUNCTION ===
+loss:
+  type: torch.nn.functional.cross_entropy
+  inputs:
+    input: logits
+    target: label
 ```
