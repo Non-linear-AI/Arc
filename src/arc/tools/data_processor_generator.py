@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
+
 from arc.tools.base import BaseTool, ToolResult
+from arc.utils import ConfirmationService
+from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 if TYPE_CHECKING:
     from arc.core.agents.data_processor_generator.data_processor_generator import (
@@ -38,6 +42,7 @@ class DataProcessorGeneratorTool(BaseTool):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        ui_interface=None,
     ):
         """Initialize DataProcessorGeneratorTool.
 
@@ -46,6 +51,7 @@ class DataProcessorGeneratorTool(BaseTool):
             api_key: API key for LLM calls (required)
             base_url: Base URL for LLM calls
             model: Model name for LLM calls
+            ui_interface: UI interface for interactive confirmation workflow
 
         Raises:
             ValueError: If API key is not provided
@@ -68,6 +74,7 @@ class DataProcessorGeneratorTool(BaseTool):
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.ui = ui_interface
 
         # Initialize the generator agent (required)
         try:
@@ -87,6 +94,7 @@ class DataProcessorGeneratorTool(BaseTool):
         target_tables: list[str] | None = None,
         output_path: str | None = None,
         target_db: str = "user",
+        auto_confirm: bool = False,
     ) -> ToolResult:
         """Generate YAML configuration from natural language context using LLM.
 
@@ -95,6 +103,7 @@ class DataProcessorGeneratorTool(BaseTool):
             target_tables: List of tables to analyze for generation
             output_path: Path to save generated YAML file
             target_db: Target database - "system" or "user"
+            auto_confirm: Skip interactive confirmation workflow
 
         Returns:
             ToolResult with operation result
@@ -154,6 +163,44 @@ class DataProcessorGeneratorTool(BaseTool):
                 context=context, target_tables=target_tables, target_db=target_db
             )
 
+            # Interactive confirmation workflow
+            # (unless auto_confirm is True or no UI available)
+            # Get UI from singleton if not provided directly
+            ui = self.ui
+            if ui is None:
+                ui = ConfirmationService.get_instance()._ui
+
+            if not auto_confirm and ui:
+                workflow = YamlConfirmationWorkflow(
+                    validator_func=self._create_validator(),
+                    editor_func=self._create_editor(),
+                    ui_interface=ui,
+                    yaml_type_name="data processor",
+                    yaml_suffix=".arc-data.yaml",
+                )
+
+                context_dict = {
+                    "context": str(context),
+                    "target_tables": target_tables,
+                    "target_db": target_db,
+                }
+
+                try:
+                    proceed, final_yaml = await workflow.run_workflow(
+                        yaml_content, context_dict, output_path
+                    )
+                    if not proceed:
+                        return ToolResult.success_result(
+                            "✗ Data processor generation cancelled by user."
+                        )
+                    yaml_content = final_yaml
+                    # Re-parse spec from edited YAML
+                    from arc.graph.features.data_source import DataSourceSpec
+
+                    spec = DataSourceSpec.from_yaml(yaml_content)
+                finally:
+                    workflow.cleanup()
+
             # Save to file if path provided
             if output_path:
                 output_file = Path(output_path)
@@ -202,3 +249,75 @@ class DataProcessorGeneratorTool(BaseTool):
         kwargs.pop("action", None)  # Remove deprecated action parameter
         kwargs.pop("yaml_content", None)  # Remove validation-related parameter
         return await self.generate(**kwargs)
+
+    def _create_validator(self):
+        """Create validator function for the workflow.
+
+        Returns:
+            Validator function that takes YAML string and returns list of errors
+        """
+        from arc.graph.features.data_source import DataSourceSpec
+
+        def validate(yaml_str: str) -> list[str]:
+            """Validate YAML string as DataSourceSpec.
+
+            Args:
+                yaml_str: YAML string to validate
+
+            Returns:
+                List of validation error messages (empty if valid)
+            """
+            try:
+                # Try to parse and validate as DataSourceSpec
+                DataSourceSpec.from_yaml(yaml_str)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except ValueError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
+
+        return validate
+
+    def _create_editor(self):
+        """Create editor function for AI-assisted editing in the workflow.
+
+        Returns:
+            Editor function that takes (yaml, feedback, context) and returns edited YAML
+        """
+
+        async def edit(
+            yaml_content: str, feedback: str, context: dict[str, str]
+        ) -> str | None:
+            """Edit YAML with AI assistance.
+
+            Args:
+                yaml_content: Current YAML content
+                feedback: User feedback describing desired changes
+                context: Context dictionary with generation parameters
+
+            Returns:
+                Edited YAML string or None if editing failed
+            """
+            try:
+                # Call the generator agent with existing YAML
+                # and editing instructions
+                (
+                    _spec,
+                    edited_yaml,
+                ) = await self.generator_agent.generate_data_processing_yaml(
+                    context=context["context"],
+                    target_tables=context.get("target_tables"),
+                    target_db=context.get("target_db", "user"),
+                    existing_yaml=yaml_content,
+                    editing_instructions=feedback,
+                )
+                return edited_yaml
+
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
+                return None
+
+        return edit
