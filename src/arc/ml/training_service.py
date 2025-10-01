@@ -39,7 +39,7 @@ class TrainingJobConfig:
     model_name: str
     train_table: str
     target_column: str
-    arc_graph: ModelSpec  # Model specification
+    model_spec: ModelSpec  # Model specification
 
     # Optional fields with defaults
     feature_spec: FeatureSpec | None = None
@@ -376,10 +376,10 @@ class TrainingService:
                 model_loss_type = "torch.nn.functional.binary_cross_entropy_with_logits"
                 model_loss_params = {}
 
-                if config.arc_graph and config.arc_graph.loss:
-                    model_loss_type = config.arc_graph.loss.type
-                    if config.arc_graph.loss.params:
-                        model_loss_params = config.arc_graph.loss.params
+                if config.model_spec and config.model_spec.loss:
+                    model_loss_type = config.model_spec.loss.type
+                    if config.model_spec.loss.params:
+                        model_loss_params = config.model_spec.loss.params
 
                 trainer_spec = TrainerSpec(
                     optimizer=OptimizerConfig(
@@ -388,8 +388,8 @@ class TrainingService:
                     loss=LossConfig(
                         type=model_loss_type,
                         params=model_loss_params,
-                        inputs=config.arc_graph.loss.inputs
-                        if config.arc_graph and config.arc_graph.loss
+                        inputs=config.model_spec.loss.inputs
+                        if config.model_spec and config.model_spec.loss
                         else None,
                     ),
                     epochs=config.epochs,
@@ -465,7 +465,7 @@ class TrainingService:
             if "vars" in inspection_context:
                 for var_name, var_value in inspection_context["vars"].items():
                     builder.set_variable(f"vars.{var_name}", var_value)
-            model = builder.build_model(config.arc_graph)
+            model = builder.build_model(config.model_spec)
             logger.info(f"Model built successfully for job {job_id}")
 
             # Create data loaders - try dataset first, fallback to table
@@ -702,7 +702,7 @@ class TrainingService:
             version=version,
             training_config=config.trainer_spec or {},
             training_result=result,
-            arc_graph=config.arc_graph,
+            model_spec=config.model_spec,
             model_info={
                 "model_class": model.__class__.__name__,
                 "input_names": model.input_names,
@@ -729,7 +729,7 @@ class TrainingService:
             artifact=artifact,
             optimizer=trainer.optimizer,
             training_history=training_history,
-            arc_graph=config.arc_graph,
+            model_spec=config.model_spec,
             overwrite=False,
         )
 

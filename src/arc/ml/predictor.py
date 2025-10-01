@@ -287,7 +287,7 @@ class ArcPredictor:
             ml_data_service: Service for accessing ML data
             table_name: Name of the table containing features
             feature_columns: List of feature column names
-                (uses arc_graph default if None)
+                (uses model_spec default if None)
             batch_size: Batch size for model inference processing
             chunk_size: Number of rows to load per chunk from database
             limit: Maximum number of rows to process
@@ -299,16 +299,16 @@ class ArcPredictor:
             PredictionError: If prediction fails
         """
         try:
-            # Use feature columns from arc_graph if not provided
+            # Use feature columns from model_spec if not provided
             if feature_columns is None:
                 if (
-                    not self.arc_graph.features
-                    or not self.arc_graph.features.feature_columns
+                    not self.model_spec.features
+                    or not self.model_spec.features.feature_columns
                 ):
                     raise PredictionError(
-                        "No feature columns specified and none found in arc_graph"
+                        "No feature columns specified and none found in model_spec"
                     )
-                feature_columns = self.arc_graph.features.feature_columns
+                feature_columns = self.model_spec.features.feature_columns
 
             # Get dataset info to validate and determine total size
             dataset_info = ml_data_service.get_dataset_info(table_name)
@@ -495,16 +495,16 @@ class ArcPredictor:
             )
 
             # Reconstruct ModelSpec from metadata
-            if not artifact.arc_graph:
+            if not artifact.model_spec:
                 raise PredictionError(
                     f"No model specification found in artifact for model {model_id}"
                 )
 
-            # Convert old arc_graph format to new ModelSpec if needed
-            if "model" in artifact.arc_graph:
-                model_dict = artifact.arc_graph["model"]
+            # Convert old model_spec format to new ModelSpec if needed
+            if "model" in artifact.model_spec:
+                model_dict = artifact.model_spec["model"]
             else:
-                model_dict = artifact.arc_graph
+                model_dict = artifact.model_spec
 
             from arc.graph.model import (
                 GraphNode,
@@ -607,7 +607,7 @@ class ArcPredictor:
                 model_name="Checkpoint Model",
                 version=checkpoint.get("epoch", 1),
                 model_state_path="model.pt",
-                arc_graph=model_spec.__dict__,
+                model_spec=model_spec.__dict__,
             )
 
             return cls(
@@ -655,17 +655,17 @@ class ArcPredictor:
             )
 
             # Reconstruct ModelSpec from metadata
-            if not artifact.arc_graph:
+            if not artifact.model_spec:
                 raise PredictionError(
                     f"No model specification found in artifact for model "
                     f"{predictor_spec.model_id}"
                 )
 
-            # Convert old arc_graph format to new ModelSpec if needed
-            if "model" in artifact.arc_graph:
-                model_dict = artifact.arc_graph["model"]
+            # Convert old model_spec format to new ModelSpec if needed
+            if "model" in artifact.model_spec:
+                model_dict = artifact.model_spec["model"]
             else:
-                model_dict = artifact.arc_graph
+                model_dict = artifact.model_spec
 
             from arc.graph.model import (
                 GraphNode,

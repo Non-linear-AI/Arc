@@ -240,7 +240,7 @@ class MLModelGeneratorTool(BaseTool):
         api_key: str | None,
         base_url: str | None,
         model: str | None,
-        ui_interface=None,
+        ui_interface,
     ) -> None:
         self.services = services
         self.api_key = api_key
@@ -276,6 +276,10 @@ class MLModelGeneratorTool(BaseTool):
                 "Parameters 'name', 'context', and 'data_table' are required "
                 "to generate a model specification."
             )
+
+        # Show UI feedback if UI is available
+        if self.ui:
+            self.ui.show_info(f"🤖 Generating model specification for '{name}'...")
 
         agent = ModelGeneratorAgent(
             self.services,
@@ -445,11 +449,13 @@ class MLTrainerGeneratorTool(BaseTool):
         api_key: str | None,
         base_url: str | None,
         model: str | None,
+        ui_interface,
     ) -> None:
         self.services = services
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.ui = ui_interface
 
     async def execute(
         self,
@@ -482,6 +488,10 @@ class MLTrainerGeneratorTool(BaseTool):
             return ToolResult.error_result(
                 f"Model specification file not found: {model_spec_path}"
             )
+
+        # Show UI feedback if UI is available
+        if self.ui:
+            self.ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
 
         agent = TrainerGeneratorAgent(
             self.services,
@@ -530,11 +540,13 @@ class MLPredictorGeneratorTool(BaseTool):
         api_key: str | None,
         base_url: str | None,
         model: str | None,
+        ui_interface,
     ) -> None:
         self.services = services
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.ui = ui_interface
 
     async def execute(
         self,
@@ -573,6 +585,10 @@ class MLPredictorGeneratorTool(BaseTool):
             return ToolResult.error_result(
                 f"Trainer specification file not found: {trainer_spec_path}"
             )
+
+        # Show UI feedback if UI is available
+        if self.ui:
+            self.ui.show_info("🤖 Generating predictor specification...")
 
         agent = PredictorGeneratorAgent(
             self.services,

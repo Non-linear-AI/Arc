@@ -329,7 +329,7 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "string",
                         "description": (
                             "Optional type identifier to store with the model. "
-                            "Defaults to 'ml.arc_graph'"
+                            "Defaults to 'ml.model_spec'"
                         ),
                     },
                 },

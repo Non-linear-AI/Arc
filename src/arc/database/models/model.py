@@ -11,8 +11,6 @@ class Model:
     name: str
     version: int
     description: str
-    base_model_id: str | None
     spec: str
-    arc_graph: str
     created_at: datetime
     updated_at: datetime

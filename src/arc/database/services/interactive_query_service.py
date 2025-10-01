@@ -104,12 +104,12 @@ class InteractiveQueryService(BaseService):
 
         if target_db == "system":
             # System database: read-only access (SELECT only)
-            if not query_upper.startswith("SELECT") and not query_upper.startswith(
-                "SHOW"
-            ):
+            # Block modification SQL commands
+            modification_commands = {"INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"}
+            first_word = query_upper.split()[0] if query_upper.split() else ""
+            if first_word in modification_commands:
                 msg = (
-                    "System database is read-only. Only SELECT or SHOW queries are "
-                    "allowed. Supported: SELECT statements. "
+                    "System database is read-only. Supported: SELECT statements. "
                     "Not supported: INSERT, UPDATE, DELETE, CREATE, DROP, etc."
                 )
                 raise QueryValidationError(msg)

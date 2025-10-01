@@ -280,9 +280,7 @@ class ModelService(BaseService):
                 name=str(row["name"]),
                 version=int(row["version"]),
                 description=str(row["description"]),
-                base_model_id=row.get("base_model_id"),  # Can be None
                 spec=str(row["spec"]),
-                arc_graph=str(row["arc_graph"]),
                 created_at=created_at,
                 updated_at=updated_at,
             )
@@ -323,25 +321,16 @@ class ModelService(BaseService):
             created_at_str = model.created_at.isoformat()
             updated_at_str = model.updated_at.isoformat()
 
-            # Handle optional base_model_id
-            base_model_id_sql = (
-                f"'{self._escape_string(model.base_model_id)}'"
-                if model.base_model_id is not None
-                else "NULL"
-            )
-
             sql = f"""INSERT INTO models (
-                id, type, name, version, description, base_model_id,
-                spec, arc_graph, created_at, updated_at
+                id, type, name, version, description,
+                spec, created_at, updated_at
             ) VALUES (
                 '{self._escape_string(model.id)}',
                 '{self._escape_string(model.type)}',
                 '{self._escape_string(model.name)}',
                 {model.version},
                 '{self._escape_string(model.description)}',
-                {base_model_id_sql},
                 '{self._escape_string(model.spec)}',
-                '{self._escape_string(model.arc_graph)}',
                 '{created_at_str}',
                 '{updated_at_str}'
             )"""
@@ -366,21 +355,12 @@ class ModelService(BaseService):
             # Format timestamps for SQL
             updated_at_str = model.updated_at.isoformat()
 
-            # Handle optional base_model_id
-            base_model_id_sql = (
-                f"'{self._escape_string(model.base_model_id)}'"
-                if model.base_model_id is not None
-                else "NULL"
-            )
-
             sql = f"""UPDATE models SET
                 type = '{self._escape_string(model.type)}',
                 name = '{self._escape_string(model.name)}',
                 version = {model.version},
                 description = '{self._escape_string(model.description)}',
-                base_model_id = {base_model_id_sql},
                 spec = '{self._escape_string(model.spec)}',
-                arc_graph = '{self._escape_string(model.arc_graph)}',
                 updated_at = '{updated_at_str}'
             WHERE id = '{self._escape_string(model.id)}'"""
 

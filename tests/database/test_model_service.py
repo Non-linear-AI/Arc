@@ -33,9 +33,7 @@ def sample_model():
         name="iris_classifier",
         version=1,
         description="A test model for iris classification",
-        base_model_id=None,
         spec='{"algorithm": "random_forest", "params": {"n_estimators": 100}}',
-        arc_graph='{"nodes": [], "edges": []}',
         created_at=now,
         updated_at=now,
     )
@@ -52,9 +50,7 @@ def sample_models():
             name="iris_classifier",
             version=1,
             description="First version",
-            base_model_id=None,
             spec='{"algorithm": "svm"}',
-            arc_graph='{"nodes": [], "edges": []}',
             created_at=now,
             updated_at=now,
         ),
@@ -64,9 +60,7 @@ def sample_models():
             name="iris_classifier",
             version=2,
             description="Second version",
-            base_model_id="model-1",
             spec='{"algorithm": "random_forest"}',
-            arc_graph='{"nodes": [], "edges": []}',
             created_at=now,
             updated_at=now,
         ),
@@ -76,9 +70,7 @@ def sample_models():
             name="house_prices",
             version=1,
             description="House price prediction",
-            base_model_id=None,
             spec='{"algorithm": "linear_regression"}',
-            arc_graph='{"nodes": [], "edges": []}',
             created_at=now,
             updated_at=now,
         ),
@@ -94,12 +86,11 @@ class TestModelDataClass:
         assert sample_model.type == "classification"
         assert sample_model.name == "iris_classifier"
         assert sample_model.version == 1
-        assert sample_model.base_model_id is None
         assert isinstance(sample_model.created_at, datetime)
         assert isinstance(sample_model.updated_at, datetime)
 
-    def test_model_with_base_model(self):
-        """Test creating a Model with base_model_id."""
+    def test_model_with_version(self):
+        """Test creating a Model with version."""
         now = datetime.now(UTC)
         model = Model(
             id="child-model",
@@ -107,13 +98,10 @@ class TestModelDataClass:
             name="improved_classifier",
             version=2,
             description="Improved version",
-            base_model_id="parent-model",
             spec='{"algorithm": "xgboost"}',
-            arc_graph='{"nodes": [], "edges": []}',
             created_at=now,
             updated_at=now,
         )
-        assert model.base_model_id == "parent-model"
 
 
 class TestModelServiceCRUD:
@@ -375,9 +363,7 @@ class TestModelServiceEdgeCases:
             name="test'model'name",
             version=1,
             description="Description with 'quotes' and \"double quotes\"",
-            base_model_id=None,
             spec='{"param": "value\'with\'quotes"}',
-            arc_graph='{"special": "chars\'here"}',
             created_at=now,
             updated_at=now,
         )
@@ -391,8 +377,8 @@ class TestModelServiceEdgeCases:
         expected_desc = "Description with 'quotes' and \"double quotes\""
         assert retrieved.description == expected_desc
 
-    def test_model_with_none_base_model_id(self, model_service):
-        """Test model with None base_model_id."""
+    def test_model_with_simple_spec(self, model_service):
+        """Test model with simple spec."""
         now = datetime.now(UTC)
         model = Model(
             id="no-base",
@@ -400,9 +386,7 @@ class TestModelServiceEdgeCases:
             name="test",
             version=1,
             description="Test",
-            base_model_id=None,
             spec="{}",
-            arc_graph="{}",
             created_at=now,
             updated_at=now,
         )
@@ -411,7 +395,6 @@ class TestModelServiceEdgeCases:
         retrieved = model_service.get_model_by_id("no-base")
 
         assert retrieved is not None
-        assert retrieved.base_model_id is None
 
     def test_empty_database_operations(self, model_service):
         """Test operations on empty database."""

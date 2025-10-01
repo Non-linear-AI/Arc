@@ -88,6 +88,7 @@ class InteractiveInterface:
                                 # Sleep briefly to yield
                                 self._stop.wait(0.05)
                                 continue
+
                             r, _, _ = self._select.select([sys.stdin], [], [], 0.05)
                             if r:
                                 ch = sys.stdin.read(1)
@@ -652,12 +653,8 @@ class InteractiveInterface:
             p.print(f"{header}")
 
             if result.empty():
-                p.print_panel(
-                    Panel(
-                        "[dim]No results found[/dim]",
-                        border_style="yellow",
-                        padding=(0, 1),
-                    )
+                p.print(
+                    "\n [dim]No results found[/dim]"
                 )
                 return
 
