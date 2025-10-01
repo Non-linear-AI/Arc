@@ -105,7 +105,14 @@ class InteractiveQueryService(BaseService):
         if target_db == "system":
             # System database: read-only access (SELECT only)
             # Block modification SQL commands
-            modification_commands = {"INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"}
+            modification_commands = {
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "CREATE",
+                "DROP",
+                "ALTER",
+            }
             first_word = query_upper.split()[0] if query_upper.split() else ""
             if first_word in modification_commands:
                 msg = (

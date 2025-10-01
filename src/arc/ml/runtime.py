@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -138,9 +137,7 @@ class MLRuntime:
             )
 
         if not model_record.spec:
-            raise MLRuntimeError(
-                "Stored model is missing specification; cannot train."
-            )
+            raise MLRuntimeError("Stored model is missing specification; cannot train.")
 
         try:
             # Use the model spec stored in the model record

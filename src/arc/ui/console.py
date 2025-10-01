@@ -653,9 +653,7 @@ class InteractiveInterface:
             p.print(f"{header}")
 
             if result.empty():
-                p.print(
-                    "\n [dim]No results found[/dim]"
-                )
+                p.print("\n [dim]No results found[/dim]")
                 return
 
             # Build clean table for panel display

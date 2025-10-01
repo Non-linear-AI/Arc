@@ -92,7 +92,7 @@ class TestModelDataClass:
     def test_model_with_version(self):
         """Test creating a Model with version."""
         now = datetime.now(UTC)
-        model = Model(
+        Model(
             id="child-model",
             type="classification",
             name="improved_classifier",
