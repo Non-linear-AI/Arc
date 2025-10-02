@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class MLPlanConfirmationWorkflow:
     """Manages interactive confirmation workflow for ML plans."""
 
-    def __init__(self, ui_interface: "InteractiveInterface | None" = None):
+    def __init__(self, ui_interface: InteractiveInterface | None = None):
         """Initialize ML plan confirmation workflow.
 
         Args:
@@ -29,32 +29,56 @@ class MLPlanConfirmationWorkflow:
 
     async def run_workflow(
         self,
-        plan: "MLPlan",
-        is_revision: bool = False,
-    ) -> str:
+        plan: MLPlan,
+        _is_revision: bool = False,
+    ) -> dict:
         """Run interactive confirmation workflow for an ML plan.
 
         Args:
             plan: The ML plan to confirm
-            is_revision: Whether this is a plan revision
+            _is_revision: Whether this is a plan revision (reserved for future use)
 
         Returns:
-            User's response to the plan
+            Dict with 'choice' and optional 'feedback':
+                - choice: 'accept', 'accept_all', 'feedback', 'cancel'
+                - feedback: User's feedback text (only if choice='feedback')
         """
         if not self.ui:
             # Headless mode - auto-approve
-            return "Looks good, please proceed."
+            return {"choice": "accept"}
 
         # Display the plan with markdown rendering
         plan_markdown = plan.format_for_display()
         self._show_markdown(plan_markdown)
 
+        # Define options for up/down selection
+        options = [
+            ("accept", "Accept and proceed"),
+            ("accept_all", "Accept all (don't ask again this session)"),
+            ("feedback", "Provide feedback to revise"),
+            ("cancel", "Cancel"),
+        ]
+
         try:
-            # Ask one simple open question
-            user_response = await self.ui.get_user_input_async(
-                "What do you think of this plan?"
-            )
-            return user_response
+            # Get user choice with arrow key selection
+            choice = await self.ui._printer.get_choice_async(options, default="accept")
+
+            if choice == "accept":
+                return {"choice": "accept"}
+            elif choice == "accept_all":
+                return {"choice": "accept_all"}
+            elif choice == "feedback":
+                # Ask for feedback
+                self.ui._printer.reset_prompt_session()
+                feedback = await self.ui.get_user_input_async(
+                    "Please describe your feedback:"
+                )
+                return {"choice": "feedback", "feedback": feedback}
+            elif choice == "cancel":
+                return {"choice": "cancel"}
+            else:
+                # Default to accept
+                return {"choice": "accept"}
 
         finally:
             # Reset prompt state

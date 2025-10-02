@@ -103,6 +103,7 @@ class ArcAgent:
 
         # ML Plan management - stores current plan across workflow
         self.current_ml_plan: dict | None = None
+        self.ml_plan_auto_accept: bool = False  # Session-scoped auto-accept flag
 
         # Initialize tools
         self.file_editor = FileEditorTool()
@@ -123,6 +124,7 @@ class ArcAgent:
                 self.base_url,
                 self.current_model_name,
                 self.ui_interface,
+                agent=self,  # Pass agent reference for auto_accept flag
             )
             if services
             else None
@@ -641,21 +643,6 @@ class ArcAgent:
                         and "ml_plan" in result.metadata
                     ):
                         self.current_ml_plan = result.metadata["ml_plan"]
-
-                        # Add the ML plan to conversation history as assistant message
-                        # so future context includes what plan was presented
-                        from arc.core.ml_plan import MLPlan
-
-                        plan = MLPlan.from_dict(result.metadata["ml_plan"])
-                        plan_text = plan.format_for_display()
-
-                        self.chat_history.append(
-                            ChatEntry(
-                                type="assistant",
-                                content=f"Here's the ML workflow plan:\n\n{plan_text}",
-                                timestamp=datetime.now(),
-                            )
-                        )
 
                     return result
                 return ToolResult.error_result(

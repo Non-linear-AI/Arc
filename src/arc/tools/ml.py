@@ -576,12 +576,14 @@ class MLPlanTool(BaseTool):
         base_url: str | None,
         model: str | None,
         ui_interface=None,
+        agent=None,
     ) -> None:
         self.services = services
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
         self.ui = ui_interface
+        self.agent = agent  # Reference to parent agent for auto_accept flag
 
     async def execute(
         self,
@@ -628,60 +630,124 @@ class MLPlanTool(BaseTool):
             # Import MLPlan for plan management
             from arc.core.ml_plan import MLPlan
 
-            # Generate the plan (non-streaming)
-            analysis = await agent.analyze_problem(
-                user_context=str(user_context),
-                table_name=str(data_table),
-                target_column=str(target_column),
-                conversation_history=conversation_history,
-                feedback=str(feedback) if feedback else None,
-                stream=False,
-            )
+            # Check if auto-accept is enabled
+            if self.agent and self.agent.ml_plan_auto_accept:
+                # Auto-accept mode - skip workflow
+                pass  # Continue to generate plan but skip confirmation
 
-            # Determine version and stage
-            if previous_plan:
-                version = previous_plan.get("version", 1) + 1
-                stage = previous_plan.get("stage", "initial")
-                if feedback and "training" in str(feedback).lower():
-                    stage = "post_training"
-                elif feedback and "evaluation" in str(feedback).lower():
-                    stage = "post_evaluation"
-                reason = (
-                    f"Revised based on feedback: {feedback[:100]}..."
-                    if feedback
-                    else "Plan revision"
+            # Filter conversation history by timestamp for revisions
+            # Only include messages since last plan (to avoid context pollution)
+            filtered_history = conversation_history
+            if previous_plan and "created_at" in previous_plan:
+                try:
+                    # For now, just use recent messages (simple approach)
+                    # TODO: Filter by timestamp when message timestamps are available
+                    filtered_history = conversation_history[-10:]  # Last 10 messages
+                except Exception:
+                    # If filtering fails, use all history
+                    filtered_history = conversation_history
+
+            # Internal loop for handling feedback (option C)
+            current_feedback = feedback
+            version = previous_plan.get("version", 0) + 1 if previous_plan else 1
+
+            while True:
+                # Generate the plan
+                analysis = await agent.analyze_problem(
+                    user_context=str(user_context),
+                    table_name=str(data_table),
+                    target_column=str(target_column),
+                    conversation_history=filtered_history,
+                    feedback=current_feedback,
+                    stream=False,
                 )
-            else:
-                version = 1
-                stage = "initial"
-                reason = None
 
-            plan = MLPlan.from_analysis(
-                analysis, version=version, stage=stage, reason=reason
-            )
+                # Determine stage
+                if previous_plan:
+                    stage = previous_plan.get("stage", "initial")
+                    if current_feedback and "training" in str(current_feedback).lower():
+                        stage = "post_training"
+                    elif (
+                        current_feedback
+                        and "evaluation" in str(current_feedback).lower()
+                    ):
+                        stage = "post_evaluation"
+                    reason = (
+                        f"Revised based on feedback: {current_feedback[:100]}..."
+                        if current_feedback
+                        else "Plan revision"
+                    )
+                else:
+                    stage = "initial"
+                    reason = None
 
-            # Display plan as markdown with panel border
-            if self.ui:
-                from rich.markdown import Markdown
-                from rich.panel import Panel
-
-                plan_markdown = plan.format_for_display()
-                md = Markdown(plan_markdown, justify="left")
-                panel = Panel(md, border_style="color(245)", expand=False)
-                self.ui._printer.console.print(panel)
-
-                # Ask user what they think
-                output_message = (
-                    "What do you think about the plan? "
-                    "Would you like me to proceed with the implementation?"
+                plan = MLPlan.from_analysis(
+                    analysis, version=version, stage=stage, reason=reason
                 )
-            else:
-                # Headless mode - return formatted plan
-                formatted_result = plan.format_for_display()
-                output_message = (
-                    "I've created a comprehensive ML workflow plan based on "
-                    f"your requirements.\n\n{formatted_result}"
-                )
+
+                # If auto-accept is enabled, skip workflow
+                if self.agent and self.agent.ml_plan_auto_accept:
+                    output_message = "Plan automatically accepted (auto-accept enabled)"
+                    break
+
+                # Display plan and run confirmation workflow
+                if self.ui:
+                    from arc.utils.ml_plan_workflow import MLPlanConfirmationWorkflow
+
+                    workflow = MLPlanConfirmationWorkflow(self.ui)
+                    result = await workflow.run_workflow(
+                        plan, previous_plan is not None
+                    )
+
+                    choice = result.get("choice")
+
+                    if choice == "accept":
+                        output_message = (
+                            "Plan accepted. Ready to proceed with implementation."
+                        )
+                        break
+                    elif choice == "accept_all":
+                        # Enable auto-accept for this session
+                        if self.agent:
+                            self.agent.ml_plan_auto_accept = True
+                        output_message = (
+                            "Plan accepted. Auto-accept enabled for this session."
+                        )
+                        break
+                    elif choice == "feedback":
+                        # Get feedback and loop to revise
+                        current_feedback = result.get("feedback", "")
+                        version += 1
+                        # Continue loop to generate revised plan
+                        continue
+                    elif choice == "cancel":
+                        # Display cancellation message and return to main agent
+                        if self.ui:
+                            self.ui._printer.console.print()
+                            self.ui._printer.console.print(
+                                "[yellow]ML plan cancelled.[/yellow] "
+                                "ML plan is the first step for the ML workflow, "
+                                "including feature pipelines, model design, "
+                                "training and evaluation."
+                            )
+                            self.ui._printer.console.print()
+
+                        # Return to main agent with prompt
+                        return ToolResult(
+                            success=True,
+                            output=(
+                                "ML plan cancelled. What would you like to do instead?"
+                            ),
+                            metadata={"cancelled": True},
+                        )
+                else:
+                    # Headless mode - auto-accept
+                    formatted_result = plan.format_for_display()
+                    output_message = (
+                        "I've created a comprehensive ML workflow plan based on "
+                        f"your requirements.\n\n{formatted_result}"
+                    )
+                    break
 
             # Return with plan in metadata for storage
             plan_dict = plan.to_dict()
