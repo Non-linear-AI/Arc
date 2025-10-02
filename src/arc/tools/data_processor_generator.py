@@ -201,37 +201,84 @@ class DataProcessorGeneratorTool(BaseTool):
                 finally:
                     workflow.cleanup()
 
-            # Save to file if path provided
+            # Add blank line after confirmation menu
+            if ui:
+                ui.show_info("")
+
+            # Save YAML to file first (for reproducibility and debugging)
             if output_path:
                 output_file = Path(output_path)
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 output_file.write_text(yaml_content)
+
+            # Execute the pipeline automatically after confirmation
+            from arc.ml.data_source_executor import (
+                DataSourceExecutionError,
+                execute_data_source_pipeline,
+            )
+
+            # Define progress callback for real-time updates
+            def progress_callback(message: str, level: str):
+                """Handle progress updates during execution."""
+                if ui:
+                    if level == "success":
+                        ui.show_system_success(message)
+                    elif level == "warning":
+                        ui.show_warning(message)
+                    elif level == "error":
+                        ui.show_system_error(message)
+                    elif level == "step":
+                        ui.show_info(f"  {message}")
+                    else:  # "info"
+                        ui.show_info(message)
+
+            try:
+                execution_result = await execute_data_source_pipeline(
+                    spec, target_db, self.services.db_manager, progress_callback
+                )
+
+            except DataSourceExecutionError as e:
+                # YAML is saved even if execution fails (for debugging)
+                error_msg = [
+                    f"❌ Pipeline execution failed: {str(e)}",
+                ]
+                if output_path:
+                    error_msg.append(f"YAML saved to: {output_path}")
+                    error_msg.append(
+                        f"You can retry with: /ml data-processing --yaml {output_path}"
+                    )
+                return ToolResult.error_result("\n".join(error_msg))
 
             # Create concise context for header (similar to SQL Query format)
             context_summary = context[:80] + "..." if len(context) > 80 else context
 
             lines = [
                 f"Data Processor Generator: {context_summary}",
-                "Generated successfully using LLM",
-                f"Steps: {len(spec.steps)}, Outputs: {', '.join(spec.outputs)}",
+                "",
+                "Pipeline executed successfully",
+                f"Tables created: {', '.join(execution_result.created_tables)}",
+                f"Execution time: {execution_result.execution_time:.2f}s",
             ]
 
-            if target_tables:
-                lines.append(f"Target tables: {', '.join(target_tables)}")
-
             if output_path:
-                lines.append(f"Saved to: {output_path}")
+                lines.append(f"YAML saved to: {output_path}")
 
-            if spec.vars:
-                lines.append(f"Variables: {', '.join(spec.vars.keys())}")
-
-            lines.append("")
-            lines.append(yaml_content)
-            lines.append("")
-            lines.append(
-                "Note: Generated configuration is production-ready and should "
-                "not be modified manually."
+            lines.extend(
+                [
+                    "",
+                    "Pipeline Details:",
+                    f"  Total steps: {len(spec.steps)}",
+                ]
             )
+
+            if target_tables:
+                lines.append(f"  Target tables: {', '.join(target_tables)}")
+            if spec.vars:
+                lines.append(f"  Variables: {', '.join(spec.vars.keys())}")
+
+            lines.append("")
+            lines.append("Generated YAML:")
+            lines.append(yaml_content)
 
             return ToolResult.success_result("\n".join(lines))
 

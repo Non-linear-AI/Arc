@@ -1,0 +1,160 @@
+"""Data source pipeline executor for SQL transformation workflows."""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from arc.database.manager import DatabaseManager
+    from arc.graph.features.data_source import DataSourceSpec
+
+
+@dataclass
+class DataSourceExecutionResult:
+    """Result of data source pipeline execution."""
+
+    created_tables: list[str]
+    execution_time: float
+    step_count: int
+    intermediate_views_cleaned: int
+    steps_executed: list[tuple[str, str]]  # [(step_name, step_type), ...]
+    progress_log: list[tuple[str, str]]  # [(message, level), ...]
+
+
+class DataSourceExecutionError(Exception):
+    """Exception raised when data source pipeline execution fails."""
+
+
+async def execute_data_source_pipeline(
+    spec: DataSourceSpec,
+    target_db: str,
+    db_manager: DatabaseManager,
+    progress_callback: Callable[[str, str], None] | None = None,
+) -> DataSourceExecutionResult:
+    """Execute a DataSourceSpec pipeline with proper cleanup.
+
+    Args:
+        spec: DataSourceSpec containing steps and outputs
+        target_db: Target database ("system" or "user")
+        db_manager: DatabaseManager instance for execution
+        progress_callback: Optional callback for progress updates (message, level)
+
+    Returns:
+        DataSourceExecutionResult with execution details
+
+    Raises:
+        DataSourceExecutionError: If pipeline execution fails
+    """
+    start_time = time.time()
+
+    if target_db not in ["system", "user"]:
+        raise DataSourceExecutionError(
+            f"Invalid target database: {target_db}. Must be 'system' or 'user'."
+        )
+
+    # Get execution order (topologically sorted)
+    try:
+        ordered_steps = spec.get_execution_order()
+    except ValueError as e:
+        raise DataSourceExecutionError(
+            f"Failed to determine execution order: {e}"
+        ) from e
+
+    step_count = len(ordered_steps)
+    intermediate_views = []  # Track views that need cleanup
+    steps_executed = []  # Track executed steps
+    progress_log = []  # Accumulate progress messages
+
+    # Report progress: starting
+    if progress_callback:
+        progress_callback("🤖 Executing pipeline...", "info")
+        progress_log.append(("🤖 Executing pipeline...", "info"))
+
+    try:
+        for i, step in enumerate(ordered_steps, 1):
+            # Determine if this is an output step (should create table) or
+            # intermediate (view)
+            step_type = "table" if step.name in spec.outputs else "view"
+            steps_executed.append((step.name, step_type))
+
+            # Report progress: step
+            step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
+            if progress_callback:
+                progress_callback(step_msg, "step")
+                progress_log.append((step_msg, "step"))
+
+            # Substitute variables in SQL
+            sql = spec.substitute_vars(step.sql)
+
+            # Strip trailing semicolons (they cause syntax errors in
+            # CREATE TABLE/VIEW AS)
+            sql = sql.rstrip().rstrip(";").rstrip()
+
+            try:
+                if step.name in spec.outputs:
+                    # Create persistent table for output steps
+                    create_sql = f"CREATE TABLE {step.name} AS ({sql})"
+                else:
+                    # Create regular view for intermediate steps (allows debugging)
+                    create_sql = f"CREATE VIEW {step.name} AS ({sql})"
+                    intermediate_views.append(step.name)  # Track for cleanup
+
+                # Execute using database manager directly to ensure same session
+                if target_db == "system":
+                    db_manager.system_execute(create_sql)
+                else:
+                    db_manager.user_execute(create_sql)
+
+            except Exception as step_error:
+                raise DataSourceExecutionError(
+                    f"Failed to execute step '{step.name}': {str(step_error)}"
+                ) from step_error
+
+    finally:
+        # Clean up intermediate views
+        cleaned_count = 0
+        if intermediate_views:
+            for view_name in intermediate_views:
+                try:
+                    cleanup_sql = f"DROP VIEW IF EXISTS {view_name}"
+                    if target_db == "system":
+                        db_manager.system_execute(cleanup_sql)
+                    else:
+                        db_manager.user_execute(cleanup_sql)
+                    cleaned_count += 1
+                except Exception:
+                    # Don't fail the entire pipeline if cleanup fails
+                    warning_msg = f"Could not clean up view '{view_name}'"
+                    if progress_callback:
+                        progress_callback(warning_msg, "warning")
+                        progress_log.append((warning_msg, "warning"))
+
+    # Calculate execution time
+    execution_time = time.time() - start_time
+
+    # Report progress: completion
+    success_msg = "Pipeline completed successfully"
+    if progress_callback:
+        progress_callback(success_msg, "success")
+        progress_log.append((success_msg, "success"))
+
+        output_list = ", ".join(spec.outputs)
+        output_msg = f"Output tables: {output_list}"
+        progress_callback(output_msg, "info")
+        progress_log.append((output_msg, "info"))
+
+        # Add blank line after output tables
+        progress_callback("", "info")
+        progress_log.append(("", "info"))
+
+    return DataSourceExecutionResult(
+        created_tables=spec.outputs.copy(),
+        execution_time=execution_time,
+        step_count=step_count,
+        intermediate_views_cleaned=cleaned_count,
+        steps_executed=steps_executed,
+        progress_log=progress_log,
+    )

@@ -245,7 +245,13 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="database_query",
-            description="Execute SQL queries against system or user databases",
+            description=(
+                "Execute READ-ONLY SQL queries (SELECT, SHOW, DESCRIBE) for data "
+                "exploration and analysis. Returns results immediately without "
+                "confirmation. For data transformations that write/modify data "
+                "(INSERT, UPDATE, DELETE, CREATE TABLE, etc.), use "
+                "data_processor_generator instead."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -531,14 +537,13 @@ def get_base_tools() -> list[ArcTool]:
         ArcTool(
             name="data_processor_generator",
             description=(
-                "Generate reusable YAML configurations for data processing workflows. "
-                "Use this tool ONLY when users explicitly request configuration "
-                "generation, such as: creating reusable pipelines, documenting "
-                "workflows, persisting steps, or generating templates. Do NOT use "
-                "for immediate data operations - those should be executed directly "
-                "with database_query. This tool uses specialized LLM agents to "
-                "generate optimized configurations. Examples: 'create a reusable "
-                "config', 'persist these steps as YAML', 'document this workflow'."
+                "Generate and execute SQL data processing pipelines for WRITE "
+                "OPERATIONS. Use when users describe data transformations, feature "
+                "engineering, or operations that create/modify tables (INSERT, UPDATE, "
+                "DELETE, CREATE TABLE, etc.). Workflow: 1) Generate YAML from "
+                "description, 2) Show user for review/editing, 3) Execute pipeline "
+                "after confirmation, 4) Create output tables. For read-only SELECT "
+                "queries, use database_query for immediate results."
             ),
             parameters={
                 "type": "object",
