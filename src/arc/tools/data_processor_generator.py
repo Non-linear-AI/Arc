@@ -201,37 +201,68 @@ class DataProcessorGeneratorTool(BaseTool):
                 finally:
                     workflow.cleanup()
 
-            # Save to file if path provided
+            # Save YAML to file first (for reproducibility and debugging)
             if output_path:
                 output_file = Path(output_path)
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 output_file.write_text(yaml_content)
+
+            # Execute the pipeline automatically after confirmation
+            from arc.ml.data_source_executor import (
+                DataSourceExecutionError,
+                execute_data_source_pipeline,
+            )
+
+            try:
+                execution_result = await execute_data_source_pipeline(
+                    spec, target_db, self.services.db_manager, ui
+                )
+
+                # Update success message with execution results
+                execution_summary = [
+                    "✅ Pipeline executed successfully",
+                    f"Tables created: {', '.join(execution_result.created_tables)}",
+                    f"Execution time: {execution_result.execution_time:.2f}s",
+                ]
+
+                if output_path:
+                    execution_summary.append(f"YAML saved to: {output_path}")
+
+            except DataSourceExecutionError as e:
+                # YAML is saved even if execution fails (for debugging)
+                error_msg = [
+                    f"❌ Pipeline execution failed: {str(e)}",
+                ]
+                if output_path:
+                    error_msg.append(f"YAML saved to: {output_path}")
+                    error_msg.append(
+                        f"You can retry with: /ml data-processing --yaml {output_path}"
+                    )
+                return ToolResult.error_result("\n".join(error_msg))
 
             # Create concise context for header (similar to SQL Query format)
             context_summary = context[:80] + "..." if len(context) > 80 else context
 
             lines = [
                 f"Data Processor Generator: {context_summary}",
-                "Generated successfully using LLM",
-                f"Steps: {len(spec.steps)}, Outputs: {', '.join(spec.outputs)}",
+                "Generated and executed successfully",
+                "",
             ]
 
+            # Add execution summary
+            lines.extend(execution_summary)
+            lines.append("")
+
+            # Add pipeline details
+            lines.append(f"Pipeline: {len(spec.steps)} steps")
             if target_tables:
                 lines.append(f"Target tables: {', '.join(target_tables)}")
-
-            if output_path:
-                lines.append(f"Saved to: {output_path}")
-
             if spec.vars:
                 lines.append(f"Variables: {', '.join(spec.vars.keys())}")
 
             lines.append("")
+            lines.append("Generated YAML:")
             lines.append(yaml_content)
-            lines.append("")
-            lines.append(
-                "Note: Generated configuration is production-ready and should "
-                "not be modified manually."
-            )
 
             return ToolResult.success_result("\n".join(lines))
 
