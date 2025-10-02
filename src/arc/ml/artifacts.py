@@ -28,7 +28,7 @@ class ModelArtifact:
     # Training information
     training_config: TrainingConfig | None = None
     training_result: TrainingResult | None = None
-    arc_graph: dict[str, Any] | None = None
+    model_spec: dict[str, Any] | None = None
 
     # Model architecture info
     model_class: str | None = None
@@ -79,7 +79,7 @@ class ModelArtifactManager:
         artifact: ModelArtifact,
         optimizer: torch.optim.Optimizer | None = None,
         training_history: dict[str, Any] | None = None,
-        arc_graph: dict[str, Any] | None = None,
+        model_spec: dict[str, Any] | None = None,
         overwrite: bool = False,
     ) -> Path:
         """Save a complete model artifact.
@@ -89,7 +89,7 @@ class ModelArtifactManager:
             artifact: Artifact metadata
             optimizer: Optional optimizer state to save
             training_history: Optional training history data
-            arc_graph: Optional Arc Graph specification
+            model_spec: Optional Arc Graph specification
             overwrite: Whether to overwrite existing artifacts
 
         Returns:
@@ -121,11 +121,11 @@ class ModelArtifactManager:
             artifact.training_history_path = "training_history.json"
 
         # Save Arc Graph specification if provided
-        if arc_graph is not None:
-            graph_path = artifact_dir / "arc_graph.json"
+        if model_spec is not None:
+            graph_path = artifact_dir / "model_spec.json"
             with open(graph_path, "w") as f:
-                json.dump(asdict(arc_graph), f, indent=2, default=str)
-            artifact.arc_graph = asdict(arc_graph)
+                json.dump(asdict(model_spec), f, indent=2, default=str)
+            artifact.model_spec = asdict(model_spec)
 
         # Update timestamps
         artifact.updated_at = datetime.now().isoformat()
@@ -422,7 +422,7 @@ def create_artifact_from_training(
     version: int,
     training_config: TrainingConfig,
     training_result: TrainingResult,
-    arc_graph: dict[str, Any] | None = None,
+    model_spec: dict[str, Any] | None = None,
     model_info: dict[str, Any] | None = None,
     **kwargs,
 ) -> ModelArtifact:
@@ -434,7 +434,7 @@ def create_artifact_from_training(
         version: Model version
         training_config: Training configuration used
         training_result: Results from training
-        arc_graph: Optional Arc Graph specification
+        model_spec: Optional Arc Graph specification
         model_info: Optional model architecture information
         **kwargs: Additional metadata
 
@@ -465,7 +465,7 @@ def create_artifact_from_training(
         version=version,
         training_config=training_config,
         training_result=training_result,
-        arc_graph=asdict(arc_graph) if arc_graph else None,
+        model_spec=asdict(model_spec) if model_spec else None,
         final_metrics=final_metrics,
         best_metrics=best_metrics,
         **kwargs,

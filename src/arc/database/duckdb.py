@@ -127,9 +127,7 @@ class DuckDBDatabase(Database):
                     name VARCHAR(255),
                     version INTEGER,
                     description TEXT,
-                    base_model_id TEXT,
                     spec TEXT,
-                    arc_graph TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE (name, version)

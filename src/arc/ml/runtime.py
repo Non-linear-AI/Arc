@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -92,17 +91,13 @@ class MLRuntime:
         model_id = f"{base_slug}-v{version}"
 
         now = datetime.now(UTC)
-        model_spec_payload = json.dumps(asdict(model_spec), default=str)
-
         model = Model(
             id=model_id,
             type=model_type or "ml.model_spec",
             name=name,
             version=version,
             description=description or "",
-            base_model_id=None,
             spec=schema_text,
-            arc_graph=model_spec_payload,  # Keep field name for backward compatibility
             created_at=now,
             updated_at=now,
         )
@@ -141,10 +136,8 @@ class MLRuntime:
                 f"Model '{model_name}' not found. Use create-model first."
             )
 
-        if not model_record.arc_graph:
-            raise MLRuntimeError(
-                "Stored model is missing arc graph specification; cannot train."
-            )
+        if not model_record.spec:
+            raise MLRuntimeError("Stored model is missing specification; cannot train.")
 
         try:
             # Use the model spec stored in the model record
@@ -233,7 +226,7 @@ class MLRuntime:
             model_name=model_record.name,
             train_table=train_table,
             target_column=resolved_target,
-            arc_graph=model_spec,  # Pass model spec
+            model_spec=model_spec,  # Pass model spec
             feature_columns=list(feature_columns),
             validation_table=validation_table,
             validation_split=resolved_validation_split,

@@ -83,6 +83,7 @@ class ArcAgent:
         model: str | None = None,
         max_tool_rounds: int = 400,
         services=None,
+        ui_interface=None,
     ):
         # Initialize settings and model
         self.settings_manager = SettingsManager()
@@ -93,6 +94,7 @@ class ArcAgent:
         self.arc_client = ArcClient(api_key, model_to_use, base_url)
         self.api_key = api_key
         self.base_url = self.arc_client.base_url
+        self.ui_interface = ui_interface
 
         # Track the model currently configured for the client so tool calls
         # stay consistent
@@ -116,6 +118,7 @@ class ArcAgent:
                 self.api_key,
                 self.base_url,
                 self.current_model_name,
+                self.ui_interface,
             )
             if services
             else None
@@ -126,6 +129,7 @@ class ArcAgent:
                 self.api_key,
                 self.base_url,
                 self.current_model_name,
+                self.ui_interface,
             )
             if services
             else None
@@ -136,6 +140,7 @@ class ArcAgent:
                 self.api_key,
                 self.base_url,
                 self.current_model_name,
+                self.ui_interface,
             )
             if services
             else None
