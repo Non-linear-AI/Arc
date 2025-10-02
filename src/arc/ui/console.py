@@ -211,7 +211,8 @@ class InteractiveInterface:
             ml_commands = [
                 (
                     "/ml plan --context DESC --data-table TABLE --target-column COL",
-                    "Create ML workflow plan (feature engineering, architecture, training, evaluation)",
+                    "Create ML workflow plan (feature engineering, architecture, "
+                    "training, evaluation)",
                 ),
                 (
                     "/ml revise-plan --feedback FEEDBACK",
@@ -220,7 +221,8 @@ class InteractiveInterface:
                 (
                     "/ml generate-model --name NAME --context DESC --data-table TABLE "
                     "[--target-column COL] [--use-plan]",
-                    "Generate an Arc-Graph model specification (use --use-plan to apply ML plan guidance)",
+                    "Generate an Arc-Graph model specification "
+                    "(use --use-plan to apply ML plan guidance)",
                 ),
                 (
                     "/ml generate-trainer --name NAME --context DESC --model-spec FILE",
