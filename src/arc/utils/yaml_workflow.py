@@ -250,9 +250,15 @@ class YamlConfirmationWorkflow:
             ]
 
             if self.ui:
-                choice = await self.ui._printer.get_choice_async(
-                    options, default="save"
-                )
+                # Suspend ESC watcher to prevent interference with choice dialog
+                self.ui.suspend_escape()
+                try:
+                    choice = await self.ui._printer.get_choice_async(
+                        options, default="save"
+                    )
+                finally:
+                    # Reset prompt session after choice
+                    self.ui._printer.reset_prompt_session()
             else:
                 # Fallback for non-UI usage
                 choice = self._get_choice_fallback(options)
@@ -281,6 +287,9 @@ class YamlConfirmationWorkflow:
 
                 yaml_content = edited_yaml
                 self.state_manager.save_yaml(yaml_content, context)
+                # Reset prompt session after nested AI editing prompts
+                if self.ui:
+                    self.ui._printer.reset_prompt_session()
                 continue
 
             elif choice == "edit_manual":
@@ -304,6 +313,9 @@ class YamlConfirmationWorkflow:
 
                 yaml_content = edited_yaml
                 self.state_manager.save_yaml(yaml_content, context)
+                # Reset prompt session after manual editing
+                if self.ui:
+                    self.ui._printer.reset_prompt_session()
                 continue
 
             elif choice == "cancel" or choice == "__esc__":

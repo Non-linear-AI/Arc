@@ -61,6 +61,8 @@ class DataProcessorGeneratorAgent:
         context: str,
         target_tables: list[str] | None = None,
         target_db: str = "user",
+        existing_yaml: str | None = None,
+        editing_instructions: str | None = None,
     ) -> tuple[DataSourceSpec, str]:
         """Generate data processing YAML from natural language description.
 
@@ -68,6 +70,8 @@ class DataProcessorGeneratorAgent:
             context: Natural language description of data processing requirements
             target_tables: List of tables to analyze (optional)
             target_db: Target database for schema discovery
+            existing_yaml: Existing YAML content to edit (optional)
+            editing_instructions: Instructions for editing existing YAML (optional)
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string)
@@ -80,7 +84,9 @@ class DataProcessorGeneratorAgent:
             schema_info = await self._get_schema_context(target_tables, target_db)
 
             # Render prompt and build messages
-            user_prompt = await self._render_prompt(context, schema_info, target_tables)
+            user_prompt = await self._render_prompt(
+                context, schema_info, target_tables, existing_yaml, editing_instructions
+            )
             messages = [
                 {"role": "system", "content": self.SYSTEM_MESSAGE},
                 {"role": "user", "content": user_prompt},
@@ -183,7 +189,12 @@ class DataProcessorGeneratorAgent:
             }
 
     async def _render_prompt(
-        self, context: str, schema_info: dict, target_tables: list[str] | None
+        self,
+        context: str,
+        schema_info: dict,
+        target_tables: list[str] | None,
+        existing_yaml: str | None = None,
+        editing_instructions: str | None = None,
     ) -> str:
         """Render the prompt template with context.
 
@@ -191,6 +202,8 @@ class DataProcessorGeneratorAgent:
             context: User's natural language description
             schema_info: Database schema information
             target_tables: Target tables list
+            existing_yaml: Existing YAML content to edit (optional)
+            editing_instructions: Instructions for editing (optional)
 
         Returns:
             Rendered prompt string for user message
@@ -215,6 +228,8 @@ class DataProcessorGeneratorAgent:
                 user_context=context,
                 schema_info=schema_info,
                 target_tables=target_tables or [],
+                existing_yaml=existing_yaml,
+                editing_instructions=editing_instructions,
             )
 
             return prompt
