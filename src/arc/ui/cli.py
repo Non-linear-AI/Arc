@@ -701,8 +701,22 @@ async def _ml_data_processing(
         # Execute the pipeline using the centralized executor
         from arc.ml.data_source_executor import execute_data_source_pipeline
 
+        # Define progress callback for CLI usage
+        def cli_progress(message: str, level: str):
+            """Handle progress updates for CLI."""
+            if level == "success":
+                ui.show_system_success(message)
+            elif level == "warning":
+                ui.show_warning(message)
+            elif level == "error":
+                ui.show_system_error(message)
+            elif level == "step":
+                ui.show_info(f"  {message}")
+            else:  # "info"
+                ui.show_info(message)
+
         await execute_data_source_pipeline(
-            spec, str(target_db), runtime.services.db_manager, ui
+            spec, str(target_db), runtime.services.db_manager, cli_progress
         )
 
     except ValueError as parse_error:

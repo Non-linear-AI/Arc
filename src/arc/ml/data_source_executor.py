@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from arc.database.manager import DatabaseManager
     from arc.graph.features.data_source import DataSourceSpec
-    from arc.ui.console import InteractiveInterface
 
 
 @dataclass
@@ -20,6 +20,8 @@ class DataSourceExecutionResult:
     execution_time: float
     step_count: int
     intermediate_views_cleaned: int
+    steps_executed: list[tuple[str, str]]  # [(step_name, step_type), ...]
+    progress_log: list[tuple[str, str]]  # [(message, level), ...]
 
 
 class DataSourceExecutionError(Exception):
@@ -30,7 +32,7 @@ async def execute_data_source_pipeline(
     spec: DataSourceSpec,
     target_db: str,
     db_manager: DatabaseManager,
-    ui: InteractiveInterface | None = None,
+    progress_callback: Callable[[str, str], None] | None = None,
 ) -> DataSourceExecutionResult:
     """Execute a DataSourceSpec pipeline with proper cleanup.
 
@@ -38,7 +40,7 @@ async def execute_data_source_pipeline(
         spec: DataSourceSpec containing steps and outputs
         target_db: Target database ("system" or "user")
         db_manager: DatabaseManager instance for execution
-        ui: Optional UI interface for progress reporting
+        progress_callback: Optional callback for progress updates (message, level)
 
     Returns:
         DataSourceExecutionResult with execution details
@@ -61,22 +63,28 @@ async def execute_data_source_pipeline(
             f"Failed to determine execution order: {e}"
         ) from e
 
-    # Show progress header
-    if ui:
-        ui.show_info("")
-        ui.show_info("Executing pipeline...")
-
     step_count = len(ordered_steps)
     intermediate_views = []  # Track views that need cleanup
+    steps_executed = []  # Track executed steps
+    progress_log = []  # Accumulate progress messages
+
+    # Report progress: starting
+    if progress_callback:
+        progress_callback("🤖 Executing pipeline...", "info")
+        progress_log.append(("🤖 Executing pipeline...", "info"))
 
     try:
         for i, step in enumerate(ordered_steps, 1):
             # Determine if this is an output step (should create table) or
             # intermediate (view)
             step_type = "table" if step.name in spec.outputs else "view"
+            steps_executed.append((step.name, step_type))
 
-            if ui:
-                ui.show_info(f"  Step {i}/{step_count}: {step.name} ({step_type})")
+            # Report progress: step
+            step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
+            if progress_callback:
+                progress_callback(step_msg, "step")
+                progress_log.append((step_msg, "step"))
 
             # Substitute variables in SQL
             sql = spec.substitute_vars(step.sql)
@@ -119,28 +127,34 @@ async def execute_data_source_pipeline(
                     cleaned_count += 1
                 except Exception:
                     # Don't fail the entire pipeline if cleanup fails
-                    if ui:
-                        ui.show_info(f"Warning: Could not clean up view '{view_name}'")
+                    warning_msg = f"Could not clean up view '{view_name}'"
+                    if progress_callback:
+                        progress_callback(warning_msg, "warning")
+                        progress_log.append((warning_msg, "warning"))
 
     # Calculate execution time
     execution_time = time.time() - start_time
 
-    # Show completion summary
-    if ui:
-        ui.show_info("")
-        ui.show_info("Pipeline completed successfully")
-        output_list = ", ".join(spec.outputs)
-        ui.show_info(f"Output tables: {output_list}")
+    # Report progress: completion
+    success_msg = "Pipeline completed successfully"
+    if progress_callback:
+        progress_callback(success_msg, "success")
+        progress_log.append((success_msg, "success"))
 
-        if target_db == "user":
-            ui.show_info(
-                "Note: Intermediate views have been cleaned up. Query results "
-                "with: /sql SELECT * FROM <table_name>"
-            )
+        output_list = ", ".join(spec.outputs)
+        output_msg = f"Output tables: {output_list}"
+        progress_callback(output_msg, "info")
+        progress_log.append((output_msg, "info"))
+
+        # Add blank line after output tables
+        progress_callback("", "info")
+        progress_log.append(("", "info"))
 
     return DataSourceExecutionResult(
         created_tables=spec.outputs.copy(),
         execution_time=execution_time,
         step_count=step_count,
         intermediate_views_cleaned=cleaned_count,
+        steps_executed=steps_executed,
+        progress_log=progress_log,
     )

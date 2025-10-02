@@ -201,6 +201,10 @@ class DataProcessorGeneratorTool(BaseTool):
                 finally:
                     workflow.cleanup()
 
+            # Add blank line after confirmation menu
+            if ui:
+                ui.show_info("")
+
             # Save YAML to file first (for reproducibility and debugging)
             if output_path:
                 output_file = Path(output_path)
@@ -213,20 +217,25 @@ class DataProcessorGeneratorTool(BaseTool):
                 execute_data_source_pipeline,
             )
 
+            # Define progress callback for real-time updates
+            def progress_callback(message: str, level: str):
+                """Handle progress updates during execution."""
+                if ui:
+                    if level == "success":
+                        ui.show_system_success(message)
+                    elif level == "warning":
+                        ui.show_warning(message)
+                    elif level == "error":
+                        ui.show_system_error(message)
+                    elif level == "step":
+                        ui.show_info(f"  {message}")
+                    else:  # "info"
+                        ui.show_info(message)
+
             try:
                 execution_result = await execute_data_source_pipeline(
-                    spec, target_db, self.services.db_manager, ui
+                    spec, target_db, self.services.db_manager, progress_callback
                 )
-
-                # Update success message with execution results
-                execution_summary = [
-                    "✅ Pipeline executed successfully",
-                    f"Tables created: {', '.join(execution_result.created_tables)}",
-                    f"Execution time: {execution_result.execution_time:.2f}s",
-                ]
-
-                if output_path:
-                    execution_summary.append(f"YAML saved to: {output_path}")
 
             except DataSourceExecutionError as e:
                 # YAML is saved even if execution fails (for debugging)
@@ -245,20 +254,27 @@ class DataProcessorGeneratorTool(BaseTool):
 
             lines = [
                 f"Data Processor Generator: {context_summary}",
-                "Generated and executed successfully",
                 "",
+                "Pipeline executed successfully",
+                f"Tables created: {', '.join(execution_result.created_tables)}",
+                f"Execution time: {execution_result.execution_time:.2f}s",
             ]
 
-            # Add execution summary
-            lines.extend(execution_summary)
-            lines.append("")
+            if output_path:
+                lines.append(f"YAML saved to: {output_path}")
 
-            # Add pipeline details
-            lines.append(f"Pipeline: {len(spec.steps)} steps")
+            lines.extend(
+                [
+                    "",
+                    "Pipeline Details:",
+                    f"  Total steps: {len(spec.steps)}",
+                ]
+            )
+
             if target_tables:
-                lines.append(f"Target tables: {', '.join(target_tables)}")
+                lines.append(f"  Target tables: {', '.join(target_tables)}")
             if spec.vars:
-                lines.append(f"Variables: {', '.join(spec.vars.keys())}")
+                lines.append(f"  Variables: {', '.join(spec.vars.keys())}")
 
             lines.append("")
             lines.append("Generated YAML:")
