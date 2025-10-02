@@ -17,6 +17,7 @@ from arc.tools import (
     FileEditorTool,
     MLCreateModelTool,
     MLModelGeneratorTool,
+    MLPlanTool,
     MLPredictorGeneratorTool,
     MLPredictTool,
     MLTrainerGeneratorTool,
@@ -100,6 +101,9 @@ class ArcAgent:
         # stay consistent
         self.current_model_name = self.arc_client.get_current_model()
 
+        # ML Plan management - stores current plan across workflow
+        self.current_ml_plan: dict | None = None
+
         # Initialize tools
         self.file_editor = FileEditorTool()
         self.bash_tool = BashTool()
@@ -112,6 +116,17 @@ class ArcAgent:
         )
         self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
+        self.ml_plan_tool = (
+            MLPlanTool(
+                services,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+                self.ui_interface,
+            )
+            if services
+            else None
+        )
         self.ml_model_generator_tool = (
             MLModelGeneratorTool(
                 services,
@@ -604,13 +619,58 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML predict tool not available. Database services not initialized."
                 )
+            elif tool_call.name == "ml_plan":
+                if self.ml_plan_tool:
+                    # Prepare conversation history for the planner
+                    conversation_history = self._prepare_conversation_for_ml_plan()
+
+                    # Execute with current plan for revisions
+                    result = await self.ml_plan_tool.execute(
+                        user_context=args.get("user_context"),
+                        data_table=args.get("data_table"),
+                        target_column=args.get("target_column"),
+                        conversation_history=conversation_history,
+                        feedback=args.get("feedback"),
+                        previous_plan=self.current_ml_plan,
+                    )
+
+                    # Store the new plan if successful
+                    if (
+                        result.success
+                        and result.metadata
+                        and "ml_plan" in result.metadata
+                    ):
+                        self.current_ml_plan = result.metadata["ml_plan"]
+
+                        # Add the ML plan to conversation history as assistant message
+                        # so future context includes what plan was presented
+                        from arc.core.ml_plan import MLPlan
+
+                        plan = MLPlan.from_dict(result.metadata["ml_plan"])
+                        plan_text = plan.format_for_display()
+
+                        self.chat_history.append(
+                            ChatEntry(
+                                type="assistant",
+                                content=f"Here's the ML workflow plan:\n\n{plan_text}",
+                                timestamp=datetime.now(),
+                            )
+                        )
+
+                    return result
+                return ToolResult.error_result(
+                    "ML plan tool not available. Database services not initialized."
+                )
             elif tool_call.name == "ml_model_generator":
                 if self.ml_model_generator_tool:
                     return await self.ml_model_generator_tool.execute(
                         name=args.get("name"),
                         context=args.get("context"),
                         data_table=args.get("data_table"),
+                        target_column=args.get("target_column"),
                         output_path=args.get("output_path"),
+                        category=args.get("category"),
+                        ml_plan=self.current_ml_plan,  # Pass current plan
                     )
                 return ToolResult.error_result(
                     "ML model generator tool not available. "
@@ -664,6 +724,19 @@ class ArcAgent:
         """Execute a tool call (alias for _execute_tool)."""
         return await self._execute_tool(tool_call)
 
+    def _prepare_conversation_for_ml_plan(self) -> list[dict]:
+        """Prepare conversation history for ML plan tool.
+
+        Converts chat history to a simplified format suitable for ML planning.
+        """
+        conversation = []
+        for entry in self.chat_history:
+            if entry.type == "user":
+                conversation.append({"role": "user", "content": entry.content})
+            elif entry.type == "assistant" and entry.content:
+                conversation.append({"role": "assistant", "content": entry.content})
+        return conversation
+
     def get_chat_history(self) -> list[ChatEntry]:
         """Get the complete chat history."""
         return self.chat_history.copy()
@@ -685,6 +758,8 @@ class ArcAgent:
         self.arc_client.set_model(model)
         self.token_counter = TokenCounter(model)
         self.current_model_name = model
+        if getattr(self, "ml_plan_tool", None):
+            self.ml_plan_tool.model = model
         if getattr(self, "ml_model_generator_tool", None):
             self.ml_model_generator_tool.model = model
         if getattr(self, "ml_trainer_generator_tool", None):

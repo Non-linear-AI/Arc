@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.model_generator import ModelGeneratorAgent
 from arc.core.agents.predictor_generator import (
     PredictorGeneratorAgent,
@@ -258,6 +259,7 @@ class MLModelGeneratorTool(BaseTool):
         output_path: str | None = None,
         auto_confirm: bool = False,
         category: str | None = None,
+        ml_plan: dict | None = None,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -271,6 +273,28 @@ class MLModelGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
+        # If ML plan is provided, use it for context
+        if ml_plan:
+            # Extract information from ML plan
+            from arc.core.ml_plan import MLPlan
+
+            plan = MLPlan.from_dict(ml_plan)
+
+            # Use plan data if parameters not explicitly provided
+            if not context:
+                context = plan.summary
+            if not data_table:
+                data_table = ml_plan.get("data_table")
+            if not target_column:
+                target_column = ml_plan.get("target_column")
+            if not category and plan.selected_components:
+                category = plan.selected_components[0]  # Use primary component
+
+            # Create aggregated context from the plan for the model generator
+            aggregated_context = plan.to_generation_context()
+        else:
+            aggregated_context = None
+
         if not name or not context or not data_table:
             return ToolResult.error_result(
                 "Parameters 'name', 'context', and 'data_table' are required "
@@ -279,7 +303,13 @@ class MLModelGeneratorTool(BaseTool):
 
         # Show UI feedback if UI is available
         if self.ui:
-            self.ui.show_info(f"🤖 Generating model specification for '{name}'...")
+            if ml_plan:
+                self.ui.show_info(
+                    f"🤖 Generating model specification for '{name}' "
+                    "using ML plan guidance..."
+                )
+            else:
+                self.ui.show_info(f"🤖 Generating model specification for '{name}'...")
 
         agent = ModelGeneratorAgent(
             self.services,
@@ -289,12 +319,15 @@ class MLModelGeneratorTool(BaseTool):
         )
 
         try:
+            # Prepare components list from category
+            components = [category] if category else None
+
             model_spec, model_yaml = await agent.generate_model(
                 name=str(name),
-                user_context=str(context),
                 table_name=str(data_table),
                 target_column=target_column,
-                category=category,
+                components=components,
+                aggregated_context=aggregated_context,
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -325,7 +358,7 @@ class MLModelGeneratorTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(),
+                editor_func=self._create_editor(aggregated_context),
                 ui_interface=self.ui,
                 yaml_type_name="model",
                 yaml_suffix=".arc-model.yaml",
@@ -333,10 +366,9 @@ class MLModelGeneratorTool(BaseTool):
 
             context_dict = {
                 "model_name": str(name),
-                "context": str(context),
                 "table_name": str(data_table),
                 "target_column": target_column,
-                "category": category,
+                "components": components,
             }
 
             try:
@@ -404,8 +436,11 @@ class MLModelGeneratorTool(BaseTool):
 
         return validate
 
-    def _create_editor(self):
+    def _create_editor(self, aggregated_context: dict[str, Any] | None = None):
         """Create editor function for AI-assisted editing in the workflow.
+
+        Args:
+            aggregated_context: Optional aggregated context from ML plan
 
         Returns:
             Async function that edits YAML based on user feedback
@@ -424,10 +459,10 @@ class MLModelGeneratorTool(BaseTool):
             try:
                 _model_spec, edited_yaml = await agent.generate_model(
                     name=context["model_name"],
-                    user_context=context["context"],
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    category=context.get("category"),
+                    components=context.get("components"),
+                    aggregated_context=aggregated_context,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
@@ -529,6 +564,147 @@ class MLTrainerGeneratorTool(BaseTool):
         lines.append(trainer_yaml.strip())
 
         return ToolResult.success_result("\n".join(lines))
+
+
+class MLPlanTool(BaseTool):
+    """Tool for creating and revising ML plans with technical decisions."""
+
+    def __init__(
+        self,
+        services,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+        ui_interface=None,
+    ) -> None:
+        self.services = services
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+        self.ui = ui_interface
+
+    async def execute(
+        self,
+        *,
+        user_context: str | None = None,
+        data_table: str | None = None,
+        target_column: str | None = None,
+        conversation_history: list[dict] | None = None,
+        feedback: str | None = None,
+        previous_plan: dict | None = None,
+    ) -> ToolResult:
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for ML planning. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "ML planning service unavailable. Database services not initialized."
+            )
+
+        if not user_context or not data_table or not target_column:
+            return ToolResult.error_result(
+                "Parameters 'user_context', 'data_table', and 'target_column' "
+                "are required for ML planning."
+            )
+
+        if conversation_history is None:
+            return ToolResult.error_result(
+                "Parameter 'conversation_history' is required for comprehensive "
+                "ML planning. The full conversation history enables context-aware "
+                "planning."
+            )
+
+        agent = MLPlanAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            # Import MLPlan for plan management
+            from arc.core.ml_plan import MLPlan
+
+            # Generate the plan (non-streaming)
+            analysis = await agent.analyze_problem(
+                user_context=str(user_context),
+                table_name=str(data_table),
+                target_column=str(target_column),
+                conversation_history=conversation_history,
+                feedback=str(feedback) if feedback else None,
+                stream=False,
+            )
+
+            # Determine version and stage
+            if previous_plan:
+                version = previous_plan.get("version", 1) + 1
+                stage = previous_plan.get("stage", "initial")
+                if feedback and "training" in str(feedback).lower():
+                    stage = "post_training"
+                elif feedback and "evaluation" in str(feedback).lower():
+                    stage = "post_evaluation"
+                reason = (
+                    f"Revised based on feedback: {feedback[:100]}..."
+                    if feedback
+                    else "Plan revision"
+                )
+            else:
+                version = 1
+                stage = "initial"
+                reason = None
+
+            plan = MLPlan.from_analysis(
+                analysis, version=version, stage=stage, reason=reason
+            )
+
+            # Display plan as markdown with panel border
+            if self.ui:
+                from rich.markdown import Markdown
+                from rich.panel import Panel
+
+                plan_markdown = plan.format_for_display()
+                md = Markdown(plan_markdown, justify="left")
+                panel = Panel(md, border_style="color(245)", expand=False)
+                self.ui._printer.console.print(panel)
+
+                # Ask user what they think
+                output_message = (
+                    "What do you think about the plan? "
+                    "Would you like me to proceed with the implementation?"
+                )
+            else:
+                # Headless mode - return formatted plan
+                formatted_result = plan.format_for_display()
+                output_message = (
+                    "I've created a comprehensive ML workflow plan based on "
+                    f"your requirements.\n\n{formatted_result}"
+                )
+
+            # Return with plan in metadata for storage
+            plan_dict = plan.to_dict()
+            plan_dict["data_table"] = str(data_table)
+            plan_dict["target_column"] = str(target_column)
+
+            return ToolResult(
+                success=True,
+                output=output_message,
+                metadata={
+                    "ml_plan": plan_dict,
+                    "is_revision": previous_plan is not None,
+                },
+            )
+
+        except Exception as exc:
+            from arc.core.agents.ml_plan import MLPlanError
+
+            if isinstance(exc, MLPlanError):
+                return ToolResult.error_result(str(exc))
+            return ToolResult.error_result(
+                f"Unexpected error during ML planning: {exc}"
+            )
 
 
 class MLPredictorGeneratorTool(BaseTool):

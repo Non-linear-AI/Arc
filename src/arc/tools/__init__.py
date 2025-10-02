@@ -8,6 +8,7 @@ from arc.tools.file_editor import FileEditorTool
 from arc.tools.ml import (
     MLCreateModelTool,
     MLModelGeneratorTool,
+    MLPlanTool,
     MLPredictorGeneratorTool,
     MLPredictTool,
     MLTrainerGeneratorTool,
@@ -30,6 +31,7 @@ __all__ = [
     "MLTrainTool",
     "MLPredictTool",
     "MLModelGeneratorTool",
+    "MLPlanTool",
     "MLTrainerGeneratorTool",
     "MLPredictorGeneratorTool",
 ]
