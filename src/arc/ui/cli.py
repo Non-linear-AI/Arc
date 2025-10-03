@@ -209,7 +209,10 @@ def _parse_options(args: list[str], spec: dict[str, bool]) -> dict[str, str | bo
 
 
 async def handle_ml_command(
-    user_input: str, ui: InteractiveInterface, runtime: "MLRuntime"
+    user_input: str,
+    ui: InteractiveInterface,
+    runtime: "MLRuntime",
+    agent: "ArcAgent | None" = None,
 ) -> None:
     try:
         tokens = shlex.split(user_input)
@@ -223,8 +226,8 @@ async def handle_ml_command(
 
     if len(tokens) < 2:
         ui.show_system_error(
-            "Usage: /ml <create-model|train|predict|jobs|generate-model|"
-            "generate-trainer|generate-predictor|data-processing> ..."
+            "Usage: /ml <plan|revise-plan|create-model|train|predict|jobs|"
+            "generate-model|generate-trainer|generate-predictor|data-processing> ..."
         )
         return
 
@@ -232,7 +235,11 @@ async def handle_ml_command(
     args = tokens[2:]
 
     try:
-        if subcommand == "create-model":
+        if subcommand == "plan":
+            await _ml_plan(args, ui, agent)
+        elif subcommand == "revise-plan":
+            await _ml_revise_plan(args, ui, agent)
+        elif subcommand == "create-model":
             _ml_create_model(args, ui, runtime)
         elif subcommand == "train":
             _ml_train(args, ui, runtime)
@@ -241,7 +248,7 @@ async def handle_ml_command(
         elif subcommand == "jobs":
             _ml_jobs(args, ui, runtime)
         elif subcommand == "generate-model":
-            await _ml_generate_model(args, ui, runtime)
+            await _ml_generate_model(args, ui, runtime, agent)
         elif subcommand == "generate-trainer":
             await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "generate-predictor":
@@ -254,6 +261,134 @@ async def handle_ml_command(
         ui.show_system_error(str(e))
     except Exception as e:
         ui.show_system_error(f"ML command failed: {e}")
+
+
+async def _ml_plan(
+    args: list[str], ui: InteractiveInterface, agent: "ArcAgent | None"
+) -> None:
+    """Create an ML workflow plan."""
+    if not agent:
+        raise CommandError("Agent not available for ML planning")
+
+    if not agent.ml_plan_tool:
+        raise CommandError(
+            "ML plan tool not available. Database services not initialized."
+        )
+
+    options = _parse_options(
+        args,
+        {
+            "context": True,
+            "data-table": True,
+            "target-column": True,
+        },
+    )
+
+    user_context = options.get("context")
+    data_table = options.get("data-table")
+    target_column = options.get("target-column")
+
+    if not user_context or not data_table or not target_column:
+        raise CommandError(
+            "/ml plan requires --context, --data-table, and --target-column"
+        )
+
+    ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
+
+    # Prepare conversation history
+    conversation_history = agent._prepare_conversation_for_ml_plan()
+
+    # Execute ML plan tool
+    result = await agent.ml_plan_tool.execute(
+        user_context=str(user_context),
+        data_table=str(data_table),
+        target_column=str(target_column),
+        conversation_history=conversation_history,
+        feedback=None,
+        previous_plan=agent.current_ml_plan,
+    )
+
+    if result.success:
+        # Store the new plan
+        if result.metadata and "ml_plan" in result.metadata:
+            agent.current_ml_plan = result.metadata["ml_plan"]
+
+        # Display assistant's question
+        if result.output:
+            ui.show_info(result.output)
+    else:
+        raise CommandError(f"Failed to create ML plan: {result.error}")
+
+
+async def _ml_revise_plan(
+    args: list[str], ui: InteractiveInterface, agent: "ArcAgent | None"
+) -> None:
+    """Revise the current ML workflow plan based on feedback."""
+    if not agent:
+        raise CommandError("Agent not available for ML planning")
+
+    if not agent.ml_plan_tool:
+        raise CommandError(
+            "ML plan tool not available. Database services not initialized."
+        )
+
+    if not agent.current_ml_plan:
+        raise CommandError(
+            "No current ML plan to revise. Create a plan first with /ml plan"
+        )
+
+    options = _parse_options(
+        args,
+        {
+            "feedback": True,
+        },
+    )
+
+    feedback = options.get("feedback")
+
+    if not feedback:
+        raise CommandError("/ml revise-plan requires --feedback")
+
+    ui.show_info("🤖 Revising ML plan based on feedback...")
+
+    # Get context from current plan
+    from arc.core.ml_plan import MLPlan
+
+    current_plan_obj = MLPlan.from_dict(agent.current_ml_plan)
+    user_context = current_plan_obj.summary
+    data_table = agent.current_ml_plan.get("data_table", "")
+    target_column = agent.current_ml_plan.get("target_column", "")
+
+    # If data_table/target_column not in plan, we need to ask for them
+    if not data_table or not target_column:
+        raise CommandError(
+            "Current plan missing data table or target column information. "
+            "Please create a new plan with /ml plan"
+        )
+
+    # Prepare conversation history
+    conversation_history = agent._prepare_conversation_for_ml_plan()
+
+    # Execute ML plan tool with feedback
+    result = await agent.ml_plan_tool.execute(
+        user_context=user_context,
+        data_table=data_table,
+        target_column=target_column,
+        conversation_history=conversation_history,
+        feedback=str(feedback),
+        previous_plan=agent.current_ml_plan,
+    )
+
+    if result.success:
+        # Store the revised plan
+        if result.metadata and "ml_plan" in result.metadata:
+            agent.current_ml_plan = result.metadata["ml_plan"]
+
+        # Display assistant's question
+        if result.output:
+            ui.show_info(result.output)
+    else:
+        raise CommandError(f"Failed to revise ML plan: {result.error}")
 
 
 def _ml_create_model(
@@ -421,7 +556,10 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
 
 
 async def _ml_generate_model(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+    args: list[str],
+    ui: InteractiveInterface,
+    runtime: "MLRuntime",
+    agent: "ArcAgent | None" = None,
 ) -> None:
     """Handle model specification generation command."""
     options = _parse_options(
@@ -432,6 +570,7 @@ async def _ml_generate_model(
             "data-table": True,
             "output": True,
             "target-column": True,  # Target column for task-aware generation
+            "use-plan": False,  # Flag to use current ML plan
         },
     )
 
@@ -440,6 +579,17 @@ async def _ml_generate_model(
     data_table = options.get("data-table")
     output_path = options.get("output")
     target_column = options.get("target-column")
+    use_plan = options.get("use-plan", False)
+
+    # If use-plan is set and agent has a plan, use it
+    ml_plan = None
+    if use_plan and agent and agent.current_ml_plan:
+        ml_plan = agent.current_ml_plan
+        ui.show_info("📊 Using current ML plan for model generation")
+    elif use_plan and (not agent or not agent.current_ml_plan):
+        raise CommandError(
+            "No ML plan available. Create a plan first with /ml plan or omit --use-plan"
+        )
 
     if not name or not context or not data_table:
         raise CommandError(
@@ -473,6 +623,7 @@ async def _ml_generate_model(
             data_table=data_table,
             target_column=target_column,
             output_path=output_path,
+            ml_plan=ml_plan,  # Pass ML plan if available
         )
 
         if not result.success:
@@ -865,7 +1016,9 @@ async def run_interactive_mode(
                 # Handle system commands (only with / prefix)
                 if user_input.startswith("/"):
                     if user_input.startswith("/ml"):
-                        await handle_ml_command(user_input, ui, services.ml_runtime)
+                        await handle_ml_command(
+                            user_input, ui, services.ml_runtime, agent
+                        )
                         continue
 
                     cmd = user_input[

@@ -13,6 +13,7 @@ class ToolResult:
     output: str | None = None
     error: str | None = None
     recovery_actions: str | None = None
+    metadata: dict[str, Any] | None = None
 
     @classmethod
     def success_result(cls, output: str = "Success") -> "ToolResult":

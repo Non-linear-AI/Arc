@@ -17,6 +17,7 @@ from arc.tools import (
     FileEditorTool,
     MLCreateModelTool,
     MLModelGeneratorTool,
+    MLPlanTool,
     MLPredictorGeneratorTool,
     MLPredictTool,
     MLTrainerGeneratorTool,
@@ -100,6 +101,12 @@ class ArcAgent:
         # stay consistent
         self.current_model_name = self.arc_client.get_current_model()
 
+        # ML Plan management - stores current plan across workflow
+        self.current_ml_plan: dict | None = None
+        self.ml_plan_auto_accept: bool = False  # Session-scoped auto-accept flag
+        # Track timestamp for filtering conversation history in revisions
+        self.last_ml_plan_timestamp: datetime | None = None
+
         # Initialize tools
         self.file_editor = FileEditorTool()
         self.bash_tool = BashTool()
@@ -112,6 +119,18 @@ class ArcAgent:
         )
         self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
+        self.ml_plan_tool = (
+            MLPlanTool(
+                services,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+                self.ui_interface,
+                agent=self,  # Pass agent reference for auto_accept flag
+            )
+            if services
+            else None
+        )
         self.ml_model_generator_tool = (
             MLModelGeneratorTool(
                 services,
@@ -604,13 +623,50 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML predict tool not available. Database services not initialized."
                 )
+            elif tool_call.name == "ml_plan":
+                if self.ml_plan_tool:
+                    # Prepare conversation history for the planner
+                    # For initial: all history. For revisions: messages since last plan
+                    conversation_history = self._prepare_conversation_for_ml_plan(
+                        from_timestamp=self.last_ml_plan_timestamp
+                        if self.current_ml_plan
+                        else None
+                    )
+
+                    # Execute with current plan for revisions
+                    result = await self.ml_plan_tool.execute(
+                        user_context=args.get("user_context"),
+                        data_table=args.get("data_table"),
+                        target_column=args.get("target_column"),
+                        conversation_history=conversation_history,
+                        feedback=args.get("feedback"),
+                        previous_plan=self.current_ml_plan,
+                    )
+
+                    # Store the new plan and track timestamp if successful
+                    if (
+                        result.success
+                        and result.metadata
+                        and "ml_plan" in result.metadata
+                    ):
+                        self.current_ml_plan = result.metadata["ml_plan"]
+                        # Track current timestamp for next revision
+                        self.last_ml_plan_timestamp = datetime.now()
+
+                    return result
+                return ToolResult.error_result(
+                    "ML plan tool not available. Database services not initialized."
+                )
             elif tool_call.name == "ml_model_generator":
                 if self.ml_model_generator_tool:
                     return await self.ml_model_generator_tool.execute(
                         name=args.get("name"),
                         context=args.get("context"),
                         data_table=args.get("data_table"),
+                        target_column=args.get("target_column"),
                         output_path=args.get("output_path"),
+                        category=args.get("category"),
+                        ml_plan=self.current_ml_plan,  # Pass current plan
                     )
                 return ToolResult.error_result(
                     "ML model generator tool not available. "
@@ -664,6 +720,36 @@ class ArcAgent:
         """Execute a tool call (alias for _execute_tool)."""
         return await self._execute_tool(tool_call)
 
+    def _prepare_conversation_for_ml_plan(
+        self, from_timestamp: datetime | None = None
+    ) -> list[dict]:
+        """Prepare conversation history for ML plan tool.
+
+        Converts chat history to a simplified format suitable for ML planning.
+        For revisions, only includes messages after the last ML plan timestamp
+        to avoid context pollution. For initial plans, includes all history.
+
+        Args:
+            from_timestamp: Timestamp to filter messages from (for revisions).
+                           If None, includes all conversation history (initial plan).
+
+        Returns:
+            List of conversation messages
+        """
+        conversation = []
+
+        for entry in self.chat_history:
+            # For revisions, only include messages after the last plan timestamp
+            if from_timestamp and entry.timestamp <= from_timestamp:
+                continue
+
+            if entry.type == "user":
+                conversation.append({"role": "user", "content": entry.content})
+            elif entry.type == "assistant" and entry.content:
+                conversation.append({"role": "assistant", "content": entry.content})
+
+        return conversation
+
     def get_chat_history(self) -> list[ChatEntry]:
         """Get the complete chat history."""
         return self.chat_history.copy()
@@ -685,6 +771,8 @@ class ArcAgent:
         self.arc_client.set_model(model)
         self.token_counter = TokenCounter(model)
         self.current_model_name = model
+        if getattr(self, "ml_plan_tool", None):
+            self.ml_plan_tool.model = model
         if getattr(self, "ml_model_generator_tool", None):
             self.ml_model_generator_tool.model = model
         if getattr(self, "ml_trainer_generator_tool", None):
