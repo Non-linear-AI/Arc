@@ -63,6 +63,14 @@ class MLPlanConfirmationWorkflow:
             # Get user choice with arrow key selection
             choice = await self.ui._printer.get_choice_async(options, default="accept")
 
+            # Validate choice
+            valid_choices = {"accept", "accept_all", "feedback", "cancel"}
+            if choice not in valid_choices:
+                raise ValueError(
+                    f"Invalid workflow choice: '{choice}'. "
+                    f"Expected one of: {valid_choices}"
+                )
+
             if choice == "accept":
                 return {"choice": "accept"}
             elif choice == "accept_all":
@@ -76,9 +84,6 @@ class MLPlanConfirmationWorkflow:
                 return {"choice": "feedback", "feedback": feedback}
             elif choice == "cancel":
                 return {"choice": "cancel"}
-            else:
-                # Default to accept
-                return {"choice": "accept"}
 
         finally:
             # Reset prompt state

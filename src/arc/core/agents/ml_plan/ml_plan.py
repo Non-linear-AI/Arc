@@ -32,7 +32,6 @@ class MLPlanAgent(BaseAgent):
             model: Optional model name
         """
         super().__init__(services, api_key, base_url, model)
-        self.conversation_memory: list[dict[str, Any]] = []
 
     def get_template_directory(self) -> Path:
         """Get the template directory for ML planning.
@@ -94,47 +93,30 @@ class MLPlanAgent(BaseAgent):
             "target_column": target_column,
             "conversation_history": conversation_history,
             "feedback": feedback,
-            "available_components": ["mlp", "dcn", "transformer", "mmoe"],
-            "component_descriptions": {
-                "mlp": "Multi-Layer Perceptron for tabular data, feature processing, "
-                "classification/regression",
-                "transformer": "Attention-based architecture for sequential data, "
-                "complex patterns, temporal modeling",
-                "dcn": "Deep & Cross Network for feature interactions, CTR prediction, "
-                "recommendation systems",
-                "mmoe": "Multi-gate Mixture of Experts for multi-task learning, "
-                "shared representations",
-            },
         }
 
         # Generate analysis using LLM
         try:
             if stream:
                 # Return streaming generator
-                return self._analyze_problem_stream(context, user_context, feedback)
+                return self._analyze_problem_stream(context)
             else:
                 # Non-streaming: return complete result
                 analysis_result = await self._generate_analysis_with_validation(context)
-
-                # Update conversation memory
-                self.conversation_memory.append(
-                    {
-                        "user_context": user_context,
-                        "feedback": feedback,
-                        "selected_components": analysis_result.get(
-                            "selected_components"
-                        ),
-                        "summary": analysis_result.get("summary"),
-                    }
-                )
-
                 return analysis_result
 
         except Exception as e:
             raise MLPlanError(f"Failed to analyze problem: {str(e)}") from e
 
-    async def _analyze_problem_stream(self, context, user_context, feedback):
-        """Stream the analysis with final result."""
+    async def _analyze_problem_stream(self, context):
+        """Stream the analysis with final result.
+
+        Args:
+            context: Analysis context
+
+        Yields:
+            Streaming chunks and final analysis result
+        """
         analysis_result = None
         async for chunk in self._generate_analysis_with_streaming(context):
             if isinstance(chunk, dict) and chunk.get("type") == "analysis_complete":
@@ -142,17 +124,8 @@ class MLPlanAgent(BaseAgent):
             else:
                 yield chunk
 
-        # Update conversation memory after streaming completes
+        # Yield the final analysis
         if analysis_result:
-            self.conversation_memory.append(
-                {
-                    "user_context": user_context,
-                    "feedback": feedback,
-                    "selected_components": analysis_result.get("selected_components"),
-                    "summary": analysis_result.get("summary"),
-                }
-            )
-            # Yield the final analysis
             yield {"type": "analysis_complete", "analysis": analysis_result}
 
     async def _generate_analysis_with_validation(
@@ -245,9 +218,23 @@ class MLPlanAgent(BaseAgent):
 
             return result
 
-        except (yaml.YAMLError, ValueError) as e:
+        except yaml.YAMLError as e:
+            # Truncate response for error message to avoid token waste
+            response_preview = (
+                response[:200] + "..." if len(response) > 200 else response
+            )
             raise MLPlanError(
-                f"Failed to parse analysis response: {str(e)}\nResponse: {response}"
+                f"Failed to parse YAML from LLM response: {str(e)}\n"
+                f"Response preview: {response_preview}\n"
+                f"Ensure the LLM returns valid YAML without markdown code fences."
+            ) from e
+        except ValueError as e:
+            # Missing required fields
+            raise MLPlanError(
+                f"Invalid ML plan structure: {str(e)}\n"
+                f"The plan must include all required sections: "
+                f"summary, feature_engineering, model_architecture_and_loss, "
+                f"training_configuration, and evaluation."
             ) from e
 
     async def _get_unified_data_profile(

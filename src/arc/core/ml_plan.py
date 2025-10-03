@@ -153,8 +153,6 @@ class MLPlan:
 class MLPlanDiff:
     """Represents differences between two ML plans."""
 
-    components_added: list[str] = field(default_factory=list)
-    components_removed: list[str] = field(default_factory=list)
     summary_changed: bool = False
     feature_engineering_changed: bool = False
     architecture_changed: bool = False
@@ -176,9 +174,7 @@ class MLPlanDiff:
     def has_changes(self) -> bool:
         """Check if there are any changes."""
         return (
-            bool(self.components_added)
-            or bool(self.components_removed)
-            or self.summary_changed
+            self.summary_changed
             or self.feature_engineering_changed
             or self.architecture_changed
             or self.training_config_changed
@@ -223,28 +219,6 @@ class MLPlanDiff:
                 [
                     "**Summary**",
                     new_plan.summary,
-                    "",
-                ]
-            )
-
-        # Components
-        if self.components_added or self.components_removed:
-            lines.append("**Selected Components** *(Changed)*")
-            comp_list = []
-            for comp in self.components_removed:
-                comp_list.append(f"~~`{comp}`~~ *(removed)*")
-            for comp in new_plan.selected_components:
-                if comp in self.components_added:
-                    comp_list.append(f"`{comp}` *(added)*")
-                else:
-                    comp_list.append(f"`{comp}`")
-            lines.append(", ".join(comp_list))
-            lines.append("")
-        else:
-            lines.extend(
-                [
-                    "**Selected Components**",
-                    f"`{', '.join(new_plan.selected_components)}`",
                     "",
                 ]
             )
@@ -376,12 +350,6 @@ def compute_plan_diff(old_plan: dict | MLPlan, new_plan: MLPlan) -> MLPlanDiff:
         old_plan = MLPlan.from_dict(old_plan)
 
     diff = MLPlanDiff()
-
-    # Component changes
-    old_components = set(old_plan.selected_components)
-    new_components = set(new_plan.selected_components)
-    diff.components_added = list(new_components - old_components)
-    diff.components_removed = list(old_components - new_components)
 
     # Text field changes
     if old_plan.summary != new_plan.summary:

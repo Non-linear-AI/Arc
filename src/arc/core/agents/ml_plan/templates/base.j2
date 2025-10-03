@@ -7,12 +7,7 @@ Analyze the user's ML problem and provide **end-to-end guidance** covering:
 3. **Training Configuration**: Loss functions, metrics, optimizers, and training strategies
 4. **Model Details**: Activation functions, regularization, and key hyperparameters
 
-Your analysis should provide a complete blueprint for training a model from scratch, covering everything from raw data to a trained predictor. Think like an ML engineer planning the entire workflow, not just selecting architecture components.
-
-## Available Components
-{% for component, description in component_descriptions.items() %}
-- **{{ component }}**: {{ description }}
-{% endfor %}
+Your analysis should provide a complete blueprint for training a model from scratch, covering everything from raw data to a trained predictor. Think like an ML engineer planning the entire workflow, describing the architecture in detail.
 
 ## User Request
 **Context**: {{ user_context }}
@@ -61,31 +56,32 @@ Please distill key insights from this conversation including:
 {% endif %}
 
 ## Analysis Framework
-Consider these factors for component selection:
+Consider these factors for architecture design:
 
 ### 1. Task Type Analysis
-- **Classification/Regression**: Determine primary task complexity
-- **Sequential Patterns**: Check for time-series, sequences, temporal dependencies
-- **Feature Interactions**: Assess need for cross-feature learning
+- **Classification/Regression**: Determine primary task complexity and output structure
+- **Sequential Patterns**: Identify time-series, sequences, or temporal dependencies
+- **Feature Interactions**: Assess the need for cross-feature learning and embeddings
 - **Multi-task Requirements**: Identify multiple objectives or outputs
 
-### 2. Data Pattern Recognition
-- **Tabular Features** → MLP candidates
-- **Sequential/Temporal Data** → Transformer candidates
-- **Sparse High-Cardinality Categorical** → DCN candidates
-- **Multi-objective Tasks** → MMoE candidates
+### 2. Architecture Design Considerations
+- **Layer Types**: Choose appropriate layer types (Dense, LSTM, Conv, Attention, etc.)
+- **Network Depth**: Determine number of layers based on problem complexity
+- **Layer Dimensions**: Size hidden layers appropriately for the dataset
+- **Activation Functions**: Select activations (ReLU, tanh, sigmoid, etc.) for each layer type
+- **Specialized Modules**: Consider feature crossing, attention mechanisms, or expert networks
 
-### 3. Architecture Synergy
-- **MLP + Transformer**: Sequential data + tabular features
-- **MLP + DCN**: Feature interactions + classification
-- **Transformer + DCN**: Sequential patterns + feature crossing
-- **MMoE + Others**: Multi-task scenarios with shared representations
+### 3. Data-Driven Decisions
+- **Tabular Data**: Multi-layer perceptrons with batch normalization and dropout
+- **Sequential Data**: Recurrent layers (LSTM/GRU) or Transformers with positional encoding
+- **Categorical Features**: Embeddings for high-cardinality, one-hot for low-cardinality
+- **Feature Interactions**: Cross-product layers or interaction modules
 
 ### 4. Constraint Considerations
-- **Interpretability needs**: Prefer simpler architectures (MLP, DCN)
-- **Computational limits**: Avoid complex transformers
-- **Real-time inference**: Lightweight models preferred
-- **Complexity tolerance**: Balance between capability and simplicity
+- **Interpretability**: Simpler architectures with fewer layers, avoid deep ensembles
+- **Computational Budget**: Layer count and dimension trade-offs
+- **Real-time Inference**: Lightweight architectures, avoid heavy attention mechanisms
+- **Training Time**: Balance between model capacity and convergence speed
 
 ## Required Output Format (YAML)
 

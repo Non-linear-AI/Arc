@@ -635,55 +635,52 @@ class MLPlanTool(BaseTool):
                 # Auto-accept mode - skip workflow
                 pass  # Continue to generate plan but skip confirmation
 
-            # Filter conversation history by timestamp for revisions
-            # Only include messages since last plan (to avoid context pollution)
-            filtered_history = conversation_history
-            if previous_plan and "created_at" in previous_plan:
-                try:
-                    # For now, just use recent messages (simple approach)
-                    # TODO: Filter by timestamp when message timestamps are available
-                    filtered_history = conversation_history[-10:]  # Last 10 messages
-                except Exception:
-                    # If filtering fails, use all history
-                    filtered_history = conversation_history
+            # Note: conversation_history is already sliced by the agent from the
+            # last ML plan tool call for revisions to avoid context pollution
 
             # Internal loop for handling feedback (option C)
             current_feedback = feedback
             version = previous_plan.get("version", 0) + 1 if previous_plan else 1
 
             while True:
-                # Generate the plan
-                analysis = await agent.analyze_problem(
-                    user_context=str(user_context),
-                    table_name=str(data_table),
-                    target_column=str(target_column),
-                    conversation_history=filtered_history,
-                    feedback=current_feedback,
-                    stream=False,
-                )
-
-                # Determine stage
-                if previous_plan:
-                    stage = previous_plan.get("stage", "initial")
-                    if current_feedback and "training" in str(current_feedback).lower():
-                        stage = "post_training"
-                    elif (
-                        current_feedback
-                        and "evaluation" in str(current_feedback).lower()
-                    ):
-                        stage = "post_evaluation"
-                    reason = (
-                        f"Revised based on feedback: {current_feedback[:100]}..."
-                        if current_feedback
-                        else "Plan revision"
+                try:
+                    # Generate the plan
+                    analysis = await agent.analyze_problem(
+                        user_context=str(user_context),
+                        table_name=str(data_table),
+                        target_column=str(target_column),
+                        conversation_history=conversation_history,
+                        feedback=current_feedback,
+                        stream=False,
                     )
-                else:
-                    stage = "initial"
-                    reason = None
 
-                plan = MLPlan.from_analysis(
-                    analysis, version=version, stage=stage, reason=reason
-                )
+                    # Determine stage
+                    if previous_plan:
+                        stage = previous_plan.get("stage", "initial")
+                        feedback_lower = str(current_feedback).lower()
+                        if current_feedback and "training" in feedback_lower:
+                            stage = "post_training"
+                        elif current_feedback and "evaluation" in feedback_lower:
+                            stage = "post_evaluation"
+                        reason = (
+                            f"Revised based on feedback: {current_feedback[:100]}..."
+                            if current_feedback
+                            else "Plan revision"
+                        )
+                    else:
+                        stage = "initial"
+                        reason = None
+
+                    plan = MLPlan.from_analysis(
+                        analysis, version=version, stage=stage, reason=reason
+                    )
+
+                except Exception as e:
+                    # Handle errors during plan generation
+                    error_msg = f"Failed to generate ML plan: {str(e)}"
+                    if self.ui:
+                        self.ui._printer.console.print(f"[red]❌ {error_msg}[/red]")
+                    return ToolResult.error_result(error_msg)
 
                 # If auto-accept is enabled, skip workflow
                 if self.agent and self.agent.ml_plan_auto_accept:
@@ -694,12 +691,17 @@ class MLPlanTool(BaseTool):
                 if self.ui:
                     from arc.utils.ml_plan_workflow import MLPlanConfirmationWorkflow
 
-                    workflow = MLPlanConfirmationWorkflow(self.ui)
-                    result = await workflow.run_workflow(
-                        plan, previous_plan is not None
-                    )
-
-                    choice = result.get("choice")
+                    try:
+                        workflow = MLPlanConfirmationWorkflow(self.ui)
+                        result = await workflow.run_workflow(
+                            plan, previous_plan is not None
+                        )
+                        choice = result.get("choice")
+                    except Exception as e:
+                        # Handle workflow errors
+                        error_msg = f"Workflow execution failed: {str(e)}"
+                        self.ui._printer.console.print(f"[red]❌ {error_msg}[/red]")
+                        return ToolResult.error_result(error_msg)
 
                     if choice == "accept":
                         output_message = (
