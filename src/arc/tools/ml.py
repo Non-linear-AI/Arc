@@ -635,8 +635,9 @@ class MLPlanTool(BaseTool):
                 # Auto-accept mode - skip workflow
                 pass  # Continue to generate plan but skip confirmation
 
-            # Note: conversation_history is already sliced by the agent from the
-            # last ML plan tool call for revisions to avoid context pollution
+            # Note: conversation_history is already filtered by the agent using
+            # timestamps. For revisions, only messages after the last plan are included.
+            # For initial plans, all conversation history is included.
 
             # Internal loop for handling feedback (option C)
             current_feedback = feedback

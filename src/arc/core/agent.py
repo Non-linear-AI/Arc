@@ -104,7 +104,8 @@ class ArcAgent:
         # ML Plan management - stores current plan across workflow
         self.current_ml_plan: dict | None = None
         self.ml_plan_auto_accept: bool = False  # Session-scoped auto-accept flag
-        self.last_ml_plan_chat_index: int = -1  # Track conversation index for slicing
+        # Track timestamp for filtering conversation history in revisions
+        self.last_ml_plan_timestamp: datetime | None = None
 
         # Initialize tools
         self.file_editor = FileEditorTool()
@@ -625,11 +626,11 @@ class ArcAgent:
             elif tool_call.name == "ml_plan":
                 if self.ml_plan_tool:
                     # Prepare conversation history for the planner
-                    # Slice from last ML plan tool call for revisions
+                    # For initial: all history. For revisions: messages since last plan
                     conversation_history = self._prepare_conversation_for_ml_plan(
-                        from_index=self.last_ml_plan_chat_index
+                        from_timestamp=self.last_ml_plan_timestamp
                         if self.current_ml_plan
-                        else 0
+                        else None
                     )
 
                     # Execute with current plan for revisions
@@ -642,15 +643,15 @@ class ArcAgent:
                         previous_plan=self.current_ml_plan,
                     )
 
-                    # Store the new plan and track chat index if successful
+                    # Store the new plan and track timestamp if successful
                     if (
                         result.success
                         and result.metadata
                         and "ml_plan" in result.metadata
                     ):
                         self.current_ml_plan = result.metadata["ml_plan"]
-                        # Track current chat history length for next revision
-                        self.last_ml_plan_chat_index = len(self.chat_history)
+                        # Track current timestamp for next revision
+                        self.last_ml_plan_timestamp = datetime.now()
 
                     return result
                 return ToolResult.error_result(
@@ -719,30 +720,34 @@ class ArcAgent:
         """Execute a tool call (alias for _execute_tool)."""
         return await self._execute_tool(tool_call)
 
-    def _prepare_conversation_for_ml_plan(self, from_index: int = 0) -> list[dict]:
+    def _prepare_conversation_for_ml_plan(
+        self, from_timestamp: datetime | None = None
+    ) -> list[dict]:
         """Prepare conversation history for ML plan tool.
 
         Converts chat history to a simplified format suitable for ML planning.
-        For revisions, slices from the last ML plan tool call to avoid context
-        pollution.
+        For revisions, only includes messages after the last ML plan timestamp
+        to avoid context pollution. For initial plans, includes all history.
 
         Args:
-            from_index: Start index for conversation slicing (for revisions)
+            from_timestamp: Timestamp to filter messages from (for revisions).
+                           If None, includes all conversation history (initial plan).
 
         Returns:
             List of conversation messages
         """
         conversation = []
-        # Slice from the last ML plan tool call for revisions
-        history_slice = (
-            self.chat_history[from_index:] if from_index > 0 else self.chat_history
-        )
 
-        for entry in history_slice:
+        for entry in self.chat_history:
+            # For revisions, only include messages after the last plan timestamp
+            if from_timestamp and entry.timestamp <= from_timestamp:
+                continue
+
             if entry.type == "user":
                 conversation.append({"role": "user", "content": entry.content})
             elif entry.type == "assistant" and entry.content:
                 conversation.append({"role": "assistant", "content": entry.content})
+
         return conversation
 
     def get_chat_history(self) -> list[ChatEntry]:
