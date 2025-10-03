@@ -75,8 +75,8 @@ class TrainingConfig:
 class TrainerSpec:
     """Complete trainer specification."""
 
+    model_ref: str  # Reference to model ID (e.g., "diabetes-logistic-v1")
     optimizer: OptimizerConfig
-    loss: LossConfig
 
     # Flattened config properties for direct access
     epochs: int = 10
@@ -108,6 +108,11 @@ class TrainerSpec:
         # Validate the trainer structure
         validate_trainer_dict(data)
 
+        # Parse model reference (required)
+        model_ref = data.get("model_ref")
+        if not model_ref:
+            raise ValueError("trainer.model_ref is required")
+
         # Parse optimizer
         optimizer_data = data["optimizer"]
         optimizer = OptimizerConfig(
@@ -116,20 +121,12 @@ class TrainerSpec:
             params=optimizer_data.get("params"),
         )
 
-        # Parse loss
-        loss_data = data["loss"]
-        loss = LossConfig(
-            type=loss_data["type"],
-            inputs=loss_data.get("inputs"),
-            params=loss_data.get("params"),
-        )
-
         # Parse config if present
         config_data = data.get("config", {})
 
         return cls(
+            model_ref=str(model_ref),
             optimizer=optimizer,
-            loss=loss,
             epochs=config_data.get("epochs", 10),
             batch_size=config_data.get("batch_size", 32),
             learning_rate=config_data.get("learning_rate", 0.001),
@@ -162,8 +159,8 @@ class TrainerSpec:
             YAML string representation of the trainer specification
         """
         data = {
+            "model_ref": self.model_ref,
             "optimizer": asdict(self.optimizer),
-            "loss": asdict(self.loss),
             "config": {
                 "epochs": self.epochs,
                 "batch_size": self.batch_size,

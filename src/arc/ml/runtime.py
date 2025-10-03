@@ -42,6 +42,7 @@ class MLRuntime:
     def __init__(self, services: ServiceContainer, artifacts_dir: Path | None = None):
         self.services = services
         self.model_service = services.models
+        self.trainer_service = services.trainers
         self.job_service = services.jobs
         self.ml_data_service = services.ml_data
 
@@ -109,43 +110,174 @@ class MLRuntime:
 
         return model
 
+    def create_trainer(
+        self,
+        *,
+        name: str,
+        model_name: str,
+        schema_path: Path | None = None,
+        schema_yaml: str | None = None,
+        description: str | None = None,
+    ):
+        """Register a new Arc-Graph trainer specification.
+
+        Args:
+            name: Trainer name
+            model_name: Name of the model this trainer is for
+            schema_path: Path to trainer YAML (optional if schema_yaml provided)
+            schema_yaml: Trainer YAML as string (optional if schema_path provided)
+            description: Optional description
+
+        Returns:
+            Trainer object
+
+        Raises:
+            MLRuntimeError: If trainer registration fails
+        """
+        from arc.database.models.trainer import Trainer
+        from arc.graph.trainer import TrainerSpec
+
+        _validate_model_name(name)
+
+        # Get schema text from either path or direct YAML
+        if schema_yaml:
+            schema_text = schema_yaml
+        elif schema_path:
+            schema_file = schema_path.expanduser()
+            if not schema_file.exists():
+                raise MLRuntimeError(f"Schema file not found: {schema_file}")
+
+            try:
+                schema_text = schema_file.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise MLRuntimeError(f"Failed to read schema file: {exc}") from exc
+        else:
+            raise MLRuntimeError("Either schema_path or schema_yaml must be provided")
+
+        # Parse and validate trainer spec
+        try:
+            trainer_spec = TrainerSpec.from_yaml(schema_text)
+        except Exception as exc:  # noqa: BLE001
+            raise MLRuntimeError(f"Invalid trainer schema: {exc}") from exc
+
+        # Get the model this trainer references
+        model_record = self.model_service.get_latest_model_by_name(model_name)
+        if model_record is None:
+            raise MLRuntimeError(
+                f"Model '{model_name}' not found. "
+                f"Create the model first with /ml create-model."
+            )
+
+        # Validate that trainer's model_ref matches the model
+        # The model_ref in the trainer spec should match the model ID
+        expected_model_ref = model_record.id
+        if trainer_spec.model_ref != expected_model_ref:
+            raise MLRuntimeError(
+                f"Trainer model_ref '{trainer_spec.model_ref}' does not match "
+                f"model ID '{expected_model_ref}'. "
+                f"Update the trainer YAML to use model_ref: {expected_model_ref}"
+            )
+
+        # Check version and generate new trainer ID
+        latest = self.trainer_service.get_latest_trainer_by_name(name)
+        version = 1 if latest is None else latest.version + 1
+        base_slug = _slugify_name(name)
+        trainer_id = f"{base_slug}-v{version}"
+
+        now = datetime.now(UTC)
+        trainer = Trainer(
+            id=trainer_id,
+            name=name,
+            version=version,
+            model_id=model_record.id,
+            model_version=model_record.version,
+            spec=schema_text,
+            description=description or "",
+            created_at=now,
+            updated_at=now,
+        )
+
+        try:
+            self.trainer_service.create_trainer(trainer)
+        except DatabaseError as exc:
+            raise MLRuntimeError(f"Failed to register trainer: {exc}") from exc
+
+        return trainer
+
     def train_model(
         self,
         *,
         model_name: str,
+        trainer_name: str,
         train_table: str,
-        target_column: str | None = None,
         validation_table: str | None = None,
-        validation_split: float | None = None,
-        epochs: int | None = None,
-        batch_size: int | None = None,
-        learning_rate: float | None = None,
         checkpoint_dir: str | None = None,
         description: str | None = None,
         tags: list[str] | None = None,
     ) -> str:
-        """Submit a training job for the given model and dataset."""
+        """Submit a training job using registered model and trainer.
+
+        Args:
+            model_name: Name of the registered model
+            trainer_name: Name of the registered trainer
+            train_table: Training data table
+            validation_table: Optional validation table
+            checkpoint_dir: Optional checkpoint directory
+            description: Optional job description
+            tags: Optional job tags
+
+        Returns:
+            Job ID
+
+        Raises:
+            MLRuntimeError: If model or trainer not found or validation fails
+        """
+        from arc.graph.trainer import TrainerSpec
+
         _validate_model_name(model_name)
+        _validate_model_name(trainer_name)
 
         train_table = str(train_table)
         validation_table = str(validation_table) if validation_table else None
 
+        # Get registered model
         model_record = self.model_service.get_latest_model_by_name(model_name)
         if model_record is None:
             raise MLRuntimeError(
-                f"Model '{model_name}' not found. Use create-model first."
+                f"Model '{model_name}' not found. Use /ml create-model first."
             )
 
         if not model_record.spec:
             raise MLRuntimeError("Stored model is missing specification; cannot train.")
 
+        # Get registered trainer
+        trainer_record = self.trainer_service.get_latest_trainer_by_name(trainer_name)
+        if trainer_record is None:
+            raise MLRuntimeError(
+                f"Trainer '{trainer_name}' not found. Use /ml create-trainer first."
+            )
+
+        # Parse specs
         try:
-            # Use the model spec stored in the model record
             model_spec = ModelSpec.from_yaml(model_record.spec)
-        except Exception as exc:  # noqa: BLE001 - rewrap into runtime error
+        except Exception as exc:  # noqa: BLE001
             raise MLRuntimeError(
                 f"Failed to load model spec from stored record: {exc}"
             ) from exc
+
+        try:
+            trainer_spec = TrainerSpec.from_yaml(trainer_record.spec)
+        except Exception as exc:  # noqa: BLE001
+            raise MLRuntimeError(
+                f"Failed to load trainer spec from stored record: {exc}"
+            ) from exc
+
+        # Validate trainer is for this model
+        if trainer_spec.model_ref != model_record.id:
+            raise MLRuntimeError(
+                f"Trainer '{trainer_name}' (model_ref={trainer_spec.model_ref}) "
+                f"is not compatible with model '{model_name}' (id={model_record.id})"
+            )
 
         # Extract feature columns from model spec inputs
         feature_columns = []
@@ -163,17 +295,23 @@ class MLRuntime:
                 f"Training table '{train_table}' does not exist in user DB"
             )
 
-        resolved_target = target_column
-        if not resolved_target:
-            # In the new model spec structure, target column must be provided explicitly
-            # since model specs focus on architecture rather than data preprocessing
+        # Extract target column from model spec loss function
+        if not model_spec.loss or not model_spec.loss.inputs:
             raise MLRuntimeError(
-                "Target column must be provided explicitly when starting training."
+                "Model spec must define a loss function with inputs "
+                "to determine target column"
+            )
+
+        target_column = model_spec.loss.inputs.get("target")
+        if not target_column:
+            raise MLRuntimeError(
+                "Model spec loss function must define 'target' input "
+                "to specify target column"
             )
 
         columns_to_check = list(feature_columns)
-        if resolved_target not in columns_to_check:
-            columns_to_check.append(resolved_target)
+        if target_column not in columns_to_check:
+            columns_to_check.append(target_column)
 
         missing = [
             column
@@ -188,23 +326,7 @@ class MLRuntime:
                 f"Training table is missing required column(s): {missing_list}"
             )
 
-        overrides: dict[str, float | int] = {}
-        if epochs is not None:
-            overrides["epochs"] = epochs
-        if batch_size is not None:
-            overrides["batch_size"] = batch_size
-        if learning_rate is not None:
-            overrides["learning_rate"] = learning_rate
-        if validation_split is not None:
-            overrides["validation_split"] = validation_split
-
-        # Extract training parameters for job config
-        training_epochs = overrides.get("epochs", 10)
-        training_batch_size = overrides.get("batch_size", 32)
-        training_learning_rate = overrides.get("learning_rate", 0.001)
-
-        resolved_validation_split = overrides.get("validation_split", 0.2)
-
+        # Use validation table if provided, otherwise use validation_split from trainer
         if validation_table and not self.ml_data_service.dataset_exists(
             validation_table
         ):
@@ -220,22 +342,27 @@ class MLRuntime:
         if record_version is None:
             record_version = model_record.version
 
+        # Create job config using trainer spec values
         job_config = TrainingJobConfig(
             model_id=model_key,
             model_version=record_version,
             model_name=model_record.name,
+            trainer_id=trainer_record.id,
+            trainer_version=trainer_record.version,
             train_table=train_table,
-            target_column=resolved_target,
-            model_spec=model_spec,  # Pass model spec
+            target_column=target_column,
+            model_spec=model_spec,
+            trainer_spec=trainer_spec,
             feature_columns=list(feature_columns),
             validation_table=validation_table,
-            validation_split=resolved_validation_split,
-            epochs=training_epochs,
-            batch_size=training_batch_size,
-            learning_rate=training_learning_rate,
+            validation_split=trainer_spec.validation_split,
+            epochs=trainer_spec.epochs,
+            batch_size=trainer_spec.batch_size,
+            learning_rate=trainer_spec.learning_rate,
             artifacts_dir=str(self.artifacts_root),
             checkpoint_dir=checkpoint_path,
-            description=description or "Training job",
+            description=description
+            or f"Training {model_record.name} with {trainer_record.name}",
             tags=tags,
         )
 

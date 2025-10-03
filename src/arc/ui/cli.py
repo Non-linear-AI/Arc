@@ -12,9 +12,7 @@ import click
 from dotenv import load_dotenv
 
 from arc.core import ArcAgent, SettingsManager
-from arc.core.agents import TrainerGeneratorAgent
 from arc.core.agents.predictor_generator import PredictorGeneratorAgent
-from arc.core.agents.trainer_generator.trainer_generator import TrainerGeneratorError
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
 from arc.graph.features.data_source import DataSourceSpec
@@ -241,6 +239,8 @@ async def handle_ml_command(
             await _ml_revise_plan(args, ui, agent)
         elif subcommand == "create-model":
             _ml_create_model(args, ui, runtime)
+        elif subcommand == "create-trainer":
+            _ml_create_trainer(args, ui, runtime)
         elif subcommand == "train":
             _ml_train(args, ui, runtime)
         elif subcommand == "predict":
@@ -422,28 +422,65 @@ def _ml_create_model(
     )
 
 
+def _ml_create_trainer(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
+    options = _parse_options(
+        args,
+        {
+            "name": True,
+            "schema": True,
+            "model": True,
+        },
+    )
+
+    name = options.get("name")
+    schema_path = options.get("schema")
+    model_name = options.get("model")
+
+    if not name or not schema_path or not model_name:
+        raise CommandError("/ml create-trainer requires --name, --schema, and --model")
+
+    schema_path_obj = Path(str(schema_path))
+
+    try:
+        trainer = runtime.create_trainer(
+            name=str(name),
+            schema_path=schema_path_obj,
+            model_name=str(model_name),
+        )
+    except MLRuntimeError as exc:
+        raise CommandError(str(exc)) from exc
+
+    ui.show_system_success(
+        f"Trainer '{trainer.name}' registered "
+        f"(version {trainer.version}, id={trainer.id})."
+    )
+    ui.show_info(f"Linked to model: {trainer.model_id}")
+
+
 def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -> None:
     options = _parse_options(
         args,
         {
             "model": True,
+            "trainer": True,
             "data": True,
-            "target": True,
         },
     )
 
     model_name = options.get("model")
+    trainer_name = options.get("trainer")
     train_table = options.get("data")
-    target_column = options.get("target")
 
-    if not model_name or not train_table:
-        raise CommandError("/ml train requires --model and --data")
+    if not model_name or not train_table or not trainer_name:
+        raise CommandError("/ml train requires --model, --trainer, and --data")
 
     try:
         job_id = runtime.train_model(
             model_name=str(model_name),
+            trainer_name=str(trainer_name),
             train_table=str(train_table),
-            target_column=str(target_column) if target_column else None,
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc
@@ -642,35 +679,24 @@ async def _ml_generate_trainer(
         {
             "name": True,
             "context": True,
-            "model-spec": True,
-            "output": True,
+            "model": True,
         },
     )
 
     name = options.get("name")
     context = options.get("context")
-    model_spec_path = options.get("model-spec")
-    output_path = options.get("output")
+    model_name = options.get("model")
 
-    if not name or not context or not model_spec_path:
+    if not name or not context or not model_name:
         raise CommandError(
-            "/ml generate-trainer requires --name, --context, and --model-spec"
+            "/ml generate-trainer requires --name, --context, and --model"
         )
 
-    # Default output path if not specified
-    if not output_path:
-        output_path = f"{name}_trainer.yaml"
-
     try:
-        ui.show_info(f"📋 Using model specification: {model_spec_path}")
+        # Use the MLTrainerGeneratorTool which includes confirmation workflow
+        from arc.tools.ml import MLTrainerGeneratorTool
 
-        # Check that model specification file exists
-        model_spec_file = Path(str(model_spec_path))
-        if not model_spec_file.exists():
-            raise CommandError(f"Model specification file not found: {model_spec_path}")
-
-        # Get the agent from the runtime or create one for trainer generation
-        services = runtime.services
+        # Get settings for tool initialization
         settings_manager = SettingsManager()
         api_key = settings_manager.get_api_key()
         base_url = settings_manager.get_base_url()
@@ -679,43 +705,26 @@ async def _ml_generate_trainer(
         if not api_key:
             raise CommandError("API key required for trainer generation")
 
-        # Create trainer generator agent (no ArcAgent dependency)
-        trainer_generator = TrainerGeneratorAgent(services, api_key, base_url, model)
+        # Create the tool with proper dependencies
+        tool = MLTrainerGeneratorTool(runtime.services, api_key, base_url, model, ui)
 
-        # Generate the trainer specification
-        trainer_spec, trainer_yaml = await trainer_generator.generate_trainer(
-            name=str(name),
-            user_context=str(context),
-            model_spec_path=str(model_spec_path),
+        # Execute the tool with confirmation workflow (auto-registers to DB)
+        result = await tool.execute(
+            name=name,
+            context=context,
+            model_name=model_name,
         )
 
-        # Save to file
-        Path(output_path).write_text(trainer_yaml)
+        if result.success:
+            # Suggest next steps
+            ui.show_info("\n💡 Next steps:")
+            ui.show_info(
+                f"   /ml train --model {model_name} --trainer {name} "
+                f"--data <table_name>"
+            )
+        else:
+            ui.show_system_error(result.message)
 
-        ui.show_system_success("✅ Trainer specification generated successfully!")
-        ui.show_info(f"📄 Saved to: {output_path}")
-        ui.show_info(f"🏋️ Trainer: {name}")
-
-        # Show brief summary of generated trainer
-        ui.show_info(f"🎯 Loss function: {trainer_spec.loss.type}")
-        ui.show_info(f"⚡ Optimizer: {trainer_spec.optimizer.type}")
-        if hasattr(trainer_spec, "epochs"):
-            ui.show_info(f"🔄 Epochs: {trainer_spec.epochs}")
-        if hasattr(trainer_spec, "batch_size"):
-            ui.show_info(f"📦 Batch size: {trainer_spec.batch_size}")
-
-        # Suggest next steps
-        ui.show_info("\n💡 Next steps:")
-        ui.show_info(
-            f"   /ml create-model --name {name.replace('_trainer', '')} "
-            f"--schema <combined_schema>"
-        )
-        ui.show_info(
-            f"   /ml train --model {name.replace('_trainer', '')} --data <table_name>"
-        )
-
-    except TrainerGeneratorError as exc:
-        raise CommandError(f"Trainer generation failed: {exc}") from exc
     except Exception as exc:
         raise CommandError(
             f"Unexpected error during trainer generation: {exc}"

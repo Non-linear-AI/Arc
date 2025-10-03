@@ -18,6 +18,7 @@ from arc.core.agents.trainer_generator import (
     TrainerGeneratorAgent,
 )
 from arc.graph.model import ModelValidationError, validate_model_dict
+from arc.graph.trainer import TrainerValidationError, validate_trainer_dict
 from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.tools.base import BaseTool, ToolResult
 from arc.utils.yaml_workflow import YamlConfirmationWorkflow
@@ -497,8 +498,8 @@ class MLTrainerGeneratorTool(BaseTool):
         *,
         name: str | None = None,
         context: str | None = None,
-        model_spec_path: str | None = None,
-        output_path: str | None = None,
+        model_name: str | None = None,
+        auto_confirm: bool = False,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -512,20 +513,30 @@ class MLTrainerGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
-        if not name or not context or not model_spec_path:
+        if not name or not context or not model_name:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', and 'model_spec_path' are required "
+                "Parameters 'name', 'context', and 'model_name' are required "
                 "to generate a trainer specification."
             )
 
-        # Check that model spec file exists
-        if not Path(model_spec_path).exists():
+        # Get the registered model
+        try:
+            model_record = self.services.models.get_latest_model_by_name(
+                str(model_name)
+            )
+            if not model_record:
+                return ToolResult.error_result(
+                    f"Model '{model_name}' not found in registry. "
+                    "Please register the model first using /ml create-model"
+                )
+        except Exception as exc:
             return ToolResult.error_result(
-                f"Model specification file not found: {model_spec_path}"
+                f"Failed to retrieve model '{model_name}': {exc}"
             )
 
         # Show UI feedback if UI is available
         if self.ui:
+            self.ui.show_info(f"📋 Using registered model: {model_record.id}")
             self.ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
 
         agent = TrainerGeneratorAgent(
@@ -539,7 +550,8 @@ class MLTrainerGeneratorTool(BaseTool):
             trainer_spec, trainer_yaml = await agent.generate_trainer(
                 name=str(name),
                 user_context=str(context),
-                model_spec_path=str(model_spec_path),
+                model_id=model_record.id,
+                model_spec_yaml=model_record.spec,
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -551,19 +563,147 @@ class MLTrainerGeneratorTool(BaseTool):
                 f"Unexpected error during trainer generation: {exc}"
             )
 
+        # Validate the generated trainer using Arc-Graph validator
+        try:
+            trainer_dict = yaml.safe_load(trainer_yaml)
+            validate_trainer_dict(trainer_dict)
+        except yaml.YAMLError as exc:
+            return ToolResult.error_result(
+                f"Generated trainer contains invalid YAML: {exc}"
+            )
+        except TrainerValidationError as exc:
+            return ToolResult.error_result(
+                f"Generated trainer failed validation: {exc}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during trainer validation: {exc}"
+            )
+
+        # Interactive confirmation workflow (unless auto_confirm is True)
+        if not auto_confirm:
+            workflow = YamlConfirmationWorkflow(
+                validator_func=self._create_validator(),
+                editor_func=self._create_editor(),
+                ui_interface=self.ui,
+                yaml_type_name="trainer",
+                yaml_suffix=".arc-trainer.yaml",
+            )
+
+            context_dict = {
+                "trainer_name": str(name),
+                "context": str(context),
+                "model_name": str(model_name),
+                "model_id": model_record.id,
+                "model_spec_yaml": model_record.spec,
+            }
+
+            try:
+                proceed, final_yaml = await workflow.run_workflow(
+                    trainer_yaml,
+                    context_dict,
+                    None,  # No output path - we register to DB
+                )
+                if not proceed:
+                    return ToolResult.success_result("✗ Trainer generation cancelled.")
+                trainer_yaml = final_yaml
+            finally:
+                workflow.cleanup()
+
+        # Auto-register trainer to database
+        try:
+            from arc.ml.runtime import MLRuntime
+
+            # Get runtime instance (we need access to it)
+            # Since we have services, we can create runtime
+            runtime = MLRuntime(self.services)
+
+            trainer_record = runtime.create_trainer(
+                name=str(name),
+                model_name=str(model_name),
+                schema_yaml=trainer_yaml,
+                description=f"Generated trainer for model {model_name}",
+            )
+
+            if self.ui:
+                self.ui.show_system_success(
+                    f"✓ Trainer registered: {trainer_record.id}"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to register trainer: {exc}")
+
+        summary = (
+            f"Model: {trainer_spec.model_ref} • "
+            f"Optimizer: {trainer_spec.optimizer.type}"
+        )
+
         lines = [
-            f"Trainer specification generated for '{name}'.",
-            f"Loss: {trainer_spec.loss.type} • "
-            f"Optimizer: {trainer_spec.optimizer.type}",
+            f"✓ Trainer '{trainer_record.id}' created and registered.",
+            summary,
         ]
 
-        if output_path:
-            lines.append(f"Saved to: {output_path}")
-
-        lines.append("YAML:")
-        lines.append(trainer_yaml.strip())
+        if auto_confirm:
+            lines.append("\n  YAML:")
+            lines.append(trainer_yaml.strip())
+        else:
+            lines.append("✓ Trainer approved and ready for training.")
 
         return ToolResult.success_result("\n".join(lines))
+
+    def _create_validator(self):
+        """Create validator function for the workflow.
+
+        Returns:
+            Function that validates YAML and returns list of error strings
+        """
+
+        def validate(yaml_str: str) -> list[str]:
+            try:
+                trainer_dict = yaml.safe_load(yaml_str)
+                validate_trainer_dict(trainer_dict)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except TrainerValidationError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
+
+        return validate
+
+    def _create_editor(self):
+        """Create editor function for AI-assisted editing in the workflow.
+
+        Returns:
+            Async function that edits YAML based on user feedback
+        """
+
+        async def edit(
+            yaml_content: str, feedback: str, context: dict[str, Any]
+        ) -> str | None:
+            agent = TrainerGeneratorAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
+            )
+
+            try:
+                _trainer_spec, edited_yaml = await agent.generate_trainer(
+                    name=context["trainer_name"],
+                    user_context=context["context"],
+                    model_id=context["model_id"],
+                    model_spec_yaml=context["model_spec_yaml"],
+                    existing_yaml=yaml_content,
+                    editing_instructions=feedback,
+                )
+                return edited_yaml
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ Edit failed: {e}")
+                return None
+
+        return edit
 
 
 class MLPlanTool(BaseTool):

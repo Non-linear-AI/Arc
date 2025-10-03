@@ -37,9 +37,12 @@ class TrainingJobConfig:
     model_id: str  # Stable model identifier (slug)
     model_version: int  # Model version number associated with the job
     model_name: str
+    trainer_id: str  # Trainer identifier
+    trainer_version: int  # Trainer version number
     train_table: str
     target_column: str
     model_spec: ModelSpec  # Model specification
+    trainer_spec: TrainerSpec  # Trainer specification
 
     # Optional fields with defaults
     feature_spec: FeatureSpec | None = None
@@ -49,7 +52,6 @@ class TrainingJobConfig:
     epochs: int = 10
     batch_size: int = 32
     learning_rate: float = 0.001
-    trainer_spec: TrainerSpec | None = None
 
     # Storage configuration
     artifacts_dir: str | None = None
@@ -368,35 +370,25 @@ class TrainingService:
             if config.trainer_spec:
                 trainer_spec = config.trainer_spec
             else:
-                # Create default trainer spec if none provided
-                from arc.graph.trainer import LossConfig, OptimizerConfig, TrainerSpec
-
-                # Extract loss from model spec if available
-                # Default functional loss
-                model_loss_type = "torch.nn.functional.binary_cross_entropy_with_logits"
-                model_loss_params = {}
-
-                if config.model_spec and config.model_spec.loss:
-                    model_loss_type = config.model_spec.loss.type
-                    if config.model_spec.loss.params:
-                        model_loss_params = config.model_spec.loss.params
+                # Create default trainer spec if none provided (no loss - it's in model)
+                from arc.graph.trainer import OptimizerConfig, TrainerSpec
 
                 trainer_spec = TrainerSpec(
+                    model_ref=config.model_id,  # Reference the model
                     optimizer=OptimizerConfig(
                         type="torch.optim.Adam", lr=config.learning_rate
-                    ),
-                    loss=LossConfig(
-                        type=model_loss_type,
-                        params=model_loss_params,
-                        inputs=config.model_spec.loss.inputs
-                        if config.model_spec and config.model_spec.loss
-                        else None,
                     ),
                     epochs=config.epochs,
                     batch_size=config.batch_size,
                     learning_rate=config.learning_rate,
                     validation_split=config.validation_split,
                 )
+
+            # Extract loss from model spec (loss is in model, not trainer)
+            if not config.model_spec or not config.model_spec.loss:
+                raise ValueError("Model spec must define a loss function")
+
+            model_loss = config.model_spec.loss
 
             # Create a bridge config that has all the fields the trainer expects
             base_training_config = trainer_spec.get_training_config()
@@ -426,11 +418,12 @@ class TrainingService:
                 gradient_clip_norm=base_training_config.gradient_clip_norm,
                 accumulate_grad_batches=base_training_config.accumulate_grad_batches,
                 seed=base_training_config.seed,
-                # Optimizer and loss config
+                # Optimizer config from trainer
                 optimizer=trainer_spec.optimizer.type,
                 optimizer_params=trainer_spec.optimizer.params or {},
-                loss_function=trainer_spec.loss.type,
-                loss_params=trainer_spec.loss.params or {},
+                # Loss config from model spec
+                loss_function=model_loss.type,
+                loss_params=model_loss.params or {},
                 # Additional trainer-specific fields (with defaults)
                 reshape_targets=True,  # Default for binary classification
                 target_output_key="logits",  # Use logits for BCEWithLogitsLoss

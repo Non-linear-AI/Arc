@@ -7,7 +7,6 @@ from typing import Any
 from arc.graph.trainer.components import (
     get_loss_class,
     get_optimizer_class,
-    validate_loss_params,
     validate_optimizer_params,
 )
 
@@ -34,6 +33,11 @@ def validate_trainer_dict(data: dict[str, Any]) -> None:
     Raises:
         TrainerValidationError: If validation fails
     """
+    # Validate model reference
+    model_ref = _require(data, "model_ref", "trainer.model_ref required")
+    if not isinstance(model_ref, str) or not model_ref.strip():
+        raise TrainerValidationError("trainer.model_ref must be a non-empty string")
+
     # Validate optimizer
     optimizer = _require(data, "optimizer", "trainer.optimizer required")
     if not isinstance(optimizer, dict):
@@ -62,32 +66,6 @@ def validate_trainer_dict(data: dict[str, Any]) -> None:
             validate_optimizer_params(optimizer_type, optimizer_params)
         except ValueError as e:
             raise TrainerValidationError(f"trainer.optimizer.params: {e}") from e
-
-    # Validate loss
-    loss = _require(data, "loss", "trainer.loss required")
-    if not isinstance(loss, dict):
-        raise TrainerValidationError("trainer.loss must be a mapping")
-
-    loss_type = _require(loss, "type", "trainer.loss.type required")
-
-    # Validate loss type is supported
-    try:
-        get_loss_class(loss_type)
-    except ValueError as e:
-        raise TrainerValidationError(f"trainer.loss: {e}") from e
-
-    # Validate loss inputs if present
-    if "inputs" in loss:
-        inputs = loss["inputs"]
-        if inputs is not None and not isinstance(inputs, dict):
-            raise TrainerValidationError("trainer.loss.inputs must be a mapping")
-
-    # Validate loss parameters if present
-    if "params" in loss and loss["params"] is not None:
-        try:
-            validate_loss_params(loss_type, loss["params"])
-        except ValueError as e:
-            raise TrainerValidationError(f"trainer.loss.params: {e}") from e
 
     # Validate config (optional)
     if "config" in data and data["config"] is not None:

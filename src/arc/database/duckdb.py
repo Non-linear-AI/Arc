@@ -144,11 +144,43 @@ class DuckDBDatabase(Database):
                 ON models(name, version);
             """)
 
+            # Registry for trainer specifications linked to models
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS trainers(
+                    id TEXT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    version INTEGER NOT NULL,
+                    model_id TEXT NOT NULL,
+                    model_version INTEGER NOT NULL,
+                    spec TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (name, version)
+                );
+            """)
+
+            # Create indexes for trainer lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trainers_name ON trainers(name);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trainers_model_id ON trainers(model_id);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trainers_name_version
+                ON trainers(name, version);
+            """)
+
             # Tracks long-running processes like training
             self.execute("""
                 CREATE TABLE IF NOT EXISTS jobs(
                     job_id TEXT PRIMARY KEY,
                     model_id INTEGER,
+                    trainer_id TEXT,
+                    trainer_version INTEGER,
                     type TEXT NOT NULL,
                     status TEXT NOT NULL,
                     message TEXT,
@@ -165,6 +197,8 @@ class DuckDBDatabase(Database):
                     job_id TEXT NOT NULL,
                     model_id TEXT NOT NULL,
                     model_version INTEGER NOT NULL,
+                    trainer_id TEXT,
+                    trainer_version INTEGER,
                     artifact_path TEXT NOT NULL,
                     metrics JSON,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

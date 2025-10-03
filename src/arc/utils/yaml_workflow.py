@@ -242,11 +242,11 @@ class YamlConfirmationWorkflow:
             options = [
                 (
                     "save",
-                    f"Yes - Save this {self.yaml_type_name} specification and proceed",
+                    f"Accept - Save and use this {self.yaml_type_name}",
                 ),
-                ("edit_ai", "Edit with AI feedback - Describe what to change"),
-                ("edit_manual", "Edit manually - Open in external editor"),
-                ("cancel", "No - Cancel generation"),
+                ("edit_ai", "Iterate - Provide feedback to refine details"),
+                ("edit_manual", "Edit manually - Modify in text editor"),
+                ("cancel", f"Cancel - Discard this {self.yaml_type_name}"),
             ]
 
             if self.ui:
