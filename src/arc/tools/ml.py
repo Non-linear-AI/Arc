@@ -723,17 +723,6 @@ class MLPlanTool(BaseTool):
                         # Continue loop to generate revised plan
                         continue
                     elif choice == "cancel":
-                        # Display cancellation message and return to main agent
-                        if self.ui:
-                            self.ui._printer.console.print()
-                            self.ui._printer.console.print(
-                                "[yellow]ML plan cancelled.[/yellow] "
-                                "ML plan is the first step for the ML workflow, "
-                                "including feature pipelines, model design, "
-                                "training and evaluation."
-                            )
-                            self.ui._printer.console.print()
-
                         # Return to main agent with prompt
                         return ToolResult(
                             success=True,
