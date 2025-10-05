@@ -62,13 +62,10 @@ class TestTrainerSpec:
     def sample_trainer_dict(self):
         """Sample trainer dictionary for testing."""
         return {
+            "model_ref": "test-model-v1",
             "optimizer": {
                 "type": "torch.optim.Adam",
                 "params": {"lr": 0.001, "betas": [0.9, 0.999], "weight_decay": 0.0001},
-            },
-            "loss": {
-                "type": "torch.nn.BCELoss",
-                "inputs": {"input": "model.prediction", "target": "target"},
             },
             "config": {
                 "epochs": 100,
@@ -90,15 +87,13 @@ class TestTrainerSpec:
         """Test TrainerSpec creation from YAML."""
         trainer_spec = TrainerSpec.from_yaml(sample_trainer_yaml)
 
+        # Check model_ref
+        assert trainer_spec.model_ref == "test-model-v1"
+
         # Check optimizer
         assert trainer_spec.optimizer.type == "torch.optim.Adam"
         assert trainer_spec.optimizer.params["lr"] == 0.001
         assert trainer_spec.optimizer.params["betas"] == [0.9, 0.999]
-
-        # Check loss
-        assert trainer_spec.loss.type == "torch.nn.BCELoss"
-        assert trainer_spec.loss.inputs["input"] == "model.prediction"
-        assert trainer_spec.loss.inputs["target"] == "target"
 
         # Check config
         assert trainer_spec.epochs == 100
@@ -117,25 +112,24 @@ class TestTrainerSpec:
         regenerated_dict = yaml.safe_load(regenerated_yaml)
 
         # Check structure is preserved
+        assert regenerated_dict["model_ref"] == "test-model-v1"
         assert regenerated_dict["optimizer"]["type"] == "torch.optim.Adam"
-        assert regenerated_dict["loss"]["type"] == "torch.nn.BCELoss"
         assert regenerated_dict["config"]["epochs"] == 100
 
     def test_trainer_spec_minimal(self):
         """Test TrainerSpec with minimal configuration."""
         minimal_yaml = """
+        model_ref: test-model-v1
         optimizer:
           type: torch.optim.SGD
-        loss:
-          type: torch.nn.MSELoss
+          lr: 0.01
         """
 
         trainer_spec = TrainerSpec.from_yaml(minimal_yaml)
 
+        assert trainer_spec.model_ref == "test-model-v1"
         assert trainer_spec.optimizer.type == "torch.optim.SGD"
         assert trainer_spec.optimizer.params is None
-        assert trainer_spec.loss.type == "torch.nn.MSELoss"
-        assert trainer_spec.loss.params is None
 
         # Check defaults
         assert trainer_spec.epochs == 10  # Default value
@@ -145,12 +139,10 @@ class TestTrainerSpec:
     def test_trainer_spec_with_custom_config(self):
         """Test TrainerSpec with custom configuration."""
         custom_yaml = """
+        model_ref: test-model-v1
         optimizer:
           type: torch.optim.AdamW
-          params:
-            lr: 0.0001
-        loss:
-          type: torch.nn.CrossEntropyLoss
+          lr: 0.0001
         config:
           epochs: 50
           batch_size: 64
@@ -161,6 +153,7 @@ class TestTrainerSpec:
 
         trainer_spec = TrainerSpec.from_yaml(custom_yaml)
 
+        assert trainer_spec.model_ref == "test-model-v1"
         assert trainer_spec.epochs == 50
         assert trainer_spec.batch_size == 64
         assert trainer_spec.learning_rate == 0.0001
@@ -179,7 +172,8 @@ class TestTrainerSpec:
         incomplete_yaml = """
         optimizer:
           type: torch.optim.Adam
-        # Missing loss section
+          lr: 0.001
+        # Missing model_ref
         """
 
         with pytest.raises(TrainerValidationError):
@@ -192,8 +186,8 @@ class TestTrainerValidation:
     def test_validate_trainer_dict_valid(self):
         """Test validation of valid trainer dictionary."""
         valid_dict = {
-            "optimizer": {"type": "torch.optim.Adam", "params": {"lr": 0.001}},
-            "loss": {"type": "torch.nn.BCELoss"},
+            "model_ref": "test-model-v1",
+            "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
         }
 
         # Should not raise any exceptions
@@ -201,23 +195,23 @@ class TestTrainerValidation:
 
     def test_validate_trainer_dict_missing_optimizer(self):
         """Test validation with missing optimizer section."""
-        invalid_dict = {"loss": {"type": "torch.nn.MSELoss"}}
+        invalid_dict = {"model_ref": "test-model-v1"}
 
         with pytest.raises(TrainerValidationError, match="trainer.optimizer required"):
             validate_trainer_dict(invalid_dict)
 
-    def test_validate_trainer_dict_missing_loss(self):
-        """Test validation with missing loss section."""
-        invalid_dict = {"optimizer": {"type": "torch.optim.SGD"}}
+    def test_validate_trainer_dict_missing_model_ref(self):
+        """Test validation with missing model_ref section."""
+        invalid_dict = {"optimizer": {"type": "torch.optim.SGD", "lr": 0.01}}
 
-        with pytest.raises(TrainerValidationError, match="trainer.loss required"):
+        with pytest.raises(TrainerValidationError, match="trainer.model_ref required"):
             validate_trainer_dict(invalid_dict)
 
     def test_validate_trainer_dict_invalid_batch_size(self):
         """Test validation with invalid batch size."""
         invalid_dict = {
-            "optimizer": {"type": "torch.optim.Adam"},
-            "loss": {"type": "torch.nn.MSELoss"},
+            "model_ref": "test-model-v1",
+            "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
             "config": {
                 "batch_size": -1  # Invalid
             },
@@ -231,8 +225,8 @@ class TestTrainerValidation:
     def test_validate_trainer_dict_invalid_validation_split(self):
         """Test validation with invalid validation split."""
         invalid_dict = {
-            "optimizer": {"type": "torch.optim.Adam"},
-            "loss": {"type": "torch.nn.MSELoss"},
+            "model_ref": "test-model-v1",
+            "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
             "config": {
                 "validation_split": 1.5  # Invalid (> 1)
             },
@@ -246,8 +240,8 @@ class TestTrainerValidation:
     def test_validate_trainer_dict_invalid_device(self):
         """Test validation with invalid device."""
         invalid_dict = {
-            "optimizer": {"type": "torch.optim.Adam"},
-            "loss": {"type": "torch.nn.MSELoss"},
+            "model_ref": "test-model-v1",
+            "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
             "config": {"device": "invalid_device"},
         }
 
