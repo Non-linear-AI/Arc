@@ -53,6 +53,10 @@ class TestDataSourceSpecYAMLConversion:
         # Verify SQL formatting - should use literal block style
         assert "sql: |-" in yaml_content or "sql: |" in yaml_content
 
-        # Verify SQL is formatted (contains properly indented lines)
-        assert "SELECT column0," in yaml_content
-        assert "FROM   iris_raw" in yaml_content
+        # Verify SQL is formatted in readable multi-line format
+        # Check for SELECT keyword on its own line
+        assert "SELECT\n" in yaml_content or "      SELECT\n" in yaml_content
+        # Check for FROM keyword on its own line
+        assert "FROM iris_raw" in yaml_content or "      FROM iris_raw" in yaml_content
+        # Verify columns are indented properly (multi-line format)
+        assert "column0," in yaml_content

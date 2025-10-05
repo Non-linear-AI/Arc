@@ -16,11 +16,11 @@ except ImportError as e:
     ) from e
 
 try:
-    from sql_formatter.core import format_sql as sql_format
+    from sqlfluff.core import FluffConfig, Linter
 except ImportError as e:
     raise RuntimeError(
-        "sql-formatter is required for Arc-Graph. "
-        "Install with 'uv add sql-formatter' or 'pip install sql-formatter'."
+        "sqlfluff is required for Arc-Graph. "
+        "Install with 'uv add sqlfluff' or 'pip install sqlfluff'."
     ) from e
 
 
@@ -289,7 +289,7 @@ class DataSourceSpec:
         return json.dumps(self.to_dict(), indent=2)
 
     def _format_sql(self, sql: str) -> str:
-        """Format SQL string using sql-formatter library.
+        """Format SQL string using sqlfluff library.
 
         Args:
             sql: SQL string to format
@@ -309,8 +309,30 @@ class DataSourceSpec:
             .replace("\\'", "'")
         )
 
-        # Use sql-formatter for professional SQL formatting with better column layout
-        formatted_sql = sql_format(unescaped_sql, semicolon=False, max_len=82)
+        # Use sqlfluff for professional SQL formatting with readable multi-line output
+        try:
+            config = FluffConfig(
+                overrides={
+                    "dialect": "duckdb",  # DuckDB dialect for Arc's database
+                    "core": {
+                        "max_line_length": 80,
+                    },
+                    "layout": {
+                        "type": {
+                            "comma": {
+                                "line_position": "trailing",
+                                "spacing_before": "touch",
+                            },
+                        },
+                    },
+                }
+            )
+            linter = Linter(config=config)
+            result = linter.lint_string(unescaped_sql, fix=True)
+            formatted_sql = result.tree.raw if result.tree else unescaped_sql
+        except Exception:
+            # If formatting fails, return the unescaped SQL
+            formatted_sql = unescaped_sql
 
         return formatted_sql.strip()
 
