@@ -69,19 +69,6 @@ class SchemaDiscoveryTool(BaseTool):
                     ),
                 )
 
-            # Handle refresh_cache action
-            if action == "refresh_cache":
-                self.services.schema.invalidate_cache(target_db)
-                # Re-fetch to repopulate cache
-                schema_info = self.services.schema.get_schema_info(
-                    target_db, force_refresh=True
-                )
-                table_count = len(schema_info.tables)
-                return ToolResult.success_result(
-                    f"✓ Schema cache refreshed for {target_db} database\n"
-                    f"  Found {table_count} table{'s' if table_count != 1 else ''}"
-                )
-
             # Force refresh if requested (useful after DDL operations)
             if force_refresh:
                 self.services.schema.invalidate_cache(target_db)
@@ -98,6 +85,17 @@ class SchemaDiscoveryTool(BaseTool):
                 return await self._describe_table(table_name, target_db)
             elif action == "show_schema":
                 return await self._show_schema(target_db)
+            elif action == "refresh_cache":
+                self.services.schema.invalidate_cache(target_db)
+                # Re-fetch to repopulate cache
+                schema_info = self.services.schema.get_schema_info(
+                    target_db, force_refresh=True
+                )
+                table_count = len(schema_info.tables)
+                return ToolResult.success_result(
+                    f"✓ Schema cache refreshed for {target_db} database\n"
+                    f"  Found {table_count} table{'s' if table_count != 1 else ''}"
+                )
 
         except DatabaseError as e:
             # Database-specific errors
