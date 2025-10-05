@@ -25,6 +25,7 @@ class SchemaDiscoveryTool(BaseTool):
         action: str = "list_tables",
         target_db: str = "system",
         table_name: str | None = None,
+        force_refresh: bool = False,
     ) -> ToolResult:
         """Execute schema discovery operation.
 
@@ -33,8 +34,10 @@ class SchemaDiscoveryTool(BaseTool):
                    - "list_tables": List all tables in database
                    - "describe_table": Show detailed table structure
                    - "show_schema": Show complete database schema summary
+                   - "refresh_cache": Force refresh of schema cache
             target_db: Target database - "system" (default) or "user"
             table_name: Specific table name (required for "describe_table")
+            force_refresh: Force refresh of schema cache before operation
 
         Returns:
             ToolResult with schema information
@@ -51,7 +54,12 @@ class SchemaDiscoveryTool(BaseTool):
                 )
 
             # Validate action
-            valid_actions = ["list_tables", "describe_table", "show_schema"]
+            valid_actions = [
+                "list_tables",
+                "describe_table",
+                "show_schema",
+                "refresh_cache",
+            ]
             if action not in valid_actions:
                 return ToolResult.error_result(
                     f"Invalid action: {action}. "
@@ -60,6 +68,23 @@ class SchemaDiscoveryTool(BaseTool):
                         f"Use one of the supported actions: {', '.join(valid_actions)}"
                     ),
                 )
+
+            # Handle refresh_cache action
+            if action == "refresh_cache":
+                self.services.schema.invalidate_cache(target_db)
+                # Re-fetch to repopulate cache
+                schema_info = self.services.schema.get_schema_info(
+                    target_db, force_refresh=True
+                )
+                table_count = len(schema_info.tables)
+                return ToolResult.success_result(
+                    f"✓ Schema cache refreshed for {target_db} database\n"
+                    f"  Found {table_count} table{'s' if table_count != 1 else ''}"
+                )
+
+            # Force refresh if requested (useful after DDL operations)
+            if force_refresh:
+                self.services.schema.invalidate_cache(target_db)
 
             # Execute the requested action
             if action == "list_tables":

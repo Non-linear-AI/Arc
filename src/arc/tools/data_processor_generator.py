@@ -237,6 +237,9 @@ class DataProcessorGeneratorTool(BaseTool):
                     spec, target_db, self.services.db_manager, progress_callback
                 )
 
+                # Invalidate schema cache since new tables were created
+                self.services.schema.invalidate_cache(target_db)
+
             except DataSourceExecutionError as e:
                 # YAML is saved even if execution fails (for debugging)
                 error_msg = [
