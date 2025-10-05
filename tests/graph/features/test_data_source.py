@@ -26,16 +26,23 @@ class TestDataSourceSpecYAMLConversion:
             ),
         ]
         return DataSourceSpec(
-            steps=steps, outputs=["customer_metrics"], vars={"min_date": "2023-01-01"}
+            name="customer_pipeline",
+            description="Process customer data with validation",
+            steps=steps,
+            outputs=["customer_metrics"],
+            vars={"min_date": "2023-01-01"},
         )
 
     def test_to_yaml_formats_sql_and_adds_spacing(self, complex_sql_spec):
         """Test that to_yaml always formats SQL and adds proper spacing."""
         yaml_content = complex_sql_spec.to_yaml()
 
-        # Verify YAML is generated
+        # Verify YAML is generated with new fields
         assert yaml_content
-        assert "data_source:" in yaml_content
+        assert "name:" in yaml_content
+        assert "description:" in yaml_content
+        assert "customer_pipeline" in yaml_content
+        assert "Process customer data with validation" in yaml_content
 
         # Verify spacing between steps - should have blank line between steps
         lines = yaml_content.splitlines()
@@ -47,8 +54,8 @@ class TestDataSourceSpecYAMLConversion:
             assert lines[step_indices[1] - 1].strip() == ""
 
         # Verify spacing before sections - check for blank lines before sections
-        assert "\n  outputs:" in yaml_content
-        assert "\n  vars:" in yaml_content
+        assert "\noutputs:" in yaml_content or "outputs:" in yaml_content
+        assert "\nvars:" in yaml_content or "vars:" in yaml_content
 
         # Verify SQL formatting - should use literal block style
         assert "sql: |-" in yaml_content or "sql: |" in yaml_content

@@ -33,34 +33,34 @@ You must generate JSON that follows this exact schema:
 ```json
 {
   "type": "object",
-  "required": ["data_source"],
+  "required": ["name", "description", "steps", "outputs"],
   "properties": {
-    "data_source": {
+    "name": {"type": "string", "description": "Name of the data processing pipeline"},
+    "description": {"type": "string", "description": "Description of what this pipeline does"},
+    "vars": {
       "type": "object",
-      "required": ["steps", "outputs"],
-      "properties": {
-        "steps": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["name", "depends_on", "sql"],
-            "properties": {
-              "name": {"type": "string", "description": "Unique name for this processing step"},
-              "depends_on": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "List of table names or step names this step depends on"
-              },
-              "sql": {"type": "string", "description": "Concrete SQL query for this transformation step"}
-            }
-          }
-        },
-        "outputs": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "List of step names that should be materialized as final output tables"
+      "description": "Optional variables for SQL substitution (${var} syntax)"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "depends_on", "sql"],
+        "properties": {
+          "name": {"type": "string", "description": "Unique name for this processing step"},
+          "depends_on": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of table names or step names this step depends on"
+          },
+          "sql": {"type": "string", "description": "Concrete SQL query for this transformation step"}
         }
       }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of step names that should be materialized as final output tables"
     }
   }
 }
@@ -69,21 +69,21 @@ You must generate JSON that follows this exact schema:
 ## Example JSON Structure
 ```json
 {
-  "data_source": {
-    "steps": [
-      {
-        "name": "clean_data",
-        "depends_on": ["source_table"],
-        "sql": "SELECT * FROM source_table WHERE date >= '2023-01-01' AND amount > 100"
-      },
-      {
-        "name": "user_aggregates",
-        "depends_on": ["clean_data"],
-        "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
-      }
-    ],
-    "outputs": ["user_aggregates"]
-  }
+  "name": "user_transaction_aggregates",
+  "description": "Process transaction data to create user-level aggregates",
+  "steps": [
+    {
+      "name": "clean_data",
+      "depends_on": ["source_table"],
+      "sql": "SELECT * FROM source_table WHERE date >= '2023-01-01' AND amount > 100"
+    },
+    {
+      "name": "user_aggregates",
+      "depends_on": ["clean_data"],
+      "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
+    }
+  ],
+  "outputs": ["user_aggregates"]
 }
 ```
 
@@ -113,7 +113,7 @@ You must generate JSON that follows this exact schema:
 
 ## Output Requirements
 - Generate only valid JSON, no markdown blocks or explanations
-- Start with the root object containing data_source
+- Include name and description fields at the root level
 - Ensure all strings are properly escaped
 - Follow the exact schema structure above
 - Create a COMPLETE, PRODUCTION-READY configuration that needs no enhancements
