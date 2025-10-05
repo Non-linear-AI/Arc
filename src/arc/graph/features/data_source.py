@@ -62,12 +62,20 @@ class DataSourceStep:
 class DataSourceSpec:
     """Complete data source specification for SQL feature engineering."""
 
+    name: str
+    description: str
     steps: list[DataSourceStep]
     outputs: list[str]
     vars: dict[str, str] | None = None
 
     def __post_init__(self):
         """Validate spec configuration after initialization."""
+        if not self.name or not self.name.strip():
+            raise ValueError("Name is required and cannot be empty")
+
+        if not self.description or not self.description.strip():
+            raise ValueError("Description is required and cannot be empty")
+
         if not self.steps:
             raise ValueError("At least one step is required")
 
@@ -111,24 +119,30 @@ class DataSourceSpec:
         if not isinstance(data, dict):
             raise ValueError("Data must be a dictionary")
 
-        if "data_source" not in data:
-            raise ValueError("Data must contain 'data_source' section")
+        # Parse name (required)
+        if "name" not in data:
+            raise ValueError("Data must contain 'name' field")
+        name = data["name"]
+        if not isinstance(name, str):
+            raise ValueError("name must be a string")
 
-        ds_data = data["data_source"]
-
-        if not isinstance(ds_data, dict):
-            raise ValueError("data_source must be a mapping")
+        # Parse description (required)
+        if "description" not in data:
+            raise ValueError("Data must contain 'description' field")
+        description = data["description"]
+        if not isinstance(description, str):
+            raise ValueError("description must be a string")
 
         # Parse vars (optional)
-        vars_dict = ds_data.get("vars")
+        vars_dict = data.get("vars")
         if vars_dict is not None and not isinstance(vars_dict, dict):
             raise ValueError("vars must be a mapping")
 
         # Parse steps (required)
-        if "steps" not in ds_data:
-            raise ValueError("data_source must contain 'steps'")
+        if "steps" not in data:
+            raise ValueError("Data must contain 'steps'")
 
-        steps_data = ds_data["steps"]
+        steps_data = data["steps"]
         if not isinstance(steps_data, list):
             raise ValueError("steps must be a list")
 
@@ -151,14 +165,16 @@ class DataSourceSpec:
             )
 
         # Parse outputs (required)
-        if "outputs" not in ds_data:
-            raise ValueError("data_source must contain 'outputs'")
+        if "outputs" not in data:
+            raise ValueError("Data must contain 'outputs'")
 
-        outputs = ds_data["outputs"]
+        outputs = data["outputs"]
         if not isinstance(outputs, list):
             raise ValueError("outputs must be a list")
 
         return cls(
+            name=name,
+            description=description,
             steps=steps,
             outputs=outputs,
             vars=vars_dict,
@@ -185,24 +201,30 @@ class DataSourceSpec:
         if not isinstance(data, dict):
             raise ValueError("Top-level YAML must be a mapping")
 
-        if "data_source" not in data:
-            raise ValueError("YAML must contain 'data_source' section")
+        # Parse name (required)
+        if "name" not in data:
+            raise ValueError("YAML must contain 'name' field")
+        name = data["name"]
+        if not isinstance(name, str):
+            raise ValueError("name must be a string")
 
-        ds_data = data["data_source"]
-
-        if not isinstance(ds_data, dict):
-            raise ValueError("data_source must be a mapping")
+        # Parse description (required)
+        if "description" not in data:
+            raise ValueError("YAML must contain 'description' field")
+        description = data["description"]
+        if not isinstance(description, str):
+            raise ValueError("description must be a string")
 
         # Parse vars (optional)
-        vars_dict = ds_data.get("vars")
+        vars_dict = data.get("vars")
         if vars_dict is not None and not isinstance(vars_dict, dict):
             raise ValueError("vars must be a mapping")
 
         # Parse steps (required)
-        if "steps" not in ds_data:
-            raise ValueError("data_source must contain 'steps'")
+        if "steps" not in data:
+            raise ValueError("YAML must contain 'steps'")
 
-        steps_data = ds_data["steps"]
+        steps_data = data["steps"]
         if not isinstance(steps_data, list):
             raise ValueError("steps must be a list")
 
@@ -229,14 +251,16 @@ class DataSourceSpec:
             )
 
         # Parse outputs (required)
-        if "outputs" not in ds_data:
-            raise ValueError("data_source must contain 'outputs'")
+        if "outputs" not in data:
+            raise ValueError("YAML must contain 'outputs'")
 
-        outputs = ds_data["outputs"]
+        outputs = data["outputs"]
         if not isinstance(outputs, list):
             raise ValueError("outputs must be a list")
 
         return cls(
+            name=name,
+            description=description,
             steps=steps,
             outputs=outputs,
             vars=vars_dict,
@@ -269,16 +293,18 @@ class DataSourceSpec:
             Dictionary representation of the data source specification
         """
         # Build dictionary manually to exclude None values and improve formatting
-        data_source_dict = {
+        result_dict = {
+            "name": self.name,
+            "description": self.description,
             "steps": [asdict(step) for step in self.steps],
             "outputs": self.outputs,
         }
 
         # Only include vars if it's not None
         if self.vars is not None:
-            data_source_dict["vars"] = self.vars
+            result_dict["vars"] = self.vars
 
-        return {"data_source": data_source_dict}
+        return result_dict
 
     def to_json(self) -> str:
         """Convert DataSourceSpec to JSON string.
@@ -338,21 +364,56 @@ class DataSourceSpec:
 
     def _add_yaml_spacing(self, yaml_content: str) -> str:
         """Add blank lines between YAML sections and steps for better readability.
+        Also fix indentation for list items.
 
         Args:
             yaml_content: Original YAML content string
 
         Returns:
-            YAML content with added spacing
+            YAML content with added spacing and proper indentation
         """
         lines = yaml_content.splitlines()
         result_lines = []
+        in_steps_section = False
+        in_outputs_section = False
+        in_vars_section = False
 
         for i, line in enumerate(lines):
-            result_lines.append(line)
+            # Track which section we're in
+            if line.strip() == "steps:":
+                in_steps_section = True
+                in_outputs_section = False
+                in_vars_section = False
+            elif line.strip() == "outputs:":
+                in_steps_section = False
+                in_outputs_section = True
+                in_vars_section = False
+            elif line.strip() == "vars:":
+                in_steps_section = False
+                in_outputs_section = False
+                in_vars_section = True
+            elif line and not line[0].isspace() and not line.startswith("-"):
+                # Root level key (not a list item), reset sections
+                if not line.startswith(("name:", "description:")):
+                    in_steps_section = False
+                    in_outputs_section = False
+                    in_vars_section = False
 
-            # Add blank line before 'outputs:' and 'vars:' sections
-            if line.strip() in ["outputs:", "vars:"] and i > 0:
+            # Fix indentation for list items at wrong level
+            processed_line = line
+            if line.startswith("- ") and not line.startswith("  "):
+                # List item with no indentation, should be indented
+                if in_steps_section or in_outputs_section:
+                    processed_line = "  " + line
+
+            result_lines.append(processed_line)
+
+            # Add blank line after 'name:' field (when value is on same line)
+            if line.startswith("name: ") and not line.startswith("  "):
+                result_lines.append("")
+
+            # Add blank line before 'steps:', 'outputs:' and 'vars:' sections
+            if line.strip() in ["steps:", "outputs:", "vars:"] and i > 0:
                 # Insert blank line before this section
                 result_lines.insert(-1, "")
 
@@ -360,7 +421,7 @@ class DataSourceSpec:
             elif (
                 line.strip().startswith("- name:")
                 and i > 0
-                and any("steps:" in prev_line for prev_line in lines[:i])
+                and in_steps_section
             ):
                 # Check if this is not the first step by looking for previous steps
                 has_previous_step = False
@@ -385,7 +446,7 @@ class DataSourceSpec:
         """
         # Create a copy of the data with formatted SQL
         data_dict = self.to_dict()
-        for step_data in data_dict["data_source"]["steps"]:
+        for step_data in data_dict["steps"]:
             if "sql" in step_data:
                 step_data["sql"] = self._format_sql(step_data["sql"])
 
@@ -408,6 +469,7 @@ class DataSourceSpec:
             allow_unicode=True,
             sort_keys=False,
             width=120,
+            indent=2,
         )
 
         # Post-process YAML to add blank lines between sections and steps
@@ -675,55 +737,63 @@ class DataSourceSpec:
         """
         return {
             "type": "object",
-            "required": ["data_source"],
+            "required": ["name", "description", "steps", "outputs"],
             "properties": {
-                "data_source": {
+                "name": {
+                    "type": "string",
+                    "description": "Name of the data processing pipeline",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of what this pipeline does",
+                },
+                "vars": {
                     "type": "object",
-                    "required": ["steps", "outputs"],
-                    "properties": {
-                        "steps": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "required": ["name", "depends_on", "sql"],
-                                "properties": {
-                                    "name": {
-                                        "type": "string",
-                                        "description": (
-                                            "Unique name for this processing step"
-                                        ),
-                                    },
-                                    "depends_on": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": (
-                                            "List of table names or step names this "
-                                            "step depends on"
-                                        ),
-                                    },
-                                    "sql": {
-                                        "type": "string",
-                                        "description": (
-                                            "Concrete SQL query for this "
-                                            "transformation step"
-                                        ),
-                                    },
-                                },
+                    "description": (
+                        "Optional variables for SQL substitution (${var} syntax)"
+                    ),
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "depends_on", "sql"],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": (
+                                    "Unique name for this processing step"
+                                ),
                             },
-                            "description": (
-                                "List of data processing steps to execute in "
-                                "dependency order"
-                            ),
-                        },
-                        "outputs": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "List of step names that should be materialized "
-                                "as final output tables"
-                            ),
+                            "depends_on": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "List of table names or step names this "
+                                    "step depends on"
+                                ),
+                            },
+                            "sql": {
+                                "type": "string",
+                                "description": (
+                                    "Concrete SQL query for this "
+                                    "transformation step"
+                                ),
+                            },
                         },
                     },
-                }
+                    "description": (
+                        "List of data processing steps to execute in "
+                        "dependency order"
+                    ),
+                },
+                "outputs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of step names that should be materialized "
+                        "as final output tables"
+                    ),
+                },
             },
         }
