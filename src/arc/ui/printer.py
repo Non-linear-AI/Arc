@@ -65,8 +65,7 @@ class ArcCompleter(Completer):
             "generate-trainer": [
                 ("--name", "Trainer name (required)"),
                 ("--context", "Training context and requirements (required)"),
-                ("--model-spec", "Path to model specification file (required)"),
-                ("--model", "AI model to use (optional)"),
+                ("--model", "Registered model name (required)"),
             ],
             "generate-predictor": [
                 ("--model-spec", "Path to model specification file (required)"),
@@ -79,8 +78,14 @@ class ArcCompleter(Completer):
                 ("--name", "Model name (required)"),
                 ("--schema", "Path to model schema file (required)"),
             ],
+            "create-trainer": [
+                ("--name", "Trainer name (required)"),
+                ("--schema", "Path to trainer schema file (required)"),
+                ("--model", "Model name to link trainer to (required)"),
+            ],
             "train": [
                 ("--model", "Model name (required)"),
+                ("--trainer", "Trainer name (required)"),
                 ("--data", "Data table name (required)"),
             ],
             "predict": [

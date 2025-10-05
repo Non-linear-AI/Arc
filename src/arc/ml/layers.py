@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import torch
 import torch.nn as nn
+
+
+class FunctionalWrapper(nn.Module):
+    """Wraps a functional operation (like F.relu) as an nn.Module.
+
+    This allows functional operations to be used in ModuleDict/Sequential
+    and properly participate in the model graph.
+    """
+
+    def __init__(self, func: Callable, **params):
+        super().__init__()
+        self.func = func
+        self.params = params
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply the functional operation."""
+        if self.params:
+            return self.func(input, **self.params)
+        else:
+            return self.func(input)
 
 
 class ArcLayerBase(nn.Module):

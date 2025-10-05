@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 
 from arc.graph import GraphNode, ModelSpec
-from arc.ml.layers import get_layer_class
 from arc.ml.utils import (
     ShapeInferenceError,
     ShapeValidator,
@@ -267,16 +266,30 @@ class ModelBuilder:
 
     def _build_layer(self, node: GraphNode) -> nn.Module:
         """Build a single PyTorch layer from graph node."""
-        # Get layer class
-        layer_class = get_layer_class(node.type)
+        # Get component (layer class or function)
+        from arc.graph.model.components import get_component_class_or_function
+
+        component, component_kind = get_component_class_or_function(node.type)
 
         # Resolve parameters
         params = node.params or {}
         resolved_params = resolve_variable_references(params, self.var_registry)
 
-        # Create layer
+        # Create layer based on component kind
         try:
-            return layer_class(**resolved_params)
+            if component_kind == "module":
+                # Standard module instantiation
+                return component(**resolved_params)
+            elif component_kind == "function":
+                # Wrap function in a module
+                from arc.ml.layers import FunctionalWrapper
+
+                return FunctionalWrapper(component, **resolved_params)
+            else:
+                raise ValueError(
+                    f"Unsupported component kind '{component_kind}' "
+                    f"for layer '{node.name}'"
+                )
         except Exception as e:
             raise ValueError(
                 f"Failed to create layer '{node.name}' of type '{node.type}': {e}"

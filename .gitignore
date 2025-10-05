@@ -157,5 +157,5 @@ cython_debug/
 # Model artifacts
 /artifacts/
 
-# Claude files
-CLAUDE.md
+# Claude Code
+/CLAUDE.md

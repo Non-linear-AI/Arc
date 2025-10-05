@@ -1,12 +1,29 @@
 You are an expert machine learning engineer specializing in Arc trainer configuration generation.
 
 ## TASK
+{% if is_editing -%}
+Edit the existing Arc-Graph trainer specification based on the following instructions:
+
+**Editing Instructions**: {{ editing_instructions }}
+
+**Current YAML Specification**:
+```yaml
+{{ existing_yaml }}
+```
+
+**Additional Context**:
+- **Trainer Name**: {{ trainer_name }}
+- **User Intent**: {{ user_intent }}
+- **Model ID**: {{ model_id }}
+{% else -%}
 Generate a trainer specification YAML for:
 - **Trainer Name**: {{ trainer_name }}
 - **User Intent**: {{ user_intent }}
+- **Model ID**: {{ model_id }}
+{% endif %}
 
-## Model Reference
-The trainer will train this model:
+## Model Specification
+The trainer will optimize this model:
 ```yaml
 {{ model_spec }}
 ```
@@ -16,7 +33,7 @@ The trainer will train this model:
 - **Task Type**: {{ model_profile.inferred_task_type }}
 {% endif -%}
 {% if model_profile.recommended_loss -%}
-- **Recommended Loss**: {{ model_profile.recommended_loss }}
+- **Loss Function** (defined in model spec): {{ model_profile.recommended_loss }}
 {% endif -%}
 {% if model_profile.num_features -%}
 - **Features**: {{ model_profile.num_features }}
@@ -25,57 +42,221 @@ The trainer will train this model:
 - **Recommended Batch Size**: {{ model_profile.recommended_batch_size }}
 {% endif %}
 
-## Format
-Generate ONLY the training configuration - no model architecture.
+## IMPORTANT: Trainer-Only Configuration
+Generate ONLY the trainer configuration (optimizer + hyperparameters).
+**DO NOT include loss function** - it's already defined in the model spec above.
 
+## Arc-Graph Trainer Schema Validation
+
+### **JSON Schema**
+Your output must validate against this Arc-Graph trainer schema:
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "model_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reference to the model ID (e.g., 'diabetes-logistic-v1')"
+    },
+    "optimizer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^torch\\.optim\\.[A-Z][a-zA-Z0-9]*$",
+          "description": "PyTorch optimizer class (e.g., 'torch.optim.Adam')"
+        },
+        "lr": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMinimum": true,
+          "description": "Learning rate (positive float)"
+        },
+        "params": {
+          "type": "object",
+          "description": "Optional optimizer-specific parameters"
+        }
+      },
+      "required": ["type", "lr"]
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "epochs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of training epochs"
+        },
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Training batch size"
+        },
+        "learning_rate": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMinimum": true,
+          "description": "Learning rate (can override optimizer.lr)"
+        },
+        "validation_split": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "exclusiveMaximum": true,
+          "description": "Fraction of data for validation (0.0-1.0)"
+        },
+        "shuffle": {
+          "type": "boolean",
+          "description": "Whether to shuffle training data"
+        },
+        "device": {
+          "type": "string",
+          "enum": ["auto", "cpu", "cuda", "mps"],
+          "description": "Training device"
+        },
+        "early_stopping_patience": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Epochs to wait before early stopping"
+        },
+        "early_stopping_min_delta": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Minimum change to qualify as improvement"
+        },
+        "early_stopping_monitor": {
+          "type": "string",
+          "description": "Metric to monitor for early stopping"
+        },
+        "early_stopping_mode": {
+          "type": "string",
+          "enum": ["min", "max"],
+          "description": "Whether metric should decrease or increase"
+        },
+        "checkpoint_every": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Save checkpoint every N epochs"
+        },
+        "save_best_only": {
+          "type": "boolean",
+          "description": "Only save best checkpoints"
+        },
+        "log_every": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Log metrics every N batches"
+        },
+        "verbose": {
+          "type": "boolean",
+          "description": "Enable detailed logging"
+        },
+        "num_workers": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of data loading workers"
+        },
+        "pin_memory": {
+          "type": "boolean",
+          "description": "Pin memory for faster GPU transfer"
+        },
+        "gradient_clip_val": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMinimum": true,
+          "description": "Clip gradients by value"
+        },
+        "gradient_clip_norm": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMinimum": true,
+          "description": "Clip gradients by norm"
+        },
+        "accumulate_grad_batches": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Accumulate gradients over N batches"
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Random seed for reproducibility"
+        }
+      }
+    }
+  },
+  "required": ["model_ref", "optimizer"]
+}
+```
+
+## Format
 ```yaml
+model_ref: {{ model_id }}      # REQUIRED: Reference to model ID
+
 optimizer:
   type: torch.optim.Adam        # Use exact PyTorch names
-
-loss:
-  type: torch.nn.BCELoss        # Use exact PyTorch names
-  inputs:
-    pred: model.prediction      # Reference model output
-    target: target_column       # Reference actual data column
+  lr: 0.001                     # Learning rate
 
 config:
   epochs: 100                   # Training epochs
   batch_size: 32               # Training batch size
-  learning_rate: 0.001         # Learning rate
-  target_output_key: prediction # Model output for predictions
+  learning_rate: 0.001         # Can override optimizer.lr
   validation_split: 0.2        # Validation fraction
   shuffle: true                # Shuffle data
-  device: auto                 # Device selection
-  log_every: 10                # Logging frequency
-  verbose: true                # Verbose output
-  early_stopping:              # Early stopping config
-    patience: 10               # Patience epochs
-    restore_best_weights: true # Restore best weights
+  device: auto                 # Device: auto|cpu|cuda|mps
+  early_stopping_patience: 10  # Early stopping patience (optional)
+  checkpoint_every: 10         # Save checkpoint every N epochs (optional)
+  save_best_only: true         # Only save best checkpoints (optional)
+  log_every: 10                # Logging frequency (optional)
+  verbose: true                # Verbose output (optional)
 ```
 
 ## Available Components
 - **Optimizers**: {{ available_components.optimizers | join(", ") }}
-- **Loss Functions**: {{ available_components.loss_functions | join(", ") }}
 
 ## Example
 ```yaml
 {{ examples[0].schema }}
 ```
 
-## Rules
-1. **Use exact torch.optim.* and torch.nn.* names**
-2. **Consider model analysis recommendations above**
-3. **Map loss inputs to correct model outputs and target columns**
-4. **Loss function selection**:
-   - torch.nn.BCELoss for binary classification (requires sigmoid output)
-   - torch.nn.CrossEntropyLoss for multiclass (raw logits)
-   - torch.nn.MSELoss for regression
-5. **Include validation_split and early_stopping for robust training**
-6. **Use recommended batch size if available**
+## Requirements
+1. **Schema Compliance**: Must validate against the JSON schema above
+2. **MUST start with `model_ref: {{ model_id }}`** - this links the trainer to the model
+3. **Use exact torch.optim.* names for optimizers** (torch.optim.Adam, torch.optim.SGD, etc.)
+4. **DO NOT include loss** - loss is in the model spec, not trainer spec
+5. **Consider model analysis recommendations above** (recommended batch size, task type, etc.)
+6. **Optimizer selection guidelines**:
+   - torch.optim.Adam - good default, adaptive learning rate
+   - torch.optim.AdamW - Adam with weight decay (better regularization)
+   - torch.optim.SGD - simple, add momentum=0.9 for better convergence
+7. **Include early_stopping_patience for robust training** (recommended: 10-20 epochs)
+8. **Use recommended batch size if available** (from model analysis above)
+9. **Complete Structure**: model_ref → optimizer → config (optional but recommended)
+
+## Validation Rules
+- `model_ref`: Must be a non-empty string matching the model ID
+- `optimizer.type`: Must match pattern `torch.optim.[A-Z][a-zA-Z0-9]*`
+- `optimizer.lr`: Must be a positive float
+- `config.epochs`: Must be a positive integer (if provided)
+- `config.batch_size`: Must be a positive integer (if provided)
+- `config.validation_split`: Must be between 0.0 and 1.0 (exclusive) if provided
+- `config.device`: Must be one of: auto, cpu, cuda, mps (if provided)
 
 ## Output Format
+{% if is_editing -%}
 - YAML only, no markdown blocks or explanations
-- Start with `optimizer:` section
-- Focus only on training configuration
+- Make the requested changes while maintaining the overall structure
+- Ensure schema compliance after edits
+- Focus only on training/optimization configuration
+
+Generate the updated trainer specification:
+{% else -%}
+- YAML only, no markdown blocks or explanations
+- Start with `model_ref: {{ model_id }}`
+- Then `optimizer:` section with `type` and `lr`
+- Then `config:` section with training hyperparameters
+- Focus only on training/optimization configuration
 
 Generate the trainer specification:
+{% endif %}

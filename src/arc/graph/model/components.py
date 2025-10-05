@@ -97,6 +97,25 @@ CORE_LAYERS = {
     "torch.nn.ConstantPad1d": nn.ConstantPad1d,
     "torch.nn.ConstantPad2d": nn.ConstantPad2d,
     "torch.nn.ConstantPad3d": nn.ConstantPad3d,
+    # Loss functions (module versions)
+    "torch.nn.BCEWithLogitsLoss": nn.BCEWithLogitsLoss,
+    "torch.nn.CrossEntropyLoss": nn.CrossEntropyLoss,
+    "torch.nn.MSELoss": nn.MSELoss,
+    "torch.nn.BCELoss": nn.BCELoss,
+    "torch.nn.NLLLoss": nn.NLLLoss,
+    "torch.nn.L1Loss": nn.L1Loss,
+    "torch.nn.SmoothL1Loss": nn.SmoothL1Loss,
+    "torch.nn.HuberLoss": nn.HuberLoss,
+    "torch.nn.PoissonNLLLoss": nn.PoissonNLLLoss,
+    "torch.nn.KLDivLoss": nn.KLDivLoss,
+    "torch.nn.MarginRankingLoss": nn.MarginRankingLoss,
+    "torch.nn.CosineEmbeddingLoss": nn.CosineEmbeddingLoss,
+    "torch.nn.CTCLoss": nn.CTCLoss,
+    "torch.nn.TripletMarginLoss": nn.TripletMarginLoss,
+    "torch.nn.MultiMarginLoss": nn.MultiMarginLoss,
+    "torch.nn.MultiLabelMarginLoss": nn.MultiLabelMarginLoss,
+    "torch.nn.MultiLabelSoftMarginLoss": nn.MultiLabelSoftMarginLoss,
+    "torch.nn.HingeEmbeddingLoss": nn.HingeEmbeddingLoss,
 }
 
 # PyTorch functions registry for functional operations

@@ -103,12 +103,39 @@ class StubJobService:
         self.updates.append((job_id, status, message))
 
 
+class StubTrainerService:
+    def __init__(self):
+        self._trainers = {}
+
+    def register_trainer(self, trainer):
+        self._trainers[trainer.name] = trainer
+
+    def get_latest_trainer_by_name(self, name: str):
+        return self._trainers.get(name)
+
+    def get_trainer_by_id(self, id: str):
+        for trainer in self._trainers.values():
+            if trainer.id == id:
+                return trainer
+        return None
+
+
 @dataclass
 class StubModelRecord:
     id: str
     name: str
     version: int
     arc_graph: str
+    spec: str
+
+
+@dataclass
+class StubTrainerRecord:
+    id: str
+    name: str
+    version: int
+    model_id: str
+    model_version: int
     spec: str
 
 
@@ -130,12 +157,14 @@ class StubRuntime:
         ml_data_service,
         job_service,
         training_service,
+        trainer_service=None,
         artifacts_root: Path,
     ):
         self.model_service = model_service
         self.ml_data_service = ml_data_service
         self.job_service = job_service
         self.training_service = training_service
+        self.trainer_service = trainer_service or StubTrainerService()
         self.artifacts_root = artifacts_root
 
     def create_model(
@@ -167,8 +196,8 @@ class StubRuntime:
     def train_model(
         self,
         model_name: str,
+        trainer_name: str,
         train_table: str,
-        target_column: str | None = None,
         validation_table: str | None = None,
         validation_split: float | None = None,  # noqa: ARG002
         epochs: int | None = None,
@@ -187,12 +216,18 @@ class StubRuntime:
 
             raise MLRuntimeError(f"Model '{model_name}' not found")
 
+        # Get the trainer record
+        trainer = self.trainer_service.get_latest_trainer_by_name(trainer_name)
+        if not trainer:
+            from arc.ml.runtime import MLRuntimeError
+
+            raise MLRuntimeError(f"Trainer '{trainer_name}' not found")
+
         # For testing, create a simple mock config and submit to training service
-        # Parse arc_graph to get target column if not specified
+        # Parse arc_graph to get target column from model spec
         arc_graph_data = json.loads(model.arc_graph)
-        if not target_column and arc_graph_data.get("features", {}).get(
-            "target_columns"
-        ):
+        target_column = None
+        if arc_graph_data.get("features", {}).get("target_columns"):
             target_column = arc_graph_data["features"]["target_columns"][0]
 
         # We'll create a simple object that has the required attributes
@@ -283,6 +318,12 @@ graph:
 outputs:
   logits: linear.output
   prediction: sigmoid.output
+
+loss:
+  type: torch.nn.functional.binary_cross_entropy_with_logits
+  inputs:
+    input: logits
+    target: outcome
 """
 
 
@@ -366,6 +407,21 @@ async def test_train_submits_job(tmp_path):
     model_service = StubModelService()
     model_service.register_model(model_record)
 
+    # Create a trainer record
+    trainer_record = StubTrainerRecord(
+        id="my_trainer-v1",
+        name="my_trainer",
+        version=1,
+        model_id="my_model-v1",
+        model_version=1,
+        spec=(
+            "model_ref: my_model-v1\noptimizer:\n"
+            "  type: torch.optim.Adam\n  lr: 0.001\n"
+        ),
+    )
+    trainer_service = StubTrainerService()
+    trainer_service.register_trainer(trainer_record)
+
     ml_data_service = StubMLDataService(
         {
             "train_table": {"x1", "x2", "y"},
@@ -378,12 +434,13 @@ async def test_train_submits_job(tmp_path):
         ml_data_service=ml_data_service,
         job_service=StubJobService(),
         training_service=training_service,
+        trainer_service=trainer_service,
         artifacts_root=tmp_path / "artifacts",
     )
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --model my_model --data train_table",
+        "/ml train --model my_model --trainer my_trainer --data train_table",
         ui,
         runtime,
     )
@@ -476,7 +533,9 @@ async def test_train_missing_model_shows_error(tmp_path):
     )
 
     ui = StubUI()
-    await handle_ml_command("/ml train --model unknown --data table", ui, runtime)
+    await handle_ml_command(
+        "/ml train --model unknown --trainer some_trainer --data table", ui, runtime
+    )
 
     assert any("not found" in err for err in ui.errors)
 
@@ -520,15 +579,37 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     )
     assert any("registered" in msg for msg in ui.successes)
 
+    # Create a trainer for the model
+    trainer_spec_yaml = """model_ref: pima-cli-v1
+optimizer:
+  type: torch.optim.Adam
+  lr: 0.001
+config:
+  epochs: 3
+  batch_size: 16
+"""
+    trainer_path = tmp_path / "trainer.yaml"
+    trainer_path.write_text(trainer_spec_yaml)
+
     await handle_ml_command(
-        "/ml train --model pima_cli --data pima_small --target outcome",
+        (
+            f"/ml create-trainer --name pima_trainer "
+            f"--schema {trainer_path} --model pima_cli"
+        ),
+        ui,
+        services.ml_runtime,
+    )
+
+    await handle_ml_command(
+        "/ml train --model pima_cli --trainer pima_trainer --data pima_small",
         ui,
         services.ml_runtime,
     )
 
     assert ui.infos, "Expected job id information"
-    job_info = ui.infos[-1]
-    assert "Job ID:" in job_info
+    # Find the job info message (may not be the last one)
+    job_info = next((msg for msg in ui.infos if "Job ID:" in msg), None)
+    assert job_info, f"Expected 'Job ID:' in info messages, got: {ui.infos}"
     job_id = job_info.split("Job ID:")[-1].strip()
 
     result = services.ml_runtime.training_service.wait_for_job(job_id, timeout=10)
