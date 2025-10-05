@@ -376,35 +376,33 @@ class DataSourceSpec:
         result_lines = []
         in_steps_section = False
         in_outputs_section = False
-        in_vars_section = False
 
         for i, line in enumerate(lines):
             # Track which section we're in
             if line.strip() == "steps:":
                 in_steps_section = True
                 in_outputs_section = False
-                in_vars_section = False
             elif line.strip() == "outputs:":
                 in_steps_section = False
                 in_outputs_section = True
-                in_vars_section = False
             elif line.strip() == "vars:":
                 in_steps_section = False
                 in_outputs_section = False
-                in_vars_section = True
             elif line and not line[0].isspace() and not line.startswith("-"):
                 # Root level key (not a list item), reset sections
                 if not line.startswith(("name:", "description:")):
                     in_steps_section = False
                     in_outputs_section = False
-                    in_vars_section = False
 
             # Fix indentation for list items at wrong level
             processed_line = line
-            if line.startswith("- ") and not line.startswith("  "):
+            if (
+                line.startswith("- ")
+                and not line.startswith("  ")
+                and (in_steps_section or in_outputs_section)
+            ):
                 # List item with no indentation, should be indented
-                if in_steps_section or in_outputs_section:
-                    processed_line = "  " + line
+                processed_line = "  " + line
 
             result_lines.append(processed_line)
 
@@ -418,11 +416,7 @@ class DataSourceSpec:
                 result_lines.insert(-1, "")
 
             # Add blank line between steps (before each '- name:' except the first one)
-            elif (
-                line.strip().startswith("- name:")
-                and i > 0
-                and in_steps_section
-            ):
+            elif line.strip().startswith("- name:") and i > 0 and in_steps_section:
                 # Check if this is not the first step by looking for previous steps
                 has_previous_step = False
                 for j in range(i - 1, -1, -1):
@@ -761,9 +755,7 @@ class DataSourceSpec:
                         "properties": {
                             "name": {
                                 "type": "string",
-                                "description": (
-                                    "Unique name for this processing step"
-                                ),
+                                "description": ("Unique name for this processing step"),
                             },
                             "depends_on": {
                                 "type": "array",
@@ -776,15 +768,13 @@ class DataSourceSpec:
                             "sql": {
                                 "type": "string",
                                 "description": (
-                                    "Concrete SQL query for this "
-                                    "transformation step"
+                                    "Concrete SQL query for this transformation step"
                                 ),
                             },
                         },
                     },
                     "description": (
-                        "List of data processing steps to execute in "
-                        "dependency order"
+                        "List of data processing steps to execute in dependency order"
                     ),
                 },
                 "outputs": {
