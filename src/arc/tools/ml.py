@@ -249,9 +249,16 @@ class MLModelGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
-        # If ML plan is provided, use it for context
+        # Validate: either ml_plan or context must be provided
+        if not ml_plan and not context:
+            return ToolResult.error_result(
+                "Either 'ml_plan' or 'context' must be provided. "
+                "ML plan is recommended for full ML workflows."
+            )
+
+        # Extract from ML plan if provided (ml_plan is PRIMARY source)
+        ml_plan_architecture = None
         if ml_plan:
-            # Extract information from ML plan
             from arc.core.ml_plan import MLPlan
 
             plan = MLPlan.from_dict(ml_plan)
@@ -263,17 +270,14 @@ class MLModelGeneratorTool(BaseTool):
                 data_table = ml_plan.get("data_table")
             if not target_column:
                 target_column = ml_plan.get("target_column")
-            if not category and plan.selected_components:
-                category = plan.selected_components[0]  # Use primary component
 
-            # Create aggregated context from the plan for the model generator
-            aggregated_context = plan.to_generation_context()
-        else:
-            aggregated_context = None
+            # CRITICAL: Extract architecture guidance from ML plan
+            ml_plan_architecture = plan.model_architecture_and_loss
 
-        if not name or not context or not data_table:
+        # Validate required parameters
+        if not name or not data_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', and 'data_table' are required "
+                "Parameters 'name' and 'data_table' are required "
                 "to generate a model specification."
             )
 
@@ -295,15 +299,13 @@ class MLModelGeneratorTool(BaseTool):
         )
 
         try:
-            # Prepare components list from category
-            components = [category] if category else None
-
             model_spec, model_yaml = await agent.generate_model(
                 name=str(name),
+                user_context=context,  # Use context as user_context
                 table_name=str(data_table),
                 target_column=target_column,
-                components=components,
-                aggregated_context=aggregated_context,
+                category=category,
+                ml_plan_architecture=ml_plan_architecture,
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -334,7 +336,7 @@ class MLModelGeneratorTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(aggregated_context),
+                editor_func=self._create_editor(context, category),
                 ui_interface=self.ui,
                 yaml_type_name="model",
                 yaml_suffix=".arc-model.yaml",
@@ -344,7 +346,6 @@ class MLModelGeneratorTool(BaseTool):
                 "model_name": str(name),
                 "table_name": str(data_table),
                 "target_column": target_column,
-                "components": components,
             }
 
             try:
@@ -421,11 +422,14 @@ class MLModelGeneratorTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, aggregated_context: dict[str, Any] | None = None):
+    def _create_editor(
+        self, user_context: str | None = None, category: str | None = None
+    ):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:
-            aggregated_context: Optional aggregated context from ML plan
+            user_context: User context description
+            category: Model category
 
         Returns:
             Async function that edits YAML based on user feedback
@@ -444,10 +448,10 @@ class MLModelGeneratorTool(BaseTool):
             try:
                 _model_spec, edited_yaml = await agent.generate_model(
                     name=context["model_name"],
+                    user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    components=context.get("components"),
-                    aggregated_context=aggregated_context,
+                    category=category,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
