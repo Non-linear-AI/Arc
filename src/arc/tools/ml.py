@@ -362,6 +362,29 @@ class MLModelGeneratorTool(BaseTool):
             finally:
                 workflow.cleanup()
 
+        # Feedback loop: Update ML plan if architecture changed
+        updated_ml_plan = None
+        if (
+            ml_plan
+            and ml_plan_architecture
+            and self._detect_architecture_changes(ml_plan_architecture, model_yaml)
+        ):
+            if self.ui:
+                self.ui.show_info(
+                    "🔄 Detected architecture changes from ML plan. "
+                    "Updating plan to reflect actual implementation..."
+                )
+
+            # Update ML plan with actual implementation
+            updated_ml_plan = await self._update_ml_plan_with_changes(
+                ml_plan, model_yaml
+            )
+
+            if self.ui and updated_ml_plan != ml_plan:
+                self.ui.show_success(
+                    "✓ ML plan updated to reflect model architecture changes."
+                )
+
         # Save model to DB
         try:
             model = self._save_model_to_db(
@@ -390,15 +413,27 @@ class MLModelGeneratorTool(BaseTool):
         else:
             lines.append("✓ Model approved and ready for use.")
 
+        # Build metadata
+        result_metadata = {
+            "model_id": model_id,
+            "model_name": name,
+            "yaml_content": model_yaml,
+            "from_ml_plan": ml_plan is not None,
+        }
+
+        # Include updated ML plan if changes were detected
+        if updated_ml_plan is not None:
+            result_metadata["ml_plan"] = updated_ml_plan
+            result_metadata["ml_plan_updated"] = True
+        elif ml_plan is not None:
+            # No changes, but still include original plan
+            result_metadata["ml_plan"] = ml_plan
+            result_metadata["ml_plan_updated"] = False
+
         return ToolResult(
             success=True,
             output="\n".join(lines),
-            metadata={
-                "model_id": model_id,
-                "model_name": name,
-                "yaml_content": model_yaml,
-                "from_ml_plan": ml_plan is not None,
-            },
+            metadata=result_metadata,
         )
 
     def _create_validator(self):
@@ -462,6 +497,123 @@ class MLModelGeneratorTool(BaseTool):
                 return None
 
         return edit
+
+    def _detect_architecture_changes(
+        self, ml_plan_architecture: str, final_yaml: str
+    ) -> bool:
+        """Detect if final YAML differs significantly from ML plan architecture.
+
+        Args:
+            ml_plan_architecture: Original architecture guidance from ML plan
+            final_yaml: Final generated/edited YAML content
+
+        Returns:
+            True if significant changes detected, False otherwise
+        """
+        # Simple heuristic: check if ML plan mentions specific components
+        # and whether those appear in final YAML
+        # More sophisticated: use LLM to compare semantically
+
+        # For now, simple check: if plan is short or YAML is long enough
+        # to have diverged, consider it changed
+        plan_lower = ml_plan_architecture.lower()
+        yaml_lower = final_yaml.lower()
+
+        # Extract key architectural terms from plan
+        key_terms = []
+        for term in ["linear", "relu", "dropout", "batchnorm", "attention",
+                     "transformer", "embedding", "cross", "binary_cross_entropy",
+                     "mse_loss", "cross_entropy"]:
+            if term in plan_lower:
+                key_terms.append(term)
+
+        # If plan mentioned specific terms but they're not in YAML, flag it
+        missing_terms = [term for term in key_terms if term not in yaml_lower]
+
+        # If >30% of key architectural terms are missing, consider it changed
+        return key_terms and len(missing_terms) / len(key_terms) > 0.3
+
+    async def _update_ml_plan_with_changes(
+        self, ml_plan: dict, final_yaml: str
+    ) -> dict:
+        """Update ML plan based on actual implemented architecture.
+
+        Uses LLM to analyze differences between plan and implementation,
+        then updates relevant sections of the plan.
+
+        Args:
+            ml_plan: Original ML plan dictionary
+            final_yaml: Final generated/edited YAML content
+
+        Returns:
+            Updated ML plan dictionary with revised architecture section
+        """
+        from arc.core.ml_plan import MLPlan
+
+        plan = MLPlan.from_dict(ml_plan)
+
+        # Use LLM to generate updated architecture description
+        prompt = f"""You are updating an ML plan based on actual implementation.
+
+Original ML Plan - Model Architecture Section:
+{plan.model_architecture_and_loss}
+
+Actual Implemented Model (Arc-Graph YAML):
+```yaml
+{final_yaml}
+```
+
+Task: Update the "Model Architecture and Loss Function" section to
+accurately reflect the ACTUAL implementation in the YAML above.
+
+Requirements:
+1. Keep the same format and structure as the original section
+2. Update architecture details to match the YAML implementation
+3. Update loss function description if it changed
+4. Explain any significant deviations from the original plan
+5. Be concise but accurate
+
+Output ONLY the updated "Model Architecture and Loss Function" section
+text (no markdown, no headers, just the content):"""
+
+        try:
+            response = await self._call_llm(prompt)
+            updated_architecture = response.strip()
+
+            # Update the plan
+            updated_plan_dict = ml_plan.copy()
+            updated_plan_dict["model_architecture_and_loss"] = updated_architecture
+
+            return updated_plan_dict
+
+        except Exception as e:
+            # If LLM call fails, return original plan
+            if self.ui:
+                self.ui.show_warning(
+                    f"⚠ Could not update ML plan automatically: {e}"
+                )
+            return ml_plan
+
+    async def _call_llm(self, prompt: str) -> str:
+        """Call LLM with a prompt and return response.
+
+        Args:
+            prompt: Prompt to send to LLM
+
+        Returns:
+            LLM response text
+        """
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=self.api_key, base_url=self.base_url)
+
+        message = client.messages.create(
+            model=self.model or "claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        return message.content[0].text
 
     def _save_model_to_db(
         self,
