@@ -15,7 +15,6 @@ from arc.tools import (
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
     FileEditorTool,
-    MLCreateModelTool,
     MLModelGeneratorTool,
     MLPlanTool,
     MLPredictorGeneratorTool,
@@ -114,9 +113,6 @@ class ArcAgent:
         self.todo_tool = TodoTool()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
-        self.ml_create_model_tool = (
-            MLCreateModelTool(services.ml_runtime) if services else None
-        )
         self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
         self.ml_plan_tool = (
@@ -580,21 +576,10 @@ class ArcAgent:
                         "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
-            elif tool_call.name == "ml_create_model":
-                if self.ml_create_model_tool:
-                    return await self.ml_create_model_tool.execute(
-                        name=args.get("name"),
-                        schema_path=args.get("schema_path"),
-                        description=args.get("description"),
-                        model_type=args.get("model_type"),
-                    )
-                return ToolResult.error_result(
-                    "ML create model tool not available. "
-                    "Database services not initialized."
-                )
             elif tool_call.name == "ml_train":
                 if self.ml_train_tool:
                     return await self.ml_train_tool.execute(
+                        model_id=args.get("model_id"),
                         model_name=args.get("model_name"),
                         train_table=args.get("train_table"),
                         target_column=args.get("target_column"),

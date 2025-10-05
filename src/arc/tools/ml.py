@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from arc.database.models.model import Model
 
 from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.model_generator import ModelGeneratorAgent
@@ -58,51 +61,6 @@ def _as_string_list(value: Any, field_name: str) -> list[str] | None:
     raise ValueError(f"{field_name} must be an array of strings or comma-separated")
 
 
-class MLCreateModelTool(BaseTool):
-    """Tool for registering new Arc-Graph models."""
-
-    def __init__(self, runtime: MLRuntime):
-        self.runtime = runtime
-
-    async def execute(
-        self,
-        *,
-        name: str | None = None,
-        schema_path: str | None = None,
-        description: str | None = None,
-        model_type: str | None = None,
-    ) -> ToolResult:
-        if not name or not schema_path:
-            return ToolResult.error_result(
-                "Parameters 'name' and 'schema_path' are required to create a model."
-            )
-
-        schema_path_obj = Path(schema_path)
-
-        try:
-            model = await asyncio.to_thread(
-                self.runtime.create_model,
-                name=str(name),
-                schema_path=schema_path_obj,
-                description=str(description) if description else None,
-                model_type=str(model_type) if model_type else None,
-            )
-        except MLRuntimeError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            return ToolResult.error_result(f"Unexpected error creating model: {exc}")
-
-        message_lines = [
-            f"Model '{model.name}' registered.",
-            f"ID: {model.id}",
-            f"Version: {model.version}",
-        ]
-        if model.description:
-            message_lines.append(f"Description: {model.description}")
-
-        return ToolResult.success_result("\n".join(message_lines))
-
-
 class MLTrainTool(BaseTool):
     """Tool for launching training jobs."""
 
@@ -112,6 +70,7 @@ class MLTrainTool(BaseTool):
     async def execute(
         self,
         *,
+        model_id: str | None = None,
         model_name: str | None = None,
         train_table: str | None = None,
         target_column: str | None = None,
@@ -124,11 +83,28 @@ class MLTrainTool(BaseTool):
         description: str | None = None,
         tags: Sequence[str] | str | None = None,
     ) -> ToolResult:
-        if not model_name or not train_table:
+        # Accept either model_id or model_name
+        if not model_id and not model_name:
             return ToolResult.error_result(
-                "Parameters 'model_name' and 'train_table' are required "
-                "to train a model."
+                "Either 'model_id' or 'model_name' is required to train a model."
             )
+
+        if not train_table:
+            return ToolResult.error_result(
+                "Parameter 'train_table' is required to train a model."
+            )
+
+        # If model_id provided, get model_name from it
+        if model_id:
+            try:
+                model = self.runtime.model_service.get_model_by_id(model_id)
+                if not model:
+                    return ToolResult.error_result(f"Model {model_id} not found in DB")
+                model_name = model.name
+            except Exception as exc:
+                return ToolResult.error_result(
+                    f"Failed to retrieve model {model_id}: {exc}"
+                )
 
         try:
             parsed_epochs = _as_optional_int(epochs, "epochs")
@@ -257,7 +233,6 @@ class MLModelGeneratorTool(BaseTool):
         context: str | None = None,
         data_table: str | None = None,
         target_column: str | None = None,
-        output_path: str | None = None,
         auto_confirm: bool = False,
         category: str | None = None,
         ml_plan: dict | None = None,
@@ -374,7 +349,9 @@ class MLModelGeneratorTool(BaseTool):
 
             try:
                 proceed, final_yaml = await workflow.run_workflow(
-                    model_yaml, context_dict, output_path
+                    model_yaml,
+                    context_dict,
+                    None,  # No file path
                 )
                 if not proceed:
                     return ToolResult.success_result(
@@ -384,16 +361,16 @@ class MLModelGeneratorTool(BaseTool):
             finally:
                 workflow.cleanup()
 
-        # Save to file if output_path provided
-        if output_path:
-            try:
-                output_file = Path(output_path)
-                output_file.parent.mkdir(parents=True, exist_ok=True)
-                output_file.write_text(model_yaml)
-            except Exception as exc:
-                return ToolResult.error_result(
-                    f"Failed to save model to {output_path}: {exc}"
-                )
+        # Save model to DB
+        try:
+            model = self._save_model_to_db(
+                name=str(name),
+                yaml_content=model_yaml,
+                description=context[:200] if context else "Generated model",
+            )
+            model_id = model.id
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to save model to DB: {exc}")
 
         summary = (
             f"Inputs: {len(model_spec.inputs)} • Nodes: {len(model_spec.graph)} "
@@ -401,20 +378,27 @@ class MLModelGeneratorTool(BaseTool):
         )
 
         lines = [
-            f"✓ Model specification generated for '{name}'.",
+            f"✓ Model '{name}' generated and saved to DB.",
+            f"Model ID: {model_id}",
             summary,
         ]
 
-        if output_path:
-            lines.append(f" Saved to: {output_path}")
-
         if auto_confirm:
-            lines.append("\n YAML:")
+            lines.append("\n✓ YAML:")
             lines.append(model_yaml.strip())
         else:
             lines.append("✓ Model approved and ready for use.")
 
-        return ToolResult.success_result("\n".join(lines))
+        return ToolResult(
+            success=True,
+            output="\n".join(lines),
+            metadata={
+                "model_id": model_id,
+                "model_name": name,
+                "yaml_content": model_yaml,
+                "from_ml_plan": ml_plan is not None,
+            },
+        )
 
     def _create_validator(self):
         """Create validator function for the workflow.
@@ -474,6 +458,64 @@ class MLModelGeneratorTool(BaseTool):
                 return None
 
         return edit
+
+    def _save_model_to_db(
+        self,
+        name: str,
+        yaml_content: str,
+        description: str,
+    ) -> Model:
+        """Save generated model directly to DB (no file needed).
+
+        Args:
+            name: Model name
+            yaml_content: YAML specification as string
+            description: Model description
+
+        Returns:
+            Created Model object with model_id
+
+        Raises:
+            ValueError: If YAML is invalid or DB save fails
+        """
+        from datetime import UTC, datetime
+
+        from arc.database.models.model import Model
+        from arc.graph.model import ModelSpec
+        from arc.ml.utils import _slugify_name
+
+        # Validate YAML first
+        try:
+            model_spec = ModelSpec.from_yaml(yaml_content)
+            _ = model_spec.get_input_names()
+            _ = model_spec.get_output_names()
+        except Exception as exc:
+            raise ValueError(f"Invalid model YAML: {exc}") from exc
+
+        # Get next version
+        latest = self.services.models.get_latest_model_by_name(name)
+        version = 1 if latest is None else latest.version + 1
+
+        # Create model ID
+        base_slug = _slugify_name(name)
+        model_id = f"{base_slug}-v{version}"
+
+        # Create model object
+        now = datetime.now(UTC)
+        model = Model(
+            id=model_id,
+            type="ml.model_spec",
+            name=name,
+            version=version,
+            description=description,
+            spec=yaml_content,
+            created_at=now,
+            updated_at=now,
+        )
+
+        # Save to DB
+        self.services.models.create_model(model)
+        return model
 
 
 class MLTrainerGeneratorTool(BaseTool):
