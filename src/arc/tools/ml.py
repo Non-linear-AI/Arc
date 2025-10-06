@@ -548,33 +548,30 @@ class MLModelGeneratorTool(BaseTool):
         Returns:
             Updated ML plan dictionary with revised architecture section
         """
+        from pathlib import Path
+
+        from jinja2 import Environment, FileSystemLoader
+
         from arc.core.ml_plan import MLPlan
 
         plan = MLPlan.from_dict(ml_plan)
 
-        # Use LLM to generate updated architecture description
-        prompt = f"""You are updating an ML plan based on actual implementation.
+        # Load Jinja2 template
+        template_dir = (
+            Path(__file__).parent.parent
+            / "core"
+            / "agents"
+            / "ml_plan"
+            / "templates"
+        )
+        env = Environment(loader=FileSystemLoader(str(template_dir)))
+        template = env.get_template("update_plan.j2")
 
-Original ML Plan - Model Architecture Section:
-{plan.model_architecture_and_loss}
-
-Actual Implemented Model (Arc-Graph YAML):
-```yaml
-{final_yaml}
-```
-
-Task: Update the "Model Architecture and Loss Function" section to
-accurately reflect the ACTUAL implementation in the YAML above.
-
-Requirements:
-1. Keep the same format and structure as the original section
-2. Update architecture details to match the YAML implementation
-3. Update loss function description if it changed
-4. Explain any significant deviations from the original plan
-5. Be concise but accurate
-
-Output ONLY the updated "Model Architecture and Loss Function" section
-text (no markdown, no headers, just the content):"""
+        # Render prompt from template
+        prompt = template.render(
+            original_architecture=plan.model_architecture_and_loss,
+            final_yaml=final_yaml,
+        )
 
         try:
             response = await self._call_llm(prompt)
