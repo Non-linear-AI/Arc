@@ -29,8 +29,8 @@ class MLPlanService:
         sql = """
             INSERT INTO ml_plans (
                 plan_id, version, user_context, data_table, target_column,
-                plan_json, status, created_at, updated_at, parent_plan_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                plan_json, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         self.db.execute(
             sql,
@@ -44,7 +44,6 @@ class MLPlanService:
                 plan.status,
                 plan.created_at,
                 plan.updated_at,
-                plan.parent_plan_id,
             ],
         )
 
@@ -59,7 +58,7 @@ class MLPlanService:
         """
         sql = """
             SELECT plan_id, version, user_context, data_table, target_column,
-                   plan_json, status, created_at, updated_at, parent_plan_id
+                   plan_json, status, created_at, updated_at
             FROM ml_plans
             WHERE plan_id = ?
         """
@@ -79,7 +78,6 @@ class MLPlanService:
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
-            parent_plan_id=row["parent_plan_id"],
         )
 
     def get_latest_plan_for_table(
@@ -97,7 +95,7 @@ class MLPlanService:
         if target_column:
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
-                       plan_json, status, created_at, updated_at, parent_plan_id
+                       plan_json, status, created_at, updated_at
                 FROM ml_plans
                 WHERE data_table = ? AND target_column = ?
                 ORDER BY created_at DESC
@@ -107,7 +105,7 @@ class MLPlanService:
         else:
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
-                       plan_json, status, created_at, updated_at, parent_plan_id
+                       plan_json, status, created_at, updated_at
                 FROM ml_plans
                 WHERE data_table = ?
                 ORDER BY created_at DESC
@@ -129,7 +127,6 @@ class MLPlanService:
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
-            parent_plan_id=row["parent_plan_id"],
         )
 
     def update_plan(self, plan: MLPlan) -> None:
@@ -144,8 +141,7 @@ class MLPlanService:
         sql = """
             UPDATE ml_plans
             SET user_context = ?, data_table = ?, target_column = ?,
-                plan_json = ?, status = ?, updated_at = ?,
-                parent_plan_id = ?
+                plan_json = ?, status = ?, updated_at = ?
             WHERE plan_id = ?
         """
         self.db.execute(
@@ -157,7 +153,6 @@ class MLPlanService:
                 plan.plan_json,
                 plan.status,
                 plan.updated_at,
-                plan.parent_plan_id,
                 plan.plan_id,
             ],
         )
@@ -211,7 +206,7 @@ class MLPlanService:
 
         sql = f"""
             SELECT plan_id, version, user_context, data_table, target_column,
-                   plan_json, status, created_at, updated_at, parent_plan_id
+                   plan_json, status, created_at, updated_at
             FROM ml_plans
             {where_clause}
             ORDER BY created_at DESC
@@ -232,7 +227,6 @@ class MLPlanService:
                 status=row["status"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
-                parent_plan_id=row["parent_plan_id"],
             )
             for row in result.rows
         ]

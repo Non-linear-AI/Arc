@@ -21,4 +21,3 @@ class MLPlan:
     status: str  # 'draft', 'approved', 'implemented'
     created_at: datetime
     updated_at: datetime
-    parent_plan_id: str | None = None  # Link to parent if this is a revision

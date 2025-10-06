@@ -285,24 +285,8 @@ class DuckDBDatabase(Database):
                     plan_json TEXT NOT NULL,
                     status TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    parent_plan_id TEXT
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-            """)
-
-            # Create indexes for ML plan lookups
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ml_plans_data_table
-                ON ml_plans(data_table);
-            """)
-
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ml_plans_status ON ml_plans(status);
-            """)
-
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ml_plans_created_at
-                ON ml_plans(created_at);
             """)
 
         except Exception as e:
