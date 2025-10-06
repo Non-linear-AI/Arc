@@ -14,3 +14,4 @@ class Model:
     spec: str
     created_at: datetime
     updated_at: datetime
+    plan_id: str | None = None

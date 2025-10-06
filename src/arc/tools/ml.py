@@ -664,6 +664,7 @@ class MLModelGeneratorTool(BaseTool):
             spec=yaml_content,
             created_at=now,
             updated_at=now,
+            # plan_id defaults to None - will be linked in Phase 2
         )
 
         # Save to DB

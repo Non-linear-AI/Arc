@@ -128,6 +128,7 @@ class DuckDBDatabase(Database):
                     version INTEGER,
                     description TEXT,
                     spec TEXT,
+                    plan_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE (name, version)
@@ -271,6 +272,37 @@ class DuckDBDatabase(Database):
             self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_plugin_components_name
                 ON plugin_components(component_name);
+            """)
+
+            # ML Plans table - stores comprehensive ML workflow plans
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS ml_plans(
+                    plan_id TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL,
+                    user_context TEXT NOT NULL,
+                    data_table TEXT NOT NULL,
+                    target_column TEXT,
+                    plan_json TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    parent_plan_id TEXT
+                );
+            """)
+
+            # Create indexes for ML plan lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ml_plans_data_table
+                ON ml_plans(data_table);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ml_plans_status ON ml_plans(status);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ml_plans_created_at
+                ON ml_plans(created_at);
             """)
 
         except Exception as e:

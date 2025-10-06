@@ -281,6 +281,7 @@ class ModelService(BaseService):
                 version=int(row["version"]),
                 description=str(row["description"]),
                 spec=str(row["spec"]),
+                plan_id=str(row["plan_id"]) if row.get("plan_id") else None,
                 created_at=created_at,
                 updated_at=updated_at,
             )
@@ -321,9 +322,15 @@ class ModelService(BaseService):
             created_at_str = model.created_at.isoformat()
             updated_at_str = model.updated_at.isoformat()
 
+            plan_id_value = (
+                f"'{self._escape_string(model.plan_id)}'"
+                if model.plan_id
+                else "NULL"
+            )
+
             sql = f"""INSERT INTO models (
                 id, type, name, version, description,
-                spec, created_at, updated_at
+                spec, plan_id, created_at, updated_at
             ) VALUES (
                 '{self._escape_string(model.id)}',
                 '{self._escape_string(model.type)}',
@@ -331,6 +338,7 @@ class ModelService(BaseService):
                 {model.version},
                 '{self._escape_string(model.description)}',
                 '{self._escape_string(model.spec)}',
+                {plan_id_value},
                 '{created_at_str}',
                 '{updated_at_str}'
             )"""
@@ -355,12 +363,19 @@ class ModelService(BaseService):
             # Format timestamps for SQL
             updated_at_str = model.updated_at.isoformat()
 
+            plan_id_value = (
+                f"'{self._escape_string(model.plan_id)}'"
+                if model.plan_id
+                else "NULL"
+            )
+
             sql = f"""UPDATE models SET
                 type = '{self._escape_string(model.type)}',
                 name = '{self._escape_string(model.name)}',
                 version = {model.version},
                 description = '{self._escape_string(model.description)}',
                 spec = '{self._escape_string(model.spec)}',
+                plan_id = {plan_id_value},
                 updated_at = '{updated_at_str}'
             WHERE id = '{self._escape_string(model.id)}'"""
 
