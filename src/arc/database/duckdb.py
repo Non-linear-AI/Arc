@@ -274,9 +274,9 @@ class DuckDBDatabase(Database):
                 ON plugin_components(component_name);
             """)
 
-            # ML Plans table - stores comprehensive ML workflow plans
+            # Plans table - stores comprehensive ML workflow plans
             self.execute("""
-                CREATE TABLE IF NOT EXISTS ml_plans(
+                CREATE TABLE IF NOT EXISTS plans(
                     plan_id TEXT PRIMARY KEY,
                     version INTEGER NOT NULL,
                     user_context TEXT NOT NULL,

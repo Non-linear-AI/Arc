@@ -19,7 +19,7 @@ class MLPlanService(BaseService):
             DatabaseError: If plan creation fails
         """
         sql = """
-            INSERT INTO ml_plans (
+            INSERT INTO plans (
                 plan_id, version, user_context, data_table, target_column,
                 plan_json, status, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -51,7 +51,7 @@ class MLPlanService(BaseService):
         sql = """
             SELECT plan_id, version, user_context, data_table, target_column,
                    plan_json, status, created_at, updated_at
-            FROM ml_plans
+            FROM plans
             WHERE plan_id = ?
         """
         result = self.db_manager.system_query(sql, [plan_id])
@@ -88,7 +88,7 @@ class MLPlanService(BaseService):
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
                        plan_json, status, created_at, updated_at
-                FROM ml_plans
+                FROM plans
                 WHERE data_table = ? AND target_column = ?
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -98,7 +98,7 @@ class MLPlanService(BaseService):
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
                        plan_json, status, created_at, updated_at
-                FROM ml_plans
+                FROM plans
                 WHERE data_table = ?
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -131,7 +131,7 @@ class MLPlanService(BaseService):
             DatabaseError: If update fails
         """
         sql = """
-            UPDATE ml_plans
+            UPDATE plans
             SET user_context = ?, data_table = ?, target_column = ?,
                 plan_json = ?, status = ?, updated_at = ?
             WHERE plan_id = ?
@@ -160,7 +160,7 @@ class MLPlanService(BaseService):
         """
         sql = """
             SELECT MAX(version) as max_version
-            FROM ml_plans
+            FROM plans
             WHERE plan_id LIKE ?
         """
         result = self.db_manager.system_query(sql, [f"{base_name}-%"])
@@ -199,7 +199,7 @@ class MLPlanService(BaseService):
         sql = f"""
             SELECT plan_id, version, user_context, data_table, target_column,
                    plan_json, status, created_at, updated_at
-            FROM ml_plans
+            FROM plans
             {where_clause}
             ORDER BY created_at DESC
             LIMIT ?
@@ -232,7 +232,7 @@ class MLPlanService(BaseService):
         Raises:
             DatabaseError: If deletion fails
         """
-        sql = "DELETE FROM ml_plans WHERE plan_id = ?"
+        sql = "DELETE FROM plans WHERE plan_id = ?"
         self.db_manager.system_execute(sql, [plan_id])
 
     def mark_plan_implemented(self, plan_id: str) -> None:
@@ -245,7 +245,7 @@ class MLPlanService(BaseService):
             DatabaseError: If update fails
         """
         sql = """
-            UPDATE ml_plans
+            UPDATE plans
             SET status = 'implemented', updated_at = ?
             WHERE plan_id = ?
         """
