@@ -1093,6 +1093,9 @@ class MLPlanTool(BaseTool):
                 plan_dict["data_table"] = str(data_table)
                 plan_dict["target_column"] = str(target_column)
 
+                # Convert plan to YAML format for better readability
+                plan_yaml = yaml.dump(plan_dict, default_flow_style=False, sort_keys=False)
+
                 # Create database model
                 base_slug = _slugify_name(f"{data_table}-plan")
                 plan_id = f"{base_slug}-v{version}"
@@ -1104,7 +1107,7 @@ class MLPlanTool(BaseTool):
                     user_context=str(user_context),
                     data_table=str(data_table),
                     target_column=str(target_column),
-                    plan_json=str(plan_dict),  # Store as JSON string
+                    plan_yaml=plan_yaml,  # Store as YAML string
                     status="approved",  # Plan was accepted by user
                     created_at=now,
                     updated_at=now,

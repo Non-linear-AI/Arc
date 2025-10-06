@@ -21,7 +21,7 @@ class MLPlanService(BaseService):
         sql = """
             INSERT INTO plans (
                 plan_id, version, user_context, data_table, target_column,
-                plan_json, status, created_at, updated_at
+                plan_yaml, status, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         self.db_manager.system_execute(
@@ -32,7 +32,7 @@ class MLPlanService(BaseService):
                 plan.user_context,
                 plan.data_table,
                 plan.target_column,
-                plan.plan_json,
+                plan.plan_yaml,
                 plan.status,
                 plan.created_at,
                 plan.updated_at,
@@ -50,7 +50,7 @@ class MLPlanService(BaseService):
         """
         sql = """
             SELECT plan_id, version, user_context, data_table, target_column,
-                   plan_json, status, created_at, updated_at
+                   plan_yaml, status, created_at, updated_at
             FROM plans
             WHERE plan_id = ?
         """
@@ -66,7 +66,7 @@ class MLPlanService(BaseService):
             user_context=row["user_context"],
             data_table=row["data_table"],
             target_column=row["target_column"],
-            plan_json=row["plan_json"],
+            plan_yaml=row["plan_yaml"],
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -87,7 +87,7 @@ class MLPlanService(BaseService):
         if target_column:
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
-                       plan_json, status, created_at, updated_at
+                       plan_yaml, status, created_at, updated_at
                 FROM plans
                 WHERE data_table = ? AND target_column = ?
                 ORDER BY created_at DESC
@@ -97,7 +97,7 @@ class MLPlanService(BaseService):
         else:
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
-                       plan_json, status, created_at, updated_at
+                       plan_yaml, status, created_at, updated_at
                 FROM plans
                 WHERE data_table = ?
                 ORDER BY created_at DESC
@@ -115,7 +115,7 @@ class MLPlanService(BaseService):
             user_context=row["user_context"],
             data_table=row["data_table"],
             target_column=row["target_column"],
-            plan_json=row["plan_json"],
+            plan_yaml=row["plan_yaml"],
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -133,7 +133,7 @@ class MLPlanService(BaseService):
         sql = """
             UPDATE plans
             SET user_context = ?, data_table = ?, target_column = ?,
-                plan_json = ?, status = ?, updated_at = ?
+                plan_yaml = ?, status = ?, updated_at = ?
             WHERE plan_id = ?
         """
         self.db_manager.system_execute(
@@ -142,7 +142,7 @@ class MLPlanService(BaseService):
                 plan.user_context,
                 plan.data_table,
                 plan.target_column,
-                plan.plan_json,
+                plan.plan_yaml,
                 plan.status,
                 plan.updated_at,
                 plan.plan_id,
@@ -198,7 +198,7 @@ class MLPlanService(BaseService):
 
         sql = f"""
             SELECT plan_id, version, user_context, data_table, target_column,
-                   plan_json, status, created_at, updated_at
+                   plan_yaml, status, created_at, updated_at
             FROM plans
             {where_clause}
             ORDER BY created_at DESC
@@ -215,7 +215,7 @@ class MLPlanService(BaseService):
                 user_context=row["user_context"],
                 data_table=row["data_table"],
                 target_column=row["target_column"],
-                plan_json=row["plan_json"],
+                plan_yaml=row["plan_yaml"],
                 status=row["status"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],

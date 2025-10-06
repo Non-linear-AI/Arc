@@ -282,7 +282,7 @@ class DuckDBDatabase(Database):
                     user_context TEXT NOT NULL,
                     data_table TEXT NOT NULL,
                     target_column TEXT,
-                    plan_json TEXT NOT NULL,
+                    plan_yaml TEXT NOT NULL,
                     status TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

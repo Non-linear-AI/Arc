@@ -17,7 +17,7 @@ class MLPlan:
     user_context: str  # Original user intent/description
     data_table: str  # Source data table
     target_column: str | None  # Prediction target column
-    plan_json: str  # Full plan as JSON string
+    plan_yaml: str  # Full plan as YAML string
     status: str  # 'draft', 'approved', 'implemented'
     created_at: datetime
     updated_at: datetime
