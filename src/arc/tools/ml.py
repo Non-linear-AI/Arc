@@ -385,12 +385,14 @@ class MLModelGeneratorTool(BaseTool):
                     "✓ ML plan updated to reflect model architecture changes."
                 )
 
-        # Save model to DB
+        # Save model to DB with plan_id if using ML plan
         try:
+            plan_id = ml_plan.get("plan_id") if ml_plan else None
             model = self._save_model_to_db(
                 name=str(name),
                 yaml_content=model_yaml,
                 description=context[:200] if context else "Generated model",
+                plan_id=plan_id,
             )
             model_id = model.id
         except Exception as exc:
@@ -617,6 +619,7 @@ class MLModelGeneratorTool(BaseTool):
         name: str,
         yaml_content: str,
         description: str,
+        plan_id: str | None = None,
     ) -> Model:
         """Save generated model directly to DB (no file needed).
 
@@ -624,6 +627,7 @@ class MLModelGeneratorTool(BaseTool):
             name: Model name
             yaml_content: YAML specification as string
             description: Model description
+            plan_id: Optional ML plan ID that guided this model generation
 
         Returns:
             Created Model object with model_id
@@ -664,7 +668,7 @@ class MLModelGeneratorTool(BaseTool):
             spec=yaml_content,
             created_at=now,
             updated_at=now,
-            # plan_id defaults to None - will be linked in Phase 2
+            plan_id=plan_id,  # Link to ML plan if provided
         )
 
         # Save to DB
