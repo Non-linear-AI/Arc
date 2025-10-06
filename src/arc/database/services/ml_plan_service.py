@@ -2,20 +2,12 @@
 
 from datetime import UTC, datetime
 
-from arc.database.base import Database
 from arc.database.models.ml_plan import MLPlan
+from arc.database.services.base import BaseService
 
 
-class MLPlanService:
+class MLPlanService(BaseService):
     """Service for CRUD operations on ML plans."""
-
-    def __init__(self, db: Database):
-        """Initialize the ML plan service.
-
-        Args:
-            db: Database instance for executing queries
-        """
-        self.db = db
 
     def create_plan(self, plan: MLPlan) -> None:
         """Create a new ML plan in the database.
@@ -32,7 +24,7 @@ class MLPlanService:
                 plan_json, status, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        self.db.execute(
+        self.db_manager.system_execute(
             sql,
             [
                 plan.plan_id,
@@ -62,7 +54,7 @@ class MLPlanService:
             FROM ml_plans
             WHERE plan_id = ?
         """
-        result = self.db.query(sql, [plan_id])
+        result = self.db_manager.system_query(sql, [plan_id])
 
         if not result.rows:
             return None
@@ -101,7 +93,7 @@ class MLPlanService:
                 ORDER BY created_at DESC
                 LIMIT 1
             """
-            result = self.db.query(sql, [data_table, target_column])
+            result = self.db_manager.system_query(sql, [data_table, target_column])
         else:
             sql = """
                 SELECT plan_id, version, user_context, data_table, target_column,
@@ -111,7 +103,7 @@ class MLPlanService:
                 ORDER BY created_at DESC
                 LIMIT 1
             """
-            result = self.db.query(sql, [data_table])
+            result = self.db_manager.system_query(sql, [data_table])
 
         if not result.rows:
             return None
@@ -144,7 +136,7 @@ class MLPlanService:
                 plan_json = ?, status = ?, updated_at = ?
             WHERE plan_id = ?
         """
-        self.db.execute(
+        self.db_manager.system_execute(
             sql,
             [
                 plan.user_context,
@@ -171,7 +163,7 @@ class MLPlanService:
             FROM ml_plans
             WHERE plan_id LIKE ?
         """
-        result = self.db.query(sql, [f"{base_name}-%"])
+        result = self.db_manager.system_query(sql, [f"{base_name}-%"])
 
         if not result.rows or result.rows[0]["max_version"] is None:
             return 1
@@ -214,7 +206,7 @@ class MLPlanService:
         """
         params.append(limit)
 
-        result = self.db.query(sql, params if params else None)
+        result = self.db_manager.system_query(sql, params if params else None)
 
         return [
             MLPlan(
@@ -241,7 +233,7 @@ class MLPlanService:
             DatabaseError: If deletion fails
         """
         sql = "DELETE FROM ml_plans WHERE plan_id = ?"
-        self.db.execute(sql, [plan_id])
+        self.db_manager.system_execute(sql, [plan_id])
 
     def mark_plan_implemented(self, plan_id: str) -> None:
         """Mark a plan as implemented after model generation.
@@ -257,4 +249,4 @@ class MLPlanService:
             SET status = 'implemented', updated_at = ?
             WHERE plan_id = ?
         """
-        self.db.execute(sql, [datetime.now(UTC), plan_id])
+        self.db_manager.system_execute(sql, [datetime.now(UTC), plan_id])

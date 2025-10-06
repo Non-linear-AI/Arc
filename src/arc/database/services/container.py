@@ -98,7 +98,7 @@ class ServiceContainer:
     def ml_plans(self) -> MLPlanService:
         """Get the ML plan service."""
         if self._ml_plan_service is None:
-            self._ml_plan_service = MLPlanService(self.db_manager.get_system_db())
+            self._ml_plan_service = MLPlanService(self.db_manager)
         return self._ml_plan_service
 
     @property
