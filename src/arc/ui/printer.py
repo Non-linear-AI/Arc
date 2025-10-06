@@ -41,6 +41,8 @@ class ArcCompleter(Completer):
 
         # ML base commands
         self.ml_base_commands = [
+            "/ml plan",
+            "/ml revise-plan",
             "/ml generate-model",
             "/ml generate-trainer",
             "/ml generate-predictor",
@@ -55,12 +57,20 @@ class ArcCompleter(Completer):
 
         # Command-specific parameters with descriptions
         self.ml_command_params = {
+            "plan": [
+                ("--context", "ML task description and requirements (required)"),
+                ("--data-table", "Database table name for data (required)"),
+                ("--target-column", "Target/prediction column name (required)"),
+            ],
+            "revise-plan": [
+                ("--feedback", "Feedback to revise the current ML plan (required)"),
+            ],
             "generate-model": [
                 ("--name", "Model name (required)"),
-                ("--context", "Model description and context (required)"),
+                ("--context", "Model description and context (optional with --use-plan)"),
                 ("--data-table", "Database table name for data (required)"),
-                ("--exclude-columns", "Column names to exclude from model inputs"),
-                ("--output-path", "File path to save the generated model YAML"),
+                ("--target-column", "Target/prediction column name (optional)"),
+                ("--use-plan", "Use current ML plan for guidance (flag)"),
             ],
             "generate-trainer": [
                 ("--name", "Trainer name (required)"),
