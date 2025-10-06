@@ -219,10 +219,10 @@ class InteractiveInterface:
                     "Revise the current ML plan based on feedback or training results",
                 ),
                 (
-                    "/ml generate-model --name NAME --context DESC --data-table TABLE "
+                    "/ml generate-model --name NAME [--context DESC] --data-table TABLE "
                     "[--target-column COL] [--use-plan]",
                     "Generate an Arc-Graph model specification "
-                    "(use --use-plan to apply ML plan guidance)",
+                    "(--context optional with --use-plan)",
                 ),
                 (
                     "/ml generate-trainer --name NAME --context DESC --model-spec FILE",

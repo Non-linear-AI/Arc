@@ -626,9 +626,14 @@ async def _ml_generate_model(
             "No ML plan available. Create a plan first with /ml plan or omit --use-plan"
         )
 
-    if not name or not context or not data_table:
+    # Validate required parameters
+    # context is optional if using ML plan (will be derived from plan.summary)
+    if not name or not data_table:
+        raise CommandError("/ml generate-model requires --name and --data-table")
+
+    if not ml_plan and not context:
         raise CommandError(
-            "/ml generate-model requires --name, --context, and --data-table"
+            "/ml generate-model requires --context when not using --use-plan"
         )
 
     try:
