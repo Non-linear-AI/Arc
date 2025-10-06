@@ -638,7 +638,7 @@ text (no markdown, no headers, just the content):"""
 
         from arc.database.models.model import Model
         from arc.graph.model import ModelSpec
-        from arc.ml.utils import _slugify_name
+        from arc.ml.runtime import _slugify_name
 
         # Validate YAML first
         try:
