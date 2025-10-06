@@ -649,7 +649,6 @@ class ArcAgent:
                         context=args.get("context"),
                         data_table=args.get("data_table"),
                         target_column=args.get("target_column"),
-                        output_path=args.get("output_path"),
                         category=args.get("category"),
                         ml_plan=self.current_ml_plan,  # Pass current plan
                     )

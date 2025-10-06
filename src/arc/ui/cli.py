@@ -605,7 +605,6 @@ async def _ml_generate_model(
             "name": True,
             "context": True,
             "data-table": True,
-            "output": True,
             "target-column": True,  # Target column for task-aware generation
             "use-plan": False,  # Flag to use current ML plan
         },
@@ -614,7 +613,6 @@ async def _ml_generate_model(
     name = options.get("name")
     context = options.get("context")
     data_table = options.get("data-table")
-    output_path = options.get("output")
     target_column = options.get("target-column")
     use_plan = options.get("use-plan", False)
 
@@ -632,10 +630,6 @@ async def _ml_generate_model(
         raise CommandError(
             "/ml generate-model requires --name, --context, and --data-table"
         )
-
-    # Default output path if not specified
-    if not output_path:
-        output_path = f"{name}_model.yaml"
 
     try:
         # Use the MLModelGeneratorTool which includes confirmation workflow
@@ -659,7 +653,6 @@ async def _ml_generate_model(
             context=context,
             data_table=data_table,
             target_column=target_column,
-            output_path=output_path,
             ml_plan=ml_plan,  # Pass ML plan if available
         )
 
