@@ -1077,10 +1077,47 @@ class MLPlanTool(BaseTool):
                     )
                     break
 
-            # Return with plan in metadata for storage
-            plan_dict = plan.to_dict()
-            plan_dict["data_table"] = str(data_table)
-            plan_dict["target_column"] = str(target_column)
+            # Save plan to database after acceptance
+            try:
+                from datetime import UTC, datetime
+
+                from arc.database.models.ml_plan import MLPlan as MLPlanModel
+                from arc.ml.runtime import _slugify_name
+
+                # Convert plan to dict for storage
+                plan_dict = plan.to_dict()
+                plan_dict["data_table"] = str(data_table)
+                plan_dict["target_column"] = str(target_column)
+
+                # Create database model
+                base_slug = _slugify_name(f"{data_table}-plan")
+                plan_id = f"{base_slug}-v{version}"
+
+                now = datetime.now(UTC)
+                db_plan = MLPlanModel(
+                    plan_id=plan_id,
+                    version=version,
+                    user_context=str(user_context),
+                    data_table=str(data_table),
+                    target_column=str(target_column),
+                    plan_json=str(plan_dict),  # Store as JSON string
+                    status="approved",  # Plan was accepted by user
+                    created_at=now,
+                    updated_at=now,
+                )
+
+                # Save to database
+                self.services.ml_plans.create_plan(db_plan)
+
+                # Add plan_id to metadata for linking
+                plan_dict["plan_id"] = plan_id
+
+            except Exception as e:
+                # Log error but don't fail - plan still in memory
+                if self.ui:
+                    self.ui.show_warning(
+                        f"⚠ Plan saved to session but not database: {e}"
+                    )
 
             return ToolResult(
                 success=True,
