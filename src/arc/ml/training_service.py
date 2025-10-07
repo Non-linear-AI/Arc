@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -895,8 +894,7 @@ class TrainingService:
                 )
         else:
             logger.debug(
-                "Training tracking service not available, "
-                "skipping artifact recording"
+                "Training tracking service not available, skipping artifact recording"
             )
 
     def get_job_status(self, job_id: str) -> dict[str, Any]:

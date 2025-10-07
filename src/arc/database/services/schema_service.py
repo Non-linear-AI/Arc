@@ -410,19 +410,22 @@ class SchemaService(BaseService):
 
             # Table descriptions with ML context
             table_descriptions = {
-                "models": "Model registry - Stores ML model definitions, versions, and "
-                "Arc-Graph specifications",
-                "trainers": "Trainer registry - Stores trainer specifications linked to models",
+                "models": "Model registry - Stores ML model definitions, "
+                "versions, and Arc-Graph specifications",
+                "trainers": "Trainer registry - Stores trainer specifications "
+                "linked to models",
                 "jobs": "Job tracking - Manages training, evaluation, and processing "
                 "jobs with status monitoring",
-                "training_runs": "Training run tracking - Rich tracking of training runs "
+                "training_runs": "Training run tracking - Rich tracking of runs "
                 "with status, metrics, and artifact paths",
-                "training_metrics": "Training metrics - Time-series data for training metrics",
-                "training_checkpoints": "Training checkpoints - Catalog of model checkpoints",
-                "deployments": "Model serving - Tracks deployed models for real-time "
-                "inference",
-                "plans": "ML plans - Comprehensive ML workflow plans linking data, models, "
-                "and training",
+                "training_metrics": "Training metrics - Time-series data for "
+                "training metrics",
+                "training_checkpoints": "Training checkpoints - Catalog of model "
+                "checkpoints",
+                "deployments": "Model serving - Tracks deployed models for "
+                "real-time inference",
+                "plans": "ML plans - Comprehensive ML workflow plans linking "
+                "data, models, and training",
                 "plugins": "Plugin registry - Available ML algorithms and custom "
                 "components",
                 "plugin_components": "Plugin specs - Detailed component "

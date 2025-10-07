@@ -442,14 +442,11 @@ class MLModelGeneratorTool(BaseTool):
 
         return validate
 
-    def _create_editor(
-        self, user_context: str | None = None, category: str | None = None
-    ):
+    def _create_editor(self, user_context: str | None = None):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:
             user_context: User context description
-            category: Model category
 
         Returns:
             Async function that edits YAML based on user feedback
@@ -881,6 +878,341 @@ class MLTrainerGeneratorTool(BaseTool):
                     user_context=context["context"],
                     model_id=context["model_id"],
                     model_spec_yaml=context["model_spec_yaml"],
+                    existing_yaml=yaml_content,
+                    editing_instructions=feedback,
+                )
+                return edited_yaml
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ Edit failed: {e}")
+                return None
+
+        return edit
+
+
+class MLTrainerTool(BaseTool):
+    """Unified tool for generating trainer specs and optionally launching training.
+
+    This tool combines trainer generation with training execution in a single
+    workflow, similar to the model generator pattern. It provides:
+    1. Trainer spec generation via LLM
+    2. Interactive confirmation workflow
+    3. Auto-registration to database
+    4. Optional immediate training launch
+    """
+
+    def __init__(
+        self,
+        services,
+        runtime: MLRuntime,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+        ui_interface,
+    ) -> None:
+        self.services = services
+        self.runtime = runtime
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+        self.ui = ui_interface
+
+    async def execute(
+        self,
+        *,
+        name: str | None = None,
+        context: str | None = None,
+        model_name: str | None = None,
+        train_table: str | None = None,
+        target_column: str | None = None,
+        validation_table: str | None = None,
+        validation_split: float | int | None = None,
+        epochs: int | None = None,
+        batch_size: int | None = None,
+        learning_rate: float | int | None = None,
+        checkpoint_dir: str | None = None,
+        description: str | None = None,
+        tags: Sequence[str] | str | None = None,
+        auto_confirm: bool = False,
+        train_immediately: bool = True,
+    ) -> ToolResult:
+        """Generate trainer spec and optionally launch training.
+
+        Args:
+            name: Trainer name
+            context: Training goals and constraints
+            model_name: Model to train
+            train_table: Training data table (required if train_immediately=True)
+            target_column: Target column for training
+            validation_table: Optional validation table
+            validation_split: Optional validation split fraction
+            epochs: Training epochs override
+            batch_size: Batch size override
+            learning_rate: Learning rate override
+            checkpoint_dir: Directory for checkpoints
+            description: Training job description
+            tags: Training job tags
+            auto_confirm: Skip confirmation workflow
+            train_immediately: Launch training after registration (default True)
+        """
+        # Validate API key
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for trainer generation. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "Trainer generation service unavailable. "
+                "Database services not initialized."
+            )
+
+        # Validate required parameters
+        if not name or not context or not model_name:
+            return ToolResult.error_result(
+                "Parameters 'name', 'context', and 'model_name' are required."
+            )
+
+        # If training immediately, train_table is required
+        if train_immediately and not train_table:
+            return ToolResult.error_result(
+                "Parameter 'train_table' is required when train_immediately=True."
+            )
+
+        # Parse optional parameters
+        try:
+            parsed_epochs = _as_optional_int(epochs, "epochs")
+            parsed_batch_size = _as_optional_int(batch_size, "batch_size")
+            parsed_learning_rate = _as_optional_float(learning_rate, "learning_rate")
+            parsed_validation_split = _as_optional_float(
+                validation_split, "validation_split"
+            )
+            parsed_tags = _as_string_list(tags, "tags")
+        except ValueError as exc:
+            return ToolResult.error_result(str(exc))
+
+        # Get the registered model
+        try:
+            model_record = self.services.models.get_latest_model_by_name(
+                str(model_name)
+            )
+            if not model_record:
+                return ToolResult.error_result(
+                    f"Model '{model_name}' not found in registry. "
+                    "Please register the model first using /ml create-model"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(
+                f"Failed to retrieve model '{model_name}': {exc}"
+            )
+
+        # Show UI feedback if UI is available
+        if self.ui:
+            self.ui.show_info(f"📋 Using registered model: {model_record.id}")
+            self.ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
+
+        # Generate trainer spec via LLM
+        agent = TrainerGeneratorAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            trainer_spec, trainer_yaml = await agent.generate_trainer(
+                name=str(name),
+                user_context=str(context),
+                model_id=model_record.id,
+                model_spec_yaml=model_record.spec,
+            )
+        except Exception as exc:
+            from arc.core.agents.trainer_generator import TrainerGeneratorError
+
+            if isinstance(exc, TrainerGeneratorError):
+                return ToolResult.error_result(str(exc))
+            return ToolResult.error_result(
+                f"Unexpected error during trainer generation: {exc}"
+            )
+
+        # Validate the generated trainer
+        try:
+            trainer_dict = yaml.safe_load(trainer_yaml)
+            validate_trainer_dict(trainer_dict)
+        except yaml.YAMLError as exc:
+            return ToolResult.error_result(
+                f"Generated trainer contains invalid YAML: {exc}"
+            )
+        except TrainerValidationError as exc:
+            return ToolResult.error_result(
+                f"Generated trainer failed validation: {exc}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during trainer validation: {exc}"
+            )
+
+        # Interactive confirmation workflow (unless auto_confirm is True)
+        if not auto_confirm:
+            workflow = YamlConfirmationWorkflow(
+                validator_func=self._create_validator(),
+                editor_func=self._create_editor(context, model_record),
+                ui_interface=self.ui,
+                yaml_type_name="trainer",
+                yaml_suffix=".arc-trainer.yaml",
+            )
+
+            context_dict = {
+                "trainer_name": str(name),
+                "context": str(context),
+                "model_name": str(model_name),
+                "model_id": model_record.id,
+                "model_spec_yaml": model_record.spec,
+            }
+
+            try:
+                proceed, final_yaml = await workflow.run_workflow(
+                    trainer_yaml,
+                    context_dict,
+                    None,  # No output path - we register to DB
+                )
+                if not proceed:
+                    return ToolResult.success_result("✗ Trainer generation cancelled.")
+                trainer_yaml = final_yaml
+            finally:
+                workflow.cleanup()
+
+        # Auto-register trainer to database
+        try:
+            trainer_record = self.runtime.create_trainer(
+                name=str(name),
+                model_name=str(model_name),
+                schema_yaml=trainer_yaml,
+                description=description or f"Generated trainer for model {model_name}",
+            )
+
+            if self.ui:
+                self.ui.show_system_success(
+                    f"✓ Trainer registered: {trainer_record.id}"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to register trainer: {exc}")
+
+        # Prepare response
+        summary = (
+            f"Model: {trainer_spec.model_ref} • "
+            f"Optimizer: {trainer_spec.optimizer.type}"
+        )
+
+        lines = [
+            f"✓ Trainer '{trainer_record.id}' created and registered.",
+            summary,
+        ]
+
+        # Launch training if requested
+        job_id = None
+        if train_immediately:
+            if self.ui:
+                self.ui.show_info(f"🚀 Launching training with trainer '{name}'...")
+
+            try:
+                job_id = await asyncio.to_thread(
+                    self.runtime.train_with_trainer,
+                    trainer_name=str(name),
+                    train_table=str(train_table),
+                    target_column=str(target_column) if target_column else None,
+                    validation_table=(
+                        str(validation_table) if validation_table else None
+                    ),
+                    validation_split=parsed_validation_split,
+                    epochs=parsed_epochs,
+                    batch_size=parsed_batch_size,
+                    learning_rate=parsed_learning_rate,
+                    checkpoint_dir=str(checkpoint_dir) if checkpoint_dir else None,
+                    description=description,
+                    tags=parsed_tags,
+                )
+
+                lines.append("")
+                lines.append("✓ Training job submitted successfully.")
+                lines.append(f"Training table: {train_table}")
+                lines.append(f"Job ID: {job_id}")
+
+                if validation_table:
+                    lines.append(f"Validation table: {validation_table}")
+                if parsed_tags:
+                    lines.append(f"Tags: {', '.join(parsed_tags)}")
+
+            except MLRuntimeError as exc:
+                return ToolResult.error_result(
+                    f"Trainer registered but training failed: {exc}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                return ToolResult.error_result(
+                    f"Trainer registered but unexpected training error: {exc}"
+                )
+        else:
+            if auto_confirm:
+                lines.append("\n✓ YAML:")
+                lines.append(trainer_yaml.strip())
+            else:
+                lines.append("✓ Trainer approved and ready for training.")
+
+        # Build result metadata
+        result_metadata = {
+            "trainer_id": trainer_record.id,
+            "trainer_name": name,
+            "model_id": model_record.id,
+            "yaml_content": trainer_yaml,
+            "training_launched": train_immediately,
+        }
+
+        if job_id:
+            result_metadata["job_id"] = job_id
+
+        return ToolResult(
+            success=True,
+            output="\n".join(lines),
+            metadata=result_metadata,
+        )
+
+    def _create_validator(self):
+        """Create validator function for the workflow."""
+
+        def validate(yaml_str: str) -> list[str]:
+            try:
+                trainer_dict = yaml.safe_load(yaml_str)
+                validate_trainer_dict(trainer_dict)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except TrainerValidationError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
+
+        return validate
+
+    def _create_editor(self, user_context: str, model_record):
+        """Create editor function for AI-assisted editing."""
+
+        async def edit(
+            yaml_content: str, feedback: str, context: dict[str, Any]
+        ) -> str | None:
+            agent = TrainerGeneratorAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
+            )
+
+            try:
+                _trainer_spec, edited_yaml = await agent.generate_trainer(
+                    name=context["trainer_name"],
+                    user_context=user_context,
+                    model_id=model_record.id,
+                    model_spec_yaml=model_record.spec,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )

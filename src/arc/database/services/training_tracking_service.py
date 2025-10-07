@@ -297,9 +297,7 @@ class TrainingTrackingService(BaseService):
             params = [artifact_path, metrics_json, now, run_id]
             self.db_manager.system_execute(sql, params)
         except Exception as e:
-            raise DatabaseError(
-                f"Failed to update run artifact {run_id}: {e}"
-            ) from e
+            raise DatabaseError(f"Failed to update run artifact {run_id}: {e}") from e
 
     def update_run_config(self, run_id: str, new_config: dict[str, Any]) -> None:
         """Update training run configuration and add to history.

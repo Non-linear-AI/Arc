@@ -20,6 +20,7 @@ from arc.tools import (
     MLPredictorGeneratorTool,
     MLPredictTool,
     MLTrainerGeneratorTool,
+    MLTrainerTool,
     MLTrainingCheckpointsTool,
     MLTrainingMetricsTool,
     MLTrainingRunsListTool,
@@ -145,6 +146,18 @@ class ArcAgent:
         self.ml_trainer_generator_tool = (
             MLTrainerGeneratorTool(
                 services,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+                self.ui_interface,
+            )
+            if services
+            else None
+        )
+        self.ml_trainer_tool = (
+            MLTrainerTool(
+                services,
+                services.ml_runtime,
                 self.api_key,
                 self.base_url,
                 self.current_model_name,
@@ -682,6 +695,27 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML trainer generator tool not available. "
                     "Database services not initialized."
+                )
+            elif tool_call.name == "ml_trainer":
+                if self.ml_trainer_tool:
+                    return await self.ml_trainer_tool.execute(
+                        name=args.get("name"),
+                        context=args.get("context"),
+                        model_name=args.get("model_name"),
+                        train_table=args.get("train_table"),
+                        target_column=args.get("target_column"),
+                        validation_table=args.get("validation_table"),
+                        validation_split=args.get("validation_split"),
+                        epochs=args.get("epochs"),
+                        batch_size=args.get("batch_size"),
+                        learning_rate=args.get("learning_rate"),
+                        checkpoint_dir=args.get("checkpoint_dir"),
+                        description=args.get("description"),
+                        tags=args.get("tags"),
+                        train_immediately=args.get("train_immediately", True),
+                    )
+                return ToolResult.error_result(
+                    "ML trainer tool not available. Database services not initialized."
                 )
             elif tool_call.name == "ml_predictor_generator":
                 if self.ml_predictor_generator_tool:
