@@ -981,7 +981,12 @@ class MLPlanTool(BaseTool):
 
             # Internal loop for handling feedback (option C)
             current_feedback = feedback
-            version = previous_plan.get("version", 0) + 1 if previous_plan else 1
+
+            # Get version from database to avoid conflicts
+            latest_plan = self.services.ml_plans.get_latest_plan_for_table(
+                str(data_table), str(target_column) if target_column else None
+            )
+            version = latest_plan.version + 1 if latest_plan else 1
 
             while True:
                 try:
