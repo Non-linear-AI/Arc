@@ -606,7 +606,7 @@ async def _ml_generate_model(
             "context": True,
             "data-table": True,
             "target-column": True,  # Target column for task-aware generation
-            "use-plan": False,  # Flag to use current ML plan
+            "plan-id": True,  # ML plan ID to use for guidance
         },
     )
 
@@ -614,26 +614,43 @@ async def _ml_generate_model(
     context = options.get("context")
     data_table = options.get("data-table")
     target_column = options.get("target-column")
-    use_plan = options.get("use-plan", False)
+    plan_id = options.get("plan-id")
 
-    # If use-plan is set and agent has a plan, use it
+    # If plan-id is provided, fetch the plan from database
     ml_plan = None
-    if use_plan and agent and agent.current_ml_plan:
-        ml_plan = agent.current_ml_plan
-        ui.show_info("📊 Using current ML plan for model generation")
-    elif use_plan and (not agent or not agent.current_ml_plan):
-        raise CommandError(
-            "No ML plan available. Create a plan first with /ml plan or omit --use-plan"
-        )
+    if plan_id:
+        try:
+            # Fetch plan from database
+            db_plan = agent.services.ml_plans.get_plan_by_id(str(plan_id))
+            if not db_plan:
+                raise CommandError(f"Plan '{plan_id}' not found in database")
+
+            # Parse YAML to dict for the tool
+            import yaml
+            ml_plan = yaml.safe_load(db_plan.plan_yaml)
+            ml_plan["plan_id"] = db_plan.plan_id  # Ensure plan_id is in the dict
+
+            ui.show_info(f"📊 Using ML plan: {plan_id}")
+
+            # Infer data_table and target_column from plan if not provided
+            if not data_table:
+                data_table = db_plan.data_table
+            if not target_column:
+                target_column = db_plan.target_column
+        except Exception as e:
+            raise CommandError(f"Failed to load plan '{plan_id}': {e}")
 
     # Validate required parameters
-    # context is optional if using ML plan (will be derived from plan.summary)
-    if not name or not data_table:
-        raise CommandError("/ml generate-model requires --name and --data-table")
+    if not name:
+        raise CommandError("/ml generate-model requires --name")
+
+    # data-table is required unless using a plan
+    if not ml_plan and not data_table:
+        raise CommandError("/ml generate-model requires --data-table when not using --plan-id")
 
     if not ml_plan and not context:
         raise CommandError(
-            "/ml generate-model requires --context when not using --use-plan"
+            "/ml generate-model requires --context when not using --plan-id"
         )
 
     try:
