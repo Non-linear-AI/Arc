@@ -621,7 +621,7 @@ async def _ml_generate_model(
     if plan_id:
         try:
             # Fetch plan from database
-            db_plan = agent.services.ml_plans.get_plan_by_id(str(plan_id))
+            db_plan = runtime.services.ml_plans.get_plan_by_id(str(plan_id))
             if not db_plan:
                 raise CommandError(f"Plan '{plan_id}' not found in database")
 
