@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from arc.ml.runtime import MLRuntime
 
 from arc.database.services.data_processor_service import DataProcessorService
+from arc.database.services.evaluator_service import EvaluatorService
 from arc.database.services.interactive_query_service import InteractiveQueryService
 from arc.database.services.job_service import JobService
 from arc.database.services.ml_data_service import MLDataService
@@ -42,6 +43,7 @@ class ServiceContainer:
         self._query_service = None
         self._model_service = None
         self._trainer_service = None
+        self._evaluator_service = None
         self._job_service = None
         self._plugin_service = None
         self._schema_service = None
@@ -71,6 +73,13 @@ class ServiceContainer:
         if self._trainer_service is None:
             self._trainer_service = TrainerService(self.db_manager)
         return self._trainer_service
+
+    @property
+    def evaluators(self) -> EvaluatorService:
+        """Get the evaluator service."""
+        if self._evaluator_service is None:
+            self._evaluator_service = EvaluatorService(self.db_manager)
+        return self._evaluator_service
 
     @property
     def jobs(self) -> JobService:

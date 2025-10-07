@@ -2,6 +2,7 @@
 
 from arc.ml.artifacts import ModelArtifact, ModelArtifactManager
 from arc.ml.builder import ArcModel, ModelBuilder
+from arc.ml.evaluator import ArcEvaluator, EvaluationError, EvaluationResult
 from arc.ml.layers import get_layer_class
 from arc.ml.metrics import MetricsTracker, create_metrics_for_task
 from arc.ml.predictor import ArcPredictor, PredictionError
@@ -28,4 +29,7 @@ __all__ = [
     "ArcPredictor",
     "PredictionError",
     "TensorBoardManager",
+    "ArcEvaluator",
+    "EvaluationError",
+    "EvaluationResult",
 ]

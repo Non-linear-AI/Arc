@@ -517,38 +517,6 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_predictor_generator",
-            description="Generate Arc-Graph predictor YAML using the predictor "
-            "generator agent",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "context": {
-                        "type": "string",
-                        "description": "Description of prediction requirements "
-                        "and usage",
-                    },
-                    "model_spec_path": {
-                        "type": "string",
-                        "description": "Path to model specification YAML file",
-                    },
-                    "trainer_spec_path": {
-                        "type": "string",
-                        "description": (
-                            "Optional path to trainer specification YAML file"
-                        ),
-                    },
-                    "output_path": {
-                        "type": "string",
-                        "description": (
-                            "Optional file path to save the generated predictor YAML"
-                        ),
-                    },
-                },
-                "required": ["context", "model_spec_path"],
-            },
-        ),
-        ArcTool(
             name="data_processor_generator",
             description=(
                 "Generate and execute SQL data processing pipelines for WRITE "

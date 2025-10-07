@@ -23,10 +23,10 @@ from arc.graph.model import (
     get_layer_class,
     validate_model_dict,
 )
-from arc.graph.predictor import (
-    PredictorSpec,
-    PredictorValidationError,
-    validate_predictor_dict,
+from arc.graph.evaluator import (
+    EvaluatorSpec,
+    EvaluatorValidationError,
+    validate_evaluator_dict,
 )
 from arc.graph.trainer import (
     CORE_LOSSES,
@@ -73,8 +73,8 @@ __all__ = [
     "FeaturesValidationError",
     "get_processor_class",
     "CORE_PROCESSORS",
-    # Predictor architecture
-    "PredictorSpec",
-    "validate_predictor_dict",
-    "PredictorValidationError",
+    # Evaluator architecture
+    "EvaluatorSpec",
+    "validate_evaluator_dict",
+    "EvaluatorValidationError",
 ]

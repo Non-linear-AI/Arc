@@ -175,6 +175,36 @@ class DuckDBDatabase(Database):
                 ON trainers(name, version);
             """)
 
+            # Registry for evaluator specifications linked to trainers
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS evaluators(
+                    id TEXT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    version INTEGER NOT NULL,
+                    trainer_id TEXT NOT NULL,
+                    trainer_version INTEGER NOT NULL,
+                    spec TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (name, version)
+                );
+            """)
+
+            # Create indexes for evaluator lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluators_name ON evaluators(name);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluators_trainer_id ON evaluators(trainer_id);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluators_name_version
+                ON evaluators(name, version);
+            """)
+
             # Tracks long-running processes like training
             self.execute("""
                 CREATE TABLE IF NOT EXISTS jobs(

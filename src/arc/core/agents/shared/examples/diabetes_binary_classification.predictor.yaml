@@ -1,9 +1,0 @@
-name: "diabetes_prediction_service"
-model_id: "diabetes_binary_classifier"
-model_version: 1
-
-# Map predictor output names to model output names
-outputs:
-  prediction: "prediction"     # Main prediction output from model
-  confidence: "prediction"     # Same as prediction (could apply different post-processing later)
-  raw_logits: "logits"         # Raw logits output from model

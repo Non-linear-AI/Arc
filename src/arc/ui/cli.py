@@ -225,7 +225,7 @@ async def handle_ml_command(
     if len(tokens) < 2:
         ui.show_system_error(
             "Usage: /ml <plan|revise-plan|train|predict|jobs|"
-            "model|generate-trainer|generate-predictor|data-processing> ..."
+            "model|generate-trainer|evaluate|data-processing> ..."
         )
         return
 
@@ -249,8 +249,8 @@ async def handle_ml_command(
             await _ml_model(args, ui, runtime, agent)
         elif subcommand == "generate-trainer":
             await _ml_generate_trainer(args, ui, runtime)
-        elif subcommand == "generate-predictor":
-            await _ml_generate_predictor(args, ui, runtime)
+        elif subcommand == "evaluate":
+            await _ml_evaluate(args, ui, runtime)
         elif subcommand == "data-processing":
             await _ml_data_processing(args, ui, runtime)
         else:
@@ -846,93 +846,65 @@ async def _ml_generate_trainer(
         ) from exc
 
 
-async def _ml_generate_predictor(
+async def _ml_evaluate(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
-    """Handle predictor specification generation command."""
+    """Handle evaluator generation and execution command."""
     options = _parse_options(
         args,
         {
-            "model-spec": True,
+            "name": True,
             "context": True,
-            "trainer-spec": True,
-            "output": True,
+            "trainer": True,
+            "dataset": True,
+            "target-column": True,
         },
     )
 
-    model_spec_path = options.get("model-spec")
+    name = options.get("name")
     context = options.get("context")
-    trainer_spec_path = options.get("trainer-spec")
-    output_path = options.get("output")
+    trainer_name = options.get("trainer")
+    dataset = options.get("dataset")
+    target_column = options.get("target-column")
 
-    if not model_spec_path or not context:
-        raise CommandError("/ml generate-predictor requires --model-spec and --context")
-
-    # Check that model spec file exists
-    model_spec_file = Path(str(model_spec_path))
-    if not model_spec_file.exists():
-        raise CommandError(f"Model specification file not found: {model_spec_path}")
-
-    # Check trainer spec file if provided
-    if trainer_spec_path:
-        trainer_spec_file = Path(str(trainer_spec_path))
-        if not trainer_spec_file.exists():
-            raise CommandError(
-                f"Trainer specification file not found: {trainer_spec_path}"
-            )
-
-    # Default output path if not specified
-    if not output_path:
-        output_path = "predictor.yaml"
+    if not name or not context or not trainer_name or not dataset or not target_column:
+        raise CommandError(
+            "/ml evaluate requires --name, --context, --trainer, "
+            "--dataset, and --target-column"
+        )
 
     try:
-        ui.show_info(f"📋 Using model specification: {model_spec_path}")
-        if trainer_spec_path:
-            ui.show_info(f"🏋️ Using trainer specification: {trainer_spec_path}")
+        # Use the MLEvaluateTool which combines generation + execution
+        from arc.tools.ml import MLEvaluateTool
 
-        # Get the agent configuration
-        services = runtime.services
+        # Get settings for tool initialization
         settings_manager = SettingsManager()
         api_key = settings_manager.get_api_key()
         base_url = settings_manager.get_base_url()
         model = settings_manager.get_current_model()
 
         if not api_key:
-            raise CommandError("API key required for predictor generation")
+            raise CommandError("API key required for evaluator generation")
 
-        # Create predictor generator agent (no ArcAgent dependency)
-        predictor_generator = PredictorGeneratorAgent(
-            services, api_key, base_url, model
+        # Create the tool with proper dependencies
+        tool = MLEvaluateTool(runtime.services, runtime, api_key, base_url, model, ui)
+
+        # Execute the tool: generate spec, register, and run evaluation
+        result = await tool.execute(
+            name=name,
+            context=context,
+            trainer_name=trainer_name,
+            dataset=dataset,
+            target_column=target_column,
         )
 
-        # Generate the predictor specification
-        predictor_yaml = await predictor_generator.generate_predictor(
-            user_context=context,
-            model_spec_path=str(model_spec_path),
-            trainer_spec_path=str(trainer_spec_path) if trainer_spec_path else None,
-        )
-
-        # Save to file
-        Path(output_path).write_text(predictor_yaml)
-
-        ui.show_system_success("✅ Predictor specification generated successfully!")
-        ui.show_info(f"📄 Saved to: {output_path}")
-
-        # Show YAML preview
-        ui.show_info("\n📋 Generated YAML:")
-        # Show first few lines of the YAML
-        yaml_lines = predictor_yaml.strip().split("\n")
-        for line in yaml_lines[:10]:  # Show first 10 lines
-            ui.show_info(f"   {line}")
-        if len(yaml_lines) > 10:
-            ui.show_info("   ...")
-
-        # Suggest next steps
-        ui.show_info("\n💡 Next steps:")
-        ui.show_info("   Use this predictor specification for model inference")
+        if not result.success:
+            ui.show_system_error(result.message)
 
     except Exception as exc:
-        raise CommandError(f"Predictor generation failed: {exc}") from exc
+        raise CommandError(
+            f"Unexpected error during evaluation: {exc}"
+        ) from exc
 
 
 async def _ml_data_processing(

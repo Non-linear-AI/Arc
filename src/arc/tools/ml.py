@@ -14,9 +14,6 @@ if TYPE_CHECKING:
 
 from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.model_generator import ModelGeneratorAgent
-from arc.core.agents.predictor_generator import (
-    PredictorGeneratorAgent,
-)
 from arc.core.agents.trainer_generator import (
     TrainerGeneratorAgent,
 )
@@ -1005,6 +1002,269 @@ class MLTrainTool(BaseTool):
         return edit
 
 
+class MLEvaluatorGeneratorTool(BaseTool):
+    """Tool for generating Arc-Graph evaluator specifications via LLM."""
+
+    def __init__(
+        self,
+        services,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+        ui_interface,
+    ) -> None:
+        self.services = services
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+        self.ui = ui_interface
+
+    async def execute(
+        self,
+        *,
+        name: str | None = None,
+        context: str | None = None,
+        trainer_name: str | None = None,
+        dataset: str | None = None,
+        target_column: str | None = None,
+        auto_confirm: bool = False,
+    ) -> ToolResult:
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for evaluator generation. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "Evaluator generation service unavailable. "
+                "Database services not initialized."
+            )
+
+        if not name or not context or not trainer_name or not dataset or not target_column:
+            return ToolResult.error_result(
+                "Parameters 'name', 'context', 'trainer_name', 'dataset', and "
+                "'target_column' are required to generate an evaluator specification."
+            )
+
+        # Get the registered trainer
+        try:
+            trainer_record = self.services.trainers.get_latest_trainer_by_name(
+                str(trainer_name)
+            )
+            if not trainer_record:
+                return ToolResult.error_result(
+                    f"Trainer '{trainer_name}' not found in registry. "
+                    "Please register the trainer first using /ml generate-trainer"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(
+                f"Failed to retrieve trainer '{trainer_name}': {exc}"
+            )
+
+        # Show UI feedback if UI is available
+        if self.ui:
+            self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
+            self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
+
+        from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+
+        agent = EvaluatorGeneratorAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
+                name=str(name),
+                user_context=str(context),
+                trainer_ref=str(trainer_name),
+                trainer_spec_yaml=trainer_record.spec,
+                dataset=str(dataset),
+                target_column=str(target_column),
+            )
+        except Exception as exc:
+            # Import here to avoid circular imports
+            from arc.core.agents.evaluator_generator import EvaluatorGeneratorError
+
+            if isinstance(exc, EvaluatorGeneratorError):
+                return ToolResult.error_result(str(exc))
+            return ToolResult.error_result(
+                f"Unexpected error during evaluator generation: {exc}"
+            )
+
+        # Validate the generated evaluator using Arc-Graph validator
+        try:
+            from arc.graph.evaluator import EvaluatorValidationError
+
+            evaluator_dict = yaml.safe_load(evaluator_yaml)
+            from arc.graph.evaluator import validate_evaluator_dict
+
+            validate_evaluator_dict(evaluator_dict)
+        except yaml.YAMLError as exc:
+            return ToolResult.error_result(
+                f"Generated evaluator contains invalid YAML: {exc}"
+            )
+        except EvaluatorValidationError as exc:
+            return ToolResult.error_result(
+                f"Generated evaluator failed validation: {exc}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during evaluator validation: {exc}"
+            )
+
+        # Interactive confirmation workflow (unless auto_confirm is True)
+        if not auto_confirm:
+            workflow = YamlConfirmationWorkflow(
+                validator_func=self._create_validator(),
+                editor_func=self._create_editor(),
+                ui_interface=self.ui,
+                yaml_type_name="evaluator",
+                yaml_suffix=".arc-evaluator.yaml",
+            )
+
+            context_dict = {
+                "evaluator_name": str(name),
+                "context": str(context),
+                "trainer_name": str(trainer_name),
+                "trainer_ref": str(trainer_name),
+                "trainer_spec_yaml": trainer_record.spec,
+                "dataset": str(dataset),
+                "target_column": str(target_column),
+            }
+
+            try:
+                proceed, final_yaml = await workflow.run_workflow(
+                    evaluator_yaml,
+                    context_dict,
+                    None,  # No output path - we register to DB
+                )
+                if not proceed:
+                    return ToolResult.success_result("✗ Evaluator generation cancelled.")
+                evaluator_yaml = final_yaml
+            finally:
+                workflow.cleanup()
+
+        # Auto-register evaluator to database
+        try:
+            from datetime import UTC, datetime
+
+            from arc.database.models.evaluator import Evaluator
+
+            # Generate unique ID for evaluator
+            evaluator_id = f"{name}-v{evaluator_spec.version or 1}"
+
+            # Get next version number
+            next_version = self.services.evaluators.get_next_version_for_name(str(name))
+
+            evaluator_record = Evaluator(
+                id=evaluator_id,
+                name=str(name),
+                version=next_version,
+                trainer_id=trainer_record.id,
+                trainer_version=trainer_record.version,
+                spec=evaluator_yaml,
+                description=f"Generated evaluator for trainer {trainer_name}",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
+            self.services.evaluators.create_evaluator(evaluator_record)
+
+            if self.ui:
+                self.ui.show_system_success(
+                    f"✓ Evaluator registered: {evaluator_record.id}"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to register evaluator: {exc}")
+
+        summary = (
+            f"Trainer: {evaluator_spec.trainer_ref} • "
+            f"Dataset: {evaluator_spec.dataset} • "
+            f"Target: {evaluator_spec.target_column}"
+        )
+
+        lines = [
+            f"✓ Evaluator '{evaluator_record.id}' created and registered.",
+            summary,
+        ]
+
+        if auto_confirm:
+            lines.append("\n  YAML:")
+            lines.append(evaluator_yaml.strip())
+        else:
+            lines.append("✓ Evaluator approved and ready for evaluation.")
+
+        return ToolResult.success_result("\n".join(lines))
+
+    def _create_validator(self):
+        """Create validator function for the workflow.
+
+        Returns:
+            Function that validates YAML and returns list of error strings
+        """
+
+        def validate(yaml_str: str) -> list[str]:
+            try:
+                from arc.graph.evaluator import (
+                    EvaluatorValidationError,
+                    validate_evaluator_dict,
+                )
+
+                evaluator_dict = yaml.safe_load(yaml_str)
+                validate_evaluator_dict(evaluator_dict)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except EvaluatorValidationError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
+
+        return validate
+
+    def _create_editor(self):
+        """Create editor function for AI-assisted editing in the workflow.
+
+        Returns:
+            Async function that edits YAML based on user feedback
+        """
+
+        async def edit(
+            yaml_content: str, feedback: str, context: dict[str, Any]
+        ) -> str | None:
+            from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+
+            agent = EvaluatorGeneratorAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
+            )
+
+            try:
+                _evaluator_spec, edited_yaml = await agent.generate_evaluator(
+                    name=context["evaluator_name"],
+                    user_context=context["context"],
+                    trainer_ref=context["trainer_ref"],
+                    trainer_spec_yaml=context["trainer_spec_yaml"],
+                    dataset=context["dataset"],
+                    target_column=context["target_column"],
+                    existing_yaml=yaml_content,
+                    editing_instructions=feedback,
+                )
+                return edited_yaml
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ Edit failed: {e}")
+                return None
+
+        return edit
+
+
 class MLPlanTool(BaseTool):
     """Tool for creating and revising ML plans with technical decisions."""
 
@@ -1246,106 +1506,3 @@ class MLPlanTool(BaseTool):
             return ToolResult.error_result(
                 f"Unexpected error during ML planning: {exc}"
             )
-
-
-class MLPredictorGeneratorTool(BaseTool):
-    """Tool for generating Arc-Graph predictor specifications via LLM."""
-
-    def __init__(
-        self,
-        services,
-        api_key: str | None,
-        base_url: str | None,
-        model: str | None,
-        ui_interface,
-    ) -> None:
-        self.services = services
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model = model
-        self.ui = ui_interface
-
-    async def execute(
-        self,
-        *,
-        context: str | None = None,
-        model_spec_path: str | None = None,
-        trainer_spec_path: str | None = None,
-        output_path: str | None = None,
-    ) -> ToolResult:
-        if not self.api_key:
-            return ToolResult.error_result(
-                "API key required for predictor generation. "
-                "Set ARC_API_KEY or configure an API key before using this tool."
-            )
-
-        if not self.services:
-            return ToolResult.error_result(
-                "Predictor generation service unavailable. "
-                "Database services not initialized."
-            )
-
-        if not model_spec_path or not context:
-            return ToolResult.error_result(
-                "Parameters 'model_spec_path' and 'context' are required "
-                "to generate a predictor specification."
-            )
-
-        # Check that model spec file exists
-        if not Path(model_spec_path).exists():
-            return ToolResult.error_result(
-                f"Model specification file not found: {model_spec_path}"
-            )
-
-        # Check trainer spec file if provided
-        if trainer_spec_path and not Path(trainer_spec_path).exists():
-            return ToolResult.error_result(
-                f"Trainer specification file not found: {trainer_spec_path}"
-            )
-
-        # Show UI feedback if UI is available
-        if self.ui:
-            self.ui.show_info("🤖 Generating predictor specification...")
-
-        agent = PredictorGeneratorAgent(
-            self.services,
-            self.api_key,
-            self.base_url,
-            self.model,
-        )
-
-        try:
-            predictor_yaml = await agent.generate_predictor(
-                user_context=str(context),
-                model_spec_path=str(model_spec_path),
-                trainer_spec_path=str(trainer_spec_path) if trainer_spec_path else None,
-            )
-        except Exception as exc:
-            # Import here to avoid circular imports
-            from arc.core.agents.predictor_generator import PredictorGeneratorError
-
-            if isinstance(exc, PredictorGeneratorError):
-                return ToolResult.error_result(str(exc))
-            return ToolResult.error_result(
-                f"Unexpected error during predictor generation: {exc}"
-            )
-
-        if output_path:
-            try:
-                Path(output_path).write_text(predictor_yaml, encoding="utf-8")
-            except Exception as exc:  # noqa: BLE001
-                return ToolResult.error_result(
-                    f"Predictor generated but failed to save file: {exc}"
-                )
-
-        lines = [
-            "Predictor specification generated successfully.",
-        ]
-
-        if output_path:
-            lines.append(f"Saved to: {output_path}")
-
-        lines.append("YAML:")
-        lines.append(predictor_yaml.strip())
-
-        return ToolResult.success_result("\n".join(lines))
