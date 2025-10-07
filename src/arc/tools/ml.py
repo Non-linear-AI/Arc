@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from arc.database.models.model import Model
 
 from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.model_generator import ModelGeneratorAgent
@@ -58,51 +61,6 @@ def _as_string_list(value: Any, field_name: str) -> list[str] | None:
     raise ValueError(f"{field_name} must be an array of strings or comma-separated")
 
 
-class MLCreateModelTool(BaseTool):
-    """Tool for registering new Arc-Graph models."""
-
-    def __init__(self, runtime: MLRuntime):
-        self.runtime = runtime
-
-    async def execute(
-        self,
-        *,
-        name: str | None = None,
-        schema_path: str | None = None,
-        description: str | None = None,
-        model_type: str | None = None,
-    ) -> ToolResult:
-        if not name or not schema_path:
-            return ToolResult.error_result(
-                "Parameters 'name' and 'schema_path' are required to create a model."
-            )
-
-        schema_path_obj = Path(schema_path)
-
-        try:
-            model = await asyncio.to_thread(
-                self.runtime.create_model,
-                name=str(name),
-                schema_path=schema_path_obj,
-                description=str(description) if description else None,
-                model_type=str(model_type) if model_type else None,
-            )
-        except MLRuntimeError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            return ToolResult.error_result(f"Unexpected error creating model: {exc}")
-
-        message_lines = [
-            f"Model '{model.name}' registered.",
-            f"ID: {model.id}",
-            f"Version: {model.version}",
-        ]
-        if model.description:
-            message_lines.append(f"Description: {model.description}")
-
-        return ToolResult.success_result("\n".join(message_lines))
-
-
 class MLTrainTool(BaseTool):
     """Tool for launching training jobs."""
 
@@ -112,6 +70,7 @@ class MLTrainTool(BaseTool):
     async def execute(
         self,
         *,
+        model_id: str | None = None,
         model_name: str | None = None,
         train_table: str | None = None,
         target_column: str | None = None,
@@ -124,11 +83,28 @@ class MLTrainTool(BaseTool):
         description: str | None = None,
         tags: Sequence[str] | str | None = None,
     ) -> ToolResult:
-        if not model_name or not train_table:
+        # Accept either model_id or model_name
+        if not model_id and not model_name:
             return ToolResult.error_result(
-                "Parameters 'model_name' and 'train_table' are required "
-                "to train a model."
+                "Either 'model_id' or 'model_name' is required to train a model."
             )
+
+        if not train_table:
+            return ToolResult.error_result(
+                "Parameter 'train_table' is required to train a model."
+            )
+
+        # If model_id provided, get model_name from it
+        if model_id:
+            try:
+                model = self.runtime.model_service.get_model_by_id(model_id)
+                if not model:
+                    return ToolResult.error_result(f"Model {model_id} not found in DB")
+                model_name = model.name
+            except Exception as exc:
+                return ToolResult.error_result(
+                    f"Failed to retrieve model {model_id}: {exc}"
+                )
 
         try:
             parsed_epochs = _as_optional_int(epochs, "epochs")
@@ -257,7 +233,6 @@ class MLModelGeneratorTool(BaseTool):
         context: str | None = None,
         data_table: str | None = None,
         target_column: str | None = None,
-        output_path: str | None = None,
         auto_confirm: bool = False,
         category: str | None = None,
         ml_plan: dict | None = None,
@@ -274,9 +249,16 @@ class MLModelGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
-        # If ML plan is provided, use it for context
+        # Validate: either ml_plan or context must be provided
+        if not ml_plan and not context:
+            return ToolResult.error_result(
+                "Either 'ml_plan' or 'context' must be provided. "
+                "ML plan is recommended for full ML workflows."
+            )
+
+        # Extract from ML plan if provided (ml_plan is PRIMARY source)
+        ml_plan_architecture = None
         if ml_plan:
-            # Extract information from ML plan
             from arc.core.ml_plan import MLPlan
 
             plan = MLPlan.from_dict(ml_plan)
@@ -288,17 +270,14 @@ class MLModelGeneratorTool(BaseTool):
                 data_table = ml_plan.get("data_table")
             if not target_column:
                 target_column = ml_plan.get("target_column")
-            if not category and plan.selected_components:
-                category = plan.selected_components[0]  # Use primary component
 
-            # Create aggregated context from the plan for the model generator
-            aggregated_context = plan.to_generation_context()
-        else:
-            aggregated_context = None
+            # CRITICAL: Extract architecture guidance from ML plan
+            ml_plan_architecture = plan.model_architecture_and_loss
 
-        if not name or not context or not data_table:
+        # Validate required parameters
+        if not name or not data_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', and 'data_table' are required "
+                "Parameters 'name' and 'data_table' are required "
                 "to generate a model specification."
             )
 
@@ -320,15 +299,13 @@ class MLModelGeneratorTool(BaseTool):
         )
 
         try:
-            # Prepare components list from category
-            components = [category] if category else None
-
             model_spec, model_yaml = await agent.generate_model(
                 name=str(name),
+                user_context=context,  # Use context as user_context
                 table_name=str(data_table),
                 target_column=target_column,
-                components=components,
-                aggregated_context=aggregated_context,
+                category=category,
+                ml_plan_architecture=ml_plan_architecture,
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -359,7 +336,7 @@ class MLModelGeneratorTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(aggregated_context),
+                editor_func=self._create_editor(context, category),
                 ui_interface=self.ui,
                 yaml_type_name="model",
                 yaml_suffix=".arc-model.yaml",
@@ -369,12 +346,13 @@ class MLModelGeneratorTool(BaseTool):
                 "model_name": str(name),
                 "table_name": str(data_table),
                 "target_column": target_column,
-                "components": components,
             }
 
             try:
                 proceed, final_yaml = await workflow.run_workflow(
-                    model_yaml, context_dict, output_path
+                    model_yaml,
+                    context_dict,
+                    None,  # No file path
                 )
                 if not proceed:
                     return ToolResult.success_result(
@@ -384,16 +362,41 @@ class MLModelGeneratorTool(BaseTool):
             finally:
                 workflow.cleanup()
 
-        # Save to file if output_path provided
-        if output_path:
-            try:
-                output_file = Path(output_path)
-                output_file.parent.mkdir(parents=True, exist_ok=True)
-                output_file.write_text(model_yaml)
-            except Exception as exc:
-                return ToolResult.error_result(
-                    f"Failed to save model to {output_path}: {exc}"
+        # Feedback loop: Update ML plan if architecture changed
+        updated_ml_plan = None
+        if (
+            ml_plan
+            and ml_plan_architecture
+            and self._detect_architecture_changes(ml_plan_architecture, model_yaml)
+        ):
+            if self.ui:
+                self.ui.show_info(
+                    "🔄 Detected architecture changes from ML plan. "
+                    "Updating plan to reflect actual implementation..."
                 )
+
+            # Update ML plan with actual implementation
+            updated_ml_plan = await self._update_ml_plan_with_changes(
+                ml_plan, model_yaml
+            )
+
+            if self.ui and updated_ml_plan != ml_plan:
+                self.ui.show_success(
+                    "✓ ML plan updated to reflect model architecture changes."
+                )
+
+        # Save model to DB with plan_id if using ML plan
+        try:
+            plan_id = ml_plan.get("plan_id") if ml_plan else None
+            model = self._save_model_to_db(
+                name=str(name),
+                yaml_content=model_yaml,
+                description=context[:200] if context else "Generated model",
+                plan_id=plan_id,
+            )
+            model_id = model.id
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to save model to DB: {exc}")
 
         summary = (
             f"Inputs: {len(model_spec.inputs)} • Nodes: {len(model_spec.graph)} "
@@ -401,20 +404,39 @@ class MLModelGeneratorTool(BaseTool):
         )
 
         lines = [
-            f"✓ Model specification generated for '{name}'.",
+            f"✓ Model '{name}' generated and saved to DB.",
+            f"Model ID: {model_id}",
             summary,
         ]
 
-        if output_path:
-            lines.append(f" Saved to: {output_path}")
-
         if auto_confirm:
-            lines.append("\n YAML:")
+            lines.append("\n✓ YAML:")
             lines.append(model_yaml.strip())
         else:
             lines.append("✓ Model approved and ready for use.")
 
-        return ToolResult.success_result("\n".join(lines))
+        # Build metadata
+        result_metadata = {
+            "model_id": model_id,
+            "model_name": name,
+            "yaml_content": model_yaml,
+            "from_ml_plan": ml_plan is not None,
+        }
+
+        # Include updated ML plan if changes were detected
+        if updated_ml_plan is not None:
+            result_metadata["ml_plan"] = updated_ml_plan
+            result_metadata["ml_plan_updated"] = True
+        elif ml_plan is not None:
+            # No changes, but still include original plan
+            result_metadata["ml_plan"] = ml_plan
+            result_metadata["ml_plan_updated"] = False
+
+        return ToolResult(
+            success=True,
+            output="\n".join(lines),
+            metadata=result_metadata,
+        )
 
     def _create_validator(self):
         """Create validator function for the workflow.
@@ -437,11 +459,14 @@ class MLModelGeneratorTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, aggregated_context: dict[str, Any] | None = None):
+    def _create_editor(
+        self, user_context: str | None = None, category: str | None = None
+    ):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:
-            aggregated_context: Optional aggregated context from ML plan
+            user_context: User context description
+            category: Model category
 
         Returns:
             Async function that edits YAML based on user feedback
@@ -460,10 +485,10 @@ class MLModelGeneratorTool(BaseTool):
             try:
                 _model_spec, edited_yaml = await agent.generate_model(
                     name=context["model_name"],
+                    user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    components=context.get("components"),
-                    aggregated_context=aggregated_context,
+                    category=category,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
@@ -474,6 +499,185 @@ class MLModelGeneratorTool(BaseTool):
                 return None
 
         return edit
+
+    def _detect_architecture_changes(
+        self, ml_plan_architecture: str, final_yaml: str
+    ) -> bool:
+        """Detect if final YAML differs significantly from ML plan architecture.
+
+        Args:
+            ml_plan_architecture: Original architecture guidance from ML plan
+            final_yaml: Final generated/edited YAML content
+
+        Returns:
+            True if significant changes detected, False otherwise
+        """
+        # Simple heuristic: check if ML plan mentions specific components
+        # and whether those appear in final YAML
+        # More sophisticated: use LLM to compare semantically
+
+        # For now, simple check: if plan is short or YAML is long enough
+        # to have diverged, consider it changed
+        plan_lower = ml_plan_architecture.lower()
+        yaml_lower = final_yaml.lower()
+
+        # Extract key architectural terms from plan
+        key_terms = []
+        for term in [
+            "linear",
+            "relu",
+            "dropout",
+            "batchnorm",
+            "attention",
+            "transformer",
+            "embedding",
+            "cross",
+            "binary_cross_entropy",
+            "mse_loss",
+            "cross_entropy",
+        ]:
+            if term in plan_lower:
+                key_terms.append(term)
+
+        # If plan mentioned specific terms but they're not in YAML, flag it
+        missing_terms = [term for term in key_terms if term not in yaml_lower]
+
+        # If >30% of key architectural terms are missing, consider it changed
+        return key_terms and len(missing_terms) / len(key_terms) > 0.3
+
+    async def _update_ml_plan_with_changes(
+        self, ml_plan: dict, final_yaml: str
+    ) -> dict:
+        """Update ML plan based on actual implemented architecture.
+
+        Uses LLM to analyze differences between plan and implementation,
+        then updates relevant sections of the plan.
+
+        Args:
+            ml_plan: Original ML plan dictionary
+            final_yaml: Final generated/edited YAML content
+
+        Returns:
+            Updated ML plan dictionary with revised architecture section
+        """
+        from pathlib import Path
+
+        from jinja2 import Environment, FileSystemLoader
+
+        from arc.core.ml_plan import MLPlan
+
+        plan = MLPlan.from_dict(ml_plan)
+
+        # Load Jinja2 template
+        template_dir = (
+            Path(__file__).parent.parent / "core" / "agents" / "ml_plan" / "templates"
+        )
+        env = Environment(loader=FileSystemLoader(str(template_dir)))
+        template = env.get_template("update_plan.j2")
+
+        # Render prompt from template
+        prompt = template.render(
+            original_architecture=plan.model_architecture_and_loss,
+            final_yaml=final_yaml,
+        )
+
+        try:
+            response = await self._call_llm(prompt)
+            updated_architecture = response.strip()
+
+            # Update the plan
+            updated_plan_dict = ml_plan.copy()
+            updated_plan_dict["model_architecture_and_loss"] = updated_architecture
+
+            return updated_plan_dict
+
+        except Exception as e:
+            # If LLM call fails, return original plan
+            if self.ui:
+                self.ui.show_warning(f"⚠ Could not update ML plan automatically: {e}")
+            return ml_plan
+
+    async def _call_llm(self, prompt: str) -> str:
+        """Call LLM with a prompt and return response.
+
+        Args:
+            prompt: Prompt to send to LLM
+
+        Returns:
+            LLM response text
+        """
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=self.api_key, base_url=self.base_url)
+
+        message = client.messages.create(
+            model=self.model or "claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        return message.content[0].text
+
+    def _save_model_to_db(
+        self,
+        name: str,
+        yaml_content: str,
+        description: str,
+        plan_id: str | None = None,
+    ) -> Model:
+        """Save generated model directly to DB (no file needed).
+
+        Args:
+            name: Model name
+            yaml_content: YAML specification as string
+            description: Model description
+            plan_id: Optional ML plan ID that guided this model generation
+
+        Returns:
+            Created Model object with model_id
+
+        Raises:
+            ValueError: If YAML is invalid or DB save fails
+        """
+        from datetime import UTC, datetime
+
+        from arc.database.models.model import Model
+        from arc.graph.model import ModelSpec
+        from arc.ml.runtime import _slugify_name
+
+        # Validate YAML first
+        try:
+            model_spec = ModelSpec.from_yaml(yaml_content)
+            _ = model_spec.get_input_names()
+            _ = model_spec.get_output_names()
+        except Exception as exc:
+            raise ValueError(f"Invalid model YAML: {exc}") from exc
+
+        # Get next version
+        latest = self.services.models.get_latest_model_by_name(name)
+        version = 1 if latest is None else latest.version + 1
+
+        # Create model ID
+        base_slug = _slugify_name(name)
+        model_id = f"{base_slug}-v{version}"
+
+        # Create model object
+        now = datetime.now(UTC)
+        model = Model(
+            id=model_id,
+            type="ml.model_spec",
+            name=name,
+            version=version,
+            description=description,
+            spec=yaml_content,
+            created_at=now,
+            updated_at=now,
+            plan_id=plan_id,  # Link to ML plan if provided
+        )
+
+        # Save to DB
+        self.services.models.create_model(model)
+        return model
 
 
 class MLTrainerGeneratorTool(BaseTool):
@@ -729,8 +933,7 @@ class MLPlanTool(BaseTool):
         self,
         *,
         user_context: str | None = None,
-        data_table: str | None = None,
-        target_column: str | None = None,
+        source_tables: str | None = None,
         conversation_history: list[dict] | None = None,
         feedback: str | None = None,
         previous_plan: dict | None = None,
@@ -746,9 +949,9 @@ class MLPlanTool(BaseTool):
                 "ML planning service unavailable. Database services not initialized."
             )
 
-        if not user_context or not data_table or not target_column:
+        if not user_context or not source_tables:
             return ToolResult.error_result(
-                "Parameters 'user_context', 'data_table', and 'target_column' "
+                "Parameters 'user_context' and 'source_tables' "
                 "are required for ML planning."
             )
 
@@ -781,15 +984,19 @@ class MLPlanTool(BaseTool):
 
             # Internal loop for handling feedback (option C)
             current_feedback = feedback
-            version = previous_plan.get("version", 0) + 1 if previous_plan else 1
+
+            # Get version from database to avoid conflicts
+            latest_plan = self.services.ml_plans.get_latest_plan_for_tables(
+                str(source_tables)
+            )
+            version = latest_plan.version + 1 if latest_plan else 1
 
             while True:
                 try:
-                    # Generate the plan
+                    # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
                         user_context=str(user_context),
-                        table_name=str(data_table),
-                        target_column=str(target_column),
+                        source_tables=str(source_tables),
                         conversation_history=conversation_history,
                         feedback=current_feedback,
                         stream=False,
@@ -881,10 +1088,51 @@ class MLPlanTool(BaseTool):
                     )
                     break
 
-            # Return with plan in metadata for storage
-            plan_dict = plan.to_dict()
-            plan_dict["data_table"] = str(data_table)
-            plan_dict["target_column"] = str(target_column)
+            # Save plan to database after acceptance
+            try:
+                from datetime import UTC, datetime
+
+                from arc.database.models.ml_plan import MLPlan as MLPlanModel
+                from arc.ml.runtime import _slugify_name
+
+                # Convert plan to dict for storage
+                plan_dict = plan.to_dict()
+                plan_dict["source_tables"] = str(source_tables)
+
+                # Convert plan to YAML format for better readability
+                plan_yaml = yaml.dump(
+                    plan_dict, default_flow_style=False, sort_keys=False
+                )
+
+                # Create database model - use first table for plan ID
+                first_table = source_tables.split(",")[0].strip()
+                base_slug = _slugify_name(f"{first_table}-plan")
+                plan_id = f"{base_slug}-v{version}"
+
+                now = datetime.now(UTC)
+                db_plan = MLPlanModel(
+                    plan_id=plan_id,
+                    version=version,
+                    user_context=str(user_context),
+                    source_tables=str(source_tables),
+                    plan_yaml=plan_yaml,  # Store as YAML string
+                    status="approved",  # Plan was accepted by user
+                    created_at=now,
+                    updated_at=now,
+                )
+
+                # Save to database
+                self.services.ml_plans.create_plan(db_plan)
+
+                # Add plan_id to metadata for linking
+                plan_dict["plan_id"] = plan_id
+
+            except Exception as e:
+                # Log error but don't fail - plan still in memory
+                if self.ui:
+                    self.ui.show_warning(
+                        f"⚠ Plan saved to session but not database: {e}"
+                    )
 
             return ToolResult(
                 success=True,

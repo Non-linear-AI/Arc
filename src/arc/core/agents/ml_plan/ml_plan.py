@@ -52,8 +52,7 @@ class MLPlanAgent(BaseAgent):
     async def analyze_problem(
         self,
         user_context: str,
-        table_name: str,
-        target_column: str | None = None,
+        source_tables: str,
         conversation_history: list[dict] | None = None,
         feedback: str | None = None,
         stream: bool = False,
@@ -62,8 +61,7 @@ class MLPlanAgent(BaseAgent):
 
         Args:
             user_context: User description of the problem
-            table_name: Database table name for data exploration
-            target_column: Target column for supervised learning
+            source_tables: Comma-separated source table names for data exploration
             conversation_history: Full conversation history for LLM to analyze
                 (required)
             feedback: Optional user feedback for refining analysis
@@ -83,14 +81,15 @@ class MLPlanAgent(BaseAgent):
                 "Pass the full conversation history to enable context-aware planning."
             )
 
-        # Get data profile for analysis
-        data_profile = await self._get_unified_data_profile(table_name, target_column)
+        # Get data profiles for all source tables
+        table_list = [t.strip() for t in source_tables.split(",")]
+        data_profiles = await self._get_multiple_data_profiles(table_list)
 
         # Build analysis context with full conversation history
         context = {
             "user_context": user_context,
-            "data_profile": data_profile,
-            "target_column": target_column,
+            "data_profiles": data_profiles,
+            "source_tables": source_tables,
             "conversation_history": conversation_history,
             "feedback": feedback,
         }
@@ -237,17 +236,31 @@ class MLPlanAgent(BaseAgent):
                 f"training_configuration, and evaluation."
             ) from e
 
-    async def _get_unified_data_profile(
-        self, table_name: str, target_column: str | None = None
+    async def _get_multiple_data_profiles(
+        self, table_names: list[str]
     ) -> dict[str, Any]:
-        """Get unified data profile with target-aware analysis for LLM context.
+        """Get data profiles for multiple tables.
+
+        Args:
+            table_names: List of table names
+
+        Returns:
+            Dictionary mapping table names to their profiles
+        """
+        profiles = {}
+        for table_name in table_names:
+            profile = await self._get_single_table_profile(table_name)
+            profiles[table_name] = profile
+        return profiles
+
+    async def _get_single_table_profile(self, table_name: str) -> dict[str, Any]:
+        """Get data profile for a single table.
 
         Args:
             table_name: Database table name
-            target_column: Optional target column for task-aware analysis
 
         Returns:
-            Unified data profile with target and feature information
+            Data profile for the table
         """
         try:
             # Use ML data service for dataset information
@@ -261,44 +274,24 @@ class MLPlanAgent(BaseAgent):
                     "feature_types": {},
                 }
 
-            # Build exclude set (only target column)
-            exclude_set = set()
-            if target_column:
-                exclude_set.add(target_column)
-
-            # Separate target and feature columns
+            # Get all columns from the table
             all_columns = dataset_info.columns
-            feature_columns = [
-                col for col in all_columns if col["name"] not in exclude_set
-            ]
 
             # Count feature types
             feature_types = {}
-            for col in feature_columns:
+            for col in all_columns:
                 col_type = col.get("type", "unknown")
                 feature_types[col_type] = feature_types.get(col_type, 0) + 1
 
             # Base profile structure
             profile = {
                 "table_name": dataset_info.name,
-                "feature_columns": feature_columns,
+                "feature_columns": all_columns,
                 "total_columns": len(all_columns),
-                "feature_count": len(feature_columns),
+                "feature_count": len(all_columns),
                 "feature_types": feature_types,
-                "summary": f"Table '{table_name}' with {len(feature_columns)} features",
+                "summary": f"Table '{table_name}' with {len(all_columns)} columns",
             }
-
-            # Add target analysis if target column specified
-            if target_column:
-                target_analysis = await self._analyze_target_column(
-                    table_name, target_column
-                )
-                profile["target_info"] = target_analysis
-                if "error" not in target_analysis:
-                    profile["summary"] += (
-                        f" and target '{target_column}' "
-                        f"({target_analysis.get('type', 'unknown')} type)"
-                    )
 
             return profile
 

@@ -279,19 +279,15 @@ async def _ml_plan(
         args,
         {
             "context": True,
-            "data-table": True,
-            "target-column": True,
+            "data-source": True,
         },
     )
 
     user_context = options.get("context")
-    data_table = options.get("data-table")
-    target_column = options.get("target-column")
+    source_tables = options.get("data-source")
 
-    if not user_context or not data_table or not target_column:
-        raise CommandError(
-            "/ml plan requires --context, --data-table, and --target-column"
-        )
+    if not user_context or not source_tables:
+        raise CommandError("/ml plan requires --context and --data-source")
 
     ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
 
@@ -301,8 +297,7 @@ async def _ml_plan(
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
         user_context=str(user_context),
-        data_table=str(data_table),
-        target_column=str(target_column),
+        source_tables=str(source_tables),
         conversation_history=conversation_history,
         feedback=None,
         previous_plan=agent.current_ml_plan,
@@ -596,7 +591,7 @@ async def _ml_generate_model(
     args: list[str],
     ui: InteractiveInterface,
     runtime: "MLRuntime",
-    agent: "ArcAgent | None" = None,
+    agent: "ArcAgent | None" = None,  # noqa: ARG001
 ) -> None:
     """Handle model specification generation command."""
     options = _parse_options(
@@ -605,37 +600,48 @@ async def _ml_generate_model(
             "name": True,
             "context": True,
             "data-table": True,
-            "output": True,
             "target-column": True,  # Target column for task-aware generation
-            "use-plan": False,  # Flag to use current ML plan
+            "plan-id": True,  # ML plan ID to use for guidance
         },
     )
 
     name = options.get("name")
     context = options.get("context")
     data_table = options.get("data-table")
-    output_path = options.get("output")
     target_column = options.get("target-column")
-    use_plan = options.get("use-plan", False)
+    plan_id = options.get("plan-id")
 
-    # If use-plan is set and agent has a plan, use it
+    # If plan-id is provided, fetch the plan from database
     ml_plan = None
-    if use_plan and agent and agent.current_ml_plan:
-        ml_plan = agent.current_ml_plan
-        ui.show_info("📊 Using current ML plan for model generation")
-    elif use_plan and (not agent or not agent.current_ml_plan):
-        raise CommandError(
-            "No ML plan available. Create a plan first with /ml plan or omit --use-plan"
-        )
+    if plan_id:
+        try:
+            # Fetch plan from database
+            db_plan = runtime.services.ml_plans.get_plan_by_id(str(plan_id))
+            if not db_plan:
+                raise CommandError(f"Plan '{plan_id}' not found in database")
 
-    if not name or not context or not data_table:
-        raise CommandError(
-            "/ml generate-model requires --name, --context, and --data-table"
-        )
+            # Parse YAML to dict for the tool
+            import yaml
 
-    # Default output path if not specified
-    if not output_path:
-        output_path = f"{name}_model.yaml"
+            ml_plan = yaml.safe_load(db_plan.plan_yaml)
+            ml_plan["plan_id"] = db_plan.plan_id  # Ensure plan_id is in the dict
+
+            ui.show_info(f"📊 Using ML plan: {plan_id}")
+        except Exception as e:
+            raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
+
+    # Validate required parameters
+    if not name:
+        raise CommandError("/ml generate-model requires --name")
+
+    if not data_table:
+        raise CommandError("/ml generate-model requires --data-table")
+
+    # context is optional when using a plan
+    if not ml_plan and not context:
+        raise CommandError(
+            "/ml generate-model requires --context when not using --plan-id"
+        )
 
     try:
         # Use the MLModelGeneratorTool which includes confirmation workflow
@@ -659,7 +665,6 @@ async def _ml_generate_model(
             context=context,
             data_table=data_table,
             target_column=target_column,
-            output_path=output_path,
             ml_plan=ml_plan,  # Pass ML plan if available
         )
 

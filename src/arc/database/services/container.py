@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 from arc.database.services.interactive_query_service import InteractiveQueryService
 from arc.database.services.job_service import JobService
 from arc.database.services.ml_data_service import MLDataService
+from arc.database.services.ml_plan_service import MLPlanService
 from arc.database.services.model_service import ModelService
 from arc.database.services.plugin_service import PluginService
 from arc.database.services.schema_service import SchemaService
@@ -41,6 +42,7 @@ class ServiceContainer:
         self._plugin_service = None
         self._schema_service = None
         self._ml_data_service = None
+        self._ml_plan_service = None
         self._ml_runtime = None
 
     @property
@@ -91,6 +93,13 @@ class ServiceContainer:
         if self._ml_data_service is None:
             self._ml_data_service = MLDataService(self.db_manager)
         return self._ml_data_service
+
+    @property
+    def ml_plans(self) -> MLPlanService:
+        """Get the ML plan service."""
+        if self._ml_plan_service is None:
+            self._ml_plan_service = MLPlanService(self.db_manager)
+        return self._ml_plan_service
 
     @property
     def ml_runtime(self) -> "MLRuntime":

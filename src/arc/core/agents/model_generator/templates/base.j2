@@ -25,6 +25,16 @@ Generate an Arc-Graph {{ architecture_type.upper() }} specification for:
 - **Available Columns**: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.feature_count }} total){% if data_profile.target_analysis %}
 - **Target Column**: {{ data_profile.target_analysis.column_name }} ({{ data_profile.target_analysis.data_type }}{% if data_profile.target_analysis.is_numeric %}, numeric, {{ data_profile.target_analysis.unique_values }} unique values{% else %}, categorical, sample values: {{ data_profile.target_analysis.sample_values | join(", ") }}{% endif %}){% endif %}
 {% endif %}
+{% if ml_plan_architecture %}
+
+## ML PLAN ARCHITECTURE GUIDANCE
+
+The following architecture and loss function design was recommended by the ML Plan tool after analyzing the data characteristics and task requirements:
+
+{{ ml_plan_architecture }}
+
+**CRITICAL**: This guidance from the ML Plan represents a carefully considered design. Follow this architecture closely when generating the Arc-Graph specification.
+{% endif %}
 
 ## Arc-Graph Schema Validation
 

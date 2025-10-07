@@ -11,29 +11,25 @@ Your analysis should provide a complete blueprint for training a model from scra
 
 ## User Request
 **Context**: {{ user_context }}
-{% if target_column %}
-**Target Column**: {{ target_column }}
-{% endif %}
+**Source Tables**: {{ source_tables }}
 {% if feedback %}
 **User Feedback**: {{ feedback }}
 {% endif %}
 
-## Data Profile
-{{ data_profile.summary }}
+## Data Profiles
+{% for table_name, profile in data_profiles.items() %}
+### Table: {{ table_name }}
+{{ profile.summary }}
 
-**Feature Columns**: {{ data_profile.feature_count }} features
-{% if data_profile.feature_types %}
+**Feature Columns**: {{ profile.feature_count }} features
+{% if profile.feature_types %}
 **Feature Types**:
-{% for ftype, count in data_profile.feature_types.items() %}
+{% for ftype, count in profile.feature_types.items() %}
   - {{ ftype }}: {{ count }} columns
 {% endfor %}
 {% endif %}
 
-{% if data_profile.target_info %}
-**Target Information**:
-  - Type: {{ data_profile.target_info.type }}
-  - Distribution: {{ data_profile.target_info.distribution }}
-{% endif %}
+{% endfor %}
 
 {% if conversation_history and conversation_history|length > 0 %}
 ## Conversation History

@@ -128,6 +128,7 @@ class DuckDBDatabase(Database):
                     version INTEGER,
                     description TEXT,
                     spec TEXT,
+                    plan_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE (name, version)
@@ -272,6 +273,49 @@ class DuckDBDatabase(Database):
                 CREATE INDEX IF NOT EXISTS idx_plugin_components_name
                 ON plugin_components(component_name);
             """)
+
+            # Plans table - stores comprehensive ML workflow plans
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS plans(
+                    plan_id TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL,
+                    user_context TEXT NOT NULL,
+                    source_tables TEXT NOT NULL,
+                    plan_yaml TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            # Migrate old schema: data_table/target_column -> source_tables
+            # Check if old columns exist and migrate
+            from contextlib import suppress
+
+            with suppress(Exception):
+                # Check if data_table column exists (old schema)
+                check_result = self.query("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'plans' AND column_name = 'data_table'
+                """)
+
+                if check_result.rows:
+                    # Old schema exists, migrate it
+                    # Add new column if it doesn't exist
+                    with suppress(Exception):
+                        self.execute("ALTER TABLE plans ADD COLUMN source_tables TEXT")
+
+                    # Copy data_table to source_tables for existing rows
+                    self.execute("""
+                        UPDATE plans
+                        SET source_tables = data_table
+                        WHERE source_tables IS NULL
+                    """)
+
+                    # Drop old columns
+                    self.execute("ALTER TABLE plans DROP COLUMN data_table")
+                    self.execute("ALTER TABLE plans DROP COLUMN target_column")
 
         except Exception as e:
             raise DatabaseError(f"Schema initialization failed: {e}") from e

@@ -74,6 +74,7 @@ class ModelGeneratorAgent(BaseAgent):
         category: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
+        ml_plan_architecture: str | None = None,
     ) -> tuple[ModelSpec, str]:
         """Generate Arc model specification based on data and user context.
 
@@ -85,6 +86,7 @@ class ModelGeneratorAgent(BaseAgent):
             category: Optional category hint ("mlp", "transformer", etc.)
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
+            ml_plan_architecture: Optional ML plan architecture guidance
 
         Returns:
             Tuple of (parsed ModelSpec object, YAML string)
@@ -121,6 +123,7 @@ class ModelGeneratorAgent(BaseAgent):
             "existing_yaml": existing_yaml,
             "editing_instructions": editing_instructions,
             "is_editing": existing_yaml is not None,
+            "ml_plan_architecture": ml_plan_architecture,
         }
 
         # Store category for template selection
