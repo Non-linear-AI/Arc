@@ -70,8 +70,7 @@ class MLTrainTool(BaseTool):
     async def execute(
         self,
         *,
-        model_id: str | None = None,
-        model_name: str | None = None,
+        trainer_name: str | None = None,
         train_table: str | None = None,
         target_column: str | None = None,
         validation_table: str | None = None,
@@ -83,28 +82,11 @@ class MLTrainTool(BaseTool):
         description: str | None = None,
         tags: Sequence[str] | str | None = None,
     ) -> ToolResult:
-        # Accept either model_id or model_name
-        if not model_id and not model_name:
+        if not trainer_name or not train_table:
             return ToolResult.error_result(
-                "Either 'model_id' or 'model_name' is required to train a model."
+                "Parameters 'trainer_name' and 'train_table' are required "
+                "to train a model."
             )
-
-        if not train_table:
-            return ToolResult.error_result(
-                "Parameter 'train_table' is required to train a model."
-            )
-
-        # If model_id provided, get model_name from it
-        if model_id:
-            try:
-                model = self.runtime.model_service.get_model_by_id(model_id)
-                if not model:
-                    return ToolResult.error_result(f"Model {model_id} not found in DB")
-                model_name = model.name
-            except Exception as exc:
-                return ToolResult.error_result(
-                    f"Failed to retrieve model {model_id}: {exc}"
-                )
 
         try:
             parsed_epochs = _as_optional_int(epochs, "epochs")
@@ -119,8 +101,8 @@ class MLTrainTool(BaseTool):
 
         try:
             job_id = await asyncio.to_thread(
-                self.runtime.train_model,
-                model_name=str(model_name),
+                self.runtime.train_with_trainer,
+                trainer_name=str(trainer_name),
                 train_table=str(train_table),
                 target_column=str(target_column) if target_column else None,
                 validation_table=str(validation_table) if validation_table else None,
@@ -141,7 +123,7 @@ class MLTrainTool(BaseTool):
 
         lines = [
             "Training job submitted successfully.",
-            f"Model: {model_name}",
+            f"Trainer: {trainer_name}",
             f"Training table: {train_table}",
             f"Job ID: {job_id}",
         ]
@@ -346,6 +328,7 @@ class MLModelGeneratorTool(BaseTool):
                 "model_name": str(name),
                 "table_name": str(data_table),
                 "target_column": target_column,
+                "category": category,
             }
 
             try:
@@ -488,7 +471,7 @@ class MLModelGeneratorTool(BaseTool):
                     user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    category=category,
+                    category=context.get("category"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
@@ -1254,3 +1237,268 @@ class MLPredictorGeneratorTool(BaseTool):
         lines.append(predictor_yaml.strip())
 
         return ToolResult.success_result("\n".join(lines))
+
+
+class MLTrainingRunsListTool(BaseTool):
+    """Tool for listing training runs with optional filters."""
+
+    def __init__(self, services) -> None:
+        self.services = services
+
+    async def execute(
+        self,
+        *,
+        limit: int | None = None,
+        status: str | None = None,
+        model_id: str | None = None,
+    ) -> ToolResult:
+        if not self.services:
+            return ToolResult.error_result("Training tracking service unavailable")
+
+        try:
+            tracking_service = self.services.training_tracking
+
+            # Parse status if provided
+            status_enum = None
+            if status:
+                from arc.database.models.training import TrainingStatus
+
+                try:
+                    status_enum = TrainingStatus.from_string(status)
+                except ValueError:
+                    return ToolResult.error_result(f"Invalid status: {status}")
+
+            # Get runs
+            runs = tracking_service.list_runs(
+                limit=limit or 100,
+                status=status_enum,
+                model_id=model_id,
+            )
+
+            if not runs:
+                return ToolResult.success_result("No training runs found")
+
+            # Format output
+            lines = [f"Found {len(runs)} training run(s):\n"]
+            for run in runs:
+                lines.append(f"Run ID: {run.run_id}")
+                if run.run_name:
+                    lines.append(f"  Name: {run.run_name}")
+                lines.append(f"  Status: {run.status.value}")
+                if run.model_id:
+                    lines.append(f"  Model: {run.model_id}")
+                if run.trainer_id:
+                    lines.append(f"  Trainer: {run.trainer_id}")
+                if run.started_at:
+                    lines.append(f"  Started: {run.started_at}")
+                if run.completed_at:
+                    lines.append(f"  Completed: {run.completed_at}")
+                lines.append("")
+
+            return ToolResult.success_result("\n".join(lines))
+
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to list training runs: {exc}")
+
+
+class MLTrainingRunStatusTool(BaseTool):
+    """Tool for getting detailed status of a training run."""
+
+    def __init__(self, services) -> None:
+        self.services = services
+
+    async def execute(
+        self,
+        *,
+        run_id: str,
+        include_metrics: bool = True,
+        metric_limit: int = 20,
+    ) -> ToolResult:
+        if not self.services:
+            return ToolResult.error_result("Training tracking service unavailable")
+
+        try:
+            tracking_service = self.services.training_tracking
+
+            # Get run
+            run = tracking_service.get_run_by_id(run_id)
+            if not run:
+                return ToolResult.error_result(f"Training run not found: {run_id}")
+
+            # Build output
+            lines = [
+                f"Training Run: {run.run_id}",
+                "=" * 60,
+                f"Status: {run.status.value}",
+            ]
+
+            if run.run_name:
+                lines.append(f"Name: {run.run_name}")
+            if run.description:
+                lines.append(f"Description: {run.description}")
+            if run.model_id:
+                lines.append(f"Model ID: {run.model_id}")
+            if run.trainer_id:
+                lines.append(f"Trainer ID: {run.trainer_id}")
+            if run.job_id:
+                lines.append(f"Job ID: {run.job_id}")
+
+            lines.append("")
+            lines.append("Timestamps:")
+            if run.started_at:
+                lines.append(f"  Started: {run.started_at}")
+            if run.paused_at:
+                lines.append(f"  Paused: {run.paused_at}")
+            if run.resumed_at:
+                lines.append(f"  Resumed: {run.resumed_at}")
+            if run.completed_at:
+                lines.append(f"  Completed: {run.completed_at}")
+
+            lines.append("")
+            lines.append("Configuration:")
+            lines.append(f"  TensorBoard: {run.tensorboard_enabled}")
+            if run.tensorboard_log_dir:
+                lines.append(f"  TensorBoard Log Dir: {run.tensorboard_log_dir}")
+            lines.append(f"  Metric Log Frequency: {run.metric_log_frequency}")
+            lines.append(f"  Checkpoint Frequency: {run.checkpoint_frequency}")
+
+            # Get recent metrics if requested
+            if include_metrics:
+                metrics = tracking_service.get_metrics(run_id, limit=metric_limit)
+                if metrics:
+                    lines.append("")
+                    lines.append(f"Recent Metrics (last {len(metrics)}):")
+                    for metric in metrics:
+                        lines.append(
+                            f"  [{metric.metric_type.value}] "
+                            f"{metric.metric_name} = {metric.value:.4f} "
+                            f"(step={metric.step}, epoch={metric.epoch})"
+                        )
+
+            return ToolResult.success_result("\n".join(lines))
+
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to get training run status: {exc}")
+
+
+class MLTrainingMetricsTool(BaseTool):
+    """Tool for getting training metrics for a specific run."""
+
+    def __init__(self, services) -> None:
+        self.services = services
+
+    async def execute(
+        self,
+        *,
+        run_id: str,
+        metric_name: str | None = None,
+        metric_type: str | None = None,
+        limit: int | None = None,
+    ) -> ToolResult:
+        if not self.services:
+            return ToolResult.error_result("Training tracking service unavailable")
+
+        try:
+            tracking_service = self.services.training_tracking
+
+            # Verify run exists
+            run = tracking_service.get_run_by_id(run_id)
+            if not run:
+                return ToolResult.error_result(f"Training run not found: {run_id}")
+
+            # Parse metric type if provided
+            metric_type_enum = None
+            if metric_type:
+                from arc.database.models.training import MetricType
+
+                try:
+                    metric_type_enum = MetricType.from_string(metric_type)
+                except ValueError:
+                    return ToolResult.error_result(
+                        f"Invalid metric type: {metric_type}"
+                    )
+
+            # Get metrics
+            metrics = tracking_service.get_metrics(
+                run_id,
+                metric_name=metric_name,
+                metric_type=metric_type_enum,
+                limit=limit,
+            )
+
+            if not metrics:
+                return ToolResult.success_result("No metrics found")
+
+            # Format output
+            lines = [f"Found {len(metrics)} metric(s) for run {run_id}:\n"]
+
+            # Group by metric name and type
+            grouped = {}
+            for metric in metrics:
+                key = (metric.metric_name, metric.metric_type.value)
+                if key not in grouped:
+                    grouped[key] = []
+                grouped[key].append(metric)
+
+            for (name, mtype), metric_list in grouped.items():
+                lines.append(f"{name} ({mtype}):")
+                for metric in metric_list:
+                    lines.append(
+                        f"  step={metric.step:5d}, "
+                        f"epoch={metric.epoch:3d}, "
+                        f"value={metric.value:.6f}"
+                    )
+                lines.append("")
+
+            return ToolResult.success_result("\n".join(lines))
+
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to get training metrics: {exc}")
+
+
+class MLTrainingCheckpointsTool(BaseTool):
+    """Tool for getting checkpoints for a specific training run."""
+
+    def __init__(self, services) -> None:
+        self.services = services
+
+    async def execute(self, *, run_id: str) -> ToolResult:
+        if not self.services:
+            return ToolResult.error_result("Training tracking service unavailable")
+
+        try:
+            tracking_service = self.services.training_tracking
+
+            # Verify run exists
+            run = tracking_service.get_run_by_id(run_id)
+            if not run:
+                return ToolResult.error_result(f"Training run not found: {run_id}")
+
+            # Get checkpoints
+            checkpoints = tracking_service.get_checkpoints(run_id)
+
+            if not checkpoints:
+                return ToolResult.success_result("No checkpoints found")
+
+            # Format output
+            lines = [f"Found {len(checkpoints)} checkpoint(s) for run {run_id}:\n"]
+
+            for cp in checkpoints:
+                lines.append(f"Checkpoint ID: {cp.checkpoint_id}")
+                lines.append(f"  Epoch: {cp.epoch}")
+                lines.append(f"  Step: {cp.step}")
+                lines.append(f"  Path: {cp.checkpoint_path}")
+                lines.append(f"  Status: {cp.status.value}")
+                lines.append(f"  Is Best: {cp.is_best}")
+                if cp.file_size_bytes:
+                    size_mb = cp.file_size_bytes / (1024 * 1024)
+                    lines.append(f"  Size: {size_mb:.2f} MB")
+                if cp.metrics:
+                    lines.append(f"  Metrics: {cp.metrics}")
+                lines.append(f"  Created: {cp.created_at}")
+                lines.append("")
+
+            return ToolResult.success_result("\n".join(lines))
+
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to get training checkpoints: {exc}")

@@ -317,6 +317,70 @@ class DuckDBDatabase(Database):
                     self.execute("ALTER TABLE plans DROP COLUMN data_table")
                     self.execute("ALTER TABLE plans DROP COLUMN target_column")
 
+            # Training tracking tables
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS training_runs (
+                    run_id VARCHAR PRIMARY KEY,
+                    job_id VARCHAR,
+                    model_id VARCHAR,
+                    trainer_id VARCHAR,
+                    run_name VARCHAR,
+                    description TEXT,
+                    tensorboard_enabled BOOLEAN DEFAULT TRUE,
+                    tensorboard_log_dir VARCHAR,
+                    metric_log_frequency INTEGER DEFAULT 100,
+                    checkpoint_frequency INTEGER DEFAULT 5,
+                    status VARCHAR DEFAULT 'pending',
+                    started_at TIMESTAMP,
+                    paused_at TIMESTAMP,
+                    resumed_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    original_config JSON,
+                    current_config JSON,
+                    config_history JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS training_metrics (
+                    metric_id VARCHAR PRIMARY KEY,
+                    run_id VARCHAR,
+                    metric_name VARCHAR,
+                    metric_type VARCHAR,
+                    step INTEGER,
+                    epoch INTEGER,
+                    value DOUBLE,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_metrics_run_metric
+                ON training_metrics(run_id, metric_name, step);
+            """)
+
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS training_checkpoints (
+                    checkpoint_id VARCHAR PRIMARY KEY,
+                    run_id VARCHAR,
+                    epoch INTEGER,
+                    step INTEGER,
+                    checkpoint_path VARCHAR,
+                    metrics JSON,
+                    is_best BOOLEAN DEFAULT FALSE,
+                    file_size_bytes BIGINT,
+                    status VARCHAR DEFAULT 'saved',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_checkpoints_run
+                ON training_checkpoints(run_id, epoch);
+            """)
+
         except Exception as e:
             raise DatabaseError(f"Schema initialization failed: {e}") from e
 

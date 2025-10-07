@@ -53,6 +53,13 @@ class StubModelService:
         models = self._models_by_name.get(name, [])
         return models[0] if models else None
 
+    def get_model_by_id(self, model_id: str):
+        for models in self._models_by_name.values():
+            for model in models:
+                if model.id == model_id:
+                    return model
+        return None
+
     def register_model(self, model):
         self._models_by_name.setdefault(model.name, []).insert(0, model)
 
@@ -237,6 +244,61 @@ class StubRuntime:
                 self.model_name = model.name
                 self.train_table = train_table
                 self.target_column = target_column
+                self.validation_table = validation_table
+                self.training_config = self
+                # Training config attributes
+                self.epochs = epochs or 3
+                self.batch_size = batch_size or 16
+                self.learning_rate = learning_rate or 0.01
+
+        config = MockConfig()
+        return self.training_service.submit_training_job(config)
+
+    def train_with_trainer(
+        self,
+        trainer_name: str,
+        train_table: str,
+        target_column: str | None = None,  # noqa: ARG002
+        validation_table: str | None = None,
+        validation_split: float | None = None,  # noqa: ARG002
+        epochs: int | None = None,
+        learning_rate: float | None = None,
+        batch_size: int | None = None,
+        checkpoint_dir: str | None = None,  # noqa: ARG002
+        description: str | None = None,  # noqa: ARG002
+        tags: list[str] | None = None,  # noqa: ARG002
+    ) -> str:
+        """Stub implementation of train_with_trainer."""
+        # Get the trainer record
+        trainer = self.trainer_service.get_latest_trainer_by_name(trainer_name)
+        if not trainer:
+            from arc.ml.runtime import MLRuntimeError
+
+            raise MLRuntimeError(f"Trainer '{trainer_name}' not found")
+
+        # Get the model using trainer's model_id
+        model = self.model_service.get_model_by_id(trainer.model_id)
+        if not model:
+            from arc.ml.runtime import MLRuntimeError
+
+            raise MLRuntimeError(
+                f"Model '{trainer.model_id}' referenced by trainer not found"
+            )
+
+        # For testing, create a simple mock config and submit to training service
+        # Parse arc_graph to get target column from model spec
+        arc_graph_data = json.loads(model.arc_graph)
+        target_col = None
+        if arc_graph_data.get("features", {}).get("target_columns"):
+            target_col = arc_graph_data["features"]["target_columns"][0]
+
+        # We'll create a simple object that has the required attributes
+        class MockConfig:
+            def __init__(self):
+                self.model_id = model.id
+                self.model_name = model.name
+                self.train_table = train_table
+                self.target_column = target_col
                 self.validation_table = validation_table
                 self.training_config = self
                 # Training config attributes
@@ -440,7 +502,7 @@ async def test_train_submits_job(tmp_path):
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --model my_model --trainer my_trainer --data train_table",
+        "/ml train --trainer my_trainer --data train_table",
         ui,
         runtime,
     )
@@ -534,7 +596,7 @@ async def test_train_missing_model_shows_error(tmp_path):
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --model unknown --trainer some_trainer --data table", ui, runtime
+        "/ml train --trainer unknown_trainer --data table", ui, runtime
     )
 
     assert any("not found" in err for err in ui.errors)
@@ -601,7 +663,7 @@ config:
     )
 
     await handle_ml_command(
-        "/ml train --model pima_cli --trainer pima_trainer --data pima_small",
+        "/ml train --trainer pima_trainer --data pima_small",
         ui,
         services.ml_runtime,
     )

@@ -344,13 +344,18 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="ml_train",
-            description="Launch an Arc-Graph training job on a dataset",
+            description=(
+                "Launch an Arc-Graph training job using a registered trainer. "
+                "The trainer references the model and training configuration."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
-                    "model_name": {
+                    "trainer_name": {
                         "type": "string",
-                        "description": "Name of the registered model to train",
+                        "description": (
+                            "Name of the registered trainer to use for training"
+                        ),
                     },
                     "train_table": {
                         "type": "string",
@@ -372,20 +377,20 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "number",
                         "description": (
                             "Optional validation split (0-1). "
-                            "Overrides graph configuration if provided"
+                            "Overrides trainer configuration if provided"
                         ),
                     },
                     "epochs": {
                         "type": "integer",
-                        "description": "Override training epochs",
+                        "description": "Override training epochs from trainer config",
                     },
                     "batch_size": {
                         "type": "integer",
-                        "description": "Override training batch size",
+                        "description": "Override batch size from trainer config",
                     },
                     "learning_rate": {
                         "type": "number",
-                        "description": "Override learning rate",
+                        "description": "Override learning rate from trainer config",
                     },
                     "checkpoint_dir": {
                         "type": "string",
@@ -401,7 +406,7 @@ def get_base_tools() -> list[ArcTool]:
                         "description": "Optional tags to attach to the training job",
                     },
                 },
-                "required": ["model_name", "train_table"],
+                "required": ["trainer_name", "train_table"],
             },
         ),
         ArcTool(
@@ -595,6 +600,106 @@ def get_base_tools() -> list[ArcTool]:
                     },
                 },
                 "required": ["action"],
+            },
+        ),
+        ArcTool(
+            name="ml_training_runs_list",
+            description="List training runs with optional filters",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": (
+                            "Maximum number of runs to return (default: 100)"
+                        ),
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "running",
+                            "paused",
+                            "stopped",
+                            "completed",
+                            "failed",
+                        ],
+                        "description": "Filter by training status (optional)",
+                    },
+                    "model_id": {
+                        "type": "string",
+                        "description": "Filter by model ID (optional)",
+                    },
+                },
+            },
+        ),
+        ArcTool(
+            name="ml_training_run_status",
+            description="Get detailed status of a specific training run",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "Training run ID",
+                    },
+                    "include_metrics": {
+                        "type": "boolean",
+                        "description": (
+                            "Include recent metrics in the response (default: true)"
+                        ),
+                    },
+                    "metric_limit": {
+                        "type": "integer",
+                        "description": (
+                            "Number of recent metrics to include (default: 20)"
+                        ),
+                    },
+                },
+                "required": ["run_id"],
+            },
+        ),
+        ArcTool(
+            name="ml_training_metrics",
+            description="Get training metrics for a specific run",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "Training run ID",
+                    },
+                    "metric_name": {
+                        "type": "string",
+                        "description": (
+                            "Filter by metric name (e.g., 'loss', 'accuracy')"
+                        ),
+                    },
+                    "metric_type": {
+                        "type": "string",
+                        "enum": ["train", "validation", "test"],
+                        "description": "Filter by metric type (optional)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of metrics to return",
+                    },
+                },
+                "required": ["run_id"],
+            },
+        ),
+        ArcTool(
+            name="ml_training_checkpoints",
+            description="Get checkpoints for a specific training run",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "Training run ID",
+                    },
+                },
+                "required": ["run_id"],
             },
         ),
     ]

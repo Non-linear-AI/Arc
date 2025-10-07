@@ -458,22 +458,19 @@ def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -
     options = _parse_options(
         args,
         {
-            "model": True,
             "trainer": True,
             "data": True,
         },
     )
 
-    model_name = options.get("model")
     trainer_name = options.get("trainer")
     train_table = options.get("data")
 
-    if not model_name or not train_table or not trainer_name:
-        raise CommandError("/ml train requires --model, --trainer, and --data")
+    if not trainer_name or not train_table:
+        raise CommandError("/ml train requires --trainer and --data")
 
     try:
-        job_id = runtime.train_model(
-            model_name=str(model_name),
+        job_id = runtime.train_with_trainer(
             trainer_name=str(trainer_name),
             train_table=str(train_table),
         )

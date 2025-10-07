@@ -51,7 +51,9 @@ class MLRuntime:
 
         self.artifact_manager = ModelArtifactManager(self.artifacts_root)
         self.training_service = TrainingService(
-            self.job_service, artifacts_dir=self.artifacts_root
+            self.job_service,
+            artifacts_dir=self.artifacts_root,
+            tracking_service=services.training_tracking,
         )
 
     def shutdown(self) -> None:
@@ -359,6 +361,200 @@ class MLRuntime:
             epochs=trainer_spec.epochs,
             batch_size=trainer_spec.batch_size,
             learning_rate=trainer_spec.learning_rate,
+            artifacts_dir=str(self.artifacts_root),
+            checkpoint_dir=checkpoint_path,
+            description=description
+            or f"Training {model_record.name} with {trainer_record.name}",
+            tags=tags,
+        )
+
+        job_id = self.training_service.submit_training_job(job_config)
+        return job_id
+
+    def train_with_trainer(
+        self,
+        *,
+        trainer_name: str,
+        train_table: str,
+        target_column: str | None = None,
+        validation_table: str | None = None,
+        validation_split: float | None = None,
+        epochs: int | None = None,
+        batch_size: int | None = None,
+        learning_rate: float | None = None,
+        checkpoint_dir: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+    ) -> str:
+        """Submit a training job using a registered trainer (gets model from trainer).
+
+        Args:
+            trainer_name: Name of the registered trainer
+            train_table: Training data table
+            target_column: Optional override for target column
+            validation_table: Optional validation table
+            validation_split: Optional override for validation split
+            epochs: Optional override for epochs
+            batch_size: Optional override for batch size
+            learning_rate: Optional override for learning rate
+            checkpoint_dir: Optional checkpoint directory
+            description: Optional job description
+            tags: Optional job tags
+
+        Returns:
+            Job ID
+
+        Raises:
+            MLRuntimeError: If trainer/model not found or validation fails
+        """
+        from arc.graph.trainer import TrainerSpec
+
+        _validate_model_name(trainer_name)
+
+        train_table = str(train_table)
+        validation_table = str(validation_table) if validation_table else None
+
+        # Get registered trainer
+        trainer_record = self.trainer_service.get_latest_trainer_by_name(trainer_name)
+        if trainer_record is None:
+            raise MLRuntimeError(
+                f"Trainer '{trainer_name}' not found. Use /ml create-trainer first."
+            )
+
+        # Parse trainer spec
+        try:
+            trainer_spec = TrainerSpec.from_yaml(trainer_record.spec)
+        except Exception as exc:  # noqa: BLE001
+            raise MLRuntimeError(
+                f"Failed to load trainer spec from stored record: {exc}"
+            ) from exc
+
+        # Get model using trainer's model_ref
+        model_id = trainer_spec.model_ref
+        if not model_id:
+            raise MLRuntimeError(
+                f"Trainer '{trainer_name}' does not have a model_ref. "
+                "Trainer spec is invalid."
+            )
+
+        # Get model by ID (model_ref is the model ID like "pima-diabetes-v1")
+        model_record = self.model_service.get_model_by_id(model_id)
+        if model_record is None:
+            raise MLRuntimeError(
+                f"Model '{model_id}' referenced by trainer not found. "
+                f"Trainer model_ref: {model_id}"
+            )
+
+        if not model_record.spec:
+            raise MLRuntimeError("Stored model is missing specification; cannot train.")
+
+        # Parse model spec
+        try:
+            model_spec = ModelSpec.from_yaml(model_record.spec)
+        except Exception as exc:  # noqa: BLE001
+            raise MLRuntimeError(
+                f"Failed to load model spec from stored record: {exc}"
+            ) from exc
+
+        # Extract feature columns from model spec inputs
+        feature_columns = []
+        for input_spec in model_spec.inputs.values():
+            if input_spec.columns:
+                feature_columns.extend(input_spec.columns)
+
+        if not feature_columns:
+            raise MLRuntimeError(
+                "Model spec must define input columns before training."
+            )
+
+        if not self.ml_data_service.dataset_exists(train_table):
+            raise MLRuntimeError(
+                f"Training table '{train_table}' does not exist in user DB"
+            )
+
+        # Extract target column from model spec loss function or use override
+        if target_column:
+            # Use provided target column
+            actual_target_column = target_column
+        else:
+            # Extract from model spec
+            if not model_spec.loss or not model_spec.loss.inputs:
+                raise MLRuntimeError(
+                    "Model spec must define a loss function with inputs "
+                    "to determine target column"
+                )
+
+            actual_target_column = model_spec.loss.inputs.get("target")
+            if not actual_target_column:
+                raise MLRuntimeError(
+                    "Model spec loss function must define 'target' input "
+                    "to specify target column"
+                )
+
+        columns_to_check = list(feature_columns)
+        if actual_target_column not in columns_to_check:
+            columns_to_check.append(actual_target_column)
+
+        missing = [
+            column
+            for column, exists in self.ml_data_service.validate_columns(
+                train_table, columns_to_check
+            ).items()
+            if not exists
+        ]
+        if missing:
+            missing_list = ", ".join(missing)
+            raise MLRuntimeError(
+                f"Training table is missing required column(s): {missing_list}"
+            )
+
+        # Use validation table if provided
+        if validation_table and not self.ml_data_service.dataset_exists(
+            validation_table
+        ):
+            raise MLRuntimeError(
+                f"Validation table '{validation_table}' does not exist in user DB"
+            )
+
+        checkpoint_path: str | None = None
+        if checkpoint_dir:
+            checkpoint_path = str(Path(checkpoint_dir).expanduser())
+
+        model_key, record_version = _split_model_identifier(model_record.id)
+        if record_version is None:
+            record_version = model_record.version
+
+        # Apply overrides from parameters, otherwise use trainer spec values
+        final_validation_split = (
+            validation_split
+            if validation_split is not None
+            else trainer_spec.validation_split
+        )
+        final_epochs = epochs if epochs is not None else trainer_spec.epochs
+        final_batch_size = (
+            batch_size if batch_size is not None else trainer_spec.batch_size
+        )
+        final_learning_rate = (
+            learning_rate if learning_rate is not None else trainer_spec.learning_rate
+        )
+
+        # Create job config
+        job_config = TrainingJobConfig(
+            model_id=model_key,
+            model_version=record_version,
+            model_name=model_record.name,
+            trainer_id=trainer_record.id,
+            trainer_version=trainer_record.version,
+            train_table=train_table,
+            target_column=actual_target_column,
+            model_spec=model_spec,
+            trainer_spec=trainer_spec,
+            feature_columns=list(feature_columns),
+            validation_table=validation_table,
+            validation_split=final_validation_split,
+            epochs=final_epochs,
+            batch_size=final_batch_size,
+            learning_rate=final_learning_rate,
             artifacts_dir=str(self.artifacts_root),
             checkpoint_dir=checkpoint_path,
             description=description
