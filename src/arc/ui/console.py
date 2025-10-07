@@ -220,9 +220,9 @@ class InteractiveInterface:
                 ),
                 (
                     "/ml generate-model --name NAME [--context DESC] --data-table TABLE "
-                    "[--target-column COL] [--use-plan]",
+                    "[--target-column COL] [--plan-id PLAN_ID]",
                     "Generate an Arc-Graph model specification "
-                    "(--context optional with --use-plan)",
+                    "(--context optional with --plan-id)",
                 ),
                 (
                     "/ml generate-trainer --name NAME --context DESC --model-spec FILE",
