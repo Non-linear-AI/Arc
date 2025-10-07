@@ -191,26 +191,12 @@ class DuckDBDatabase(Database):
                 );
             """)
 
-            # Catalogs the immutable artifacts produced by successful training jobs
-            self.execute("""
-                CREATE TABLE IF NOT EXISTS trained_models(
-                    artifact_id TEXT PRIMARY KEY,
-                    job_id TEXT NOT NULL,
-                    model_id TEXT NOT NULL,
-                    model_version INTEGER NOT NULL,
-                    trainer_id TEXT,
-                    trainer_version INTEGER,
-                    artifact_path TEXT NOT NULL,
-                    metrics JSON,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
             # Tracks models served for real-time inference
+            # References training_runs for the trained model
             self.execute("""
                 CREATE TABLE IF NOT EXISTS deployments(
                     deployment_id TEXT PRIMARY KEY,
-                    artifact_id TEXT NOT NULL REFERENCES trained_models(artifact_id),
+                    run_id TEXT NOT NULL,
                     status TEXT NOT NULL,
                     endpoint_url TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -335,6 +321,8 @@ class DuckDBDatabase(Database):
                     paused_at TIMESTAMP,
                     resumed_at TIMESTAMP,
                     completed_at TIMESTAMP,
+                    artifact_path VARCHAR,
+                    final_metrics JSON,
                     original_config JSON,
                     current_config JSON,
                     config_history JSON,

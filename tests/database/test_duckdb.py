@@ -67,11 +67,15 @@ def test_init_schema():
         expected_tables = [
             "models",
             "jobs",
-            "trained_models",
             "deployments",
             "plugin_schemas",
             "plugins",
             "plugin_components",
+            "trainers",
+            "plans",
+            "training_runs",
+            "training_metrics",
+            "training_checkpoints",
         ]
 
         for table in expected_tables:

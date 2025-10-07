@@ -141,6 +141,8 @@ class TrainingRun:
     paused_at: datetime | None
     resumed_at: datetime | None
     completed_at: datetime | None
+    artifact_path: str | None
+    final_metrics: str | None  # JSON string
     original_config: str | None  # JSON string
     current_config: str | None  # JSON string
     config_history: str | None  # JSON string

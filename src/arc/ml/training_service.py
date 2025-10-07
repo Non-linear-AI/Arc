@@ -856,49 +856,48 @@ class TrainingService:
         artifact_dir: Path,
         training_result: TrainingResult,
     ) -> None:
-        """Record trained model information in the system database."""
+        """Record trained model artifact information in training_runs table."""
 
-        artifact_id = f"{artifact.model_id}-v{artifact.version}"
+        # If tracking service is available, update the training run with artifact info
+        if self.tracking_service:
+            try:
+                # Get the training run by job_id
+                training_run = self.tracking_service.get_run_by_job_id(job_id)
 
-        metrics_payload = json.dumps(
-            {
-                "final_metrics": artifact.final_metrics or {},
-                "best_metrics": artifact.best_metrics or {},
-                "training_time": training_result.training_time,
-                "total_epochs": training_result.total_epochs,
-                "best_epoch": training_result.best_epoch,
-            },
-            default=str,
-        )
+                if training_run:
+                    # Prepare final metrics
+                    final_metrics = {
+                        "final_metrics": artifact.final_metrics or {},
+                        "best_metrics": artifact.best_metrics or {},
+                        "training_time": training_result.training_time,
+                        "total_epochs": training_result.total_epochs,
+                        "best_epoch": training_result.best_epoch,
+                    }
 
-        sql = """
-            INSERT INTO trained_models (
-                artifact_id,
-                job_id,
-                model_id,
-                model_version,
-                artifact_path,
-                metrics
+                    # Update training run with artifact information
+                    self.tracking_service.update_run_artifact(
+                        run_id=training_run.run_id,
+                        artifact_path=str(artifact_dir),
+                        final_metrics=final_metrics,
+                    )
+                    logger.info(
+                        f"Updated training run {training_run.run_id} with artifact info"
+                    )
+                else:
+                    logger.warning(
+                        f"No training run found for job {job_id}, "
+                        "artifact info not recorded"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to update training run with artifact info: {e}",
+                    exc_info=True,
+                )
+        else:
+            logger.debug(
+                "Training tracking service not available, "
+                "skipping artifact recording"
             )
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(artifact_id) DO UPDATE SET
-                job_id = excluded.job_id,
-                model_id = excluded.model_id,
-                model_version = excluded.model_version,
-                artifact_path = excluded.artifact_path,
-                metrics = excluded.metrics
-        """
-
-        params = [
-            artifact_id,
-            job_id,
-            artifact.model_id,
-            artifact.version,
-            str(artifact_dir),
-            metrics_payload,
-        ]
-
-        self.job_service.db_manager.system_execute(sql, params)
 
     def get_job_status(self, job_id: str) -> dict[str, Any]:
         """Get status of a training job.

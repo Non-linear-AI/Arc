@@ -99,9 +99,13 @@ class Database(ABC):
 
         Creates all necessary tables for Arc's data model including:
         - models: Core model definitions with versioning
+        - trainers: Trainer specifications linked to models
         - jobs: Long-running training processes
-        - trained_models: Immutable training artifacts
+        - training_runs: Training run tracking with metrics and artifacts
+        - training_metrics: Time-series training metrics
+        - training_checkpoints: Model checkpoint catalog
         - deployments: Models served for inference
+        - plans: ML workflow plans
         - plugin_schemas: Plugin metadata for validation
         - plugins: Plugin system metadata
         - plugin_components: Component specifications

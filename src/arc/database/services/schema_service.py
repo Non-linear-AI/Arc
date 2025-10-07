@@ -412,12 +412,17 @@ class SchemaService(BaseService):
             table_descriptions = {
                 "models": "Model registry - Stores ML model definitions, versions, and "
                 "Arc-Graph specifications",
+                "trainers": "Trainer registry - Stores trainer specifications linked to models",
                 "jobs": "Job tracking - Manages training, evaluation, and processing "
                 "jobs with status monitoring",
-                "trained_models": "Model artifacts - Catalogs successful training "
-                "outputs with metrics and paths",
+                "training_runs": "Training run tracking - Rich tracking of training runs "
+                "with status, metrics, and artifact paths",
+                "training_metrics": "Training metrics - Time-series data for training metrics",
+                "training_checkpoints": "Training checkpoints - Catalog of model checkpoints",
                 "deployments": "Model serving - Tracks deployed models for real-time "
                 "inference",
+                "plans": "ML plans - Comprehensive ML workflow plans linking data, models, "
+                "and training",
                 "plugins": "Plugin registry - Available ML algorithms and custom "
                 "components",
                 "plugin_components": "Plugin specs - Detailed component "
@@ -467,9 +472,13 @@ class SchemaService(BaseService):
                 "# System Database Schema\n\n"
                 "Arc system database contains tables for ML workflow management:\n"
                 "- models: ML model registry\n"
+                "- trainers: Trainer specifications linked to models\n"
                 "- jobs: Training/processing job tracking\n"
-                "- trained_models: Model artifact catalog\n"
+                "- training_runs: Training run tracking with metrics and artifacts\n"
+                "- training_metrics: Time-series training metrics\n"
+                "- training_checkpoints: Model checkpoint catalog\n"
                 "- deployments: Model serving registry\n"
+                "- plans: ML workflow plans\n"
                 "- plugins: Available ML algorithms\n"
                 "- plugin_components: Plugin specifications\n"
                 "- plugin_schemas: Plugin metadata\n\n"

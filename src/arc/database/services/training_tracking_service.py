@@ -123,6 +123,8 @@ class TrainingTrackingService(BaseService):
                 paused_at=None,
                 resumed_at=None,
                 completed_at=None,
+                artifact_path=None,
+                final_metrics=None,
                 original_config=config_json,
                 current_config=config_json,
                 config_history=None,
@@ -265,6 +267,39 @@ class TrainingTrackingService(BaseService):
             self.db_manager.system_execute(sql, params)
         except Exception as e:
             raise DatabaseError(f"Failed to update run status {run_id}: {e}") from e
+
+    def update_run_artifact(
+        self,
+        run_id: str,
+        artifact_path: str,
+        final_metrics: dict[str, Any] | None = None,
+    ) -> None:
+        """Update training run with artifact information after successful completion.
+
+        Args:
+            run_id: Training run ID
+            artifact_path: Path to the saved model artifact
+            final_metrics: Final metrics from training
+
+        Raises:
+            DatabaseError: If update fails
+        """
+        try:
+            now = datetime.now(UTC)
+            metrics_json = json.dumps(final_metrics) if final_metrics else None
+
+            sql = """
+            UPDATE training_runs
+            SET artifact_path = ?, final_metrics = ?, updated_at = ?
+            WHERE run_id = ?
+            """
+
+            params = [artifact_path, metrics_json, now, run_id]
+            self.db_manager.system_execute(sql, params)
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to update run artifact {run_id}: {e}"
+            ) from e
 
     def update_run_config(self, run_id: str, new_config: dict[str, Any]) -> None:
         """Update training run configuration and add to history.
@@ -708,6 +743,12 @@ class TrainingTrackingService(BaseService):
                     self._parse_timestamp(row["completed_at"])
                     if row.get("completed_at")
                     else None
+                ),
+                artifact_path=(
+                    str(row["artifact_path"]) if row.get("artifact_path") else None
+                ),
+                final_metrics=(
+                    str(row["final_metrics"]) if row.get("final_metrics") else None
                 ),
                 original_config=(
                     str(row["original_config"]) if row.get("original_config") else None
