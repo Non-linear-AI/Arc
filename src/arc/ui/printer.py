@@ -66,8 +66,11 @@ class ArcCompleter(Completer):
             ],
             "generate-model": [
                 ("--name", "Model name (required)"),
-                ("--context", "Model description and context (optional with --plan-id)"),
-                ("--data-table", "Database table name for data (optional with --plan-id)"),
+                (
+                    "--context",
+                    "Model description and context (optional with --plan-id)",
+                ),
+                ("--data-table", "Database table name for data (required)"),
                 ("--target-column", "Target/prediction column name (optional)"),
                 ("--plan-id", "ML plan ID to use for guidance (e.g., pidd-plan-v1)"),
             ],

@@ -290,7 +290,9 @@ class DuckDBDatabase(Database):
 
             # Migrate old schema: data_table/target_column -> source_tables
             # Check if old columns exist and migrate
-            try:
+            from contextlib import suppress
+
+            with suppress(Exception):
                 # Check if data_table column exists (old schema)
                 check_result = self.query("""
                     SELECT column_name
@@ -301,10 +303,8 @@ class DuckDBDatabase(Database):
                 if check_result.rows:
                     # Old schema exists, migrate it
                     # Add new column if it doesn't exist
-                    try:
+                    with suppress(Exception):
                         self.execute("ALTER TABLE plans ADD COLUMN source_tables TEXT")
-                    except Exception:
-                        pass  # Column already exists
 
                     # Copy data_table to source_tables for existing rows
                     self.execute("""
@@ -316,9 +316,6 @@ class DuckDBDatabase(Database):
                     # Drop old columns
                     self.execute("ALTER TABLE plans DROP COLUMN data_table")
                     self.execute("ALTER TABLE plans DROP COLUMN target_column")
-            except Exception:
-                # Migration not needed or already done
-                pass
 
         except Exception as e:
             raise DatabaseError(f"Schema initialization failed: {e}") from e

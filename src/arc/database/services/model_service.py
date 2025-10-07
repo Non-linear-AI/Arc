@@ -323,9 +323,7 @@ class ModelService(BaseService):
             updated_at_str = model.updated_at.isoformat()
 
             plan_id_value = (
-                f"'{self._escape_string(model.plan_id)}'"
-                if model.plan_id
-                else "NULL"
+                f"'{self._escape_string(model.plan_id)}'" if model.plan_id else "NULL"
             )
 
             sql = f"""INSERT INTO models (
@@ -364,9 +362,7 @@ class ModelService(BaseService):
             updated_at_str = model.updated_at.isoformat()
 
             plan_id_value = (
-                f"'{self._escape_string(model.plan_id)}'"
-                if model.plan_id
-                else "NULL"
+                f"'{self._escape_string(model.plan_id)}'" if model.plan_id else "NULL"
             )
 
             sql = f"""UPDATE models SET

@@ -253,9 +253,7 @@ class MLPlanAgent(BaseAgent):
             profiles[table_name] = profile
         return profiles
 
-    async def _get_single_table_profile(
-        self, table_name: str
-    ) -> dict[str, Any]:
+    async def _get_single_table_profile(self, table_name: str) -> dict[str, Any]:
         """Get data profile for a single table.
 
         Args:
@@ -276,44 +274,24 @@ class MLPlanAgent(BaseAgent):
                     "feature_types": {},
                 }
 
-            # Build exclude set (only target column)
-            exclude_set = set()
-            if target_column:
-                exclude_set.add(target_column)
-
-            # Separate target and feature columns
+            # Get all columns from the table
             all_columns = dataset_info.columns
-            feature_columns = [
-                col for col in all_columns if col["name"] not in exclude_set
-            ]
 
             # Count feature types
             feature_types = {}
-            for col in feature_columns:
+            for col in all_columns:
                 col_type = col.get("type", "unknown")
                 feature_types[col_type] = feature_types.get(col_type, 0) + 1
 
             # Base profile structure
             profile = {
                 "table_name": dataset_info.name,
-                "feature_columns": feature_columns,
+                "feature_columns": all_columns,
                 "total_columns": len(all_columns),
-                "feature_count": len(feature_columns),
+                "feature_count": len(all_columns),
                 "feature_types": feature_types,
-                "summary": f"Table '{table_name}' with {len(feature_columns)} features",
+                "summary": f"Table '{table_name}' with {len(all_columns)} columns",
             }
-
-            # Add target analysis if target column specified
-            if target_column:
-                target_analysis = await self._analyze_target_column(
-                    table_name, target_column
-                )
-                profile["target_info"] = target_analysis
-                if "error" not in target_analysis:
-                    profile["summary"] += (
-                        f" and target '{target_column}' "
-                        f"({target_analysis.get('type', 'unknown')} type)"
-                    )
 
             return profile
 

@@ -523,9 +523,19 @@ class MLModelGeneratorTool(BaseTool):
 
         # Extract key architectural terms from plan
         key_terms = []
-        for term in ["linear", "relu", "dropout", "batchnorm", "attention",
-                     "transformer", "embedding", "cross", "binary_cross_entropy",
-                     "mse_loss", "cross_entropy"]:
+        for term in [
+            "linear",
+            "relu",
+            "dropout",
+            "batchnorm",
+            "attention",
+            "transformer",
+            "embedding",
+            "cross",
+            "binary_cross_entropy",
+            "mse_loss",
+            "cross_entropy",
+        ]:
             if term in plan_lower:
                 key_terms.append(term)
 
@@ -560,11 +570,7 @@ class MLModelGeneratorTool(BaseTool):
 
         # Load Jinja2 template
         template_dir = (
-            Path(__file__).parent.parent
-            / "core"
-            / "agents"
-            / "ml_plan"
-            / "templates"
+            Path(__file__).parent.parent / "core" / "agents" / "ml_plan" / "templates"
         )
         env = Environment(loader=FileSystemLoader(str(template_dir)))
         template = env.get_template("update_plan.j2")
@@ -588,9 +594,7 @@ class MLModelGeneratorTool(BaseTool):
         except Exception as e:
             # If LLM call fails, return original plan
             if self.ui:
-                self.ui.show_warning(
-                    f"⚠ Could not update ML plan automatically: {e}"
-                )
+                self.ui.show_warning(f"⚠ Could not update ML plan automatically: {e}")
             return ml_plan
 
     async def _call_llm(self, prompt: str) -> str:
@@ -1096,7 +1100,9 @@ class MLPlanTool(BaseTool):
                 plan_dict["source_tables"] = str(source_tables)
 
                 # Convert plan to YAML format for better readability
-                plan_yaml = yaml.dump(plan_dict, default_flow_style=False, sort_keys=False)
+                plan_yaml = yaml.dump(
+                    plan_dict, default_flow_style=False, sort_keys=False
+                )
 
                 # Create database model - use first table for plan ID
                 first_table = source_tables.split(",")[0].strip()

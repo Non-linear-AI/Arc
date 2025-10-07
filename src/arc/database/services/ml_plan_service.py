@@ -70,9 +70,7 @@ class MLPlanService(BaseService):
             updated_at=row["updated_at"],
         )
 
-    def get_latest_plan_for_tables(
-        self, source_tables: str
-    ) -> MLPlan | None:
+    def get_latest_plan_for_tables(self, source_tables: str) -> MLPlan | None:
         """Get the most recent plan for given source tables.
 
         Args:
@@ -155,7 +153,10 @@ class MLPlanService(BaseService):
         return result.rows[0]["max_version"] + 1
 
     def list_plans(
-        self, source_tables: str | None = None, status: str | None = None, limit: int = 50
+        self,
+        source_tables: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
     ) -> list[MLPlan]:
         """List ML plans with optional filters.
 

@@ -287,9 +287,7 @@ async def _ml_plan(
     source_tables = options.get("data-source")
 
     if not user_context or not source_tables:
-        raise CommandError(
-            "/ml plan requires --context and --data-source"
-        )
+        raise CommandError("/ml plan requires --context and --data-source")
 
     ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
 
@@ -593,7 +591,7 @@ async def _ml_generate_model(
     args: list[str],
     ui: InteractiveInterface,
     runtime: "MLRuntime",
-    agent: "ArcAgent | None" = None,
+    agent: "ArcAgent | None" = None,  # noqa: ARG001
 ) -> None:
     """Handle model specification generation command."""
     options = _parse_options(
@@ -624,27 +622,22 @@ async def _ml_generate_model(
 
             # Parse YAML to dict for the tool
             import yaml
+
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id  # Ensure plan_id is in the dict
 
             ui.show_info(f"📊 Using ML plan: {plan_id}")
-
-            # Infer data_table and target_column from plan if not provided
-            if not data_table:
-                data_table = db_plan.data_table
-            if not target_column:
-                target_column = db_plan.target_column
         except Exception as e:
-            raise CommandError(f"Failed to load plan '{plan_id}': {e}")
+            raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
     # Validate required parameters
     if not name:
         raise CommandError("/ml generate-model requires --name")
 
-    # data-table is required unless using a plan
-    if not ml_plan and not data_table:
-        raise CommandError("/ml generate-model requires --data-table when not using --plan-id")
+    if not data_table:
+        raise CommandError("/ml generate-model requires --data-table")
 
+    # context is optional when using a plan
     if not ml_plan and not context:
         raise CommandError(
             "/ml generate-model requires --context when not using --plan-id"
