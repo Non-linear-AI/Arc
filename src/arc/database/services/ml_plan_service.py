@@ -20,9 +20,9 @@ class MLPlanService(BaseService):
         """
         sql = """
             INSERT INTO plans (
-                plan_id, version, user_context, data_table, target_column,
+                plan_id, version, user_context, source_tables,
                 plan_yaml, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
         self.db_manager.system_execute(
             sql,
@@ -30,8 +30,7 @@ class MLPlanService(BaseService):
                 plan.plan_id,
                 plan.version,
                 plan.user_context,
-                plan.data_table,
-                plan.target_column,
+                plan.source_tables,
                 plan.plan_yaml,
                 plan.status,
                 plan.created_at,
@@ -49,7 +48,7 @@ class MLPlanService(BaseService):
             MLPlan object if found, None otherwise
         """
         sql = """
-            SELECT plan_id, version, user_context, data_table, target_column,
+            SELECT plan_id, version, user_context, source_tables,
                    plan_yaml, status, created_at, updated_at
             FROM plans
             WHERE plan_id = ?
@@ -64,46 +63,33 @@ class MLPlanService(BaseService):
             plan_id=row["plan_id"],
             version=row["version"],
             user_context=row["user_context"],
-            data_table=row["data_table"],
-            target_column=row["target_column"],
+            source_tables=row["source_tables"],
             plan_yaml=row["plan_yaml"],
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
 
-    def get_latest_plan_for_table(
-        self, data_table: str, target_column: str | None = None
+    def get_latest_plan_for_tables(
+        self, source_tables: str
     ) -> MLPlan | None:
-        """Get the most recent plan for a given data table.
+        """Get the most recent plan for given source tables.
 
         Args:
-            data_table: Name of the data table
-            target_column: Optional target column filter
+            source_tables: Comma-separated source table names
 
         Returns:
-            Most recent MLPlan for the table, or None if not found
+            Most recent MLPlan for the tables, or None if not found
         """
-        if target_column:
-            sql = """
-                SELECT plan_id, version, user_context, data_table, target_column,
-                       plan_yaml, status, created_at, updated_at
-                FROM plans
-                WHERE data_table = ? AND target_column = ?
-                ORDER BY created_at DESC
-                LIMIT 1
-            """
-            result = self.db_manager.system_query(sql, [data_table, target_column])
-        else:
-            sql = """
-                SELECT plan_id, version, user_context, data_table, target_column,
-                       plan_yaml, status, created_at, updated_at
-                FROM plans
-                WHERE data_table = ?
-                ORDER BY created_at DESC
-                LIMIT 1
-            """
-            result = self.db_manager.system_query(sql, [data_table])
+        sql = """
+            SELECT plan_id, version, user_context, source_tables,
+                   plan_yaml, status, created_at, updated_at
+            FROM plans
+            WHERE source_tables = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        """
+        result = self.db_manager.system_query(sql, [source_tables])
 
         if not result.rows:
             return None
@@ -113,8 +99,7 @@ class MLPlanService(BaseService):
             plan_id=row["plan_id"],
             version=row["version"],
             user_context=row["user_context"],
-            data_table=row["data_table"],
-            target_column=row["target_column"],
+            source_tables=row["source_tables"],
             plan_yaml=row["plan_yaml"],
             status=row["status"],
             created_at=row["created_at"],
@@ -132,7 +117,7 @@ class MLPlanService(BaseService):
         """
         sql = """
             UPDATE plans
-            SET user_context = ?, data_table = ?, target_column = ?,
+            SET user_context = ?, source_tables = ?,
                 plan_yaml = ?, status = ?, updated_at = ?
             WHERE plan_id = ?
         """
@@ -140,8 +125,7 @@ class MLPlanService(BaseService):
             sql,
             [
                 plan.user_context,
-                plan.data_table,
-                plan.target_column,
+                plan.source_tables,
                 plan.plan_yaml,
                 plan.status,
                 plan.updated_at,
@@ -171,12 +155,12 @@ class MLPlanService(BaseService):
         return result.rows[0]["max_version"] + 1
 
     def list_plans(
-        self, data_table: str | None = None, status: str | None = None, limit: int = 50
+        self, source_tables: str | None = None, status: str | None = None, limit: int = 50
     ) -> list[MLPlan]:
         """List ML plans with optional filters.
 
         Args:
-            data_table: Optional filter by data table
+            source_tables: Optional filter by source tables (comma-separated)
             status: Optional filter by status
             limit: Maximum number of plans to return
 
@@ -186,9 +170,9 @@ class MLPlanService(BaseService):
         conditions = []
         params = []
 
-        if data_table:
-            conditions.append("data_table = ?")
-            params.append(data_table)
+        if source_tables:
+            conditions.append("source_tables = ?")
+            params.append(source_tables)
 
         if status:
             conditions.append("status = ?")
@@ -197,7 +181,7 @@ class MLPlanService(BaseService):
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         sql = f"""
-            SELECT plan_id, version, user_context, data_table, target_column,
+            SELECT plan_id, version, user_context, source_tables,
                    plan_yaml, status, created_at, updated_at
             FROM plans
             {where_clause}
@@ -213,8 +197,7 @@ class MLPlanService(BaseService):
                 plan_id=row["plan_id"],
                 version=row["version"],
                 user_context=row["user_context"],
-                data_table=row["data_table"],
-                target_column=row["target_column"],
+                source_tables=row["source_tables"],
                 plan_yaml=row["plan_yaml"],
                 status=row["status"],
                 created_at=row["created_at"],

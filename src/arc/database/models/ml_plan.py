@@ -15,8 +15,7 @@ class MLPlan:
     plan_id: str  # Unique identifier (e.g., "diabetes-classifier-plan-v1")
     version: int  # Version number for the same base plan
     user_context: str  # Original user intent/description
-    data_table: str  # Source data table
-    target_column: str | None  # Prediction target column
+    source_tables: str  # Comma-separated source table names
     plan_yaml: str  # Full plan as YAML string
     status: str  # 'draft', 'approved', 'implemented'
     created_at: datetime

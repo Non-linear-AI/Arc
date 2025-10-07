@@ -59,8 +59,7 @@ class ArcCompleter(Completer):
         self.ml_command_params = {
             "plan": [
                 ("--context", "ML task description and requirements (required)"),
-                ("--data-table", "Database table name for data (required)"),
-                ("--target-column", "Target/prediction column name (required)"),
+                ("--data-source", "Comma-separated source table names (required)"),
             ],
             "revise-plan": [
                 ("--feedback", "Feedback to revise the current ML plan (required)"),

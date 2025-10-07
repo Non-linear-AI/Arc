@@ -279,18 +279,16 @@ async def _ml_plan(
         args,
         {
             "context": True,
-            "data-table": True,
-            "target-column": True,
+            "data-source": True,
         },
     )
 
     user_context = options.get("context")
-    data_table = options.get("data-table")
-    target_column = options.get("target-column")
+    source_tables = options.get("data-source")
 
-    if not user_context or not data_table or not target_column:
+    if not user_context or not source_tables:
         raise CommandError(
-            "/ml plan requires --context, --data-table, and --target-column"
+            "/ml plan requires --context and --data-source"
         )
 
     ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
@@ -301,8 +299,7 @@ async def _ml_plan(
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
         user_context=str(user_context),
-        data_table=str(data_table),
-        target_column=str(target_column),
+        source_tables=str(source_tables),
         conversation_history=conversation_history,
         feedback=None,
         previous_plan=agent.current_ml_plan,

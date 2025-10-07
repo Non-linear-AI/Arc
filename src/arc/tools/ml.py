@@ -929,8 +929,7 @@ class MLPlanTool(BaseTool):
         self,
         *,
         user_context: str | None = None,
-        data_table: str | None = None,
-        target_column: str | None = None,
+        source_tables: str | None = None,
         conversation_history: list[dict] | None = None,
         feedback: str | None = None,
         previous_plan: dict | None = None,
@@ -946,9 +945,9 @@ class MLPlanTool(BaseTool):
                 "ML planning service unavailable. Database services not initialized."
             )
 
-        if not user_context or not data_table or not target_column:
+        if not user_context or not source_tables:
             return ToolResult.error_result(
-                "Parameters 'user_context', 'data_table', and 'target_column' "
+                "Parameters 'user_context' and 'source_tables' "
                 "are required for ML planning."
             )
 
@@ -983,18 +982,17 @@ class MLPlanTool(BaseTool):
             current_feedback = feedback
 
             # Get version from database to avoid conflicts
-            latest_plan = self.services.ml_plans.get_latest_plan_for_table(
-                str(data_table), str(target_column) if target_column else None
+            latest_plan = self.services.ml_plans.get_latest_plan_for_tables(
+                str(source_tables)
             )
             version = latest_plan.version + 1 if latest_plan else 1
 
             while True:
                 try:
-                    # Generate the plan
+                    # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
                         user_context=str(user_context),
-                        table_name=str(data_table),
-                        target_column=str(target_column),
+                        source_tables=str(source_tables),
                         conversation_history=conversation_history,
                         feedback=current_feedback,
                         stream=False,
@@ -1095,14 +1093,14 @@ class MLPlanTool(BaseTool):
 
                 # Convert plan to dict for storage
                 plan_dict = plan.to_dict()
-                plan_dict["data_table"] = str(data_table)
-                plan_dict["target_column"] = str(target_column)
+                plan_dict["source_tables"] = str(source_tables)
 
                 # Convert plan to YAML format for better readability
                 plan_yaml = yaml.dump(plan_dict, default_flow_style=False, sort_keys=False)
 
-                # Create database model
-                base_slug = _slugify_name(f"{data_table}-plan")
+                # Create database model - use first table for plan ID
+                first_table = source_tables.split(",")[0].strip()
+                base_slug = _slugify_name(f"{first_table}-plan")
                 plan_id = f"{base_slug}-v{version}"
 
                 now = datetime.now(UTC)
@@ -1110,8 +1108,7 @@ class MLPlanTool(BaseTool):
                     plan_id=plan_id,
                     version=version,
                     user_context=str(user_context),
-                    data_table=str(data_table),
-                    target_column=str(target_column),
+                    source_tables=str(source_tables),
                     plan_yaml=plan_yaml,  # Store as YAML string
                     status="approved",  # Plan was accepted by user
                     created_at=now,
