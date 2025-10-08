@@ -780,14 +780,29 @@ class MLTrainTool(BaseTool):
         should_train = auto_confirm  # Auto-confirm in tests
 
         if not auto_confirm and self.ui:
-            # Ask user if they want to launch training
-            prompt_msg = (
-                f"\n📊 Ready to train model '{model_record.id}' with trainer '{name}'\n"
-                f"Training table: {train_table}\n"
-                f"\n⚠️  Training will consume significant compute resources.\n"
-                f"Do you want to start training now?"
+            # Display training information
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[bold cyan]📊 Ready to train model '{model_record.id}' "
+                f"with trainer '{name}'[/bold cyan]"
             )
-            should_train = await self.ui.confirm_async(prompt_msg, default=True)
+            self.ui._printer.console.print(f"[dim]Training table: {train_table}[/dim]")
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                "[yellow]⚠️  Training will consume significant compute "
+                "resources.[/yellow]"
+            )
+            self.ui._printer.console.print()
+
+            # Show menu options
+            choice = await self.ui._printer.get_choice_async(
+                options=[
+                    ("train", "Launch training now"),
+                    ("skip", "Skip training (trainer will be registered)"),
+                ],
+                default="train",
+            )
+            should_train = choice == "train"
 
         if should_train:
             if self.ui:
