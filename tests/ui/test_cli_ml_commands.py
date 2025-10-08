@@ -542,11 +542,20 @@ async def test_train_submits_job(tmp_path):
         },
     )
 
-    with patch(
-        "arc.tools.ml.MLTrainerTool.execute",
-        new_callable=AsyncMock,
-        return_value=mock_result,
+    # Mock SettingsManager to provide fake API key
+    with (
+        patch("arc.ui.cli.SettingsManager") as mock_settings,
+        patch(
+            "arc.tools.ml.MLTrainerTool.execute",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ),
     ):
+        mock_settings_instance = mock_settings.return_value
+        mock_settings_instance.get_api_key.return_value = "fake-api-key"
+        mock_settings_instance.get_base_url.return_value = "https://api.openai.com"
+        mock_settings_instance.get_current_model.return_value = "gpt-4"
+
         await handle_ml_command(
             "/ml train --name test_trainer --model-id my_model-v1 "
             "--context 'Train for 3 epochs' --data train_table",
