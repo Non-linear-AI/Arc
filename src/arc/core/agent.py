@@ -112,9 +112,15 @@ class ArcAgent:
         self.todo_tool = TodoTool()
 
         # Initialize TensorBoard manager
-        from arc.ml import TensorBoardManager
+        try:
+            from arc.ml import TensorBoardManager
 
-        self.tensorboard_manager = TensorBoardManager()
+            self.tensorboard_manager = TensorBoardManager()
+            print(f"DEBUG: TensorBoardManager created: {self.tensorboard_manager}")
+        except Exception as e:
+            # If TensorBoard manager fails to initialize, log but continue
+            print(f"Warning: TensorBoard manager initialization failed: {e}")
+            self.tensorboard_manager = None
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
