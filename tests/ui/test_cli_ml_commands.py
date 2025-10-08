@@ -190,6 +190,7 @@ class StubRuntime:
                 self.models = model_svc
                 self.trainers = trainer_svc
                 self.ml_plan = ml_plan_svc or StubMLPlanService()
+                self.training_tracking = None  # No tracking service in tests
 
         self.services = StubServices(model_service, self.trainer_service)
 

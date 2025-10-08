@@ -676,7 +676,7 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
         ]
 
         # If this is a training job, show training metrics and TensorBoard info
-        if job_type == "training" and runtime.services.training_tracking:
+        if job_type == "train_model" and runtime.services.training_tracking:
             tracking_service = runtime.services.training_tracking
 
             # Get training run by job_id
