@@ -312,37 +312,6 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_create_model",
-            description="Register a new Arc-Graph model from a YAML schema file",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Human-friendly name for the model",
-                    },
-                    "schema_path": {
-                        "type": "string",
-                        "description": "Path to the Arc-Graph YAML schema file",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": (
-                            "Optional description stored with the model metadata"
-                        ),
-                    },
-                    "model_type": {
-                        "type": "string",
-                        "description": (
-                            "Optional type identifier to store with the model. "
-                            "Defaults to 'ml.model_spec'"
-                        ),
-                    },
-                },
-                "required": ["name", "schema_path"],
-            },
-        ),
-        ArcTool(
             name="ml_train",
             description=(
                 "Launch an Arc-Graph training job using a registered trainer. "
@@ -451,7 +420,7 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_model_generator",
+            name="ml_model",
             description="Generate Arc-Graph model YAML using the model generator agent",
             parameters={
                 "type": "object",

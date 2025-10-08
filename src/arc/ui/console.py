@@ -219,7 +219,7 @@ class InteractiveInterface:
                     "Revise the current ML plan based on feedback or training results",
                 ),
                 (
-                    "/ml generate-model --name NAME [--context DESC] "
+                    "/ml model --name NAME [--context DESC] "
                     "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
                     "Generate an Arc-Graph model specification "
                     "(--context optional with --plan-id)",
@@ -231,10 +231,6 @@ class InteractiveInterface:
                 (
                     "/ml generate-predictor --model-id ID --context DESC",
                     "Generate an Arc-Graph predictor specification",
-                ),
-                (
-                    "/ml create-model --name NAME --schema PATH",
-                    "Register an Arc-Graph model",
                 ),
                 (
                     "/ml data-processing --yaml PATH",
@@ -262,10 +258,9 @@ class InteractiveInterface:
             "update_todo_list": "Update Plan",
             "database_query": "SQL Query",
             "schema_discovery": "Schema Discovery",
-            "ml_create_model": "Register Model",
             "ml_train": "Train Model",
             "ml_predict": "Predict",
-            "ml_model_generator": "Model Generator",
+            "ml_model": "Model Generator",
             "ml_trainer_generator": "Trainer Generator",
             "ml_predictor_generator": "Predictor Generator",
             "data_processor_generator": "Data Processor Generator",
@@ -300,10 +295,9 @@ class InteractiveInterface:
         elif tool_name in ["database_query", "schema_discovery"]:
             return "blue"  # Database/system operations
         elif tool_name in [
-            "ml_create_model",
             "ml_train",
             "ml_predict",
-            "ml_model_generator",
+            "ml_model",
             "ml_trainer_generator",
             "ml_predictor_generator",
         ]:

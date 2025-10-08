@@ -15,7 +15,7 @@ from arc.tools import (
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
     FileEditorTool,
-    MLModelGeneratorTool,
+    MLModelTool,
     MLPlanTool,
     MLPredictorGeneratorTool,
     MLPredictTool,
@@ -125,8 +125,8 @@ class ArcAgent:
             if services
             else None
         )
-        self.ml_model_generator_tool = (
-            MLModelGeneratorTool(
+        self.ml_model_tool = (
+            MLModelTool(
                 services,
                 self.api_key,
                 self.base_url,
@@ -621,9 +621,9 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML plan tool not available. Database services not initialized."
                 )
-            elif tool_call.name == "ml_model_generator":
-                if self.ml_model_generator_tool:
-                    return await self.ml_model_generator_tool.execute(
+            elif tool_call.name == "ml_model":
+                if self.ml_model_tool:
+                    return await self.ml_model_tool.execute(
                         name=args.get("name"),
                         context=args.get("context"),
                         data_table=args.get("data_table"),
@@ -632,8 +632,7 @@ class ArcAgent:
                         ml_plan=self.current_ml_plan,  # Pass current plan
                     )
                 return ToolResult.error_result(
-                    "ML model generator tool not available. "
-                    "Database services not initialized."
+                    "ML model tool not available. Database services not initialized."
                 )
             elif tool_call.name == "ml_train":
                 if self.ml_train_tool:
@@ -735,7 +734,7 @@ class ArcAgent:
         self.current_model_name = model
         if getattr(self, "ml_plan_tool", None):
             self.ml_plan_tool.model = model
-        if getattr(self, "ml_model_generator_tool", None):
-            self.ml_model_generator_tool.model = model
+        if getattr(self, "ml_model_tool", None):
+            self.ml_model_tool.model = model
         if getattr(self, "ml_predictor_generator_tool", None):
             self.ml_predictor_generator_tool.model = model

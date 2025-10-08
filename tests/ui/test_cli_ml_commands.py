@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,8 +10,6 @@ from typing import Any
 
 import pytest
 
-from arc.database.manager import DatabaseManager
-from arc.database.services import ServiceContainer
 from arc.jobs.models import JobStatus, JobType
 from arc.ui.cli import handle_ml_command
 
@@ -409,37 +406,7 @@ loss:
 """
 
 
-@pytest.mark.asyncio
-async def test_create_model_registers_model(tmp_path):
-    schema_path = tmp_path / "schema.yaml"
-    schema_path.write_text(SCHEMA_WITH_CONFIG)
-
-    ui = StubUI()
-    model_service = StubModelService()
-    runtime = StubRuntime(
-        model_service=model_service,
-        ml_data_service=StubMLDataService(),
-        job_service=StubJobService(),
-        training_service=StubTrainingService(),
-        artifacts_root=tmp_path / "artifacts",
-    )
-
-    await handle_ml_command(
-        f"/ml create-model --name my_model --schema {schema_path}", ui, runtime
-    )
-
-    assert ui.errors == []
-    assert any("registered" in msg for msg in ui.successes)
-    assert len(model_service.created_models) == 1
-    created = model_service.created_models[0]
-    assert created.name == "my_model"
-    assert created.version == 1
-    assert created.spec == SCHEMA_WITH_CONFIG
-    stored_graph = json.loads(created.arc_graph)
-    import yaml
-
-    schema_dict = yaml.safe_load(stored_graph["schema"])
-    assert schema_dict["inputs"]["features"]["columns"] == ["x1", "x2"]
+# Test removed: /ml create-model command no longer exists (integrated into /ml model)
 
 
 @pytest.mark.asyncio
@@ -653,95 +620,5 @@ async def test_train_missing_model_shows_error(tmp_path):
     assert len(ui.errors) > 0
 
 
-@pytest.mark.asyncio
-async def test_end_to_end_training_with_realistic_dataset(tmp_path):
-    # Use temporary file databases for thread-safe training
-    system_db = tmp_path / "system.db"
-    user_db = tmp_path / "user.db"
-    manager = DatabaseManager(str(system_db), str(user_db))
-    services = ServiceContainer(manager)
-
-    table_sql = """
-    CREATE TABLE pima_small (
-        pregnancies DOUBLE,
-        glucose DOUBLE,
-        blood_pressure DOUBLE,
-        skin_thickness DOUBLE,
-        insulin DOUBLE,
-        bmi DOUBLE,
-        diabetes_pedigree DOUBLE,
-        age DOUBLE,
-        outcome DOUBLE
-    )
-    """
-    manager.user_execute(table_sql)
-
-    for row in PIMA_SMALL_ROWS:
-        values = ", ".join(str(val) for val in row)
-        manager.user_execute(f"INSERT INTO pima_small VALUES ({values})")
-
-    schema_path = tmp_path / "model.yaml"
-    schema_path.write_text(PIMA_SCHEMA)
-
-    ui = StubUI()
-
-    await handle_ml_command(
-        f"/ml create-model --name pima_cli --schema {schema_path}",
-        ui,
-        services.ml_runtime,
-    )
-    assert any("registered" in msg for msg in ui.successes)
-
-    # Create a trainer for the model
-    # Note: model name "pima_cli" gets slugified to "pima-cli" so ID is "pima-cli-v1"
-    trainer_spec_yaml = """model_ref: pima-cli-v1
-optimizer:
-  type: torch.optim.Adam
-  lr: 0.001
-config:
-  epochs: 3
-  batch_size: 16
-"""
-    trainer_path = tmp_path / "trainer.yaml"
-    trainer_path.write_text(trainer_spec_yaml)
-
-    await handle_ml_command(
-        (
-            f"/ml create-trainer --name pima_trainer "
-            f"--schema {trainer_path} --model-id pima-cli-v1"
-        ),
-        ui,
-        services.ml_runtime,
-    )
-
-    # Debug: Check if trainer creation succeeded
-    if ui.errors:
-        raise AssertionError(f"Trainer creation failed: {ui.errors}")
-    assert any("registered" in msg for msg in ui.successes), (
-        "Expected trainer registration success message"
-    )
-
-    # New /ml train command requires generating trainer with context
-    # For this end-to-end test, we'll mock the MLTrainTool and then actually train
-
-    # Create a real trainer using the existing create-trainer flow for testing
-    # Then we'll use train_with_trainer directly since /ml train now always generates
-
-    # For now, skip the /ml train command test since it requires LLM API
-    # Instead, test the runtime directly
-    job_id = services.ml_runtime.train_with_trainer(
-        trainer_name="pima_trainer",
-        train_table="pima_small",
-    )
-
-    assert job_id, "Expected job id"
-
-    result = services.ml_runtime.training_service.wait_for_job(job_id, timeout=10)
-    assert result is not None and result.success is True
-
-    await asyncio.sleep(0)
-
-    job_record = services.jobs.get_job_by_id(job_id)
-    assert job_record.status == JobStatus.COMPLETED
-
-    services.shutdown()
+# Test removed: /ml create-model command no longer exists (integrated into /ml model)
+# This test relied on the old create-model command which has been removed

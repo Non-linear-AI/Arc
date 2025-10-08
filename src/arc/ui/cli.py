@@ -224,8 +224,8 @@ async def handle_ml_command(
 
     if len(tokens) < 2:
         ui.show_system_error(
-            "Usage: /ml <plan|revise-plan|create-model|train|predict|jobs|"
-            "generate-model|generate-trainer|generate-predictor|data-processing> ..."
+            "Usage: /ml <plan|revise-plan|train|predict|jobs|"
+            "model|generate-trainer|generate-predictor|data-processing> ..."
         )
         return
 
@@ -237,8 +237,6 @@ async def handle_ml_command(
             await _ml_plan(args, ui, agent)
         elif subcommand == "revise-plan":
             await _ml_revise_plan(args, ui, agent)
-        elif subcommand == "create-model":
-            _ml_create_model(args, ui, runtime)
         elif subcommand == "create-trainer":
             _ml_create_trainer(args, ui, runtime)
         elif subcommand == "train":
@@ -247,8 +245,8 @@ async def handle_ml_command(
             _ml_predict(args, ui, runtime)
         elif subcommand == "jobs":
             _ml_jobs(args, ui, runtime)
-        elif subcommand == "generate-model":
-            await _ml_generate_model(args, ui, runtime, agent)
+        elif subcommand == "model":
+            await _ml_model(args, ui, runtime, agent)
         elif subcommand == "generate-trainer":
             await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "generate-predictor":
@@ -384,37 +382,6 @@ async def _ml_revise_plan(
             ui.show_info(result.output)
     else:
         raise CommandError(f"Failed to revise ML plan: {result.error}")
-
-
-def _ml_create_model(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "schema": True,
-        },
-    )
-
-    name = options.get("name")
-    schema_path = options.get("schema")
-
-    if not name or not schema_path:
-        raise CommandError("/ml create-model requires --name and --schema")
-    schema_path_obj = Path(str(schema_path))
-
-    try:
-        model = runtime.create_model(
-            name=str(name),
-            schema_path=schema_path_obj,
-        )
-    except MLRuntimeError as exc:
-        raise CommandError(str(exc)) from exc
-
-    ui.show_system_success(
-        f"Model '{model.name}' registered (version {model.version}, id={model.id})."
-    )
 
 
 def _ml_create_trainer(
@@ -722,7 +689,7 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
         raise CommandError(f"Unknown jobs subcommand: {sub}")
 
 
-async def _ml_generate_model(
+async def _ml_model(
     args: list[str],
     ui: InteractiveInterface,
     runtime: "MLRuntime",
@@ -767,20 +734,18 @@ async def _ml_generate_model(
 
     # Validate required parameters
     if not name:
-        raise CommandError("/ml generate-model requires --name")
+        raise CommandError("/ml model requires --name")
 
     if not data_table:
-        raise CommandError("/ml generate-model requires --data-table")
+        raise CommandError("/ml model requires --data-table")
 
     # context is optional when using a plan
     if not ml_plan and not context:
-        raise CommandError(
-            "/ml generate-model requires --context when not using --plan-id"
-        )
+        raise CommandError("/ml model requires --context when not using --plan-id")
 
     try:
-        # Use the MLModelGeneratorTool which includes confirmation workflow
-        from arc.tools.ml import MLModelGeneratorTool
+        # Use the MLModelTool which includes confirmation workflow
+        from arc.tools.ml import MLModelTool
 
         # Get settings for tool initialization
         settings_manager = SettingsManager()
@@ -792,7 +757,7 @@ async def _ml_generate_model(
             raise CommandError("API key required for model generation")
 
         # Create the tool with proper dependencies
-        tool = MLModelGeneratorTool(runtime.services, api_key, base_url, model, ui)
+        tool = MLModelTool(runtime.services, api_key, base_url, model, ui)
 
         # Execute the tool with confirmation workflow
         result = await tool.execute(
