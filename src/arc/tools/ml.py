@@ -612,6 +612,7 @@ class MLTrainTool(BaseTool):
         base_url: str | None,
         model: str | None,
         ui_interface,
+        tensorboard_manager=None,
     ) -> None:
         self.services = services
         self.runtime = runtime
@@ -619,6 +620,7 @@ class MLTrainTool(BaseTool):
         self.base_url = base_url
         self.model = model
         self.ui = ui_interface
+        self.tensorboard_manager = tensorboard_manager
 
     async def execute(
         self,
@@ -823,6 +825,10 @@ class MLTrainTool(BaseTool):
                 lines.append(f"Training table: {train_table}")
                 lines.append(f"Job ID: {job_id}")
 
+                # Handle TensorBoard launch
+                if not auto_confirm and self.ui and self.tensorboard_manager:
+                    await self._handle_tensorboard_launch(job_id)
+
             except MLRuntimeError as exc:
                 return ToolResult.error_result(
                     f"Trainer registered but training failed: {exc}"
@@ -855,6 +861,97 @@ class MLTrainTool(BaseTool):
             success=True,
             output="\n".join(lines),
             metadata=result_metadata,
+        )
+
+    async def _handle_tensorboard_launch(self, job_id: str):
+        """Handle TensorBoard launch based on user preference.
+
+        Args:
+            job_id: Training job identifier
+        """
+
+        from arc.core.config import SettingsManager
+        from arc.utils.tensorboard_workflow import prompt_tensorboard_preference
+
+        settings = SettingsManager()
+        mode = settings.get_tensorboard_mode()
+
+        # First time - no preference set
+        if mode is None:
+            mode = await prompt_tensorboard_preference(self.ui)
+            settings.set_tensorboard_mode(mode)
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+            )
+
+        # Handle based on mode
+        if mode == "always":
+            await self._launch_tensorboard(job_id)
+        elif mode == "ask":
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+            )
+            choice = await self.ui._printer.get_choice_async(
+                options=[
+                    ("yes", "Yes, launch now"),
+                    ("no", "No, skip"),
+                ],
+                default="yes",
+            )
+            if choice == "yes":
+                await self._launch_tensorboard(job_id)
+            else:
+                self._show_manual_tensorboard_instructions(job_id)
+        else:  # "never"
+            self._show_manual_tensorboard_instructions(job_id)
+
+    async def _launch_tensorboard(self, job_id: str):
+        """Launch TensorBoard and show info.
+
+        Args:
+            job_id: Training job identifier
+        """
+        from pathlib import Path
+
+        from arc.core.config import SettingsManager
+
+        logdir = Path(f"tensorboard/run_{job_id}")
+
+        try:
+            settings = SettingsManager()
+            port = settings.get_tensorboard_port()
+
+            url, pid = self.tensorboard_manager.launch(job_id, logdir, port)
+
+            self.ui._printer.console.print()
+            self.ui._printer.console.print("[green]🚀 Launching TensorBoard...[/green]")
+            self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
+            self.ui._printer.console.print(f"   • Process ID: {pid}")
+            self.ui._printer.console.print(f"   • Logs: {logdir}")
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
+            )
+        except Exception as e:  # noqa: BLE001
+            self.ui._printer.console.print(
+                f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+            )
+            self._show_manual_tensorboard_instructions(job_id)
+
+    def _show_manual_tensorboard_instructions(self, job_id: str):
+        """Show manual TensorBoard instructions.
+
+        Args:
+            job_id: Training job identifier
+        """
+        logdir = f"tensorboard/run_{job_id}"
+        self.ui._printer.console.print()
+        self.ui._printer.console.print("[cyan]📊 Track training:[/cyan]")
+        self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+        self.ui._printer.console.print(
+            f"  • TensorBoard: tensorboard --logdir {logdir}"
         )
 
     def _create_validator(self):

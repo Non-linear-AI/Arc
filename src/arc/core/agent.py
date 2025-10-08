@@ -110,6 +110,11 @@ class ArcAgent:
         self.bash_tool = BashTool()
         self.search_tool = SearchTool()
         self.todo_tool = TodoTool()
+
+        # Initialize TensorBoard manager
+        from arc.ml import TensorBoardManager
+
+        self.tensorboard_manager = TensorBoardManager()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
@@ -144,6 +149,7 @@ class ArcAgent:
                 self.base_url,
                 self.current_model_name,
                 self.ui_interface,
+                self.tensorboard_manager,
             )
             if services
             else None

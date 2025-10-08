@@ -107,3 +107,49 @@ class SettingsManager:
     def set_user_database_path(self, db_path: str) -> None:
         """Set user database path in settings."""
         self.update_user_setting("userDatabasePath", db_path)
+
+    def get_tensorboard_mode(self) -> str | None:
+        """Get TensorBoard launch mode preference.
+
+        Returns:
+            One of "always", "ask", "never", or None if not set
+        """
+        settings = self.load_user_settings()
+        return settings.get("tensorboardMode")
+
+    def set_tensorboard_mode(self, mode: str) -> None:
+        """Set TensorBoard launch mode preference.
+
+        Args:
+            mode: One of "always", "ask", "never"
+
+        Raises:
+            ValueError: If mode is not valid
+        """
+        if mode not in ("always", "ask", "never"):
+            raise ValueError(
+                f"Invalid tensorboard mode: {mode}. Must be 'always', 'ask', or 'never'"
+            )
+        self.update_user_setting("tensorboardMode", mode)
+
+    def get_tensorboard_port(self) -> int:
+        """Get preferred TensorBoard port.
+
+        Returns:
+            Port number (default: 6006)
+        """
+        settings = self.load_user_settings()
+        return settings.get("tensorboardPort", 6006)
+
+    def set_tensorboard_port(self, port: int) -> None:
+        """Set preferred TensorBoard port.
+
+        Args:
+            port: Port number
+
+        Raises:
+            ValueError: If port is not valid
+        """
+        if not (1024 <= port <= 65535):
+            raise ValueError(f"Invalid port: {port}. Must be between 1024 and 65535")
+        self.update_user_setting("tensorboardPort", port)
