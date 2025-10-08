@@ -922,7 +922,7 @@ class MLTrainerTool(BaseTool):
         *,
         name: str | None = None,
         context: str | None = None,
-        model_name: str | None = None,
+        model_id: str | None = None,
         train_table: str | None = None,
         target_column: str | None = None,
         validation_table: str | None = None,
@@ -941,7 +941,7 @@ class MLTrainerTool(BaseTool):
         Args:
             name: Trainer name
             context: Training goals and constraints
-            model_name: Model to train
+            model_id: Model ID (with version, e.g., 'my_model-v1')
             train_table: Training data table (required if train_immediately=True)
             target_column: Target column for training
             validation_table: Optional validation table
@@ -969,9 +969,9 @@ class MLTrainerTool(BaseTool):
             )
 
         # Validate required parameters
-        if not name or not context or not model_name:
+        if not name or not context or not model_id:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', and 'model_name' are required."
+                "Parameters 'name', 'context', and 'model_id' are required."
             )
 
         # If training immediately, train_table is required
@@ -992,19 +992,17 @@ class MLTrainerTool(BaseTool):
         except ValueError as exc:
             return ToolResult.error_result(str(exc))
 
-        # Get the registered model
+        # Get the registered model by ID
         try:
-            model_record = self.services.models.get_latest_model_by_name(
-                str(model_name)
-            )
+            model_record = self.services.models.get_model_by_id(str(model_id))
             if not model_record:
                 return ToolResult.error_result(
-                    f"Model '{model_name}' not found in registry. "
-                    "Please register the model first using /ml create-model"
+                    f"Model '{model_id}' not found in registry. "
+                    "Please check the model ID or register the model first."
                 )
         except Exception as exc:
             return ToolResult.error_result(
-                f"Failed to retrieve model '{model_name}': {exc}"
+                f"Failed to retrieve model '{model_id}': {exc}"
             )
 
         # Show UI feedback if UI is available
@@ -1087,9 +1085,9 @@ class MLTrainerTool(BaseTool):
         try:
             trainer_record = self.runtime.create_trainer(
                 name=str(name),
-                model_name=str(model_name),
+                model_id=str(model_id),
                 schema_yaml=trainer_yaml,
-                description=description or f"Generated trainer for model {model_name}",
+                description=description or f"Generated trainer for model {model_id}",
             )
 
             if self.ui:

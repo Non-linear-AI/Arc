@@ -701,7 +701,7 @@ class ArcAgent:
                     return await self.ml_trainer_tool.execute(
                         name=args.get("name"),
                         context=args.get("context"),
-                        model_name=args.get("model_name"),
+                        model_id=args.get("model_id"),
                         train_table=args.get("train_table"),
                         target_column=args.get("target_column"),
                         validation_table=args.get("validation_table"),

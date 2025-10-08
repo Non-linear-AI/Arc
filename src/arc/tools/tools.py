@@ -501,9 +501,9 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "string",
                         "description": "Training goals, constraints, and requirements",
                     },
-                    "model_name": {
+                    "model_id": {
                         "type": "string",
-                        "description": "Name of the registered model to train",
+                        "description": "Model ID with version (e.g., 'my_model-v1')",
                     },
                     "train_table": {
                         "type": "string",
@@ -556,7 +556,7 @@ def get_base_tools() -> list[ArcTool]:
                         ),
                     },
                 },
-                "required": ["name", "context", "model_name"],
+                "required": ["name", "context", "model_id"],
             },
         ),
         ArcTool(

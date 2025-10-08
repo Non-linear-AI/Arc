@@ -425,16 +425,18 @@ def _ml_create_trainer(
         {
             "name": True,
             "schema": True,
-            "model": True,
+            "model-id": True,
         },
     )
 
     name = options.get("name")
     schema_path = options.get("schema")
-    model_name = options.get("model")
+    model_id = options.get("model-id")
 
-    if not name or not schema_path or not model_name:
-        raise CommandError("/ml create-trainer requires --name, --schema, and --model")
+    if not name or not schema_path or not model_id:
+        raise CommandError(
+            "/ml create-trainer requires --name, --schema, and --model-id"
+        )
 
     schema_path_obj = Path(str(schema_path))
 
@@ -442,7 +444,7 @@ def _ml_create_trainer(
         trainer = runtime.create_trainer(
             name=str(name),
             schema_path=schema_path_obj,
-            model_name=str(model_name),
+            model_id=str(model_id),
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc
@@ -468,7 +470,7 @@ async def _ml_train(
         args,
         {
             "name": True,
-            "model": True,
+            "model-id": True,
             "data": True,
             "context": True,
             "plan-id": True,
@@ -476,7 +478,7 @@ async def _ml_train(
     )
 
     name = options.get("name")
-    model_name = options.get("model")
+    model_id = options.get("model-id")
     train_table = options.get("data")
     context = options.get("context")
     plan_id = options.get("plan-id")
@@ -485,8 +487,8 @@ async def _ml_train(
     if not name:
         raise CommandError("/ml train requires --name")
 
-    if not model_name:
-        raise CommandError("/ml train requires --model")
+    if not model_id:
+        raise CommandError("/ml train requires --model-id")
 
     if not train_table:
         raise CommandError("/ml train requires --data")
@@ -562,7 +564,7 @@ async def _ml_train(
         result = await tool.execute(
             name=name,
             context=training_context,
-            model_name=model_name,
+            model_id=model_id,
             train_table=train_table,
             train_immediately=True,  # Always train after generation
         )

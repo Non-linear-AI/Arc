@@ -533,7 +533,7 @@ async def test_train_submits_job(tmp_path):
 
     with patch('arc.tools.ml.MLTrainerTool.execute', new_callable=AsyncMock, return_value=mock_result):
         await handle_ml_command(
-            "/ml train --name test_trainer --model my_model --context 'Train for 3 epochs' --data train_table",
+            "/ml train --name test_trainer --model-id my_model-v1 --context 'Train for 3 epochs' --data train_table",
             ui,
             runtime,
         )
@@ -618,7 +618,7 @@ async def test_train_missing_model_shows_error(tmp_path):
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --name test_trainer --model unknown_model --context 'test' --data table",
+        "/ml train --name test_trainer --model-id unknown_model-v1 --context 'test' --data table",
         ui,
         runtime
     )
@@ -667,6 +667,7 @@ async def test_end_to_end_training_with_realistic_dataset(tmp_path):
     assert any("registered" in msg for msg in ui.successes)
 
     # Create a trainer for the model
+    # Note: model name "pima_cli" gets slugified to "pima-cli" so ID is "pima-cli-v1"
     trainer_spec_yaml = """model_ref: pima-cli-v1
 optimizer:
   type: torch.optim.Adam
@@ -681,11 +682,16 @@ config:
     await handle_ml_command(
         (
             f"/ml create-trainer --name pima_trainer "
-            f"--schema {trainer_path} --model pima_cli"
+            f"--schema {trainer_path} --model-id pima-cli-v1"
         ),
         ui,
         services.ml_runtime,
     )
+
+    # Debug: Check if trainer creation succeeded
+    if ui.errors:
+        raise AssertionError(f"Trainer creation failed: {ui.errors}")
+    assert any("registered" in msg for msg in ui.successes), "Expected trainer registration success message"
 
     # New /ml train command requires generating trainer with context
     # For this end-to-end test, we'll mock the MLTrainerTool and then actually train

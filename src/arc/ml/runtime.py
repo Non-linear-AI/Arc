@@ -116,7 +116,7 @@ class MLRuntime:
         self,
         *,
         name: str,
-        model_name: str,
+        model_id: str,
         schema_path: Path | None = None,
         schema_yaml: str | None = None,
         description: str | None = None,
@@ -125,9 +125,9 @@ class MLRuntime:
 
         Args:
             name: Trainer name
-            model_name: Name of the model this trainer is for
+            model_id: ID of the model this trainer is for (e.g., 'my_model-v1')
             schema_path: Path to trainer YAML (optional if schema_yaml provided)
-            schema_yaml: Trainer YAML as string (optional if schema_path provided)
+            schema_yaml: Trainer YAML as string (optional if schema_yaml provided)
             description: Optional description
 
         Returns:
@@ -163,11 +163,11 @@ class MLRuntime:
             raise MLRuntimeError(f"Invalid trainer schema: {exc}") from exc
 
         # Get the model this trainer references
-        model_record = self.model_service.get_latest_model_by_name(model_name)
+        model_record = self.model_service.get_model_by_id(model_id)
         if model_record is None:
             raise MLRuntimeError(
-                f"Model '{model_name}' not found. "
-                f"Create the model first with /ml create-model."
+                f"Model '{model_id}' not found. "
+                f"Please check the model ID or create the model first."
             )
 
         # Validate that trainer's model_ref matches the model
