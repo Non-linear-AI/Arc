@@ -368,7 +368,9 @@ class MLModelTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, user_context: str | None = None, category: str | None = None):
+    def _create_editor(
+        self, user_context: str | None = None, category: str | None = None
+    ):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:

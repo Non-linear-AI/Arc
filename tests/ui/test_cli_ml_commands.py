@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,8 +10,6 @@ from typing import Any
 
 import pytest
 
-from arc.database.manager import DatabaseManager
-from arc.database.services import ServiceContainer
 from arc.jobs.models import JobStatus, JobType
 from arc.ui.cli import handle_ml_command
 
