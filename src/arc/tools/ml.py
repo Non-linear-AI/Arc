@@ -397,7 +397,7 @@ class MLModelTool(BaseTool):
                     user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    category=category or context.get("category"),
+                    category=category,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
