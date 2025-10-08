@@ -1,6 +1,6 @@
 """Tests for ArcEvaluator."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -94,7 +94,18 @@ class TestArcEvaluator:
                 "features": ModelInput(
                     dtype="float32",
                     shape=[10],
-                    columns=["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10"],
+                    columns=[
+                        "f1",
+                        "f2",
+                        "f3",
+                        "f4",
+                        "f5",
+                        "f6",
+                        "f7",
+                        "f8",
+                        "f9",
+                        "f10",
+                    ],
                 )
             },
             graph=[
@@ -331,7 +342,7 @@ class TestArcEvaluator:
     @patch("arc.ml.evaluator.ModelArtifactManager")
     @patch("arc.ml.evaluator.TrainerService")
     def test_load_from_trainer(
-        self, mock_trainer_service_class, mock_artifact_manager_class
+        self, _mock_trainer_service_class, _mock_artifact_manager_class
     ):
         """Test loading evaluator from trainer reference."""
         # Setup mocks
@@ -362,7 +373,18 @@ config:
                 "features": {
                     "dtype": "float32",
                     "shape": [10],
-                    "columns": ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10"],
+                    "columns": [
+                        "f1",
+                        "f2",
+                        "f3",
+                        "f4",
+                        "f5",
+                        "f6",
+                        "f7",
+                        "f8",
+                        "f9",
+                        "f10",
+                    ],
                 }
             },
             "graph": [
@@ -391,7 +413,6 @@ config:
         from arc.graph.model import GraphNode, ModelInput
         from arc.ml.builder import ModelBuilder
 
-        model_dict = mock_artifact.model_spec
         inputs = {
             "features": ModelInput(
                 dtype="float32",
@@ -414,6 +435,7 @@ config:
             ),
         ]
         from arc.graph import ModelSpec
+
         temp_model_spec = ModelSpec(
             inputs=inputs,
             graph=graph,
@@ -459,7 +481,7 @@ config:
     @patch("arc.ml.evaluator.ModelArtifactManager")
     @patch("arc.ml.evaluator.TrainerService")
     def test_load_from_trainer_trainer_not_found(
-        self, mock_trainer_service_class, mock_artifact_manager_class
+        self, _mock_trainer_service_class, _mock_artifact_manager_class
     ):
         """Test loading evaluator fails when trainer not found."""
         mock_trainer_service = MagicMock()
@@ -500,7 +522,18 @@ class TestArcEvaluatorIntegration:
                 "features": ModelInput(
                     dtype="float32",
                     shape=[10],
-                    columns=["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10"],
+                    columns=[
+                        "f1",
+                        "f2",
+                        "f3",
+                        "f4",
+                        "f5",
+                        "f6",
+                        "f7",
+                        "f8",
+                        "f9",
+                        "f10",
+                    ],
                 )
             },
             graph=[

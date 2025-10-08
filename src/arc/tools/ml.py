@@ -466,7 +466,6 @@ class MLModelTool(BaseTool):
         Returns:
             Updated ML plan dictionary with revised architecture section
         """
-        from pathlib import Path
 
         from jinja2 import Environment, FileSystemLoader
 
@@ -1041,7 +1040,13 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
-        if not name or not context or not trainer_name or not dataset or not target_column:
+        if (
+            not name
+            or not context
+            or not trainer_name
+            or not dataset
+            or not target_column
+        ):
             return ToolResult.error_result(
                 "Parameters 'name', 'context', 'trainer_name', 'dataset', and "
                 "'target_column' are required to generate an evaluator specification."
@@ -1143,7 +1148,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
-                    return ToolResult.success_result("✗ Evaluator generation cancelled.")
+                    return ToolResult.success_result(
+                        "✗ Evaluator generation cancelled."
+                    )
                 evaluator_yaml = final_yaml
             finally:
                 workflow.cleanup()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -180,7 +180,9 @@ class ArcEvaluator:
             # Get the first input (assuming single input for simplicity)
             first_input = next(iter(self.model_spec.inputs.values()))
             if not hasattr(first_input, "columns") or not first_input.columns:
-                raise EvaluationError("No feature columns found in model input specification")
+                raise EvaluationError(
+                    "No feature columns found in model input specification"
+                )
 
             feature_columns = first_input.columns
 
@@ -312,7 +314,7 @@ class ArcEvaluator:
         # Default to classification
         return "classification"
 
-    def _create_metric(self, metric_name: str, task_type: str) -> Metric:
+    def _create_metric(self, metric_name: str, _task_type: str) -> Metric:
         """Create a metric instance from name.
 
         Args:
@@ -354,8 +356,7 @@ class ArcEvaluator:
         metric_name_lower = metric_name.lower()
         if metric_name_lower not in metric_map:
             raise EvaluationError(
-                f"Unknown metric: {metric_name}. "
-                f"Available: {list(metric_map.keys())}"
+                f"Unknown metric: {metric_name}. Available: {list(metric_map.keys())}"
             )
 
         return metric_map[metric_name_lower]()

@@ -12,7 +12,6 @@ import click
 from dotenv import load_dotenv
 
 from arc.core import ArcAgent, SettingsManager
-from arc.core.agents.predictor_generator import PredictorGeneratorAgent
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
 from arc.graph.features.data_source import DataSourceSpec

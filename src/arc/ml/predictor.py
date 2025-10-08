@@ -97,6 +97,7 @@ class ArcPredictor:
                     f"Model returns single tensor but expects "
                     f"multiple outputs: {self.output_keys}"
                 )
+
     def predict_batch(
         self,
         features: torch.Tensor,

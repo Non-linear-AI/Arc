@@ -197,7 +197,8 @@ class DuckDBDatabase(Database):
             """)
 
             self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_evaluators_trainer_id ON evaluators(trainer_id);
+                CREATE INDEX IF NOT EXISTS idx_evaluators_trainer_id
+                ON evaluators(trainer_id);
             """)
 
             self.execute("""

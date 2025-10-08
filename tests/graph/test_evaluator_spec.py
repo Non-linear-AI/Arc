@@ -189,7 +189,9 @@ class TestEvaluatorValidation:
             "target_column": "target",
         }
 
-        with pytest.raises(EvaluatorValidationError, match="Missing required field: name"):
+        with pytest.raises(
+            EvaluatorValidationError, match="Missing required field: name"
+        ):
             validate_evaluator_dict(data)
 
     def test_validate_evaluator_dict_missing_trainer_ref(self):
@@ -213,7 +215,9 @@ class TestEvaluatorValidation:
             "target_column": "target",
         }
 
-        with pytest.raises(EvaluatorValidationError, match="Missing required field: dataset"):
+        with pytest.raises(
+            EvaluatorValidationError, match="Missing required field: dataset"
+        ):
             validate_evaluator_dict(data)
 
     def test_validate_evaluator_dict_missing_target_column(self):
@@ -224,7 +228,9 @@ class TestEvaluatorValidation:
             "dataset": "test_data",
         }
 
-        with pytest.raises(EvaluatorValidationError, match="Missing required field: target_column"):
+        with pytest.raises(
+            EvaluatorValidationError, match="Missing required field: target_column"
+        ):
             validate_evaluator_dict(data)
 
     def test_validate_evaluator_dict_empty_name(self):
@@ -292,7 +298,9 @@ class TestEvaluatorValidation:
             "metrics": ["accuracy", 123],  # 123 is not a string
         }
 
-        with pytest.raises(EvaluatorValidationError, match="All metrics must be strings"):
+        with pytest.raises(
+            EvaluatorValidationError, match="All metrics must be strings"
+        ):
             validate_evaluator_dict(data)
 
     def test_validate_evaluator_dict_empty_metric_string(self):
@@ -320,7 +328,9 @@ class TestEvaluatorValidation:
             "version": "1",  # Should be an int
         }
 
-        with pytest.raises(EvaluatorValidationError, match="version must be an integer"):
+        with pytest.raises(
+            EvaluatorValidationError, match="version must be an integer"
+        ):
             validate_evaluator_dict(data)
 
     def test_validate_evaluator_dict_strips_whitespace(self):

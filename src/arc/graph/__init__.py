@@ -1,6 +1,11 @@
 """Arc-Graph parsing and validation package."""
 
 # New separated architecture imports
+from arc.graph.evaluator import (
+    EvaluatorSpec,
+    EvaluatorValidationError,
+    validate_evaluator_dict,
+)
 from arc.graph.features import (
     CORE_PROCESSORS,
     FeatureSpec,
@@ -22,11 +27,6 @@ from arc.graph.model import (
     build_model_from_yaml,
     get_layer_class,
     validate_model_dict,
-)
-from arc.graph.evaluator import (
-    EvaluatorSpec,
-    EvaluatorValidationError,
-    validate_evaluator_dict,
 )
 from arc.graph.trainer import (
     CORE_LOSSES,

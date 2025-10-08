@@ -64,7 +64,9 @@ class EvaluatorService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to get evaluator by id {id}: {e}") from e
 
-    def get_evaluator_by_name_version(self, name: str, version: int) -> Evaluator | None:
+    def get_evaluator_by_name_version(
+        self, name: str, version: int
+    ) -> Evaluator | None:
         """Get an evaluator by name and version.
 
         Args:
@@ -110,7 +112,9 @@ class EvaluatorService(BaseService):
                 return None
             return self._result_to_evaluator(result.first())
         except Exception as e:
-            raise DatabaseError(f"Failed to get latest evaluator for {name}: {e}") from e
+            raise DatabaseError(
+                f"Failed to get latest evaluator for {name}: {e}"
+            ) from e
 
     def get_evaluators_by_name(self, name: str) -> list[Evaluator]:
         """Get all versions of an evaluator by name.
@@ -169,7 +173,9 @@ class EvaluatorService(BaseService):
             sql = self._build_evaluator_insert_sql(evaluator)
             self._system_execute(sql)
         except Exception as e:
-            raise DatabaseError(f"Failed to create evaluator {evaluator.id}: {e}") from e
+            raise DatabaseError(
+                f"Failed to create evaluator {evaluator.id}: {e}"
+            ) from e
 
     def update_evaluator(self, evaluator: Evaluator) -> None:
         """Update an existing evaluator in the database.
@@ -184,7 +190,9 @@ class EvaluatorService(BaseService):
             sql = self._build_evaluator_update_sql(evaluator)
             self._system_execute(sql)
         except Exception as e:
-            raise DatabaseError(f"Failed to update evaluator {evaluator.id}: {e}") from e
+            raise DatabaseError(
+                f"Failed to update evaluator {evaluator.id}: {e}"
+            ) from e
 
     def delete_evaluator(self, id: str) -> None:
         """Delete an evaluator by ID.

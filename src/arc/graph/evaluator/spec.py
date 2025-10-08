@@ -112,13 +112,9 @@ def validate_evaluator_dict(data: dict[str, Any]) -> EvaluatorSpec:
             if not isinstance(metrics, list):
                 raise EvaluatorValidationError("metrics must be a list")
             if not all(isinstance(m, str) for m in metrics):
-                raise EvaluatorValidationError(
-                    "All metrics must be strings"
-                )
+                raise EvaluatorValidationError("All metrics must be strings")
             if not all(m.strip() for m in metrics):
-                raise EvaluatorValidationError(
-                    "Metric names cannot be empty strings"
-                )
+                raise EvaluatorValidationError("Metric names cannot be empty strings")
 
         version = data.get("version")
         if version is not None and not isinstance(version, int):

@@ -124,7 +124,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
     def _validate_evaluator_comprehensive(
         self, evaluator_yaml: str, context: dict[str, Any]
     ) -> dict[str, Any]:
-        """Comprehensive validation of generated evaluator with detailed error reporting.
+        """Validate generated evaluator with detailed error reporting.
 
         Args:
             evaluator_yaml: Generated YAML evaluator string
@@ -206,7 +206,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
         """Get available evaluation metrics."""
         return self.AVAILABLE_METRICS
 
-    def _get_evaluator_examples(self, user_context: str) -> list[dict[str, Any]]:
+    def _get_evaluator_examples(self, _user_context: str) -> list[dict[str, Any]]:
         """Get relevant evaluator examples."""
         # For now, return empty list. Can add example repository support later.
         return []
@@ -226,15 +226,24 @@ class EvaluatorGeneratorAgent(BaseAgent):
 
             # Infer task type from optimizer or other hints
             # This is a simple heuristic - could be improved
-            epochs = trainer_dict.get("epochs", trainer_dict.get("config", {}).get("epochs", 10))
-            batch_size = trainer_dict.get("batch_size", trainer_dict.get("config", {}).get("batch_size", 32))
+            epochs = trainer_dict.get(
+                "epochs", trainer_dict.get("config", {}).get("epochs", 10)
+            )
+            batch_size = trainer_dict.get(
+                "batch_size", trainer_dict.get("config", {}).get("batch_size", 32)
+            )
 
             profile["epochs"] = epochs
             profile["batch_size"] = batch_size
 
             # Suggest default metrics based on common patterns
             # This is heuristic - the LLM will make the final decision
-            profile["suggested_metrics"] = ["accuracy", "precision", "recall", "f1_score"]
+            profile["suggested_metrics"] = [
+                "accuracy",
+                "precision",
+                "recall",
+                "f1_score",
+            ]
 
             return profile
 
