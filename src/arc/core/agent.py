@@ -19,7 +19,6 @@ from arc.tools import (
     MLPlanTool,
     MLPredictorGeneratorTool,
     MLPredictTool,
-    MLTrainerGeneratorTool,
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
@@ -113,7 +112,6 @@ class ArcAgent:
         self.todo_tool = TodoTool()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
-        self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
         self.ml_plan_tool = (
             MLPlanTool(
@@ -138,9 +136,10 @@ class ArcAgent:
             if services
             else None
         )
-        self.ml_trainer_generator_tool = (
-            MLTrainerGeneratorTool(
+        self.ml_train_tool = (
+            MLTrainTool(
                 services,
+                services.ml_runtime,
                 self.api_key,
                 self.base_url,
                 self.current_model_name,
@@ -170,7 +169,6 @@ class ArcAgent:
             if services
             else None
         )
-
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
         self.messages: list[ChatCompletionMessageParam] = []
@@ -576,25 +574,6 @@ class ArcAgent:
                         "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
-            elif tool_call.name == "ml_train":
-                if self.ml_train_tool:
-                    return await self.ml_train_tool.execute(
-                        model_id=args.get("model_id"),
-                        model_name=args.get("model_name"),
-                        train_table=args.get("train_table"),
-                        target_column=args.get("target_column"),
-                        validation_table=args.get("validation_table"),
-                        validation_split=args.get("validation_split"),
-                        epochs=args.get("epochs"),
-                        batch_size=args.get("batch_size"),
-                        learning_rate=args.get("learning_rate"),
-                        checkpoint_dir=args.get("checkpoint_dir"),
-                        description=args.get("description"),
-                        tags=args.get("tags"),
-                    )
-                return ToolResult.error_result(
-                    "ML train tool not available. Database services not initialized."
-                )
             elif tool_call.name == "ml_predict":
                 if self.ml_predict_tool:
                     return await self.ml_predict_tool.execute(
@@ -656,17 +635,16 @@ class ArcAgent:
                     "ML model generator tool not available. "
                     "Database services not initialized."
                 )
-            elif tool_call.name == "ml_trainer_generator":
-                if self.ml_trainer_generator_tool:
-                    return await self.ml_trainer_generator_tool.execute(
+            elif tool_call.name == "ml_train":
+                if self.ml_train_tool:
+                    return await self.ml_train_tool.execute(
                         name=args.get("name"),
                         context=args.get("context"),
-                        model_spec_path=args.get("model_spec_path"),
-                        output_path=args.get("output_path"),
+                        model_id=args.get("model_id"),
+                        train_table=args.get("train_table"),
                     )
                 return ToolResult.error_result(
-                    "ML trainer generator tool not available. "
-                    "Database services not initialized."
+                    "ML train tool not available. Database services not initialized."
                 )
             elif tool_call.name == "ml_predictor_generator":
                 if self.ml_predictor_generator_tool:
@@ -759,7 +737,5 @@ class ArcAgent:
             self.ml_plan_tool.model = model
         if getattr(self, "ml_model_generator_tool", None):
             self.ml_model_generator_tool.model = model
-        if getattr(self, "ml_trainer_generator_tool", None):
-            self.ml_trainer_generator_tool.model = model
         if getattr(self, "ml_predictor_generator_tool", None):
             self.ml_predictor_generator_tool.model = model

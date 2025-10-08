@@ -344,13 +344,18 @@ def get_base_tools() -> list[ArcTool]:
         ),
         ArcTool(
             name="ml_train",
-            description="Launch an Arc-Graph training job on a dataset",
+            description=(
+                "Launch an Arc-Graph training job using a registered trainer. "
+                "The trainer references the model and training configuration."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
-                    "model_name": {
+                    "trainer_name": {
                         "type": "string",
-                        "description": "Name of the registered model to train",
+                        "description": (
+                            "Name of the registered trainer to use for training"
+                        ),
                     },
                     "train_table": {
                         "type": "string",
@@ -372,20 +377,20 @@ def get_base_tools() -> list[ArcTool]:
                         "type": "number",
                         "description": (
                             "Optional validation split (0-1). "
-                            "Overrides graph configuration if provided"
+                            "Overrides trainer configuration if provided"
                         ),
                     },
                     "epochs": {
                         "type": "integer",
-                        "description": "Override training epochs",
+                        "description": "Override training epochs from trainer config",
                     },
                     "batch_size": {
                         "type": "integer",
-                        "description": "Override training batch size",
+                        "description": "Override batch size from trainer config",
                     },
                     "learning_rate": {
                         "type": "number",
-                        "description": "Override learning rate",
+                        "description": "Override learning rate from trainer config",
                     },
                     "checkpoint_dir": {
                         "type": "string",
@@ -401,7 +406,7 @@ def get_base_tools() -> list[ArcTool]:
                         "description": "Optional tags to attach to the training job",
                     },
                 },
-                "required": ["model_name", "train_table"],
+                "required": ["trainer_name", "train_table"],
             },
         ),
         ArcTool(
@@ -471,6 +476,46 @@ def get_base_tools() -> list[ArcTool]:
                     },
                 },
                 "required": ["name", "context", "data_table"],
+            },
+        ),
+        ArcTool(
+            name="ml_train",
+            description=(
+                "Generate Arc-Graph trainer specification and launch training. "
+                "This unified tool: 1) Generates trainer spec via LLM based on model "
+                "and training goals, 2) Presents interactive confirmation workflow, "
+                "3) Auto-registers trainer to database after approval, "
+                "4) Launches training after user confirmation. All training "
+                "configuration (epochs, batch_size, learning_rate, etc.) must be "
+                "specified in the generated trainer YAML - no runtime overrides "
+                "are supported."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Trainer name for the specification",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Training goals, constraints, and requirements. "
+                            "Include all training configuration details (epochs, "
+                            "batch size, learning rate, validation strategy, etc.) "
+                            "as these will be encoded in the trainer YAML."
+                        ),
+                    },
+                    "model_id": {
+                        "type": "string",
+                        "description": "Model ID with version (e.g., 'my_model-v1')",
+                    },
+                    "train_table": {
+                        "type": "string",
+                        "description": "Training data table name",
+                    },
+                },
+                "required": ["name", "context", "model_id", "train_table"],
             },
         ),
         ArcTool(

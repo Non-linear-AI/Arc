@@ -156,6 +156,8 @@ cython_debug/
 
 # Model artifacts
 /artifacts/
+/tensorboard/
 
 # Claude Code
 /CLAUDE.md
+

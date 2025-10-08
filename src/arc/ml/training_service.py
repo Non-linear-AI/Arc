@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -13,8 +12,12 @@ from threading import Event
 from typing import Any
 
 from arc.database import DatabaseError
+from arc.database.models.training import MetricType, TrainingStatus
 from arc.database.services.job_service import JobService
 from arc.database.services.ml_data_service import MLDataService
+from arc.database.services.training_tracking_service import (
+    TrainingTrackingService,
+)
 from arc.graph import FeatureSpec, ModelSpec, TrainerSpec
 from arc.jobs.models import Job, JobStatus, JobType
 from arc.ml.artifacts import (
@@ -23,10 +26,43 @@ from arc.ml.artifacts import (
     create_artifact_from_training,
 )
 from arc.ml.builder import ArcModel, ModelBuilder
+from arc.ml.callbacks import TensorBoardLogger
 from arc.ml.data import DataProcessor
 from arc.ml.trainer import ArcTrainer, ProgressCallback, TrainingResult
 
 logger = logging.getLogger(__name__)
+
+
+class CompositeCallback:
+    """Composite callback that forwards calls to multiple callbacks."""
+
+    def __init__(self, *callbacks: ProgressCallback):
+        self.callbacks = [cb for cb in callbacks if cb is not None]
+
+    def on_training_start(self) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_training_start()
+
+    def on_epoch_start(self, epoch: int, total_epochs: int) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_epoch_start(epoch, total_epochs)
+
+    def on_batch_end(self, batch: int, total_batches: int, loss: float) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_batch_end(batch, total_batches, loss)
+
+    def on_epoch_end(self, epoch: int, metrics: dict[str, float]) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_epoch_end(epoch, metrics)
+
+    def on_training_end(self, final_metrics: dict[str, float]) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_training_end(final_metrics)
 
 
 @dataclass
@@ -63,17 +99,27 @@ class TrainingJobConfig:
 
 
 class TrainingJobProgressCallback:
-    """Progress callback that updates job status in database."""
+    """Progress callback that updates job status and training metrics in database."""
 
     def __init__(
-        self, job_service: JobService, job_id: str, max_training_time: float = 1800.0
+        self,
+        job_service: JobService,
+        job_id: str,
+        max_training_time: float = 1800.0,
+        tracking_service: TrainingTrackingService | None = None,
+        run_id: str | None = None,
+        metric_log_frequency: int = 100,
     ):
         self.job_service = job_service
         self.job_id = job_id
         self.total_epochs = 0
         self.current_epoch = 0
+        self.current_step = 0
         self.max_training_time = max_training_time  # 30 minutes default
         self.training_start_time = None
+        self.tracking_service = tracking_service
+        self.run_id = run_id
+        self.metric_log_frequency = metric_log_frequency
 
     def on_training_start(self) -> None:
         """Called when training starts."""
@@ -86,6 +132,16 @@ class TrainingJobProgressCallback:
             )
         except DatabaseError:
             logger.exception("Failed to update job %s status to RUNNING", self.job_id)
+
+        # Update training run status if tracking is enabled
+        if self.tracking_service and self.run_id:
+            try:
+                self.tracking_service.update_run_status(
+                    self.run_id, TrainingStatus.RUNNING, timestamp_field="started_at"
+                )
+            except DatabaseError:
+                logger.exception("Failed to update training run %s status", self.run_id)
+
         logger.info(f"Training job {self.job_id} started")
 
     def on_epoch_start(self, epoch: int, total_epochs: int) -> None:
@@ -151,8 +207,36 @@ class TrainingJobProgressCallback:
         except DatabaseError:
             logger.exception("Failed to update job %s status at epoch end", self.job_id)
 
+        # Log epoch metrics to tracking service
+        if self.tracking_service and self.run_id:
+            try:
+                for metric_name, value in metrics.items():
+                    if isinstance(value, (int, float)) and metric_name != "epoch":
+                        # Determine metric type from name
+                        if "val_" in metric_name or "validation_" in metric_name:
+                            metric_type = MetricType.VALIDATION
+                        elif "test_" in metric_name:
+                            metric_type = MetricType.TEST
+                        else:
+                            metric_type = MetricType.TRAIN
+
+                        self.tracking_service.log_metric(
+                            run_id=self.run_id,
+                            metric_name=metric_name,
+                            metric_type=metric_type,
+                            step=self.current_step,
+                            epoch=epoch,
+                            value=float(value),
+                        )
+            except DatabaseError:
+                logger.exception(
+                    "Failed to log metrics for training run %s", self.run_id
+                )
+
     def on_batch_end(self, batch: int, total_batches: int, loss: float) -> None:
         """Called at the end of each batch."""
+        self.current_step += 1
+
         # Only update for significant progress milestones to avoid spam
         if batch % max(1, total_batches // 10) == 0:
             batch_progress = (batch / total_batches) * 100
@@ -170,6 +254,26 @@ class TrainingJobProgressCallback:
             except DatabaseError:
                 logger.exception(
                     "Failed to update job %s status at batch end", self.job_id
+                )
+
+        # Log batch loss at specified frequency
+        if (
+            self.tracking_service
+            and self.run_id
+            and self.current_step % self.metric_log_frequency == 0
+        ):
+            try:
+                self.tracking_service.log_metric(
+                    run_id=self.run_id,
+                    metric_name="batch_loss",
+                    metric_type=MetricType.TRAIN,
+                    step=self.current_step,
+                    epoch=self.current_epoch,
+                    value=loss,
+                )
+            except DatabaseError:
+                logger.exception(
+                    "Failed to log batch loss for training run %s", self.run_id
                 )
 
     def on_training_end(self, final_metrics: dict[str, float]) -> None:
@@ -191,6 +295,20 @@ class TrainingJobProgressCallback:
             logger.exception(
                 "Failed to mark job %s completed in progress callback", self.job_id
             )
+
+        # Mark training run as completed
+        if self.tracking_service and self.run_id:
+            try:
+                self.tracking_service.update_run_status(
+                    self.run_id,
+                    TrainingStatus.COMPLETED,
+                    timestamp_field="completed_at",
+                )
+            except DatabaseError:
+                logger.exception(
+                    "Failed to mark training run %s completed", self.run_id
+                )
+
         logger.info(f"Training job {self.job_id} completed")
 
 
@@ -202,6 +320,7 @@ class TrainingService:
         job_service: JobService,
         artifacts_dir: str | Path | None = None,
         max_concurrent_jobs: int = 2,
+        tracking_service: TrainingTrackingService | None = None,
     ):
         """Initialize training service.
 
@@ -209,10 +328,12 @@ class TrainingService:
             job_service: Job service for database operations
             artifacts_dir: Directory for storing model artifacts
             max_concurrent_jobs: Maximum concurrent training jobs
+            tracking_service: Training tracking service for metrics/runs
         """
         self.job_service = job_service
         self.artifacts_dir = Path(artifacts_dir) if artifacts_dir else Path("artifacts")
         self.artifact_manager = ModelArtifactManager(self.artifacts_dir)
+        self.tracking_service = tracking_service
 
         # Thread execution
         self.executor = ThreadPoolExecutor(max_workers=max_concurrent_jobs)
@@ -292,14 +413,74 @@ class TrainingService:
             Training result
         """
         try:
-            # Setup progress callback
-            progress_callback = TrainingJobProgressCallback(self.job_service, job_id)
+            # Create training run if tracking is enabled
+            run_id = None
+            if self.tracking_service:
+                try:
+                    training_config = {
+                        "epochs": config.epochs,
+                        "batch_size": config.batch_size,
+                        "learning_rate": config.learning_rate,
+                        "validation_split": config.validation_split,
+                    }
+                    # Set up TensorBoard log directory
+                    tensorboard_log_dir = None
+                    if config.artifacts_dir:
+                        tensorboard_log_dir = str(
+                            Path(config.artifacts_dir).parent
+                            / "tensorboard"
+                            / f"run_{job_id}"
+                        )
+                    else:
+                        tensorboard_log_dir = str(
+                            Path.home() / ".arc" / "training_logs" / f"run_{job_id}"
+                        )
+
+                    run = self.tracking_service.create_run(
+                        job_id=job_id,
+                        model_id=config.model_id,
+                        trainer_id=config.trainer_id,
+                        run_name=config.description,
+                        description=config.description,
+                        tensorboard_enabled=True,
+                        tensorboard_log_dir=tensorboard_log_dir,
+                        config=training_config,
+                    )
+                    run_id = run.run_id
+                    logger.info(f"Created training run {run_id} for job {job_id}")
+                    logger.info(f"TensorBoard logs: {tensorboard_log_dir}")
+                except DatabaseError:
+                    logger.exception("Failed to create training run for job %s", job_id)
+
+            # Setup progress callbacks
+            progress_callback = TrainingJobProgressCallback(
+                self.job_service,
+                job_id,
+                tracking_service=self.tracking_service,
+                run_id=run_id,
+            )
+
+            # Setup TensorBoard logger if tracking is enabled
+            tensorboard_logger = None
+            if self.tracking_service and run_id:
+                try:
+                    run = self.tracking_service.get_run_by_id(run_id)
+                    if run and run.tensorboard_enabled and run.tensorboard_log_dir:
+                        tensorboard_logger = TensorBoardLogger(
+                            log_dir=run.tensorboard_log_dir, enabled=True
+                        )
+                        logger.info("TensorBoard logging initialized")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize TensorBoard: {e}")
+
+            # Combine callbacks
+            combined_callback = CompositeCallback(progress_callback, tensorboard_logger)
 
             # Run training synchronously in this thread
             result = self._run_training(
                 job_id,
                 config,
-                progress_callback,
+                combined_callback,
                 cancel_event,
             )
 
@@ -738,49 +919,47 @@ class TrainingService:
         artifact_dir: Path,
         training_result: TrainingResult,
     ) -> None:
-        """Record trained model information in the system database."""
+        """Record trained model artifact information in training_runs table."""
 
-        artifact_id = f"{artifact.model_id}-v{artifact.version}"
+        # If tracking service is available, update the training run with artifact info
+        if self.tracking_service:
+            try:
+                # Get the training run by job_id
+                training_run = self.tracking_service.get_run_by_job_id(job_id)
 
-        metrics_payload = json.dumps(
-            {
-                "final_metrics": artifact.final_metrics or {},
-                "best_metrics": artifact.best_metrics or {},
-                "training_time": training_result.training_time,
-                "total_epochs": training_result.total_epochs,
-                "best_epoch": training_result.best_epoch,
-            },
-            default=str,
-        )
+                if training_run:
+                    # Prepare final metrics
+                    final_metrics = {
+                        "final_metrics": artifact.final_metrics or {},
+                        "best_metrics": artifact.best_metrics or {},
+                        "training_time": training_result.training_time,
+                        "total_epochs": training_result.total_epochs,
+                        "best_epoch": training_result.best_epoch,
+                    }
 
-        sql = """
-            INSERT INTO trained_models (
-                artifact_id,
-                job_id,
-                model_id,
-                model_version,
-                artifact_path,
-                metrics
+                    # Update training run with artifact information
+                    self.tracking_service.update_run_artifact(
+                        run_id=training_run.run_id,
+                        artifact_path=str(artifact_dir),
+                        final_metrics=final_metrics,
+                    )
+                    logger.info(
+                        f"Updated training run {training_run.run_id} with artifact info"
+                    )
+                else:
+                    logger.warning(
+                        f"No training run found for job {job_id}, "
+                        "artifact info not recorded"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to update training run with artifact info: {e}",
+                    exc_info=True,
+                )
+        else:
+            logger.debug(
+                "Training tracking service not available, skipping artifact recording"
             )
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(artifact_id) DO UPDATE SET
-                job_id = excluded.job_id,
-                model_id = excluded.model_id,
-                model_version = excluded.model_version,
-                artifact_path = excluded.artifact_path,
-                metrics = excluded.metrics
-        """
-
-        params = [
-            artifact_id,
-            job_id,
-            artifact.model_id,
-            artifact.version,
-            str(artifact_dir),
-            metrics_payload,
-        ]
-
-        self.job_service.db_manager.system_execute(sql, params)
 
     def get_job_status(self, job_id: str) -> dict[str, Any]:
         """Get status of a training job.

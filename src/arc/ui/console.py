@@ -598,6 +598,68 @@ class InteractiveInterface:
                 return False
             self._printer.print("Please enter 'y' or 'n'.")
 
+    def confirm(self, message: str, default: bool = False) -> bool:
+        """Confirmation prompt with configurable default.
+
+        Args:
+            message: The confirmation message to display
+            default: Default value if user just presses Enter (True=yes, False=no)
+
+        Returns:
+            True if user confirms, False otherwise
+        """
+        prompt_suffix = " [Y/n]: " if default else " [y/N]: "
+        while True:
+            try:
+                resp = (
+                    self._printer.get_input(f"🤔 {message}{prompt_suffix}")
+                    .strip()
+                    .lower()
+                )
+            except (KeyboardInterrupt, EOFError):
+                return False
+
+            if resp in ("y", "yes"):
+                return True
+            if resp in ("n", "no"):
+                return False
+            if resp == "":
+                return default
+            self._printer.print("Please enter 'y' or 'n'.")
+
+    async def confirm_async(self, message: str, default: bool = False) -> bool:
+        """Async confirmation prompt with configurable default.
+
+        Args:
+            message: The confirmation message to display
+            default: Default value if user just presses Enter (True=yes, False=no)
+
+        Returns:
+            True if user confirms, False otherwise
+        """
+        prompt_suffix = " [Y/n]: " if default else " [y/N]: "
+        while True:
+            try:
+                resp = (
+                    (
+                        await self._printer.get_input_async(
+                            f"🤔 {message}{prompt_suffix}"
+                        )
+                    )
+                    .strip()
+                    .lower()
+                )
+            except (KeyboardInterrupt, EOFError):
+                return False
+
+            if resp in ("y", "yes"):
+                return True
+            if resp in ("n", "no"):
+                return False
+            if resp == "":
+                return default
+            self._printer.print("Please enter 'y' or 'n'.")
+
     def prompt_input(self, message: str, default: str | None = None) -> str:
         """Simple input prompt using prompt_toolkit via Printer."""
         try:

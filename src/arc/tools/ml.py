@@ -61,98 +61,6 @@ def _as_string_list(value: Any, field_name: str) -> list[str] | None:
     raise ValueError(f"{field_name} must be an array of strings or comma-separated")
 
 
-class MLTrainTool(BaseTool):
-    """Tool for launching training jobs."""
-
-    def __init__(self, runtime: MLRuntime):
-        self.runtime = runtime
-
-    async def execute(
-        self,
-        *,
-        model_id: str | None = None,
-        model_name: str | None = None,
-        train_table: str | None = None,
-        target_column: str | None = None,
-        validation_table: str | None = None,
-        validation_split: float | int | None = None,
-        epochs: int | None = None,
-        batch_size: int | None = None,
-        learning_rate: float | int | None = None,
-        checkpoint_dir: str | None = None,
-        description: str | None = None,
-        tags: Sequence[str] | str | None = None,
-    ) -> ToolResult:
-        # Accept either model_id or model_name
-        if not model_id and not model_name:
-            return ToolResult.error_result(
-                "Either 'model_id' or 'model_name' is required to train a model."
-            )
-
-        if not train_table:
-            return ToolResult.error_result(
-                "Parameter 'train_table' is required to train a model."
-            )
-
-        # If model_id provided, get model_name from it
-        if model_id:
-            try:
-                model = self.runtime.model_service.get_model_by_id(model_id)
-                if not model:
-                    return ToolResult.error_result(f"Model {model_id} not found in DB")
-                model_name = model.name
-            except Exception as exc:
-                return ToolResult.error_result(
-                    f"Failed to retrieve model {model_id}: {exc}"
-                )
-
-        try:
-            parsed_epochs = _as_optional_int(epochs, "epochs")
-            parsed_batch_size = _as_optional_int(batch_size, "batch_size")
-            parsed_learning_rate = _as_optional_float(learning_rate, "learning_rate")
-            parsed_validation_split = _as_optional_float(
-                validation_split, "validation_split"
-            )
-            parsed_tags = _as_string_list(tags, "tags")
-        except ValueError as exc:
-            return ToolResult.error_result(str(exc))
-
-        try:
-            job_id = await asyncio.to_thread(
-                self.runtime.train_model,
-                model_name=str(model_name),
-                train_table=str(train_table),
-                target_column=str(target_column) if target_column else None,
-                validation_table=str(validation_table) if validation_table else None,
-                validation_split=parsed_validation_split,
-                epochs=parsed_epochs,
-                batch_size=parsed_batch_size,
-                learning_rate=parsed_learning_rate,
-                checkpoint_dir=str(checkpoint_dir) if checkpoint_dir else None,
-                description=str(description) if description else None,
-                tags=parsed_tags,
-            )
-        except MLRuntimeError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            return ToolResult.error_result(
-                f"Unexpected error launching training: {exc}"
-            )
-
-        lines = [
-            "Training job submitted successfully.",
-            f"Model: {model_name}",
-            f"Training table: {train_table}",
-            f"Job ID: {job_id}",
-        ]
-        if validation_table:
-            lines.append(f"Validation table: {validation_table}")
-        if parsed_tags:
-            lines.append(f"Tags: {', '.join(parsed_tags)}")
-
-        return ToolResult.success_result("\n".join(lines))
-
-
 class MLPredictTool(BaseTool):
     """Tool for running inference and saving predictions to a table."""
 
@@ -346,6 +254,7 @@ class MLModelGeneratorTool(BaseTool):
                 "model_name": str(name),
                 "table_name": str(data_table),
                 "target_column": target_column,
+                "category": category,
             }
 
             try:
@@ -459,14 +368,11 @@ class MLModelGeneratorTool(BaseTool):
 
         return validate
 
-    def _create_editor(
-        self, user_context: str | None = None, category: str | None = None
-    ):
+    def _create_editor(self, user_context: str | None = None):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:
             user_context: User context description
-            category: Model category
 
         Returns:
             Async function that edits YAML based on user feedback
@@ -488,7 +394,7 @@ class MLModelGeneratorTool(BaseTool):
                     user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    category=category,
+                    category=context.get("category"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
@@ -680,18 +586,32 @@ class MLModelGeneratorTool(BaseTool):
         return model
 
 
-class MLTrainerGeneratorTool(BaseTool):
-    """Tool for generating Arc-Graph trainer specifications via LLM."""
+class MLTrainTool(BaseTool):
+    """Unified tool for generating trainer specs and launching training.
+
+    This tool combines trainer generation with training execution in a single
+    workflow, similar to the model generator pattern. It provides:
+    1. Trainer spec generation via LLM
+    2. Interactive confirmation workflow for trainer spec
+    3. Auto-registration to database
+    4. Interactive confirmation workflow for training launch
+    5. Training execution
+
+    All training configuration (epochs, batch_size, learning_rate, etc.) must
+    be defined in the trainer YAML - no runtime overrides are supported.
+    """
 
     def __init__(
         self,
         services,
+        runtime: MLRuntime,
         api_key: str | None,
         base_url: str | None,
         model: str | None,
         ui_interface,
     ) -> None:
         self.services = services
+        self.runtime = runtime
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
@@ -702,9 +622,25 @@ class MLTrainerGeneratorTool(BaseTool):
         *,
         name: str | None = None,
         context: str | None = None,
-        model_name: str | None = None,
+        model_id: str | None = None,
+        train_table: str | None = None,
         auto_confirm: bool = False,
     ) -> ToolResult:
+        """Generate trainer spec, register it, and launch training with confirmation.
+
+        Args:
+            name: Trainer name
+            context: Training goals and constraints for LLM generation
+            model_id: Model ID (with version, e.g., 'my_model-v1')
+            train_table: Training data table
+            auto_confirm: Skip confirmation workflows (for testing only)
+
+        Note:
+            All training configuration (epochs, batch_size, learning_rate, validation,
+            etc.) must be specified in the trainer YAML generated by the LLM.
+            No runtime overrides are supported.
+        """
+        # Validate API key
         if not self.api_key:
             return ToolResult.error_result(
                 "API key required for trainer generation. "
@@ -717,25 +653,24 @@ class MLTrainerGeneratorTool(BaseTool):
                 "Database services not initialized."
             )
 
-        if not name or not context or not model_name:
+        # Validate required parameters
+        if not name or not context or not model_id or not train_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', and 'model_name' are required "
-                "to generate a trainer specification."
+                "Parameters 'name', 'context', 'model_id', and 'train_table' "
+                "are required."
             )
 
-        # Get the registered model
+        # Get the registered model by ID
         try:
-            model_record = self.services.models.get_latest_model_by_name(
-                str(model_name)
-            )
+            model_record = self.services.models.get_model_by_id(str(model_id))
             if not model_record:
                 return ToolResult.error_result(
-                    f"Model '{model_name}' not found in registry. "
-                    "Please register the model first using /ml create-model"
+                    f"Model '{model_id}' not found in registry. "
+                    "Please check the model ID or register the model first."
                 )
         except Exception as exc:
             return ToolResult.error_result(
-                f"Failed to retrieve model '{model_name}': {exc}"
+                f"Failed to retrieve model '{model_id}': {exc}"
             )
 
         # Show UI feedback if UI is available
@@ -743,6 +678,7 @@ class MLTrainerGeneratorTool(BaseTool):
             self.ui.show_info(f"📋 Using registered model: {model_record.id}")
             self.ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
 
+        # Generate trainer spec via LLM
         agent = TrainerGeneratorAgent(
             self.services,
             self.api_key,
@@ -758,7 +694,6 @@ class MLTrainerGeneratorTool(BaseTool):
                 model_spec_yaml=model_record.spec,
             )
         except Exception as exc:
-            # Import here to avoid circular imports
             from arc.core.agents.trainer_generator import TrainerGeneratorError
 
             if isinstance(exc, TrainerGeneratorError):
@@ -767,7 +702,7 @@ class MLTrainerGeneratorTool(BaseTool):
                 f"Unexpected error during trainer generation: {exc}"
             )
 
-        # Validate the generated trainer using Arc-Graph validator
+        # Validate the generated trainer
         try:
             trainer_dict = yaml.safe_load(trainer_yaml)
             validate_trainer_dict(trainer_dict)
@@ -788,7 +723,7 @@ class MLTrainerGeneratorTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(),
+                editor_func=self._create_editor(context, model_record),
                 ui_interface=self.ui,
                 yaml_type_name="trainer",
                 yaml_suffix=".arc-trainer.yaml",
@@ -797,7 +732,6 @@ class MLTrainerGeneratorTool(BaseTool):
             context_dict = {
                 "trainer_name": str(name),
                 "context": str(context),
-                "model_name": str(model_name),
                 "model_id": model_record.id,
                 "model_spec_yaml": model_record.spec,
             }
@@ -816,17 +750,11 @@ class MLTrainerGeneratorTool(BaseTool):
 
         # Auto-register trainer to database
         try:
-            from arc.ml.runtime import MLRuntime
-
-            # Get runtime instance (we need access to it)
-            # Since we have services, we can create runtime
-            runtime = MLRuntime(self.services)
-
-            trainer_record = runtime.create_trainer(
+            trainer_record = self.runtime.create_trainer(
                 name=str(name),
-                model_name=str(model_name),
+                model_id=str(model_id),
                 schema_yaml=trainer_yaml,
-                description=f"Generated trainer for model {model_name}",
+                description=f"Generated trainer for model {model_id}",
             )
 
             if self.ui:
@@ -836,6 +764,7 @@ class MLTrainerGeneratorTool(BaseTool):
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register trainer: {exc}")
 
+        # Prepare trainer summary
         summary = (
             f"Model: {trainer_spec.model_ref} • "
             f"Optimizer: {trainer_spec.optimizer.type}"
@@ -846,20 +775,87 @@ class MLTrainerGeneratorTool(BaseTool):
             summary,
         ]
 
-        if auto_confirm:
-            lines.append("\n  YAML:")
-            lines.append(trainer_yaml.strip())
-        else:
-            lines.append("✓ Trainer approved and ready for training.")
+        # Confirmation dialog for training launch
+        job_id = None
+        should_train = auto_confirm  # Auto-confirm in tests
 
-        return ToolResult.success_result("\n".join(lines))
+        if not auto_confirm and self.ui:
+            # Display training information
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[bold cyan]📊 Ready to train model '{model_record.id}' "
+                f"with trainer '{name}'[/bold cyan]"
+            )
+            self.ui._printer.console.print(f"[dim]Training table: {train_table}[/dim]")
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                "[yellow]⚠️  Training will consume significant compute "
+                "resources.[/yellow]"
+            )
+            self.ui._printer.console.print()
+
+            # Show menu options
+            choice = await self.ui._printer.get_choice_async(
+                options=[
+                    ("train", "Launch training now"),
+                    ("skip", "Skip training (trainer will be registered)"),
+                ],
+                default="train",
+            )
+            should_train = choice == "train"
+
+        if should_train:
+            if self.ui:
+                self.ui.show_info(f"🚀 Launching training with trainer '{name}'...")
+
+            try:
+                job_id = await asyncio.to_thread(
+                    self.runtime.train_with_trainer,
+                    trainer_name=str(name),
+                    train_table=str(train_table),
+                )
+
+                lines.append("")
+                lines.append("✓ Training job submitted successfully.")
+                lines.append(f"Training table: {train_table}")
+                lines.append(f"Job ID: {job_id}")
+
+            except MLRuntimeError as exc:
+                return ToolResult.error_result(
+                    f"Trainer registered but training failed: {exc}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                return ToolResult.error_result(
+                    f"Trainer registered but unexpected training error: {exc}"
+                )
+        else:
+            lines.append("")
+            lines.append("✓ Trainer ready. Training skipped.")
+            lines.append(
+                f"To train later, use: /ml jobs submit --trainer {name} "
+                f"--data {train_table}"
+            )
+
+        # Build result metadata
+        result_metadata = {
+            "trainer_id": trainer_record.id,
+            "trainer_name": name,
+            "model_id": model_record.id,
+            "yaml_content": trainer_yaml,
+            "training_launched": should_train,
+        }
+
+        if job_id:
+            result_metadata["job_id"] = job_id
+
+        return ToolResult(
+            success=True,
+            output="\n".join(lines),
+            metadata=result_metadata,
+        )
 
     def _create_validator(self):
-        """Create validator function for the workflow.
-
-        Returns:
-            Function that validates YAML and returns list of error strings
-        """
+        """Create validator function for the workflow."""
 
         def validate(yaml_str: str) -> list[str]:
             try:
@@ -875,12 +871,8 @@ class MLTrainerGeneratorTool(BaseTool):
 
         return validate
 
-    def _create_editor(self):
-        """Create editor function for AI-assisted editing in the workflow.
-
-        Returns:
-            Async function that edits YAML based on user feedback
-        """
+    def _create_editor(self, user_context: str, model_record):
+        """Create editor function for AI-assisted editing."""
 
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
@@ -895,9 +887,9 @@ class MLTrainerGeneratorTool(BaseTool):
             try:
                 _trainer_spec, edited_yaml = await agent.generate_trainer(
                     name=context["trainer_name"],
-                    user_context=context["context"],
-                    model_id=context["model_id"],
-                    model_spec_yaml=context["model_spec_yaml"],
+                    user_context=user_context,
+                    model_id=model_record.id,
+                    model_spec_yaml=model_record.spec,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )

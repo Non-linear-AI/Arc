@@ -410,14 +410,20 @@ class SchemaService(BaseService):
 
             # Table descriptions with ML context
             table_descriptions = {
-                "models": "Model registry - Stores ML model definitions, versions, and "
-                "Arc-Graph specifications",
+                "models": "Model registry - Stores ML model definitions, "
+                "versions, and Arc-Graph specifications",
+                "trainers": "Trainer registry - Stores trainer specifications "
+                "linked to models",
                 "jobs": "Job tracking - Manages training, evaluation, and processing "
                 "jobs with status monitoring",
-                "trained_models": "Model artifacts - Catalogs successful training "
-                "outputs with metrics and paths",
-                "deployments": "Model serving - Tracks deployed models for real-time "
-                "inference",
+                "training_runs": "Training run tracking - Rich tracking of runs "
+                "with status, metrics, and artifact paths",
+                "training_metrics": "Training metrics - Time-series data for "
+                "training metrics",
+                "training_checkpoints": "Training checkpoints - Catalog of model "
+                "checkpoints",
+                "plans": "ML plans - Comprehensive ML workflow plans linking "
+                "data, models, and training",
                 "plugins": "Plugin registry - Available ML algorithms and custom "
                 "components",
                 "plugin_components": "Plugin specs - Detailed component "
@@ -451,7 +457,7 @@ class SchemaService(BaseService):
                 [
                     "**Usage Guidelines**:",
                     "- Use system database queries for ML workflow operations "
-                    "(models, jobs, deployments)",
+                    "(models, jobs, training runs)",
                     "- System database is read-only - use SELECT queries only",
                     "- For user data analysis, use schema_discovery tool to explore "
                     "user database first",
@@ -467,9 +473,12 @@ class SchemaService(BaseService):
                 "# System Database Schema\n\n"
                 "Arc system database contains tables for ML workflow management:\n"
                 "- models: ML model registry\n"
+                "- trainers: Trainer specifications linked to models\n"
                 "- jobs: Training/processing job tracking\n"
-                "- trained_models: Model artifact catalog\n"
-                "- deployments: Model serving registry\n"
+                "- training_runs: Training run tracking with metrics and artifacts\n"
+                "- training_metrics: Time-series training metrics\n"
+                "- training_checkpoints: Model checkpoint catalog\n"
+                "- plans: ML workflow plans\n"
                 "- plugins: Available ML algorithms\n"
                 "- plugin_components: Plugin specifications\n"
                 "- plugin_schemas: Plugin metadata\n\n"

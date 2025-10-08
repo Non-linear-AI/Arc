@@ -242,7 +242,7 @@ async def handle_ml_command(
         elif subcommand == "create-trainer":
             _ml_create_trainer(args, ui, runtime)
         elif subcommand == "train":
-            _ml_train(args, ui, runtime)
+            await _ml_train(args, ui, runtime)
         elif subcommand == "predict":
             _ml_predict(args, ui, runtime)
         elif subcommand == "jobs":
@@ -425,16 +425,18 @@ def _ml_create_trainer(
         {
             "name": True,
             "schema": True,
-            "model": True,
+            "model-id": True,
         },
     )
 
     name = options.get("name")
     schema_path = options.get("schema")
-    model_name = options.get("model")
+    model_id = options.get("model-id")
 
-    if not name or not schema_path or not model_name:
-        raise CommandError("/ml create-trainer requires --name, --schema, and --model")
+    if not name or not schema_path or not model_id:
+        raise CommandError(
+            "/ml create-trainer requires --name, --schema, and --model-id"
+        )
 
     schema_path_obj = Path(str(schema_path))
 
@@ -442,7 +444,7 @@ def _ml_create_trainer(
         trainer = runtime.create_trainer(
             name=str(name),
             schema_path=schema_path_obj,
-            model_name=str(model_name),
+            model_id=str(model_id),
         )
     except MLRuntimeError as exc:
         raise CommandError(str(exc)) from exc
@@ -454,36 +456,125 @@ def _ml_create_trainer(
     ui.show_info(f"Linked to model: {trainer.model_id}")
 
 
-def _ml_train(args: list[str], ui: InteractiveInterface, runtime: "MLRuntime") -> None:
+async def _ml_train(
+    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
+) -> None:
+    """Handle training command with trainer generation.
+
+    Always generates a trainer YAML file and launches training.
+    Supports two modes:
+    1. With plan: Uses plan's training instructions
+    2. With context: Uses user-provided training context
+    """
     options = _parse_options(
         args,
         {
-            "model": True,
-            "trainer": True,
+            "name": True,
+            "model-id": True,
             "data": True,
+            "context": True,
+            "plan-id": True,
         },
     )
 
-    model_name = options.get("model")
-    trainer_name = options.get("trainer")
+    name = options.get("name")
+    model_id = options.get("model-id")
     train_table = options.get("data")
+    context = options.get("context")
+    plan_id = options.get("plan-id")
 
-    if not model_name or not train_table or not trainer_name:
-        raise CommandError("/ml train requires --model, --trainer, and --data")
+    # Validate required parameters
+    if not name:
+        raise CommandError("/ml train requires --name")
+
+    if not model_id:
+        raise CommandError("/ml train requires --model-id")
+
+    if not train_table:
+        raise CommandError("/ml train requires --data")
+
+    # Must provide either context or plan-id (mutually exclusive)
+    if not context and not plan_id:
+        raise CommandError("/ml train requires either --context or --plan-id")
+
+    if context and plan_id:
+        raise CommandError(
+            "/ml train cannot use both --context and --plan-id (choose one)"
+        )
+
+    # If using plan, extract training instructions and embed into context
+    training_context = context
+    if plan_id:
+        try:
+            # Get the plan from database
+            db_plan = runtime.services.ml_plan.get_plan_by_id(str(plan_id))
+            if not db_plan:
+                raise CommandError(f"Plan '{plan_id}' not found")
+
+            # Parse plan YAML to extract training instructions
+            import yaml
+
+            plan_data = yaml.safe_load(db_plan.plan_yaml)
+
+            # Extract training-related information from plan
+            training_instructions = []
+
+            if "training" in plan_data:
+                training_section = plan_data["training"]
+                training_instructions.append("Training Strategy from Plan:")
+                training_instructions.append(
+                    yaml.dump(training_section, default_flow_style=False)
+                )
+
+            if "rationale" in plan_data:
+                training_instructions.append("\nPlan Rationale:")
+                training_instructions.append(plan_data["rationale"])
+
+            if training_instructions:
+                training_context = "\n".join(training_instructions)
+            else:
+                # Fallback: use entire plan as context
+                training_context = (
+                    f"Follow the training strategy from plan '{plan_id}':\n"
+                    f"{db_plan.plan_yaml}"
+                )
+
+            ui.show_info(f"📊 Using ML plan: {plan_id}")
+        except Exception as e:
+            raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
     try:
-        job_id = runtime.train_model(
-            model_name=str(model_name),
-            trainer_name=str(trainer_name),
-            train_table=str(train_table),
-        )
-    except MLRuntimeError as exc:
-        raise CommandError(str(exc)) from exc
+        # Use the MLTrainTool which includes confirmation workflow
+        from arc.tools.ml import MLTrainTool
 
-    ui.show_system_success(
-        "Training job submitted. Use /ml jobs status <job_id> to monitor."
-    )
-    ui.show_info(f"Job ID: {job_id}")
+        # Get settings for tool initialization
+        settings_manager = SettingsManager()
+        api_key = settings_manager.get_api_key()
+        base_url = settings_manager.get_base_url()
+        model = settings_manager.get_current_model()
+
+        if not api_key:
+            raise CommandError("API key required for trainer generation")
+
+        # Create the tool with proper dependencies
+        tool = MLTrainTool(runtime.services, runtime, api_key, base_url, model, ui)
+
+        # Execute the tool with confirmation workflow
+        # This will generate trainer, confirm, register, and launch training
+        result = await tool.execute(
+            name=name,
+            context=training_context,
+            model_id=model_id,
+            train_table=train_table,
+        )
+
+        if not result.success:
+            raise CommandError(f"Training failed: {result.error}")
+
+        # Success message already shown by tool
+
+    except Exception as exc:
+        raise CommandError(f"Unexpected error during training: {exc}") from exc
 
 
 def _ml_predict(
@@ -582,6 +673,50 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 else str(job.updated_at),
             ],
         ]
+
+        # If this is a training job, show training metrics and TensorBoard info
+        if job_type == "train_model" and runtime.services.training_tracking:
+            tracking_service = runtime.services.training_tracking
+
+            # Get training run by job_id
+            training_run = tracking_service.get_run_by_job_id(job_id)
+
+            if training_run:
+                rows.append(["", ""])  # Separator
+                rows.append(["Training Run ID", training_run.run_id])
+                if training_run.model_id:
+                    rows.append(["Model", training_run.model_id])
+                if training_run.trainer_id:
+                    rows.append(["Trainer", training_run.trainer_id])
+
+                # Show TensorBoard info
+                if training_run.tensorboard_enabled:
+                    rows.append(["TensorBoard", "Enabled"])
+                    if training_run.tensorboard_log_dir:
+                        rows.append(
+                            ["  Log Directory", training_run.tensorboard_log_dir]
+                        )
+                        logdir = training_run.tensorboard_log_dir
+                        rows.append(["  Command", f"tensorboard --logdir {logdir}"])
+
+                # Get latest metrics
+                metrics = tracking_service.get_metrics(training_run.run_id, limit=10)
+
+                if metrics:
+                    rows.append(["", ""])  # Separator
+                    rows.append(["Recent Metrics", f"(latest {len(metrics)})"])
+
+                    # Display all metrics (they're already sorted by most recent first)
+                    for metric in metrics:
+                        metric_label = (
+                            f"{metric.metric_name} ({metric.metric_type.value})"
+                        )
+                        metric_value = (
+                            f"{metric.value:.6f} "
+                            f"(epoch {metric.epoch}, step {metric.step})"
+                        )
+                        rows.append([f"  {metric_label}", metric_value])
+
         ui.show_key_values("Job Status", rows)
     else:
         raise CommandError(f"Unknown jobs subcommand: {sub}")
@@ -722,10 +857,10 @@ async def _ml_generate_trainer(
 
         if result.success:
             # Suggest next steps
-            ui.show_info("\n💡 Next steps:")
+            ui.show_info("\n💡 Trainer registered successfully")
             ui.show_info(
-                f"   /ml train --model {model_name} --trainer {name} "
-                f"--data <table_name>"
+                f"   To train: /ml train --name <trainer_name> --model {model_name} "
+                f"--context <description> --data <table_name>"
             )
         else:
             ui.show_system_error(result.message)

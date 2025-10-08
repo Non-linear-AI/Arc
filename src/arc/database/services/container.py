@@ -14,6 +14,9 @@ from arc.database.services.model_service import ModelService
 from arc.database.services.plugin_service import PluginService
 from arc.database.services.schema_service import SchemaService
 from arc.database.services.trainer_service import TrainerService
+from arc.database.services.training_tracking_service import (
+    TrainingTrackingService,
+)
 
 
 class ServiceContainer:
@@ -44,6 +47,7 @@ class ServiceContainer:
         self._ml_data_service = None
         self._ml_plan_service = None
         self._ml_runtime = None
+        self._training_tracking_service = None
 
     @property
     def query(self) -> InteractiveQueryService:
@@ -109,6 +113,13 @@ class ServiceContainer:
 
             self._ml_runtime = MLRuntime(self, self.artifacts_dir)
         return self._ml_runtime
+
+    @property
+    def training_tracking(self) -> TrainingTrackingService:
+        """Get the training tracking service."""
+        if self._training_tracking_service is None:
+            self._training_tracking_service = TrainingTrackingService(self.db_manager)
+        return self._training_tracking_service
 
     def shutdown(self) -> None:
         """Shutdown all services and clean up resources."""
