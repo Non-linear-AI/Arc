@@ -21,10 +21,6 @@ from arc.tools import (
     MLPredictTool,
     MLTrainerGeneratorTool,
     MLTrainerTool,
-    MLTrainingCheckpointsTool,
-    MLTrainingMetricsTool,
-    MLTrainingRunsListTool,
-    MLTrainingRunStatusTool,
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
@@ -187,19 +183,6 @@ class ArcAgent:
             if services
             else None
         )
-        self.ml_training_runs_list_tool = (
-            MLTrainingRunsListTool(services) if services else None
-        )
-        self.ml_training_run_status_tool = (
-            MLTrainingRunStatusTool(services) if services else None
-        )
-        self.ml_training_metrics_tool = (
-            MLTrainingMetricsTool(services) if services else None
-        )
-        self.ml_training_checkpoints_tool = (
-            MLTrainingCheckpointsTool(services) if services else None
-        )
-
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
         self.messages: list[ChatCompletionMessageParam] = []
@@ -741,49 +724,6 @@ class ArcAgent:
                     )
                 return ToolResult.error_result(
                     "Data processor generator tool not available. "
-                    "Database services not initialized."
-                )
-            elif tool_call.name == "ml_training_runs_list":
-                if self.ml_training_runs_list_tool:
-                    return await self.ml_training_runs_list_tool.execute(
-                        limit=args.get("limit"),
-                        status=args.get("status"),
-                        model_id=args.get("model_id"),
-                    )
-                return ToolResult.error_result(
-                    "Training tracking tool not available. "
-                    "Database services not initialized."
-                )
-            elif tool_call.name == "ml_training_run_status":
-                if self.ml_training_run_status_tool:
-                    return await self.ml_training_run_status_tool.execute(
-                        run_id=args["run_id"],
-                        include_metrics=args.get("include_metrics", True),
-                        metric_limit=args.get("metric_limit", 20),
-                    )
-                return ToolResult.error_result(
-                    "Training tracking tool not available. "
-                    "Database services not initialized."
-                )
-            elif tool_call.name == "ml_training_metrics":
-                if self.ml_training_metrics_tool:
-                    return await self.ml_training_metrics_tool.execute(
-                        run_id=args["run_id"],
-                        metric_name=args.get("metric_name"),
-                        metric_type=args.get("metric_type"),
-                        limit=args.get("limit"),
-                    )
-                return ToolResult.error_result(
-                    "Training tracking tool not available. "
-                    "Database services not initialized."
-                )
-            elif tool_call.name == "ml_training_checkpoints":
-                if self.ml_training_checkpoints_tool:
-                    return await self.ml_training_checkpoints_tool.execute(
-                        run_id=args["run_id"],
-                    )
-                return ToolResult.error_result(
-                    "Training tracking tool not available. "
                     "Database services not initialized."
                 )
             else:
