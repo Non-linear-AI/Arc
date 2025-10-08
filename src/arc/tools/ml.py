@@ -777,7 +777,6 @@ class MLTrainerGeneratorTool(BaseTool):
             context_dict = {
                 "trainer_name": str(name),
                 "context": str(context),
-                "model_name": str(model_name),
                 "model_id": model_record.id,
                 "model_spec_yaml": model_record.spec,
             }
@@ -1064,7 +1063,6 @@ class MLTrainerTool(BaseTool):
             context_dict = {
                 "trainer_name": str(name),
                 "context": str(context),
-                "model_name": str(model_name),
                 "model_id": model_record.id,
                 "model_spec_yaml": model_record.spec,
             }
