@@ -566,7 +566,6 @@ async def _ml_train(
             context=training_context,
             model_id=model_id,
             train_table=train_table,
-            train_immediately=True,  # Always train after generation
         )
 
         if not result.success:

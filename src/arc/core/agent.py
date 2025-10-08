@@ -666,16 +666,6 @@ class ArcAgent:
                         context=args.get("context"),
                         model_id=args.get("model_id"),
                         train_table=args.get("train_table"),
-                        target_column=args.get("target_column"),
-                        validation_table=args.get("validation_table"),
-                        validation_split=args.get("validation_split"),
-                        epochs=args.get("epochs"),
-                        batch_size=args.get("batch_size"),
-                        learning_rate=args.get("learning_rate"),
-                        checkpoint_dir=args.get("checkpoint_dir"),
-                        description=args.get("description"),
-                        tags=args.get("tags"),
-                        train_immediately=args.get("train_immediately", True),
                     )
                 return ToolResult.error_result(
                     "ML train tool not available. Database services not initialized."
