@@ -248,6 +248,31 @@ class DuckDBDatabase(Database):
                 ON plugin_components(component_name);
             """)
 
+            # Data processors table - stores versioned data processing pipelines
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS data_processors(
+                    id TEXT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    version INTEGER NOT NULL,
+                    spec TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (name, version)
+                );
+            """)
+
+            # Create indexes for data processor lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_data_processors_name
+                ON data_processors(name);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_data_processors_name_version
+                ON data_processors(name, version);
+            """)
+
             # Plans table - stores comprehensive ML workflow plans
             self.execute("""
                 CREATE TABLE IF NOT EXISTS plans(

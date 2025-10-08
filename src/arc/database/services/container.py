@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from arc.database.manager import DatabaseManager
     from arc.ml.runtime import MLRuntime
 
+from arc.database.services.data_processor_service import DataProcessorService
 from arc.database.services.interactive_query_service import InteractiveQueryService
 from arc.database.services.job_service import JobService
 from arc.database.services.ml_data_service import MLDataService
@@ -46,6 +47,7 @@ class ServiceContainer:
         self._schema_service = None
         self._ml_data_service = None
         self._ml_plan_service = None
+        self._data_processor_service = None
         self._ml_runtime = None
         self._training_tracking_service = None
 
@@ -104,6 +106,13 @@ class ServiceContainer:
         if self._ml_plan_service is None:
             self._ml_plan_service = MLPlanService(self.db_manager)
         return self._ml_plan_service
+
+    @property
+    def data_processors(self) -> DataProcessorService:
+        """Get the data processor service."""
+        if self._data_processor_service is None:
+            self._data_processor_service = DataProcessorService(self.db_manager)
+        return self._data_processor_service
 
     @property
     def ml_runtime(self) -> "MLRuntime":

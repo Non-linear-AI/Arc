@@ -433,43 +433,64 @@ class DataSourceSpec:
         return "\n".join(result_lines)
 
     def to_yaml(self) -> str:
-        """Convert DataSourceSpec to YAML string with enhanced formatting.
+        """Convert DataSourceSpec to YAML string with proper formatting.
 
         Returns:
             YAML string representation of the data source specification
         """
-        # Create a copy of the data with formatted SQL
-        data_dict = self.to_dict()
-        for step_data in data_dict["steps"]:
-            if "sql" in step_data:
-                step_data["sql"] = self._format_sql(step_data["sql"])
+        lines = []
 
-        # Custom dumper to handle multi-line SQL as literal blocks
-        class LiteralDumper(yaml.SafeDumper):
-            def represent_str(self, data):
-                if "\n" in data and len(data.splitlines()) > 1:
-                    return self.represent_scalar(
-                        "tag:yaml.org,2002:str", data, style="|"
-                    )
-                return self.represent_scalar("tag:yaml.org,2002:str", data)
+        # Name and description
+        lines.append(f"name: {self.name}")
+        lines.append("")
+        lines.append(f"description: {self.description}")
+        lines.append("")
 
-        LiteralDumper.add_representer(str, LiteralDumper.represent_str)
+        # Variables (optional)
+        if self.vars:
+            lines.append("vars:")
+            for key, value in self.vars.items():
+                # Escape value if it contains special characters
+                if isinstance(value, str) and (":" in value or "#" in value):
+                    value = f'"{value}"'
+                lines.append(f"  {key}: {value}")
+            lines.append("")
 
-        # Generate base YAML with custom dumper for multi-line SQL
-        yaml_content = yaml.dump(
-            data_dict,
-            Dumper=LiteralDumper,
-            default_flow_style=False,
-            allow_unicode=True,
-            sort_keys=False,
-            width=120,
-            indent=2,
-        )
+        # Steps
+        lines.append("steps:")
+        for i, step in enumerate(self.steps):
+            if i > 0:
+                lines.append("")  # Blank line between steps
 
-        # Post-process YAML to add blank lines between sections and steps
-        yaml_content = self._add_yaml_spacing(yaml_content)
+            lines.append(f"  - name: {step.name}")
 
-        return yaml_content
+            # depends_on list
+            lines.append("    depends_on:")
+            if step.depends_on:
+                for dep in step.depends_on:
+                    lines.append(f"      - {dep}")
+            else:
+                lines.append("      []")
+
+            # SQL - format and indent properly
+            formatted_sql = self._format_sql(step.sql)
+            if "\n" in formatted_sql:
+                # Multi-line SQL - use literal block style
+                lines.append("    sql: |-")
+                for sql_line in formatted_sql.split("\n"):
+                    if sql_line.strip():  # Skip empty lines
+                        lines.append(f"      {sql_line}")
+            else:
+                # Single line SQL
+                lines.append(f"    sql: {formatted_sql}")
+
+        # Outputs
+        lines.append("")
+        lines.append("outputs:")
+        for output in self.outputs:
+            lines.append(f"  - {output}")
+
+        return "\n".join(lines)
 
     def to_yaml_file(self, path: str) -> None:
         """Save DataSourceSpec to YAML file.
