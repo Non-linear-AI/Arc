@@ -787,7 +787,7 @@ class MLTrainTool(BaseTool):
                 f"\n⚠️  Training will consume significant compute resources.\n"
                 f"Do you want to start training now?"
             )
-            should_train = self.ui.confirm(prompt_msg, default=True)
+            should_train = await self.ui.confirm_async(prompt_msg, default=True)
 
         if should_train:
             if self.ui:
