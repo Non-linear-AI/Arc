@@ -522,7 +522,7 @@ async def test_train_submits_job(tmp_path):
 
     ui = StubUI()
 
-    # Mock the MLTrainerTool to avoid API calls
+    # Mock the MLTrainTool to avoid API calls
     from unittest.mock import AsyncMock, patch
 
     from arc.tools.base import ToolResult
@@ -546,7 +546,7 @@ async def test_train_submits_job(tmp_path):
     with (
         patch("arc.ui.cli.SettingsManager") as mock_settings,
         patch(
-            "arc.tools.ml.MLTrainerTool.execute",
+            "arc.tools.ml.MLTrainTool.execute",
             new_callable=AsyncMock,
             return_value=mock_result,
         ),
@@ -649,7 +649,7 @@ async def test_train_missing_model_shows_error(tmp_path):
         runtime,
     )
 
-    # Should error because model is not found (happens in MLTrainerTool)
+    # Should error because model is not found (happens in MLTrainTool)
     assert len(ui.errors) > 0
 
 
@@ -722,7 +722,7 @@ config:
     )
 
     # New /ml train command requires generating trainer with context
-    # For this end-to-end test, we'll mock the MLTrainerTool and then actually train
+    # For this end-to-end test, we'll mock the MLTrainTool and then actually train
 
     # Create a real trainer using the existing create-trainer flow for testing
     # Then we'll use train_with_trainer directly since /ml train now always generates

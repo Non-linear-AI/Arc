@@ -544,8 +544,8 @@ async def _ml_train(
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
     try:
-        # Use the MLTrainerTool which includes confirmation workflow
-        from arc.tools.ml import MLTrainerTool
+        # Use the MLTrainTool which includes confirmation workflow
+        from arc.tools.ml import MLTrainTool
 
         # Get settings for tool initialization
         settings_manager = SettingsManager()
@@ -557,7 +557,7 @@ async def _ml_train(
             raise CommandError("API key required for trainer generation")
 
         # Create the tool with proper dependencies
-        tool = MLTrainerTool(runtime.services, runtime, api_key, base_url, model, ui)
+        tool = MLTrainTool(runtime.services, runtime, api_key, base_url, model, ui)
 
         # Execute the tool with confirmation workflow
         # This will generate trainer, confirm, register, and launch training

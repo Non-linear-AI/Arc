@@ -11,7 +11,7 @@ from arc.tools.ml import (
     MLPredictorGeneratorTool,
     MLPredictTool,
     MLTrainerGeneratorTool,
-    MLTrainerTool,
+    MLTrainTool,
 )
 from arc.tools.schema_discovery import SchemaDiscoveryTool
 from arc.tools.search import SearchTool
@@ -30,6 +30,6 @@ __all__ = [
     "MLModelGeneratorTool",
     "MLPlanTool",
     "MLTrainerGeneratorTool",
-    "MLTrainerTool",
+    "MLTrainTool",
     "MLPredictorGeneratorTool",
 ]

@@ -20,7 +20,7 @@ from arc.tools import (
     MLPredictorGeneratorTool,
     MLPredictTool,
     MLTrainerGeneratorTool,
-    MLTrainerTool,
+    MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
     TodoTool,
@@ -148,8 +148,8 @@ class ArcAgent:
             if services
             else None
         )
-        self.ml_trainer_tool = (
-            MLTrainerTool(
+        self.ml_train_tool = (
+            MLTrainTool(
                 services,
                 services.ml_runtime,
                 self.api_key,
@@ -659,9 +659,9 @@ class ArcAgent:
                     "ML trainer generator tool not available. "
                     "Database services not initialized."
                 )
-            elif tool_call.name == "ml_trainer":
-                if self.ml_trainer_tool:
-                    return await self.ml_trainer_tool.execute(
+            elif tool_call.name == "ml_train":
+                if self.ml_train_tool:
+                    return await self.ml_train_tool.execute(
                         name=args.get("name"),
                         context=args.get("context"),
                         model_id=args.get("model_id"),
@@ -678,7 +678,7 @@ class ArcAgent:
                         train_immediately=args.get("train_immediately", True),
                     )
                 return ToolResult.error_result(
-                    "ML trainer tool not available. Database services not initialized."
+                    "ML train tool not available. Database services not initialized."
                 )
             elif tool_call.name == "ml_predictor_generator":
                 if self.ml_predictor_generator_tool:

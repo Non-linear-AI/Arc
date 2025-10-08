@@ -815,7 +815,7 @@ class MLTrainerGeneratorTool(BaseTool):
         return edit
 
 
-class MLTrainerTool(BaseTool):
+class MLTrainTool(BaseTool):
     """Unified tool for generating trainer specs and optionally launching training.
 
     This tool combines trainer generation with training execution in a single
