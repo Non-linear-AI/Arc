@@ -618,6 +618,9 @@ class MLTrainTool(BaseTool):
         self.model = model
         self.ui = ui_interface
         self.tensorboard_manager = tensorboard_manager
+        # Debug: Check if tensorboard_manager is being passed
+        if tensorboard_manager is None:
+            print("DEBUG: MLTrainTool initialized with tensorboard_manager=None")
 
     async def execute(
         self,
