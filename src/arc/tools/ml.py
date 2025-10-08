@@ -835,6 +835,10 @@ class MLTrainTool(BaseTool):
                             self._show_manual_tensorboard_instructions(job_id)
                     else:
                         # No TensorBoard manager available
+                        self.ui._printer.console.print(
+                            "[dim]ℹ️  TensorBoard auto-launch not available "
+                            "(restart arc chat to enable)[/dim]"
+                        )
                         self._show_manual_tensorboard_instructions(job_id)
 
             except MLRuntimeError as exc:
