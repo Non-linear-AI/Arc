@@ -422,8 +422,6 @@ class SchemaService(BaseService):
                 "training metrics",
                 "training_checkpoints": "Training checkpoints - Catalog of model "
                 "checkpoints",
-                "deployments": "Model serving - Tracks deployed models for "
-                "real-time inference",
                 "plans": "ML plans - Comprehensive ML workflow plans linking "
                 "data, models, and training",
                 "plugins": "Plugin registry - Available ML algorithms and custom "
@@ -459,7 +457,7 @@ class SchemaService(BaseService):
                 [
                     "**Usage Guidelines**:",
                     "- Use system database queries for ML workflow operations "
-                    "(models, jobs, deployments)",
+                    "(models, jobs, training runs)",
                     "- System database is read-only - use SELECT queries only",
                     "- For user data analysis, use schema_discovery tool to explore "
                     "user database first",
@@ -480,7 +478,6 @@ class SchemaService(BaseService):
                 "- training_runs: Training run tracking with metrics and artifacts\n"
                 "- training_metrics: Time-series training metrics\n"
                 "- training_checkpoints: Model checkpoint catalog\n"
-                "- deployments: Model serving registry\n"
                 "- plans: ML workflow plans\n"
                 "- plugins: Available ML algorithms\n"
                 "- plugin_components: Plugin specifications\n"

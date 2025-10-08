@@ -67,7 +67,6 @@ def test_init_schema():
         expected_tables = [
             "models",
             "jobs",
-            "deployments",
             "plugin_schemas",
             "plugins",
             "plugin_components",

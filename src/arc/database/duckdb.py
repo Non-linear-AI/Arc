@@ -191,18 +191,6 @@ class DuckDBDatabase(Database):
                 );
             """)
 
-            # Tracks models served for real-time inference
-            # References training_runs for the trained model
-            self.execute("""
-                CREATE TABLE IF NOT EXISTS deployments(
-                    deployment_id TEXT PRIMARY KEY,
-                    run_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    endpoint_url TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
             # Stores plugin schema metadata for validation and documentation
             self.execute("""
                 CREATE TABLE IF NOT EXISTS plugin_schemas(

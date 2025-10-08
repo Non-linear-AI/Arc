@@ -104,7 +104,6 @@ class Database(ABC):
         - training_runs: Training run tracking with metrics and artifacts
         - training_metrics: Time-series training metrics
         - training_checkpoints: Model checkpoint catalog
-        - deployments: Models served for inference
         - plans: ML workflow plans
         - plugin_schemas: Plugin metadata for validation
         - plugins: Plugin system metadata
