@@ -26,10 +26,43 @@ from arc.ml.artifacts import (
     create_artifact_from_training,
 )
 from arc.ml.builder import ArcModel, ModelBuilder
+from arc.ml.callbacks import TensorBoardLogger
 from arc.ml.data import DataProcessor
 from arc.ml.trainer import ArcTrainer, ProgressCallback, TrainingResult
 
 logger = logging.getLogger(__name__)
+
+
+class CompositeCallback:
+    """Composite callback that forwards calls to multiple callbacks."""
+
+    def __init__(self, *callbacks: ProgressCallback):
+        self.callbacks = [cb for cb in callbacks if cb is not None]
+
+    def on_training_start(self) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_training_start()
+
+    def on_epoch_start(self, epoch: int, total_epochs: int) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_epoch_start(epoch, total_epochs)
+
+    def on_batch_end(self, batch: int, total_batches: int, loss: float) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_batch_end(batch, total_batches, loss)
+
+    def on_epoch_end(self, epoch: int, metrics: dict[str, float]) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_epoch_end(epoch, metrics)
+
+    def on_training_end(self, final_metrics: dict[str, float]) -> None:
+        """Forward to all callbacks."""
+        for callback in self.callbacks:
+            callback.on_training_end(final_metrics)
 
 
 @dataclass
@@ -390,6 +423,17 @@ class TrainingService:
                         "learning_rate": config.learning_rate,
                         "validation_split": config.validation_split,
                     }
+                    # Set up TensorBoard log directory
+                    tensorboard_log_dir = None
+                    if config.artifacts_dir:
+                        tensorboard_log_dir = str(
+                            Path(config.artifacts_dir).parent / "tensorboard" / f"run_{job_id}"
+                        )
+                    else:
+                        tensorboard_log_dir = str(
+                            Path.home() / ".arc" / "training_logs" / f"run_{job_id}"
+                        )
+
                     run = self.tracking_service.create_run(
                         job_id=job_id,
                         model_id=config.model_id,
@@ -397,14 +441,16 @@ class TrainingService:
                         run_name=config.description,
                         description=config.description,
                         tensorboard_enabled=True,
+                        tensorboard_log_dir=tensorboard_log_dir,
                         config=training_config,
                     )
                     run_id = run.run_id
                     logger.info(f"Created training run {run_id} for job {job_id}")
+                    logger.info(f"TensorBoard logs: {tensorboard_log_dir}")
                 except DatabaseError:
                     logger.exception("Failed to create training run for job %s", job_id)
 
-            # Setup progress callback
+            # Setup progress callbacks
             progress_callback = TrainingJobProgressCallback(
                 self.job_service,
                 job_id,
@@ -412,11 +458,28 @@ class TrainingService:
                 run_id=run_id,
             )
 
+            # Setup TensorBoard logger if tracking is enabled
+            tensorboard_logger = None
+            if self.tracking_service and run_id:
+                try:
+                    run = self.tracking_service.get_run_by_id(run_id)
+                    if run and run.tensorboard_enabled and run.tensorboard_log_dir:
+                        tensorboard_logger = TensorBoardLogger(
+                            log_dir=run.tensorboard_log_dir,
+                            enabled=True
+                        )
+                        logger.info("TensorBoard logging initialized")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize TensorBoard: {e}")
+
+            # Combine callbacks
+            combined_callback = CompositeCallback(progress_callback, tensorboard_logger)
+
             # Run training synchronously in this thread
             result = self._run_training(
                 job_id,
                 config,
-                progress_callback,
+                combined_callback,
                 cancel_event,
             )
 
