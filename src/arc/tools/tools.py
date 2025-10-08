@@ -479,16 +479,16 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_trainer",
+            name="ml_train",
             description=(
-                "Generate Arc-Graph trainer specification and optionally launch "
-                "training. This unified tool combines trainer generation with training "
-                "execution: 1) Generates trainer spec via LLM based on model and "
-                "training goals, 2) Presents interactive confirmation workflow, "
-                "3) Auto-registers trainer to database after approval, 4) Optionally "
-                "launches training immediately (default behavior). Use this tool when "
-                "the user wants to train a model - it handles both trainer creation "
-                "and training launch in one step."
+                "Generate Arc-Graph trainer specification and launch training. "
+                "This unified tool: 1) Generates trainer spec via LLM based on model "
+                "and training goals, 2) Presents interactive confirmation workflow, "
+                "3) Auto-registers trainer to database after approval, "
+                "4) Launches training after user confirmation. All training "
+                "configuration (epochs, batch_size, learning_rate, etc.) must be "
+                "specified in the generated trainer YAML - no runtime overrides "
+                "are supported."
             ),
             parameters={
                 "type": "object",
@@ -499,7 +499,12 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "context": {
                         "type": "string",
-                        "description": "Training goals, constraints, and requirements",
+                        "description": (
+                            "Training goals, constraints, and requirements. "
+                            "Include all training configuration details (epochs, "
+                            "batch size, learning rate, validation strategy, etc.) "
+                            "as these will be encoded in the trainer YAML."
+                        ),
                     },
                     "model_id": {
                         "type": "string",
@@ -507,56 +512,10 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "train_table": {
                         "type": "string",
-                        "description": (
-                            "Training data table (required if train_immediately=true)"
-                        ),
-                    },
-                    "target_column": {
-                        "type": "string",
-                        "description": "Target column for supervised learning",
-                    },
-                    "validation_table": {
-                        "type": "string",
-                        "description": "Optional validation table",
-                    },
-                    "validation_split": {
-                        "type": "number",
-                        "description": "Validation split fraction (0-1)",
-                    },
-                    "epochs": {
-                        "type": "integer",
-                        "description": "Training epochs override",
-                    },
-                    "batch_size": {
-                        "type": "integer",
-                        "description": "Batch size override",
-                    },
-                    "learning_rate": {
-                        "type": "number",
-                        "description": "Learning rate override",
-                    },
-                    "checkpoint_dir": {
-                        "type": "string",
-                        "description": "Directory for checkpoints",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Training job description",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Tags for the training job",
-                    },
-                    "train_immediately": {
-                        "type": "boolean",
-                        "description": (
-                            "Launch training after registration (default: true). "
-                            "Set to false to only generate and register the trainer."
-                        ),
+                        "description": "Training data table name",
                     },
                 },
-                "required": ["name", "context", "model_id"],
+                "required": ["name", "context", "model_id", "train_table"],
             },
         ),
         ArcTool(
