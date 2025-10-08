@@ -19,7 +19,6 @@ from arc.tools import (
     MLPlanTool,
     MLPredictorGeneratorTool,
     MLPredictTool,
-    MLTrainerGeneratorTool,
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
@@ -128,17 +127,6 @@ class ArcAgent:
         )
         self.ml_model_generator_tool = (
             MLModelGeneratorTool(
-                services,
-                self.api_key,
-                self.base_url,
-                self.current_model_name,
-                self.ui_interface,
-            )
-            if services
-            else None
-        )
-        self.ml_trainer_generator_tool = (
-            MLTrainerGeneratorTool(
                 services,
                 self.api_key,
                 self.base_url,
@@ -647,18 +635,6 @@ class ArcAgent:
                     "ML model generator tool not available. "
                     "Database services not initialized."
                 )
-            elif tool_call.name == "ml_trainer_generator":
-                if self.ml_trainer_generator_tool:
-                    return await self.ml_trainer_generator_tool.execute(
-                        name=args.get("name"),
-                        context=args.get("context"),
-                        model_spec_path=args.get("model_spec_path"),
-                        output_path=args.get("output_path"),
-                    )
-                return ToolResult.error_result(
-                    "ML trainer generator tool not available. "
-                    "Database services not initialized."
-                )
             elif tool_call.name == "ml_train":
                 if self.ml_train_tool:
                     return await self.ml_train_tool.execute(
@@ -761,7 +737,5 @@ class ArcAgent:
             self.ml_plan_tool.model = model
         if getattr(self, "ml_model_generator_tool", None):
             self.ml_model_generator_tool.model = model
-        if getattr(self, "ml_trainer_generator_tool", None):
-            self.ml_trainer_generator_tool.model = model
         if getattr(self, "ml_predictor_generator_tool", None):
             self.ml_predictor_generator_tool.model = model
