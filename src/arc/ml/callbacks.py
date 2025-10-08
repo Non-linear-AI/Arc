@@ -94,9 +94,7 @@ class TensorBoardLogger:
         # Log progress within epoch
         progress = (batch + 1) / total_batches
         self.writer.add_scalar(
-            f"epoch_{self.current_epoch}/progress",
-            progress,
-            self.global_step
+            f"epoch_{self.current_epoch}/progress", progress, self.global_step
         )
 
     def on_epoch_end(self, epoch: int, metrics: dict[str, float]) -> None:
@@ -123,13 +121,11 @@ class TensorBoardLogger:
                 clean_name = metric_name
 
             # Log to TensorBoard
-            self.writer.add_scalar(
-                f"{group}/{clean_name}",
-                value,
-                epoch_num
-            )
+            self.writer.add_scalar(f"{group}/{clean_name}", value, epoch_num)
 
-        logger.debug(f"TensorBoard: Logged {len(metrics)} metrics for epoch {epoch_num}")
+        logger.debug(
+            f"TensorBoard: Logged {len(metrics)} metrics for epoch {epoch_num}"
+        )
 
         # Flush to ensure data is written
         self.writer.flush()
@@ -145,11 +141,7 @@ class TensorBoardLogger:
 
         # Log final metrics with special tag
         for metric_name, value in final_metrics.items():
-            self.writer.add_scalar(
-                f"final/{metric_name}",
-                value,
-                0
-            )
+            self.writer.add_scalar(f"final/{metric_name}", value, 0)
 
         logger.info(f"TensorBoard: Training completed. Logs saved to {self.log_dir}")
 
@@ -193,7 +185,7 @@ class TensorBoardLogger:
     def __del__(self):
         """Cleanup: close writer on deletion."""
         if self.writer is not None:
-            try:
+            from contextlib import suppress
+
+            with suppress(Exception):
                 self.writer.close()
-            except Exception:
-                pass  # Ignore errors during cleanup

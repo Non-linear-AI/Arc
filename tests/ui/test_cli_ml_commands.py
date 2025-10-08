@@ -524,17 +524,32 @@ async def test_train_submits_job(tmp_path):
 
     # Mock the MLTrainerTool to avoid API calls
     from unittest.mock import AsyncMock, patch
+
     from arc.tools.base import ToolResult
 
     mock_result = ToolResult(
         success=True,
-        output="✓ Trainer 'test_trainer-v1' created and registered.\nModel: my_model-v1 • Optimizer: adam\n\n✓ Training job submitted successfully.\nTraining table: train_table\nJob ID: test-job-123",
-        metadata={"trainer_id": "test_trainer-v1", "job_id": "test-job-123", "training_launched": True}
+        output=(
+            "✓ Trainer 'test_trainer-v1' created and registered.\n"
+            "Model: my_model-v1 • Optimizer: adam\n\n"
+            "✓ Training job submitted successfully.\n"
+            "Training table: train_table\nJob ID: test-job-123"
+        ),
+        metadata={
+            "trainer_id": "test_trainer-v1",
+            "job_id": "test-job-123",
+            "training_launched": True,
+        },
     )
 
-    with patch('arc.tools.ml.MLTrainerTool.execute', new_callable=AsyncMock, return_value=mock_result):
+    with patch(
+        "arc.tools.ml.MLTrainerTool.execute",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
         await handle_ml_command(
-            "/ml train --name test_trainer --model-id my_model-v1 --context 'Train for 3 epochs' --data train_table",
+            "/ml train --name test_trainer --model-id my_model-v1 "
+            "--context 'Train for 3 epochs' --data train_table",
             ui,
             runtime,
         )
@@ -619,9 +634,10 @@ async def test_train_missing_model_shows_error(tmp_path):
 
     ui = StubUI()
     await handle_ml_command(
-        "/ml train --name test_trainer --model-id unknown_model-v1 --context 'test' --data table",
+        "/ml train --name test_trainer --model-id unknown_model-v1 "
+        "--context 'test' --data table",
         ui,
-        runtime
+        runtime,
     )
 
     # Should error because model is not found (happens in MLTrainerTool)
@@ -692,11 +708,12 @@ config:
     # Debug: Check if trainer creation succeeded
     if ui.errors:
         raise AssertionError(f"Trainer creation failed: {ui.errors}")
-    assert any("registered" in msg for msg in ui.successes), "Expected trainer registration success message"
+    assert any("registered" in msg for msg in ui.successes), (
+        "Expected trainer registration success message"
+    )
 
     # New /ml train command requires generating trainer with context
     # For this end-to-end test, we'll mock the MLTrainerTool and then actually train
-    from unittest.mock import AsyncMock, patch
 
     # Create a real trainer using the existing create-trainer flow for testing
     # Then we'll use train_with_trainer directly since /ml train now always generates

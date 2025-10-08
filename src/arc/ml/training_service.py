@@ -427,7 +427,9 @@ class TrainingService:
                     tensorboard_log_dir = None
                     if config.artifacts_dir:
                         tensorboard_log_dir = str(
-                            Path(config.artifacts_dir).parent / "tensorboard" / f"run_{job_id}"
+                            Path(config.artifacts_dir).parent
+                            / "tensorboard"
+                            / f"run_{job_id}"
                         )
                     else:
                         tensorboard_log_dir = str(
@@ -465,8 +467,7 @@ class TrainingService:
                     run = self.tracking_service.get_run_by_id(run_id)
                     if run and run.tensorboard_enabled and run.tensorboard_log_dir:
                         tensorboard_logger = TensorBoardLogger(
-                            log_dir=run.tensorboard_log_dir,
-                            enabled=True
+                            log_dir=run.tensorboard_log_dir, enabled=True
                         )
                         logger.info("TensorBoard logging initialized")
                 except Exception as e:

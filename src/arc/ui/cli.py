@@ -694,8 +694,11 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 if training_run.tensorboard_enabled:
                     rows.append(["TensorBoard", "Enabled"])
                     if training_run.tensorboard_log_dir:
-                        rows.append(["  Log Directory", training_run.tensorboard_log_dir])
-                        rows.append(["  Command", f"tensorboard --logdir {training_run.tensorboard_log_dir}"])
+                        rows.append(
+                            ["  Log Directory", training_run.tensorboard_log_dir]
+                        )
+                        logdir = training_run.tensorboard_log_dir
+                        rows.append(["  Command", f"tensorboard --logdir {logdir}"])
 
                 # Get latest metrics
                 metrics = tracking_service.get_metrics(training_run.run_id, limit=10)
@@ -706,8 +709,13 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
 
                     # Display all metrics (they're already sorted by most recent first)
                     for metric in metrics:
-                        metric_label = f"{metric.metric_name} ({metric.metric_type.value})"
-                        metric_value = f"{metric.value:.6f} (epoch {metric.epoch}, step {metric.step})"
+                        metric_label = (
+                            f"{metric.metric_name} ({metric.metric_type.value})"
+                        )
+                        metric_value = (
+                            f"{metric.value:.6f} "
+                            f"(epoch {metric.epoch}, step {metric.step})"
+                        )
                         rows.append([f"  {metric_label}", metric_value])
 
         ui.show_key_values("Job Status", rows)
