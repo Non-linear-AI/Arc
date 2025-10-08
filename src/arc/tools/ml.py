@@ -368,11 +368,12 @@ class MLModelTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, user_context: str | None = None):
+    def _create_editor(self, user_context: str | None = None, category: str | None = None):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:
             user_context: User context description
+            category: Model category (optional)
 
         Returns:
             Async function that edits YAML based on user feedback
@@ -394,7 +395,7 @@ class MLModelTool(BaseTool):
                     user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    category=context.get("category"),
+                    category=category or context.get("category"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
