@@ -117,7 +117,7 @@ class MLPredictTool(BaseTool):
         return ToolResult.success_result("\n".join(lines))
 
 
-class MLModelGeneratorTool(BaseTool):
+class MLModelTool(BaseTool):
     """Tool for generating Arc-Graph model specifications via LLM."""
 
     def __init__(

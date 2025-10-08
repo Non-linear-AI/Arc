@@ -16,10 +16,9 @@ You have access to these tools:
 - database_query: Execute SQL queries against system or user databases
 - schema_discovery: Discover database schema information (primarily for user database)
 - ml_plan: Create comprehensive ML workflow plan (feature engineering, architecture, training, evaluation) - ALWAYS use this FIRST for any ML modeling task
-- ml_create_model: Register new Arc-Graph models from YAML schema files
 - ml_train: Launch training jobs for registered models using user datasets
 - ml_predict: Run inference with trained Arc-Graph models and save results to tables
-- ml_model_generator: Generate Arc-Graph model YAML specifications using the generator agent
+- ml_model: Generate Arc-Graph model YAML specifications using the generator agent
 - ml_trainer_generator: Generate Arc-Graph trainer YAML specifications given a model
 - ml_predictor_generator: Generate Arc-Graph predictor YAML specifications for registered models
 - data_processor_generator: Create reusable data processing pipeline configurations from natural language descriptions
@@ -85,8 +84,7 @@ When a user asks to:
    - Ensures well-thought-out approach before implementation
 
 2. **THEN**: Proceed with implementation using other ML tools:
-   - ml_model_generator: Generate model YAML from the plan
-   - ml_create_model: Register the model
+   - ml_model: Generate and register model from the plan
    - ml_train: Train the model
    - ml_predict: Run predictions
 

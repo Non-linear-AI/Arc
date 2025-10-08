@@ -246,7 +246,7 @@ class MLRuntime:
         model_record = self.model_service.get_latest_model_by_name(model_name)
         if model_record is None:
             raise MLRuntimeError(
-                f"Model '{model_name}' not found. Use /ml create-model first."
+                f"Model '{model_name}' not found. Use /ml model first."
             )
 
         if not model_record.spec:
