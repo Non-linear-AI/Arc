@@ -674,6 +674,50 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 else str(job.updated_at),
             ],
         ]
+
+        # If this is a training job, show training metrics and TensorBoard info
+        if job_type == "training" and runtime.services.training_tracking:
+            tracking_service = runtime.services.training_tracking
+
+            # Get training run by job_id
+            training_run = tracking_service.get_run_by_job_id(job_id)
+
+            if training_run:
+                rows.append(["", ""])  # Separator
+                rows.append(["Training Run ID", training_run.run_id])
+                if training_run.model_id:
+                    rows.append(["Model", training_run.model_id])
+                if training_run.trainer_id:
+                    rows.append(["Trainer", training_run.trainer_id])
+
+                # Show TensorBoard info
+                if training_run.tensorboard_enabled:
+                    rows.append(["TensorBoard", "Enabled"])
+                    if training_run.tensorboard_log_dir:
+                        rows.append(["  Log Directory", training_run.tensorboard_log_dir])
+                        rows.append(["  Command", f"tensorboard --logdir {training_run.tensorboard_log_dir}"])
+
+                # Get latest metrics
+                metrics = tracking_service.get_metrics(training_run.run_id, limit=10)
+
+                if metrics:
+                    rows.append(["", ""])  # Separator
+                    rows.append(["Recent Metrics", f"(latest {len(metrics)})"])
+
+                    # Group by metric name for better display
+                    from collections import defaultdict
+                    metric_groups = defaultdict(list)
+                    for metric in metrics:
+                        key = f"{metric.metric_name} ({metric.metric_type.value})"
+                        metric_groups[key].append(metric)
+
+                    for metric_name, metric_list in metric_groups.items():
+                        latest = metric_list[0]  # Most recent
+                        rows.append([
+                            f"  {metric_name}",
+                            f"{latest.value:.6f} (epoch {latest.epoch}, step {latest.step})"
+                        ])
+
         ui.show_key_values("Job Status", rows)
     else:
         raise CommandError(f"Unknown jobs subcommand: {sub}")
