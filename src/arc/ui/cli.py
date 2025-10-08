@@ -704,19 +704,11 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                     rows.append(["", ""])  # Separator
                     rows.append(["Recent Metrics", f"(latest {len(metrics)})"])
 
-                    # Group by metric name for better display
-                    from collections import defaultdict
-                    metric_groups = defaultdict(list)
+                    # Display all metrics (they're already sorted by most recent first)
                     for metric in metrics:
-                        key = f"{metric.metric_name} ({metric.metric_type.value})"
-                        metric_groups[key].append(metric)
-
-                    for metric_name, metric_list in metric_groups.items():
-                        latest = metric_list[0]  # Most recent
-                        rows.append([
-                            f"  {metric_name}",
-                            f"{latest.value:.6f} (epoch {latest.epoch}, step {latest.step})"
-                        ])
+                        metric_label = f"{metric.metric_name} ({metric.metric_type.value})"
+                        metric_value = f"{metric.value:.6f} (epoch {metric.epoch}, step {metric.step})"
+                        rows.append([f"  {metric_label}", metric_value])
 
         ui.show_key_values("Job Status", rows)
     else:
