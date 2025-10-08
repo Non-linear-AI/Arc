@@ -21,7 +21,6 @@ from arc.tools import (
     MLPredictTool,
     MLTrainerGeneratorTool,
     MLTrainerTool,
-    MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
     TodoTool,
@@ -114,7 +113,6 @@ class ArcAgent:
         self.todo_tool = TodoTool()
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
-        self.ml_train_tool = MLTrainTool(services.ml_runtime) if services else None
         self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
         self.ml_plan_tool = (
             MLPlanTool(
@@ -588,24 +586,6 @@ class ArcAgent:
                         "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
-            elif tool_call.name == "ml_train":
-                if self.ml_train_tool:
-                    return await self.ml_train_tool.execute(
-                        trainer_name=args.get("trainer_name"),
-                        train_table=args.get("train_table"),
-                        target_column=args.get("target_column"),
-                        validation_table=args.get("validation_table"),
-                        validation_split=args.get("validation_split"),
-                        epochs=args.get("epochs"),
-                        batch_size=args.get("batch_size"),
-                        learning_rate=args.get("learning_rate"),
-                        checkpoint_dir=args.get("checkpoint_dir"),
-                        description=args.get("description"),
-                        tags=args.get("tags"),
-                    )
-                return ToolResult.error_result(
-                    "ML train tool not available. Database services not initialized."
-                )
             elif tool_call.name == "ml_predict":
                 if self.ml_predict_tool:
                     return await self.ml_predict_tool.execute(
