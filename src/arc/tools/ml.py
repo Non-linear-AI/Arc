@@ -826,8 +826,19 @@ class MLTrainTool(BaseTool):
                 lines.append(f"Job ID: {job_id}")
 
                 # Handle TensorBoard launch
-                if not auto_confirm and self.ui and self.tensorboard_manager:
-                    await self._handle_tensorboard_launch(job_id)
+                if not auto_confirm and self.ui:
+                    if self.tensorboard_manager:
+                        try:
+                            await self._handle_tensorboard_launch(job_id)
+                        except Exception as e:  # noqa: BLE001
+                            # Show error but don't fail the whole training
+                            self.ui._printer.console.print(
+                                f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                            )
+                            self._show_manual_tensorboard_instructions(job_id)
+                    else:
+                        # No TensorBoard manager available
+                        self._show_manual_tensorboard_instructions(job_id)
 
             except MLRuntimeError as exc:
                 return ToolResult.error_result(
