@@ -523,8 +523,18 @@ async def _ml_train(
         if not api_key:
             raise CommandError("API key required for trainer generation")
 
+        # Initialize TensorBoard manager for the tool
+        try:
+            from arc.ml import TensorBoardManager
+
+            tensorboard_manager = TensorBoardManager()
+        except Exception:
+            tensorboard_manager = None
+
         # Create the tool with proper dependencies
-        tool = MLTrainTool(runtime.services, runtime, api_key, base_url, model, ui)
+        tool = MLTrainTool(
+            runtime.services, runtime, api_key, base_url, model, ui, tensorboard_manager
+        )
 
         # Execute the tool with confirmation workflow
         # This will generate trainer, confirm, register, and launch training

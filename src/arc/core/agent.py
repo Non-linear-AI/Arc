@@ -116,7 +116,6 @@ class ArcAgent:
             from arc.ml import TensorBoardManager
 
             self.tensorboard_manager = TensorBoardManager()
-            print(f"DEBUG: TensorBoardManager created: {self.tensorboard_manager}")
         except Exception as e:
             # If TensorBoard manager fails to initialize, log but continue
             print(f"Warning: TensorBoard manager initialization failed: {e}")

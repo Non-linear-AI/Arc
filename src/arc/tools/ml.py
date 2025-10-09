@@ -621,9 +621,6 @@ class MLTrainTool(BaseTool):
         self.model = model
         self.ui = ui_interface
         self.tensorboard_manager = tensorboard_manager
-        # Debug: Check if tensorboard_manager is being passed
-        if tensorboard_manager is None:
-            print("DEBUG: MLTrainTool initialized with tensorboard_manager=None")
 
     async def execute(
         self,
@@ -783,36 +780,10 @@ class MLTrainTool(BaseTool):
             summary,
         ]
 
-        # Confirmation dialog for training launch
+        # Auto-launch training after trainer is accepted
         job_id = None
-        should_train = auto_confirm  # Auto-confirm in tests
 
-        if not auto_confirm and self.ui:
-            # Display training information
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[bold cyan]📊 Ready to train model '{model_record.id}' "
-                f"with trainer '{name}'[/bold cyan]"
-            )
-            self.ui._printer.console.print(f"[dim]Training table: {train_table}[/dim]")
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                "[yellow]⚠️  Training will consume significant compute "
-                "resources.[/yellow]"
-            )
-            self.ui._printer.console.print()
-
-            # Show menu options
-            choice = await self.ui._printer.get_choice_async(
-                options=[
-                    ("train", "Launch training now"),
-                    ("skip", "Skip training (trainer will be registered)"),
-                ],
-                default="train",
-            )
-            should_train = choice == "train"
-
-        if should_train:
+        if True:  # Always train when trainer is accepted
             if self.ui:
                 self.ui.show_info(f"🚀 Launching training with trainer '{name}'...")
 
@@ -855,9 +826,6 @@ class MLTrainTool(BaseTool):
                 return ToolResult.error_result(
                     f"Trainer registered but unexpected training error: {exc}"
                 )
-        else:
-            lines.append("")
-            lines.append("✓ Trainer ready. Training skipped.")
             lines.append(
                 f"To train later, use: /ml jobs submit --trainer {name} "
                 f"--data {train_table}"
@@ -869,7 +837,7 @@ class MLTrainTool(BaseTool):
             "trainer_name": name,
             "model_id": model_record.id,
             "yaml_content": trainer_yaml,
-            "training_launched": should_train,
+            "training_launched": job_id is not None,
         }
 
         if job_id:
@@ -894,17 +862,23 @@ class MLTrainTool(BaseTool):
         settings = SettingsManager()
         mode = settings.get_tensorboard_mode()
 
-        # First time - no preference set
+        # First time - no preference set, show combined dialog
         if mode is None:
-            mode = await prompt_tensorboard_preference(self.ui)
+            mode, should_launch = await prompt_tensorboard_preference(self.ui)
             settings.set_tensorboard_mode(mode)
             self.ui._printer.console.print()
             self.ui._printer.console.print(
                 f"[green]✓ TensorBoard preference saved: {mode}[/green]"
             )
 
-        # Handle based on mode
-        if mode == "always":
+            # Launch immediately if user chose to
+            if should_launch:
+                await self._launch_tensorboard(job_id)
+            else:
+                self._show_manual_tensorboard_instructions(job_id)
+
+        # Subsequent times - respect saved preference
+        elif mode == "always":
             await self._launch_tensorboard(job_id)
         elif mode == "ask":
             self.ui._printer.console.print()
@@ -914,13 +888,24 @@ class MLTrainTool(BaseTool):
             choice = await self.ui._printer.get_choice_async(
                 options=[
                     ("yes", "Yes, launch now"),
+                    ("always", "Always launch automatically"),
                     ("no", "No, skip"),
                 ],
                 default="yes",
             )
-            if choice == "yes":
+
+            # Handle the choice
+            if choice == "always":
+                # Update preference to always
+                settings.set_tensorboard_mode("always")
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[green]✓ TensorBoard preference updated: always[/green]"
+                )
                 await self._launch_tensorboard(job_id)
-            else:
+            elif choice == "yes":
+                await self._launch_tensorboard(job_id)
+            else:  # "no"
                 self._show_manual_tensorboard_instructions(job_id)
         else:  # "never"
             self._show_manual_tensorboard_instructions(job_id)
