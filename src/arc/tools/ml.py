@@ -1256,36 +1256,55 @@ class MLEvaluateTool(BaseTool):
             finally:
                 workflow.cleanup()
 
-        # Auto-register evaluator to database
+        # Auto-register evaluator to database (or reuse existing)
         try:
             from datetime import UTC, datetime
 
             from arc.database.models.evaluator import Evaluator
 
-            # Get next version number
-            next_version = self.services.evaluators.get_next_version_for_name(str(name))
+            # Check if evaluator with same spec already exists
+            existing_evaluator = self.services.evaluators.get_latest_evaluator_by_name(
+                str(name)
+            )
+            evaluator_record = None
 
-            # Generate unique ID for evaluator
-            evaluator_id = f"{name}-v{next_version}"
-
-            evaluator_record = Evaluator(
-                id=evaluator_id,
-                name=str(name),
-                version=next_version,
-                trainer_id=trainer_record.id,
-                trainer_version=trainer_record.version,
-                spec=evaluator_yaml,
-                description=f"Generated evaluator for trainer {trainer_id}",
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+            spec_matches = (
+                existing_evaluator
+                and existing_evaluator.spec.strip() == evaluator_yaml.strip()
             )
 
-            self.services.evaluators.create_evaluator(evaluator_record)
-
-            if self.ui:
-                self.ui.show_system_success(
-                    f"✓ Evaluator registered: {evaluator_record.id}"
+            if spec_matches:
+                # Reuse existing evaluator (same spec)
+                evaluator_record = existing_evaluator
+                if self.ui:
+                    self.ui.show_system_success(
+                        f"✓ Using existing evaluator: {evaluator_record.id}"
+                    )
+            else:
+                # Create new version (spec changed or first time)
+                next_version = self.services.evaluators.get_next_version_for_name(
+                    str(name)
                 )
+                evaluator_id = f"{name}-v{next_version}"
+
+                evaluator_record = Evaluator(
+                    id=evaluator_id,
+                    name=str(name),
+                    version=next_version,
+                    trainer_id=trainer_record.id,
+                    trainer_version=trainer_record.version,
+                    spec=evaluator_yaml,
+                    description=f"Generated evaluator for trainer {trainer_id}",
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
+                )
+
+                self.services.evaluators.create_evaluator(evaluator_record)
+
+                if self.ui:
+                    self.ui.show_system_success(
+                        f"✓ Evaluator registered: {evaluator_record.id}"
+                    )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register evaluator: {exc}")
 

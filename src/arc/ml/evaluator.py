@@ -288,7 +288,15 @@ class ArcEvaluator:
 
             # Compute all metrics
             results = tracker.compute_metrics(predictions, targets)
-            return {name: result.value for name, result in results.items()}
+            # Convert tensor values to Python floats for JSON serialization
+            return {
+                name: (
+                    float(result.value)
+                    if hasattr(result.value, "item")
+                    else result.value
+                )
+                for name, result in results.items()
+            }
 
         except Exception as e:
             logger.error(f"Metric computation failed: {e}")
