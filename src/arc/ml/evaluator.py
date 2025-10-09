@@ -474,7 +474,7 @@ class ArcEvaluator:
             # Artifacts are saved per trainer_id for isolation
             from arc.database.services import TrainingTrackingService
 
-            tracking_service = TrainingTrackingService(trainer_service._db_manager)
+            tracking_service = TrainingTrackingService(trainer_service.db_manager)
             runs = tracking_service.list_runs(trainer_id=evaluator_spec.trainer_ref)
 
             if not runs:
