@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -469,13 +470,60 @@ class ArcEvaluator:
 
             logger.info(f"Trainer references model: {model_ref}")
 
-            # 2. Load trained model artifact (latest version or specified)
-            version = evaluator_spec.version  # None = latest
-            state_dict, artifact = artifact_manager.load_model_state_dict(
-                model_id=model_ref,
-                version=version,
-                device=device,
-            )
+            # 2. Find which model version to load based on training_runs
+            # Artifacts are saved per model_id, but we need the specific version
+            # that was created when this trainer was trained
+            from arc.database.services import TrainingTrackingService
+
+            tracking_service = TrainingTrackingService(trainer_service._db_manager)
+            runs = tracking_service.list_runs(trainer_id=evaluator_spec.trainer_ref)
+
+            if not runs:
+                trainer_ref = evaluator_spec.trainer_ref
+                raise EvaluationError(
+                    f"Trainer '{trainer_ref}' has never been trained. "
+                    f"Train first: /ml train --trainer-id {trainer_ref}"
+                )
+
+            # Get the most recent successful run
+            completed_runs = [
+                r for r in runs if r.status == "completed" and r.artifact_path
+            ]
+            if not completed_runs:
+                trainer_ref = evaluator_spec.trainer_ref
+                raise EvaluationError(
+                    f"Trainer '{trainer_ref}' has no successful training runs. "
+                    f"Train first: /ml train --trainer-id {trainer_ref}"
+                )
+
+            # Use the most recent completed run (list_runs sorts by created_at DESC)
+            latest_run = completed_runs[0]
+
+            # Parse version from artifact_path
+            # Format: artifacts/model-id/v{version}/
+            version_match = re.search(r'/v(\d+)/?$', latest_run.artifact_path)
+            if not version_match:
+                # Try to load latest version
+                version = evaluator_spec.version
+            else:
+                version = int(version_match.group(1))
+                logger.info(
+                    f"Using model v{version} from run {latest_run.run_id}"
+                )
+
+            # Load the model artifact
+            try:
+                state_dict, artifact = artifact_manager.load_model_state_dict(
+                    model_id=model_ref,
+                    version=version,
+                    device=device,
+                )
+            except FileNotFoundError as e:
+                raise EvaluationError(
+                    f"Artifacts not found for trainer '{evaluator_spec.trainer_ref}'. "
+                    f"The training run completed but artifacts are missing. "
+                    f"Artifact path: {latest_run.artifact_path}"
+                ) from e
 
             logger.info(f"Loaded model artifact version: {artifact.version}")
 
