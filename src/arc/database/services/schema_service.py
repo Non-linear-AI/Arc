@@ -430,8 +430,6 @@ class SchemaService(BaseService):
                 "specifications for plugins",
                 "plugin_schemas": "Plugin metadata - Schema validation and "
                 "documentation for algorithms",
-                "plans": "ML plan registry - Stores comprehensive ML workflow plans "
-                "with feature engineering and architecture recommendations",
                 "data_processors": "Data processor registry - Stores versioned data "
                 "processing pipeline configurations",
             }
