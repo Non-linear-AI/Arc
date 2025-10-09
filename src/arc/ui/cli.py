@@ -856,7 +856,6 @@ async def _ml_evaluate(
             "context": True,
             "trainer-id": True,
             "data-table": True,
-            "target-column": False,  # Optional - can infer from model
         },
     )
 
@@ -864,7 +863,6 @@ async def _ml_evaluate(
     context = options.get("context")
     trainer_id = options.get("trainer-id")
     data_table = options.get("data-table")
-    target_column = options.get("target-column")  # Optional
 
     if not name or not context or not trainer_id or not data_table:
         raise CommandError(
@@ -893,11 +891,10 @@ async def _ml_evaluate(
             context=context,
             trainer_id=trainer_id,
             data_table=data_table,
-            target_column=target_column,  # Optional - None if not specified
         )
 
         if not result.success:
-            ui.show_system_error(result.message)
+            ui.show_system_error(result.error or "Evaluation failed")
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during evaluation: {exc}") from exc

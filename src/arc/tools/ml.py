@@ -1064,17 +1064,15 @@ class MLEvaluateTool(BaseTool):
         context: str | None = None,
         trainer_id: str | None = None,
         data_table: str | None = None,
-        target_column: str | None = None,
         auto_confirm: bool = False,
     ) -> ToolResult:
-        """Generate evaluator spec, register it, and run evaluation with confirmation.
+        """Generate evaluator spec, register it, and run evaluation.
 
         Args:
             name: Evaluator name
             context: Evaluation goals and context for LLM generation
             trainer_id: Trainer ID to evaluate (references the trained model)
             data_table: Test dataset table name
-            target_column: Target column (optional, inferred from model)
             auto_confirm: Skip confirmation workflows (for testing only)
 
         Returns:
@@ -1115,7 +1113,7 @@ class MLEvaluateTool(BaseTool):
                 f"Failed to retrieve trainer '{trainer_id}': {exc}"
             )
 
-        # Get model spec to infer target column if not provided
+        # Get model spec and infer target column
         try:
             model_record = self.services.models.get_model_by_id(trainer_record.model_id)
             if not model_record:
@@ -1123,22 +1121,18 @@ class MLEvaluateTool(BaseTool):
                     f"Model '{trainer_record.model_id}' not found in registry"
                 )
 
-            # Infer target column from model spec if not provided
+            # Infer target column from model spec
+            target_column = self._infer_target_column_from_model(model_record.spec)
             if not target_column:
-                inferred_target = self._infer_target_column_from_model(
-                    model_record.spec
+                return ToolResult.error_result(
+                    "Cannot infer target column from model spec. "
+                    "Ensure model's loss spec includes a 'target' input."
                 )
-                if inferred_target:
-                    target_column = inferred_target
-                    if self.ui:
-                        self.ui.show_info(
-                            f"📌 Inferred target column from model: '{target_column}'"
-                        )
-                else:
-                    return ToolResult.error_result(
-                        "Cannot infer target column from model spec. "
-                        "Please specify --target-column explicitly."
-                    )
+
+            if self.ui:
+                self.ui.show_info(
+                    f"📌 Inferred target column from model: '{target_column}'"
+                )
 
         except Exception as exc:
             return ToolResult.error_result(
@@ -1277,82 +1271,55 @@ class MLEvaluateTool(BaseTool):
             summary,
         ]
 
-        # Confirmation dialog for evaluation launch
-        should_evaluate = auto_confirm  # Auto-confirm in tests
-
-        if not auto_confirm and self.ui:
-            # Display evaluation information
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[bold cyan]📊 Ready to evaluate trainer '{trainer_id}'[/bold cyan]"
-            )
-            self.ui._printer.console.print(f"[dim]Test dataset: {data_table}[/dim]")
-            self.ui._printer.console.print(f"[dim]Target column: {target_column}[/dim]")
-            self.ui._printer.console.print()
-
-            # Show menu options
-            choice = await self.ui._printer.get_choice_async(
-                options=[
-                    ("evaluate", "Run evaluation now"),
-                    ("skip", "Skip evaluation (evaluator will be registered)"),
-                ],
-                default="evaluate",
-            )
-            should_evaluate = choice == "evaluate"
-
+        # Run evaluation automatically after registration
         metrics_dict = None
-        if should_evaluate:
-            if self.ui:
-                self.ui.show_info(f"🔍 Running evaluation with '{name}'...")
+        if self.ui:
+            self.ui.show_info(f"🔍 Running evaluation with '{name}'...")
 
-            try:
-                # Load evaluator from trainer
-                from arc.ml.artifact_manager import ModelArtifactManager
-                from arc.ml.evaluator import ArcEvaluator
+        try:
+            # Load evaluator from trainer
+            from arc.ml.artifact_manager import ModelArtifactManager
+            from arc.ml.evaluator import ArcEvaluator
 
-                artifact_manager = ModelArtifactManager(
-                    self.runtime.models_dir, self.services.models
-                )
+            artifact_manager = ModelArtifactManager(
+                self.runtime.models_dir, self.services.models
+            )
 
-                evaluator = ArcEvaluator.load_from_trainer(
-                    artifact_manager=artifact_manager,
-                    trainer_service=self.services.trainers,
-                    evaluator_spec=evaluator_spec,
-                    device="cpu",
-                )
+            evaluator = ArcEvaluator.load_from_trainer(
+                artifact_manager=artifact_manager,
+                trainer_service=self.services.trainers,
+                evaluator_spec=evaluator_spec,
+                device="cpu",
+            )
 
-                # Run evaluation
-                result = await asyncio.to_thread(
-                    evaluator.evaluate, self.services.ml_data
-                )
+            # Run evaluation
+            result = await asyncio.to_thread(
+                evaluator.evaluate, self.services.ml_data
+            )
 
-                metrics_dict = result.metrics
+            metrics_dict = result.metrics
 
-                # Display metrics
-                lines.append("")
-                lines.append("✓ Evaluation completed successfully.")
-                lines.append("")
-                lines.append("Metrics:")
-                for metric_name, metric_value in metrics_dict.items():
-                    lines.append(f"  {metric_name}: {metric_value:.4f}")
-                lines.append("")
-                lines.append(f"Samples evaluated: {result.num_samples}")
-                lines.append(f"Evaluation time: {result.evaluation_time:.2f}s")
-
-            except Exception as exc:
-                from arc.ml.evaluator import EvaluationError
-
-                if isinstance(exc, EvaluationError):
-                    return ToolResult.error_result(
-                        f"Evaluator registered but evaluation failed: {exc}"
-                    )
-                return ToolResult.error_result(
-                    f"Evaluator registered but unexpected error: {exc}"
-                )
-        else:
+            # Display metrics
             lines.append("")
-            lines.append("✓ Evaluator ready. Evaluation skipped.")
-            lines.append(f"To evaluate later, use: /ml evaluate with evaluator {name}")
+            lines.append("✓ Evaluation completed successfully.")
+            lines.append("")
+            lines.append("Metrics:")
+            for metric_name, metric_value in metrics_dict.items():
+                lines.append(f"  {metric_name}: {metric_value:.4f}")
+            lines.append("")
+            lines.append(f"Samples evaluated: {result.num_samples}")
+            lines.append(f"Evaluation time: {result.evaluation_time:.2f}s")
+
+        except Exception as exc:
+            from arc.ml.evaluator import EvaluationError
+
+            if isinstance(exc, EvaluationError):
+                return ToolResult.error_result(
+                    f"Evaluator registered but evaluation failed: {exc}"
+                )
+            return ToolResult.error_result(
+                f"Evaluator registered but unexpected error: {exc}"
+            )
 
         # Build result metadata
         result_metadata = {
@@ -1360,7 +1327,7 @@ class MLEvaluateTool(BaseTool):
             "evaluator_name": name,
             "trainer_id": trainer_record.id,
             "yaml_content": evaluator_yaml,
-            "evaluation_ran": should_evaluate,
+            "evaluation_ran": True,
         }
 
         if metrics_dict:

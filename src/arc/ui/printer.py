@@ -83,7 +83,6 @@ class ArcCompleter(Completer):
                 ("--context", "Evaluation goals and context (required)"),
                 ("--trainer-id", "Trainer ID to evaluate (required)"),
                 ("--data-table", "Test dataset table name (required)"),
-                ("--target-column", "Target column (optional, inferred from model)"),
             ],
             "create-trainer": [
                 ("--name", "Trainer name (required)"),

@@ -230,7 +230,7 @@ class InteractiveInterface:
                 ),
                 (
                     "/ml evaluate --name NAME --context DESC --trainer-id TRAINER_ID "
-                    "--data-table TABLE [--target-column COL]",
+                    "--data-table TABLE",
                     "Generate evaluator and run model evaluation",
                 ),
                 (
