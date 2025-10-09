@@ -471,8 +471,7 @@ class ArcEvaluator:
             logger.info(f"Trainer references model: {model_ref}")
 
             # 2. Find which model version to load based on training_runs
-            # Artifacts are saved per model_id, but we need the specific version
-            # that was created when this trainer was trained
+            # Artifacts are saved per trainer_id for isolation
             from arc.database.services import TrainingTrackingService
 
             tracking_service = TrainingTrackingService(trainer_service._db_manager)
@@ -500,7 +499,7 @@ class ArcEvaluator:
             latest_run = completed_runs[0]
 
             # Parse version from artifact_path
-            # Format: artifacts/model-id/v{version}/
+            # Format: artifacts/trainer-id/v{version}/
             version_match = re.search(r'/v(\d+)/?$', latest_run.artifact_path)
             if not version_match:
                 # Try to load latest version
@@ -511,10 +510,10 @@ class ArcEvaluator:
                     f"Using model v{version} from run {latest_run.run_id}"
                 )
 
-            # Load the model artifact
+            # Load the model artifact (keyed by trainer_id, not model_ref)
             try:
                 state_dict, artifact = artifact_manager.load_model_state_dict(
-                    model_id=model_ref,
+                    model_id=evaluator_spec.trainer_ref,
                     version=version,
                     device=device,
                 )
