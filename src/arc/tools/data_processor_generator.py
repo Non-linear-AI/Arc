@@ -90,6 +90,7 @@ class DataProcessorGeneratorTool(BaseTool):
 
     async def generate(
         self,
+        name: str,
         context: str,
         target_tables: list[str] | None = None,
         output_path: str | None = None,
@@ -99,15 +100,22 @@ class DataProcessorGeneratorTool(BaseTool):
         """Generate YAML configuration from natural language context using LLM.
 
         Args:
+            name: Name for the data processor (will be registered in database)
             context: Natural language description of data processing requirements
             target_tables: List of tables to analyze for generation
-            output_path: Path to save generated YAML file
+            output_path: Path to save generated YAML file (optional, for backup)
             target_db: Target database - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
 
         Returns:
             ToolResult with operation result
         """
+        if not name:
+            return ToolResult.error_result(
+                "Name is required for data processor registration. "
+                "Provide a name for the data processor."
+            )
+
         if not context:
             return ToolResult.error_result(
                 "Context is required for YAML generation. "
@@ -205,7 +213,26 @@ class DataProcessorGeneratorTool(BaseTool):
             if ui:
                 ui.show_info("")
 
-            # Save YAML to file first (for reproducibility and debugging)
+            # Register data processor in database
+            from arc.ml.runtime import MLRuntime, MLRuntimeError
+
+            runtime = MLRuntime(self.services, artifacts_dir="artifacts")
+            try:
+                processor = runtime.register_data_processor(
+                    name=name, spec=spec, description=spec.description
+                )
+                if ui:
+                    msg = (
+                        f"Registered as '{processor.name}' "
+                        f"version {processor.version} (id={processor.id})"
+                    )
+                    ui.show_system_success(msg)
+            except MLRuntimeError as e:
+                return ToolResult.error_result(
+                    f"Failed to register data processor: {str(e)}"
+                )
+
+            # Save YAML to file for backup (optional)
             if output_path:
                 output_file = Path(output_path)
                 output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -258,6 +285,7 @@ class DataProcessorGeneratorTool(BaseTool):
             lines = [
                 f"Data Processor Generator: {context_summary}",
                 "",
+                f"Registered: '{processor.name}' version {processor.version}",
                 "Pipeline executed successfully",
                 f"Tables created: {', '.join(execution_result.created_tables)}",
                 f"Execution time: {execution_result.execution_time:.2f}s",

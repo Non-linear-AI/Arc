@@ -943,16 +943,24 @@ async def _ml_data_processing(
         args,
         {
             "yaml": True,
+            "name": True,
+            "version": True,
             "target-db": True,
         },
     )
 
     yaml_path = options.get("yaml")
+    processor_name = options.get("name")
+    version_str = options.get("version")
     target_db = options.get("target-db", "user")
 
-    if not yaml_path:
+    # Validate: either --yaml OR --name, not both
+    if yaml_path and processor_name:
+        raise CommandError("Use either --yaml <path> OR --name <name>, not both")
+
+    if not yaml_path and not processor_name:
         raise CommandError(
-            "/ml data-processing requires --yaml <path> to specify the pipeline file"
+            "/ml data-processing requires either --yaml <path> or --name <name>"
         )
 
     # Validate target database
@@ -961,17 +969,29 @@ async def _ml_data_processing(
             "Invalid target database. Use --target-db system or --target-db user"
         )
 
-    yaml_file = Path(str(yaml_path))
-    if not yaml_file.exists():
-        raise CommandError(f"Data processing file not found: {yaml_path}")
+    # Parse version if provided
+    version = int(version_str) if version_str else None
 
+    # Load spec from database or file
     try:
-        ui.show_info(f"Data Processing: {yaml_path}")
+        if processor_name:
+            # Load from database
+            processor, spec = runtime.load_data_processor(processor_name, version)
+            msg = (
+                f"📦 Loaded '{processor.name}' version {processor.version} "
+                "from database"
+            )
+            ui.show_info(msg)
+            ui.show_info(f"Pipeline: {len(spec.steps)} steps")
+        else:
+            # Load from file (existing behavior)
+            yaml_file = Path(str(yaml_path))
+            if not yaml_file.exists():
+                raise CommandError(f"Data processing file not found: {yaml_path}")
 
-        # Parse the YAML specification
-        spec = DataSourceSpec.from_yaml_file(str(yaml_file))
-
-        ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
+            ui.show_info(f"📄 Data Processing: {yaml_path}")
+            spec = DataSourceSpec.from_yaml_file(str(yaml_file))
+            ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
 
         # Execute the pipeline using the centralized executor
         from arc.ml.data_source_executor import execute_data_source_pipeline
@@ -994,6 +1014,8 @@ async def _ml_data_processing(
             spec, str(target_db), runtime.services.db_manager, cli_progress
         )
 
+    except MLRuntimeError as e:
+        raise CommandError(str(e)) from e
     except ValueError as parse_error:
         raise CommandError(
             f"Invalid YAML specification: {str(parse_error)}"

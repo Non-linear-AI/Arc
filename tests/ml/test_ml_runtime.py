@@ -113,3 +113,71 @@ def test_create_model_missing_file_raises(runtime):
     missing_path = Path("/nonexistent/schema.yaml")
     with pytest.raises(MLRuntimeError, match="Schema file not found"):
         runtime.create_model(name="MissingModel", schema_path=missing_path)
+
+
+def test_register_data_processor(runtime, services):
+    """Test registering a data processor."""
+    from arc.graph.features.data_source import DataSourceSpec
+
+    # Create a simple spec
+    spec_dict = {
+        "name": "test_processor",
+        "description": "Test data processor",
+        "steps": [
+            {
+                "name": "step1",
+                "depends_on": [],
+                "sql": "SELECT * FROM test_table",
+            }
+        ],
+        "outputs": ["step1"],
+    }
+    spec = DataSourceSpec.from_dict(spec_dict)
+
+    # Register the processor
+    processor = runtime.register_data_processor(
+        name="test_processor", spec=spec, description="Test processor"
+    )
+
+    assert processor.version == 1
+    assert processor.name == "test_processor"
+    assert "test_processor" in processor.spec
+
+    # Verify it was stored
+    stored = services.data_processors.get_latest_data_processor_by_name(
+        "test_processor"
+    )
+    assert stored is not None
+    assert stored.id == processor.id
+
+
+def test_load_data_processor(runtime):
+    """Test loading a data processor from database."""
+    from arc.graph.features.data_source import DataSourceSpec
+
+    # Create and register a processor using valid YAML directly
+    yaml_str = """name: load_test
+description: Load test processor
+steps:
+  - name: step1
+    depends_on: []
+    sql: SELECT * FROM test
+outputs:
+  - step1
+"""
+    spec = DataSourceSpec.from_yaml(yaml_str)
+    runtime.register_data_processor(name="load_test", spec=spec)
+
+    # Load it back
+    processor, loaded_spec = runtime.load_data_processor("load_test")
+
+    assert processor.name == "load_test"
+    assert processor.version == 1
+    assert loaded_spec.name == "load_test"
+    assert len(loaded_spec.steps) == 1
+
+
+def test_load_nonexistent_data_processor_raises(runtime):
+    """Test that loading a nonexistent processor raises an error."""
+    with pytest.raises(MLRuntimeError, match="not found"):
+        runtime.load_data_processor("nonexistent_processor")

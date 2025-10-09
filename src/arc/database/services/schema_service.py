@@ -430,6 +430,8 @@ class SchemaService(BaseService):
                 "specifications for plugins",
                 "plugin_schemas": "Plugin metadata - Schema validation and "
                 "documentation for algorithms",
+                "data_processors": "Data processor registry - Stores versioned data "
+                "processing pipeline configurations",
             }
 
             for table in schema_info.tables:
@@ -478,6 +480,7 @@ class SchemaService(BaseService):
                 "- training_runs: Training run tracking with metrics and artifacts\n"
                 "- training_metrics: Time-series training metrics\n"
                 "- training_checkpoints: Model checkpoint catalog\n"
+                "- data_processors: Data processing pipeline registry\n"
                 "- plans: ML workflow plans\n"
                 "- plugins: Available ML algorithms\n"
                 "- plugin_components: Plugin specifications\n"

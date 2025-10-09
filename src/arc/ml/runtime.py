@@ -206,6 +206,101 @@ class MLRuntime:
 
         return trainer
 
+    def register_data_processor(
+        self,
+        name: str,
+        spec,  # DataSourceSpec
+        description: str | None = None,
+    ):  # -> DataProcessor
+        """Register a data processor in the database.
+
+        Args:
+            name: Data processor name
+            spec: DataSourceSpec object (already parsed and validated)
+            description: Optional description
+
+        Returns:
+            DataProcessor object with generated id and version
+
+        Raises:
+            MLRuntimeError: If registration fails
+        """
+        from arc.database.models.data_processor import DataProcessor
+
+        _validate_model_name(name)
+
+        # Convert spec to YAML string for storage
+        spec_yaml = spec.to_yaml()
+
+        # Get next version
+        latest = self.services.data_processors.get_latest_data_processor_by_name(name)
+        version = 1 if latest is None else latest.version + 1
+
+        # Generate ID
+        base_slug = _slugify_name(name)
+        processor_id = f"{base_slug}-v{version}"
+
+        # Create DataProcessor
+        now = datetime.now(UTC)
+        processor = DataProcessor(
+            id=processor_id,
+            name=name,
+            version=version,
+            spec=spec_yaml,
+            description=description or spec.description,
+            created_at=now,
+            updated_at=now,
+        )
+
+        # Save to database
+        try:
+            self.services.data_processors.create_data_processor(processor)
+        except DatabaseError as exc:
+            raise MLRuntimeError(f"Failed to register data processor: {exc}") from exc
+
+        return processor
+
+    def load_data_processor(
+        self,
+        name: str,
+        version: int | None = None,
+    ):  # -> tuple[DataProcessor, DataSourceSpec]
+        """Load data processor from database.
+
+        Args:
+            name: Data processor name
+            version: Optional specific version (defaults to latest)
+
+        Returns:
+            Tuple of (DataProcessor, DataSourceSpec)
+
+        Raises:
+            MLRuntimeError: If data processor not found or spec parsing fails
+        """
+        from arc.graph.features.data_source import DataSourceSpec
+
+        data_processor_service = self.services.data_processors
+
+        # Fetch from database
+        if version is not None:
+            processor = data_processor_service.get_data_processor_by_name_version(
+                name, version
+            )
+        else:
+            processor = data_processor_service.get_latest_data_processor_by_name(name)
+
+        if processor is None:
+            version_str = f" version {version}" if version is not None else ""
+            raise MLRuntimeError(f"Data processor '{name}'{version_str} not found")
+
+        # Parse YAML to DataSourceSpec
+        try:
+            spec = DataSourceSpec.from_yaml(processor.spec)
+        except Exception as exc:  # noqa: BLE001 - propagate as runtime error
+            raise MLRuntimeError(f"Failed to parse data processor spec: {exc}") from exc
+
+        return processor, spec
+
     def train_model(
         self,
         *,

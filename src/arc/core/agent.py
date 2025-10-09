@@ -672,6 +672,7 @@ class ArcAgent:
                 if self.data_processor_generator_tool:
                     return await self.data_processor_generator_tool.execute(
                         action=args.get("action", "generate"),
+                        name=args.get("name"),
                         context=args.get("context"),
                         target_tables=args.get("target_tables"),
                         output_path=args.get("output_path"),

@@ -571,6 +571,13 @@ def get_base_tools() -> list[ArcTool]:
                             "existing YAML configuration"
                         ),
                     },
+                    "name": {
+                        "type": "string",
+                        "description": (
+                            "Name for the data processor "
+                            "(will be registered in database)"
+                        ),
+                    },
                     "context": {
                         "type": "string",
                         "description": (
@@ -608,7 +615,7 @@ def get_base_tools() -> list[ArcTool]:
                         ),
                     },
                 },
-                "required": ["action"],
+                "required": ["name", "context"],
             },
         ),
     ]
