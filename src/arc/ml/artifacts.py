@@ -378,7 +378,11 @@ class ModelArtifactManager:
 
         # Convert nested dicts back to dataclasses if present
         if data.get("training_config"):
-            data["training_config"] = TrainingConfig(**data["training_config"])
+            # Filter out fields not in TrainingConfig (e.g., model_ref from old format)
+            config_data = data["training_config"]
+            # Remove model_ref if present (it's in TrainerSpec, not TrainingConfig)
+            config_data.pop("model_ref", None)
+            data["training_config"] = TrainingConfig(**config_data)
         if data.get("training_result"):
             data["training_result"] = TrainingResult(**data["training_result"])
 
