@@ -485,8 +485,12 @@ class ArcEvaluator:
                 )
 
             # Get the most recent successful run
+            from arc.database.models.training import TrainingStatus
+
             completed_runs = [
-                r for r in runs if r.status == "completed" and r.artifact_path
+                r
+                for r in runs
+                if r.status == TrainingStatus.COMPLETED and r.artifact_path
             ]
             if not completed_runs:
                 trainer_ref = evaluator_spec.trainer_ref
