@@ -9,6 +9,7 @@ from arc.database.services.ml_data_service import DatasetInfo, MLDataService
 from arc.database.services.model_service import ModelService
 from arc.database.services.plugin_service import PluginService
 from arc.database.services.trainer_service import TrainerService
+from arc.database.services.training_tracking_service import TrainingTrackingService
 
 __all__ = [
     "BaseService",
@@ -21,4 +22,5 @@ __all__ = [
     "MLDataService",
     "DatasetInfo",
     "PluginService",
+    "TrainingTrackingService",
 ]
