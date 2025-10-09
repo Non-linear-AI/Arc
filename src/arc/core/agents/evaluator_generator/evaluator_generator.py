@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ from arc.graph.evaluator import (
     EvaluatorSpec,
     validate_evaluator_dict,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluatorGeneratorError(AgentError):
@@ -106,6 +109,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             "target_column": target_column,
             "target_column_exists": target_column_exists,
             "trainer_profile": self._extract_trainer_profile(trainer_spec_yaml),
+            "model_outputs": self._extract_model_outputs(trainer_spec_yaml),
             "available_metrics": self._get_available_metrics(),
             "examples": self._get_evaluator_examples(user_context),
             "is_editing": existing_yaml is not None,
@@ -252,3 +256,62 @@ class EvaluatorGeneratorAgent(BaseAgent):
 
         except Exception as e:
             return {"error": f"Failed to extract trainer profile: {str(e)}"}
+
+    def _extract_model_outputs(self, trainer_spec: str) -> list[str] | None:
+        """Extract model output names from the trainer's model specification.
+
+        Args:
+            trainer_spec: Trainer specification YAML
+
+        Returns:
+            List of model output names, or None if model has single output or error
+        """
+        try:
+            trainer_dict = yaml.safe_load(trainer_spec)
+            if not isinstance(trainer_dict, dict):
+                logger.debug("Trainer spec is not a dict")
+                return None
+
+            # Get model_ref from trainer
+            model_ref = trainer_dict.get("model_ref")
+            if not model_ref:
+                logger.debug("No model_ref in trainer spec")
+                return None
+
+            logger.debug(f"Looking up model: {model_ref}")
+
+            # Look up model spec in database
+            model = self.services.models.get_model_by_id(model_ref)
+            if not model:
+                logger.debug(f"Model {model_ref} not found in database")
+                return None
+
+            # Parse model spec to get outputs
+            model_spec_dict = yaml.safe_load(model.spec)
+            if not isinstance(model_spec_dict, dict):
+                logger.debug("Model spec is not a dict")
+                return None
+
+            outputs = model_spec_dict.get("outputs", {})
+            if not isinstance(outputs, dict):
+                logger.debug(f"Outputs is not a dict: {type(outputs)}")
+                return None
+
+            logger.debug(f"Found {len(outputs)} outputs: {list(outputs.keys())}")
+
+            # If model has multiple outputs, return the list
+            if len(outputs) > 1:
+                logger.info(
+                    f"Model has multiple outputs: {list(outputs.keys())} - "
+                    "will include in prompt"
+                )
+                return list(outputs.keys())
+
+            # Single output - no need to specify
+            logger.debug("Model has single output - no need to specify output_name")
+            return None
+
+        except Exception as e:
+            # Log error but don't fail - not critical
+            logger.debug(f"Could not extract model outputs: {e}")
+            return None

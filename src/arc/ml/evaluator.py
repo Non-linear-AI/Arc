@@ -143,8 +143,8 @@ class ArcEvaluator:
 
             # 4. Log visualizations to TensorBoard if enabled
             if tensorboard_log_dir:
-                logger.info(
-                    f"Logging visualizations to TensorBoard: {tensorboard_log_dir}"
+                logger.warning(
+                    f"📈 Logging visualizations to TensorBoard: {tensorboard_log_dir}"
                 )
                 self._log_to_tensorboard(
                     predictions, targets, metrics_dict, tensorboard_log_dir
@@ -253,9 +253,44 @@ class ArcEvaluator:
 
             # Handle different output types
             if isinstance(output, dict):
-                # Multi-output model: use the first output
-                # (for MVP, we assume single output for evaluation)
-                output_key = list(self.model_spec.outputs.keys())[0]
+                # Multi-output model: use output specified in evaluator spec
+                output_keys = list(self.model_spec.outputs.keys())
+
+                # Use output specified in evaluator spec if provided
+                if self.evaluator_spec.output_name:
+                    if self.evaluator_spec.output_name in output:
+                        output_key = self.evaluator_spec.output_name
+                        logger.info(f"Using specified output: '{output_key}'")
+                    else:
+                        raise EvaluationError(
+                            f"Specified output '{self.evaluator_spec.output_name}' "
+                            f"not found. Available outputs: {output_keys}"
+                        )
+                else:
+                    # Auto-detect: prefer probability outputs
+                    probability_output = None
+                    for key in output_keys:
+                        if key.lower() in [
+                            "probabilities",
+                            "probs",
+                            "probability",
+                            "prob",
+                        ]:
+                            probability_output = key
+                            break
+
+                    if probability_output:
+                        output_key = probability_output
+                        logger.info(f"Auto-detected probability output: '{output_key}'")
+                    else:
+                        # Fall back to first output
+                        output_key = output_keys[0]
+                        logger.warning(
+                            f"No probability output found. Using first output: "
+                            f"'{output_key}'. Available outputs: {output_keys}. "
+                            "Specify output_name in evaluator spec to override."
+                        )
+
                 predictions = output[output_key]
             else:
                 predictions = output
@@ -402,6 +437,9 @@ class ArcEvaluator:
     ) -> None:
         """Log evaluation metrics and visualizations to TensorBoard.
 
+        Uses direct SummaryWriter calls for simplicity and consistency
+        with trainer logging.
+
         Args:
             predictions: Model predictions
             targets: Ground truth targets
@@ -414,53 +452,65 @@ class ArcEvaluator:
         try:
             from torch.utils.tensorboard import SummaryWriter
 
-            from arc.ml.visualization import TensorBoardVisualizer
-
             # Create log directory
             log_path = Path(log_dir)
             log_path.mkdir(parents=True, exist_ok=True)
 
             # Create TensorBoard writer
             writer = SummaryWriter(log_dir=str(log_path))
-            viz = TensorBoardVisualizer(writer, enabled=True)
 
-            # Log scalar metrics
-            viz.log_metric_summary(metrics_dict, tag_prefix="evaluation", step=1)
+            # Log scalar metrics directly
+            for metric_name, value in metrics_dict.items():
+                writer.add_scalar(f"evaluation/{metric_name}", value, 1)
 
             # Determine task type for appropriate visualizations
             task_type = self._infer_task_type()
+            logger.info(f"🔍 Task type detected: {task_type}")
+            logger.debug(
+                f"Predictions shape: {predictions.shape}, "
+                f"Targets shape: {targets.shape}"
+            )
 
             if task_type == "classification":
+                logger.info(
+                    "📊 Logging classification visualizations (including PR curve)..."
+                )
                 # Log classification visualizations
                 self._log_classification_visualizations(
-                    viz, predictions, targets, step=1
+                    writer, predictions, targets, step=1
                 )
             elif task_type == "regression":
+                logger.warning("📊 Logging regression visualizations...")
                 # Log regression visualizations
-                viz.log_prediction_distribution(
-                    targets, predictions, tag="evaluation/predictions", step=1
+                self._log_regression_visualizations(
+                    writer, predictions, targets, step=1
                 )
 
             # Close writer
-            viz.close()
+            writer.flush()
+            writer.close()
 
-            logger.info(f"TensorBoard visualizations saved to: {log_path}")
+            logger.warning(f"✅ TensorBoard visualizations saved to: {log_path}")
 
         except Exception as e:
-            # Don't fail the evaluation, just log a warning
-            logger.warning(f"Failed to log to TensorBoard: {e}")
+            # Don't fail the evaluation, just log a warning with full traceback
+            import traceback
+
+            logger.error(
+                f"❌ Failed to log to TensorBoard: {e}\n{traceback.format_exc()}"
+            )
 
     def _log_classification_visualizations(
         self,
-        viz: Any,  # TensorBoardVisualizer
+        writer: Any,  # SummaryWriter
         predictions: torch.Tensor,
         targets: torch.Tensor,
         step: int = 1,
     ) -> None:
-        """Log classification-specific visualizations.
+        """Log classification-specific visualizations using direct SummaryWriter calls.
 
         Args:
-            viz: TensorBoard visualizer instance
+            writer: TensorBoard SummaryWriter instance
             predictions: Model predictions (logits or probabilities)
             targets: Ground truth labels
             step: Global step for logging
@@ -468,50 +518,89 @@ class ArcEvaluator:
         try:
             import numpy as np
 
-            # Convert to numpy
-            targets_np = targets.cpu().numpy()
-            predictions_np = predictions.cpu().numpy()
-
             # Determine if binary or multi-class
-            num_classes = (
-                predictions_np.shape[-1] if len(predictions_np.shape) > 1 else 2
-            )
+            num_classes = predictions.shape[-1] if len(predictions.shape) > 1 else 2
 
-            if num_classes == 2 or len(predictions_np.shape) == 1:
+            # Binary classification: single sigmoid output or 2-class softmax
+            if num_classes <= 2 or len(predictions.shape) == 1:
                 # Binary classification
-                # Get probabilities for positive class
-                if len(predictions_np.shape) > 1:
-                    # If predictions are [N, 2], take second column
-                    y_scores = predictions_np[:, 1]
+                # Get probabilities for positive class (as tensors for add_pr_curve)
+                if len(predictions.shape) > 1 and predictions.shape[-1] == 2:
+                    # If predictions are [N, 2], take second column (softmax output)
+                    y_scores = predictions[:, 1]
+                elif len(predictions.shape) > 1 and predictions.shape[-1] == 1:
+                    # If predictions are [N, 1], squeeze to [N] (sigmoid output)
+                    y_scores = predictions.squeeze(-1)
                 else:
-                    # If predictions are [N], treat as probabilities
-                    y_scores = predictions_np
+                    # If predictions are [N], treat as scores
+                    y_scores = predictions
 
-                # Ensure targets are binary (0/1)
-                y_true = targets_np.flatten()
+                # Ensure targets are binary (0/1) as integer tensor on CPU
+                y_true = targets.flatten().int().cpu()
 
-                # Log PR curve
-                viz.log_pr_curve(y_true, y_scores, tag="evaluation/pr_curve", step=step)
+                # Ensure scores are float tensor on CPU
+                y_scores = y_scores.float().cpu()
 
-                # Log ROC curve
-                viz.log_roc_curve(
-                    y_true, y_scores, tag="evaluation/roc_curve", step=step
+                # Validate scores are in [0, 1] range
+                if y_scores.min() < -0.01 or y_scores.max() > 1.01:
+                    logger.warning(
+                        f"⚠️  Warning: Predictions outside [0, 1] range: "
+                        f"[{y_scores.min():.4f}, {y_scores.max():.4f}]. "
+                        "Expected probabilities. Check model spec outputs."
+                    )
+
+                # Validate we have both classes
+                unique_labels = torch.unique(y_true)
+
+                # Calculate class distribution
+                n_positive = (y_true == 1).sum().item()
+                n_negative = (y_true == 0).sum().item()
+
+                # Log basic statistics
+                logger.info(
+                    f"Evaluation data: {n_positive} positive, "
+                    f"{n_negative} negative samples"
                 )
 
-                # Get predicted classes for confusion matrix
-                y_pred = (y_scores > 0.5).astype(int)
+                if len(unique_labels) >= 2:
+                    # Log PR curve directly - this appears in PR CURVES tab
+                    try:
+                        writer.add_pr_curve(
+                            "evaluation/pr_curve",
+                            labels=y_true,
+                            predictions=y_scores,
+                            global_step=step,
+                            num_thresholds=1000,  # Use 1000 thresholds for smooth curve
+                        )
+                        writer.flush()  # Force write immediately
+                        logger.info("✓ Successfully logged PR curve to TensorBoard")
+                    except Exception as e:
+                        logger.error(f"✗ Failed to log PR curve: {e}")
+                        import traceback
+
+                        logger.error(traceback.format_exc())
+                else:
+                    logger.warning(
+                        "Skipping PR curve: only one class present in targets: "
+                        f"{unique_labels.tolist()}"
+                    )
+
+                # Note: ROC curve not logged (TensorBoard doesn't support it natively)
 
                 # Log confusion matrix
-                viz.log_confusion_matrix(
-                    y_true,
-                    y_pred,
-                    class_names=["Class 0", "Class 1"],
-                    tag="evaluation/confusion_matrix",
-                    step=step,
-                )
+                try:
+                    y_pred = (y_scores > 0.5).int()
+                    self._log_confusion_matrix(
+                        writer, y_true, y_pred, ["Class 0", "Class 1"], step
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to log confusion matrix: {e}")
 
             else:
                 # Multi-class classification
+                predictions_np = predictions.cpu().numpy()
+                targets_np = targets.cpu().numpy()
+
                 # Get predicted classes
                 y_pred = np.argmax(predictions_np, axis=1)
                 y_true = targets_np.flatten().astype(int)
@@ -521,25 +610,149 @@ class ArcEvaluator:
                 class_names = [f"Class {i}" for i in unique_classes]
 
                 # Log confusion matrix
-                viz.log_confusion_matrix(
-                    y_true,
-                    y_pred,
-                    class_names=class_names,
-                    tag="evaluation/confusion_matrix",
-                    step=step,
+                self._log_confusion_matrix(
+                    writer,
+                    torch.from_numpy(y_true),
+                    torch.from_numpy(y_pred),
+                    class_names,
+                    step,
                 )
 
-                # Log per-class performance
-                viz.log_class_performance(
-                    y_true,
-                    y_pred,
-                    class_names=class_names,
-                    tag="evaluation/class_performance",
-                    step=step,
-                )
+                # Log per-class metrics
+                self._log_class_metrics(writer, y_true, y_pred, class_names, step)
 
         except Exception as e:
-            logger.warning(f"Failed to log classification visualizations: {e}")
+            import traceback
+
+            logger.error(
+                f"Failed to log classification visualizations: {e}\n"
+                f"{traceback.format_exc()}"
+            )
+
+    def _log_confusion_matrix(
+        self,
+        writer: Any,
+        y_true: torch.Tensor,
+        y_pred: torch.Tensor,
+        class_names: list[str],
+        step: int,
+    ) -> None:
+        """Compute and log confusion matrix as text."""
+        try:
+            import numpy as np
+
+            # Convert to numpy
+            y_true_np = y_true.cpu().numpy().flatten()
+            y_pred_np = y_pred.cpu().numpy().flatten()
+
+            # Compute confusion matrix
+            classes = np.unique(np.concatenate([y_true_np, y_pred_np]))
+            n_classes = len(classes)
+            cm = np.zeros((n_classes, n_classes), dtype=int)
+
+            for i, true_class in enumerate(classes):
+                for j, pred_class in enumerate(classes):
+                    cm[i, j] = np.sum(
+                        (y_true_np == true_class) & (y_pred_np == pred_class)
+                    )
+
+            # Format as text table
+            text = "Confusion Matrix:\n\n"
+            text += "Predicted →\n"
+            header = " | ".join(f"{name:^10}" for name in class_names[:n_classes])
+            text += f"True ↓ | {header}\n"
+            text += "-" * (12 + 13 * n_classes) + "\n"
+
+            for i, true_name in enumerate(class_names[:n_classes]):
+                row = f"{true_name:^10} | "
+                row += " | ".join(f"{cm[i, j]:^10d}" for j in range(n_classes))
+                text += row + "\n"
+
+            # Log as text
+            writer.add_text("evaluation/confusion_matrix", text, step)
+            logger.debug("Logged confusion matrix")
+
+        except Exception as e:
+            logger.warning(f"Failed to log confusion matrix: {e}")
+
+    def _log_class_metrics(
+        self,
+        writer: Any,
+        y_true: Any,  # np.ndarray
+        y_pred: Any,  # np.ndarray
+        class_names: list[str],
+        step: int,
+    ) -> None:
+        """Compute and log per-class metrics."""
+        try:
+            import numpy as np
+
+            classes = np.unique(np.concatenate([y_true, y_pred]))
+
+            for i, class_id in enumerate(classes):
+                if i < len(class_names):
+                    class_name = class_names[i]
+                else:
+                    class_name = f"Class_{class_id}"
+
+                # Compute metrics
+                tp = np.sum((y_true == class_id) & (y_pred == class_id))
+                fp = np.sum((y_true != class_id) & (y_pred == class_id))
+                fn = np.sum((y_true == class_id) & (y_pred != class_id))
+
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = (
+                    2 * precision * recall / (precision + recall)
+                    if (precision + recall) > 0
+                    else 0.0
+                )
+
+                # Log metrics
+                writer.add_scalar(
+                    f"evaluation/class_{class_name}/precision", precision, step
+                )
+                writer.add_scalar(f"evaluation/class_{class_name}/recall", recall, step)
+                writer.add_scalar(f"evaluation/class_{class_name}/f1_score", f1, step)
+
+            logger.debug("Logged per-class metrics")
+
+        except Exception as e:
+            logger.warning(f"Failed to log class metrics: {e}")
+
+    def _log_regression_visualizations(
+        self,
+        writer: Any,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        step: int,
+    ) -> None:
+        """Log regression-specific visualizations."""
+        try:
+            # Log histograms
+            writer.add_histogram("evaluation/true_values", targets, step)
+            writer.add_histogram("evaluation/predictions", predictions, step)
+
+            # Compute and log residuals
+            residuals = predictions - targets
+            writer.add_histogram("evaluation/residuals", residuals, step)
+
+            # Log summary statistics
+            writer.add_scalar(
+                "evaluation/mean_absolute_error",
+                torch.abs(residuals).mean().item(),
+                step,
+            )
+            writer.add_scalar(
+                "evaluation/mean_squared_error",
+                (residuals**2).mean().item(),
+                step,
+            )
+
+            logger.debug("Logged regression visualizations")
+
+        except Exception as e:
+            logger.warning(f"Failed to log regression visualizations: {e}")
 
     def _save_predictions(
         self,

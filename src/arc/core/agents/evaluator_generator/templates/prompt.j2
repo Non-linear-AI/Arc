@@ -34,6 +34,22 @@ The evaluator will assess models trained with this trainer:
 {{ trainer_spec }}
 ```
 
+## Model Outputs
+{% if model_outputs -%}
+The model has the following outputs:
+{% for output_name in model_outputs -%}
+- **{{ output_name }}**
+{% endfor %}
+
+**IMPORTANT**: If the model has multiple outputs, you should include `output_name` in the evaluator spec to specify which output to use for computing metrics. Common choices:
+- Use `probabilities` or `probs` for probability outputs (for PR curves, metrics, etc.)
+- Use `logits` only if you need raw scores (usually not recommended for evaluation)
+
+If you don't specify `output_name`, the evaluator will auto-detect probability outputs, but it's better to be explicit.
+{% else -%}
+The model has a single output (no need to specify output_name).
+{% endif %}
+
 ## Trainer Analysis
 {% if trainer_profile.model_ref -%}
 - **Model Reference**: {{ trainer_profile.model_ref }}
@@ -89,6 +105,11 @@ Your output must validate against this Arc-Graph evaluator schema:
       "type": "integer",
       "minimum": 1,
       "description": "Optional: specific trainer version to evaluate (default: latest)"
+    },
+    "output_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional: which model output to use for evaluation (default: auto-detect probabilities)"
     }
   }
 }
@@ -148,6 +169,7 @@ name: diabetes_eval
 trainer_ref: diabetes_trainer
 dataset: test_diabetes_data
 target_column: outcome
+output_name: probabilities  # Specify which model output to use (if model has multiple outputs)
 metrics:
   - accuracy
   - precision

@@ -26,6 +26,7 @@ class EvaluatorSpec:
     target_column: str  # Target column name in the dataset
     metrics: list[str] | None = None  # Metric names (infer if None)
     version: int | None = None  # Optional: specific training version (None = latest)
+    output_name: str | None = None  # Which model output to use (None = auto-detect)
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> EvaluatorSpec:
@@ -65,6 +66,9 @@ class EvaluatorSpec:
 
         if self.version is not None:
             data["version"] = self.version
+
+        if self.output_name is not None:
+            data["output_name"] = self.output_name
 
         return yaml.dump(data, default_flow_style=False, sort_keys=False)
 
@@ -120,6 +124,12 @@ def validate_evaluator_dict(data: dict[str, Any]) -> EvaluatorSpec:
         if version is not None and not isinstance(version, int):
             raise EvaluatorValidationError("version must be an integer")
 
+        output_name = data.get("output_name")
+        if output_name is not None and (
+            not isinstance(output_name, str) or not output_name.strip()
+        ):
+            raise EvaluatorValidationError("output_name must be a non-empty string")
+
         return EvaluatorSpec(
             name=name.strip(),
             trainer_ref=trainer_ref.strip(),
@@ -127,6 +137,7 @@ def validate_evaluator_dict(data: dict[str, Any]) -> EvaluatorSpec:
             target_column=target_column.strip(),
             metrics=[m.strip() for m in metrics] if metrics else None,
             version=version,
+            output_name=output_name.strip() if output_name else None,
         )
 
     except EvaluatorValidationError:
@@ -185,6 +196,9 @@ def save_evaluator_to_yaml(spec: EvaluatorSpec, file_path: str | Path) -> None:
 
     if spec.version is not None:
         data["version"] = spec.version
+
+    if spec.output_name is not None:
+        data["output_name"] = spec.output_name
 
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
