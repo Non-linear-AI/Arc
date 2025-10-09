@@ -1154,9 +1154,7 @@ class MLEvaluateTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(
-                    context, trainer_name, trainer_record
-                ),
+                editor_func=self._create_editor(context, trainer_name, trainer_record),
                 ui_interface=self.ui,
                 yaml_type_name="evaluator",
                 yaml_suffix=".arc-evaluator.yaml",

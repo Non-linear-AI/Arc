@@ -901,9 +901,7 @@ async def _ml_evaluate(
             ui.show_system_error(result.message)
 
     except Exception as exc:
-        raise CommandError(
-            f"Unexpected error during evaluation: {exc}"
-        ) from exc
+        raise CommandError(f"Unexpected error during evaluation: {exc}") from exc
 
 
 async def _ml_data_processing(
