@@ -967,6 +967,7 @@ class MLEvaluateTool(BaseTool):
         base_url: str | None,
         model: str | None,
         ui_interface,
+        tensorboard_manager=None,
     ) -> None:
         self.services = services
         self.runtime = runtime
@@ -974,6 +975,7 @@ class MLEvaluateTool(BaseTool):
         self.base_url = base_url
         self.model = model
         self.ui = ui_interface
+        self.tensorboard_manager = tensorboard_manager
 
     def _infer_target_column_from_model(self, model_spec_yaml: str) -> str | None:
         """Infer target column from model spec's loss inputs.
@@ -1364,23 +1366,24 @@ class MLEvaluateTool(BaseTool):
             lines.append("")
             lines.append(f"Predictions saved to table: {output_table}")
 
-            # Show TensorBoard and job status instructions
+            # Handle TensorBoard launch with permission dialog
             if not auto_confirm and self.ui:
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[cyan]📊 View evaluation results:[/cyan]"
-                )
-                self.ui._printer.console.print(
-                    f"  • Status: /ml jobs status {job.job_id}"
-                )
-                self.ui._printer.console.print(
-                    f"  • TensorBoard: tensorboard --logdir {tensorboard_log_dir}"
-                )
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[dim]TensorBoard will show PR curves, ROC curves, "
-                    "confusion matrix, and more![/dim]"
-                )
+                if self.tensorboard_manager:
+                    try:
+                        await self._handle_tensorboard_launch(job.job_id)
+                    except Exception as e:  # noqa: BLE001
+                        # Show error but don't fail the whole evaluation
+                        self.ui._printer.console.print(
+                            f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                        )
+                        self._show_manual_tensorboard_instructions(job.job_id)
+                else:
+                    # No TensorBoard manager available
+                    self.ui._printer.console.print(
+                        "[dim]ℹ️  TensorBoard auto-launch not available "
+                        "(restart arc chat to enable)[/dim]"
+                    )
+                    self._show_manual_tensorboard_instructions(job.job_id)
 
         except Exception as exc:
             from arc.ml.evaluator import EvaluationError
@@ -1490,6 +1493,123 @@ class MLEvaluateTool(BaseTool):
                 return None
 
         return edit
+
+    async def _handle_tensorboard_launch(self, job_id: str):
+        """Handle TensorBoard launch based on user preference.
+
+        Args:
+            job_id: Evaluation job identifier
+        """
+        from arc.core.config import SettingsManager
+        from arc.utils.tensorboard_workflow import prompt_tensorboard_preference
+
+        settings = SettingsManager()
+        mode = settings.get_tensorboard_mode()
+
+        # First time - no preference set, show combined dialog
+        if mode is None:
+            mode, should_launch = await prompt_tensorboard_preference(self.ui)
+            settings.set_tensorboard_mode(mode)
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+            )
+
+            # Launch immediately if user chose to
+            if should_launch:
+                await self._launch_tensorboard(job_id)
+            else:
+                self._show_manual_tensorboard_instructions(job_id)
+
+        # Subsequent times - respect saved preference
+        elif mode == "always":
+            await self._launch_tensorboard(job_id)
+        elif mode == "ask":
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+            )
+            choice = await self.ui._printer.get_choice_async(
+                options=[
+                    ("yes", "Yes, launch now"),
+                    ("always", "Always launch automatically"),
+                    ("no", "No, skip"),
+                ],
+                default="yes",
+            )
+
+            # Handle the choice
+            if choice == "always":
+                # Update preference to always
+                settings.set_tensorboard_mode("always")
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[green]✓ TensorBoard preference updated: always[/green]"
+                )
+                await self._launch_tensorboard(job_id)
+            elif choice == "yes":
+                await self._launch_tensorboard(job_id)
+            else:  # "no"
+                self._show_manual_tensorboard_instructions(job_id)
+        else:  # "never"
+            self._show_manual_tensorboard_instructions(job_id)
+
+    async def _launch_tensorboard(self, job_id: str):
+        """Launch TensorBoard and show info.
+
+        Args:
+            job_id: Evaluation job identifier
+        """
+        from pathlib import Path
+
+        from arc.core.config import SettingsManager
+
+        logdir = Path(f"tensorboard/run_{job_id}")
+
+        try:
+            settings = SettingsManager()
+            port = settings.get_tensorboard_port()
+
+            url, pid = self.tensorboard_manager.launch(job_id, logdir, port)
+
+            self.ui._printer.console.print()
+            self.ui._printer.console.print("[green]🚀 Launching TensorBoard...[/green]")
+            self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
+            self.ui._printer.console.print(f"   • Process ID: {pid}")
+            self.ui._printer.console.print(f"   • Logs: {logdir}")
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                "[dim]TensorBoard shows PR curves, ROC curves, "
+                "confusion matrix, and more![/dim]"
+            )
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
+            )
+        except Exception as e:  # noqa: BLE001
+            self.ui._printer.console.print(
+                f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+            )
+            self._show_manual_tensorboard_instructions(job_id)
+
+    def _show_manual_tensorboard_instructions(self, job_id: str):
+        """Show manual TensorBoard instructions.
+
+        Args:
+            job_id: Evaluation job identifier
+        """
+        logdir = f"tensorboard/run_{job_id}"
+        self.ui._printer.console.print()
+        self.ui._printer.console.print("[cyan]📊 View evaluation results:[/cyan]")
+        self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+        self.ui._printer.console.print(
+            f"  • TensorBoard: tensorboard --logdir {logdir}"
+        )
+        self.ui._printer.console.print()
+        self.ui._printer.console.print(
+            "[dim]TensorBoard will show PR curves, ROC curves, "
+            "confusion matrix, and more![/dim]"
+        )
 
 
 class MLEvaluatorGeneratorTool(BaseTool):

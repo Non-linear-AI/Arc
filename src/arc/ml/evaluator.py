@@ -491,9 +491,7 @@ class ArcEvaluator:
                 y_true = targets_np.flatten()
 
                 # Log PR curve
-                viz.log_pr_curve(
-                    y_true, y_scores, tag="evaluation/pr_curve", step=step
-                )
+                viz.log_pr_curve(y_true, y_scores, tag="evaluation/pr_curve", step=step)
 
                 # Log ROC curve
                 viz.log_roc_curve(

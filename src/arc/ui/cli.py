@@ -929,8 +929,18 @@ async def _ml_evaluate(
         if not api_key:
             raise CommandError("API key required for evaluator generation")
 
+        # Initialize TensorBoard manager for the tool
+        try:
+            from arc.ml import TensorBoardManager
+
+            tensorboard_manager = TensorBoardManager()
+        except Exception:
+            tensorboard_manager = None
+
         # Create the tool with proper dependencies
-        tool = MLEvaluateTool(runtime.services, runtime, api_key, base_url, model, ui)
+        tool = MLEvaluateTool(
+            runtime.services, runtime, api_key, base_url, model, ui, tensorboard_manager
+        )
 
         # Execute the tool: generate spec, register, and run evaluation
         result = await tool.execute(

@@ -15,6 +15,7 @@ from arc.tools import (
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
     FileEditorTool,
+    MLEvaluateTool,
     MLModelTool,
     MLPlanTool,
     MLTrainTool,
@@ -145,6 +146,19 @@ class ArcAgent:
         )
         self.ml_train_tool = (
             MLTrainTool(
+                services,
+                services.ml_runtime,
+                self.api_key,
+                self.base_url,
+                self.current_model_name,
+                self.ui_interface,
+                self.tensorboard_manager,
+            )
+            if services
+            else None
+        )
+        self.ml_evaluate_tool = (
+            MLEvaluateTool(
                 services,
                 services.ml_runtime,
                 self.api_key,
@@ -629,6 +643,20 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML train tool not available. Database services not initialized."
                 )
+            elif tool_call.name == "ml_evaluate":
+                if self.ml_evaluate_tool:
+                    return await self.ml_evaluate_tool.execute(
+                        name=args.get("name"),
+                        context=args.get("context"),
+                        trainer_id=args.get("trainer_id"),
+                        test_table=args.get("test_table"),
+                        target_column=args.get("target_column"),
+                        metrics=args.get("metrics"),
+                        version=args.get("version"),
+                    )
+                return ToolResult.error_result(
+                    "ML evaluate tool not available. Database services not initialized."
+                )
             elif tool_call.name == "data_processor_generator":
                 if self.data_processor_generator_tool:
                     return await self.data_processor_generator_tool.execute(
@@ -711,3 +739,5 @@ class ArcAgent:
             self.ml_model_tool.model = model
         if getattr(self, "ml_train_tool", None):
             self.ml_train_tool.model = model
+        if getattr(self, "ml_evaluate_tool", None):
+            self.ml_evaluate_tool.model = model

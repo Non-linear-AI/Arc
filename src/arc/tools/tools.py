@@ -476,6 +476,72 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
+            name="ml_evaluate",
+            description=(
+                "Generate Arc-Graph evaluator specification and run evaluation on "
+                "test data. This unified tool: 1) Generates evaluator spec via LLM "
+                "based on evaluation goals, 2) Presents interactive confirmation "
+                "workflow, 3) Auto-registers evaluator to database after approval, "
+                "4) Runs evaluation and logs metrics to TensorBoard after user "
+                "confirmation. Supports classification metrics (accuracy, precision, "
+                "recall, F1, confusion matrix, PR curves, ROC curves) and regression "
+                "metrics (MSE, MAE, R², scatter plots)."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Evaluator name for the specification",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Evaluation goals, constraints, and requirements. "
+                            "Specify which metrics to compute and any "
+                            "evaluation-specific notes."
+                        ),
+                    },
+                    "trainer_id": {
+                        "type": "string",
+                        "description": (
+                            "Trainer ID (without version, e.g., 'my_trainer')"
+                        ),
+                    },
+                    "test_table": {
+                        "type": "string",
+                        "description": "Test dataset table name",
+                    },
+                    "target_column": {
+                        "type": "string",
+                        "description": "Target column name for evaluation",
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Optional list of specific metrics to compute "
+                            "(e.g., ['accuracy', 'precision', 'recall', 'f1_score'])"
+                        ),
+                    },
+                    "version": {
+                        "type": "integer",
+                        "description": (
+                            "Optional specific trainer version to evaluate "
+                            "(default: latest version)"
+                        ),
+                    },
+                },
+                "required": [
+                    "name",
+                    "context",
+                    "trainer_id",
+                    "test_table",
+                    "target_column",
+                ],
+            },
+        ),
+        ArcTool(
             name="data_processor_generator",
             description=(
                 "Generate and execute SQL data processing pipelines for WRITE "

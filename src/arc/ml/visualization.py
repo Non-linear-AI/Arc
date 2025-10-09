@@ -6,22 +6,16 @@ This module provides reusable components for visualizing ML metrics including:
 - Distribution visualizations
 
 These components can be used in both training and evaluation runs.
+Uses TensorBoard's native APIs where available to minimize dependencies.
 """
 
 from __future__ import annotations
 
-import io
 import logging
 from typing import TYPE_CHECKING
 
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from PIL import Image
-
-# Use non-interactive backend for server environments
-matplotlib.use("Agg")
 
 if TYPE_CHECKING:
     from torch.utils.tensorboard import SummaryWriter
@@ -59,6 +53,9 @@ class TensorBoardVisualizer:
     ) -> None:
         """Log Precision-Recall curve to TensorBoard.
 
+        Uses TensorBoard's native PR curve functionality which creates
+        an interactive visualization in the PR CURVES tab.
+
         Args:
             y_true: True binary labels (0 or 1)
             y_scores: Predicted probabilities for positive class
@@ -69,37 +66,30 @@ class TensorBoardVisualizer:
             return
 
         try:
-            from sklearn.metrics import precision_recall_curve
+            # Convert to tensors if needed (required for add_pr_curve)
+            if isinstance(y_true, np.ndarray):
+                y_true = torch.from_numpy(y_true).int()
+            if isinstance(y_scores, np.ndarray):
+                y_scores = torch.from_numpy(y_scores).float()
 
-            # Convert to numpy if needed
-            if isinstance(y_true, torch.Tensor):
-                y_true = y_true.cpu().numpy()
-            if isinstance(y_scores, torch.Tensor):
-                y_scores = y_scores.cpu().numpy()
+            # Flatten and ensure correct types
+            y_true = y_true.flatten().int()
+            y_scores = y_scores.flatten().float()
 
-            # Flatten arrays
-            y_true = y_true.flatten()
-            y_scores = y_scores.flatten()
+            # Validate data
+            if len(torch.unique(y_true)) < 2:
+                logger.warning("Cannot compute PR curve: only one class present")
+                return
 
-            # Compute precision-recall curve
-            precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
+            # Use TensorBoard's native PR curve (shows in PR CURVES tab)
+            self.writer.add_pr_curve(
+                tag,
+                labels=y_true,
+                predictions=y_scores,
+                global_step=step,
+                num_thresholds=127,  # TensorBoard default
+            )
 
-            # Create figure
-            fig, ax = plt.subplots(figsize=(8, 6))
-            ax.plot(recall, precision, linewidth=2, label="PR Curve")
-            ax.set_xlabel("Recall", fontsize=12)
-            ax.set_ylabel("Precision", fontsize=12)
-            ax.set_title("Precision-Recall Curve", fontsize=14)
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-            ax.set_xlim([0.0, 1.0])
-            ax.set_ylim([0.0, 1.05])
-
-            # Convert to image and log
-            img = self._fig_to_image(fig)
-            self.writer.add_image(tag, img, step, dataformats="HWC")
-
-            plt.close(fig)
             logger.debug(f"TensorBoard: Logged PR curve '{tag}' at step {step}")
 
         except Exception as e:
@@ -112,20 +102,23 @@ class TensorBoardVisualizer:
         tag: str = "roc_curve",
         step: int = 0,
     ) -> None:
-        """Log ROC (Receiver Operating Characteristic) curve to TensorBoard.
+        """Log ROC AUC score to TensorBoard.
+
+        Computes and logs the ROC AUC as a scalar metric.
+        Note: TensorBoard doesn't have a native ROC curve widget,
+        so we log the AUC value. The PR curve (which is related)
+        is available in the PR CURVES tab.
 
         Args:
             y_true: True binary labels (0 or 1)
             y_scores: Predicted probabilities for positive class
-            tag: Tag name for the curve in TensorBoard
+            tag: Tag name for the metric in TensorBoard
             step: Global step value for logging
         """
         if not self.enabled or self.writer is None:
             return
 
         try:
-            from sklearn.metrics import auc, roc_curve
-
             # Convert to numpy if needed
             if isinstance(y_true, torch.Tensor):
                 y_true = y_true.cpu().numpy()
@@ -136,39 +129,42 @@ class TensorBoardVisualizer:
             y_true = y_true.flatten()
             y_scores = y_scores.flatten()
 
-            # Compute ROC curve
-            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-            roc_auc = auc(fpr, tpr)
+            # Sort by scores ascending for ROC
+            sorted_indices = np.argsort(y_scores)
+            y_true_sorted = y_true[sorted_indices]
 
-            # Create figure
-            fig, ax = plt.subplots(figsize=(8, 6))
-            ax.plot(
-                fpr,
-                tpr,
-                linewidth=2,
-                label=f"ROC Curve (AUC = {roc_auc:.3f})",
+            # Calculate TPR and FPR at each threshold
+            n_pos = np.sum(y_true == 1)
+            n_neg = np.sum(y_true == 0)
+
+            if n_pos == 0 or n_neg == 0:
+                logger.warning("Cannot compute ROC AUC: only one class present")
+                return
+
+            # Compute cumulative TPs and FPs (traversing from low to high scores)
+            tp = np.cumsum(y_true_sorted[::-1])
+            fp = np.cumsum(1 - y_true_sorted[::-1])
+
+            # Compute TPR and FPR
+            tpr = tp / n_pos
+            fpr = fp / n_neg
+
+            # Add starting point (0, 0) and ending point (1, 1)
+            fpr = np.concatenate([[0.0], fpr, [1.0]])
+            tpr = np.concatenate([[0.0], tpr, [1.0]])
+
+            # Compute AUC using trapezoidal rule
+            auc = np.trapz(tpr, fpr)
+
+            # Log AUC as scalar
+            self.writer.add_scalar(f"{tag}/auc", auc, step)
+
+            logger.debug(
+                f"TensorBoard: Logged ROC AUC={auc:.3f} for '{tag}' at step {step}"
             )
-            ax.plot([0, 1], [0, 1], "k--", linewidth=1, label="Random Classifier")
-            ax.set_xlabel("False Positive Rate", fontsize=12)
-            ax.set_ylabel("True Positive Rate", fontsize=12)
-            ax.set_title("ROC Curve", fontsize=14)
-            ax.grid(True, alpha=0.3)
-            ax.legend(loc="lower right")
-            ax.set_xlim([0.0, 1.0])
-            ax.set_ylim([0.0, 1.05])
-
-            # Convert to image and log
-            img = self._fig_to_image(fig)
-            self.writer.add_image(tag, img, step, dataformats="HWC")
-
-            # Also log AUC as scalar
-            self.writer.add_scalar(f"{tag}_auc", roc_auc, step)
-
-            plt.close(fig)
-            logger.debug(f"TensorBoard: Logged ROC curve '{tag}' at step {step}")
 
         except Exception as e:
-            logger.warning(f"Failed to log ROC curve: {e}")
+            logger.warning(f"Failed to log ROC AUC: {e}")
 
     def log_confusion_matrix(
         self,
@@ -179,7 +175,7 @@ class TensorBoardVisualizer:
         step: int = 0,
         normalize: bool = False,
     ) -> None:
-        """Log confusion matrix to TensorBoard.
+        """Log confusion matrix as text to TensorBoard (lightweight version).
 
         Args:
             y_true: True class labels
@@ -193,8 +189,6 @@ class TensorBoardVisualizer:
             return
 
         try:
-            from sklearn.metrics import confusion_matrix
-
             # Convert to numpy if needed
             if isinstance(y_true, torch.Tensor):
                 y_true = y_true.cpu().numpy()
@@ -205,66 +199,38 @@ class TensorBoardVisualizer:
             y_true = y_true.flatten()
             y_pred = y_pred.flatten()
 
-            # Compute confusion matrix
-            cm = confusion_matrix(y_true, y_pred)
+            # Compute confusion matrix manually
+            classes = np.unique(np.concatenate([y_true, y_pred]))
+            n_classes = len(classes)
+            cm = np.zeros((n_classes, n_classes), dtype=int)
+
+            for i, true_class in enumerate(classes):
+                for j, pred_class in enumerate(classes):
+                    cm[i, j] = np.sum((y_true == true_class) & (y_pred == pred_class))
 
             if normalize:
                 cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 
-            # Create figure
-            fig, ax = plt.subplots(figsize=(10, 8))
+            # Format as text table
+            if class_names is None:
+                class_names = [f"Class {i}" for i in classes]
 
-            # Plot confusion matrix
-            im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-            ax.figure.colorbar(im, ax=ax)
+            # Create text representation
+            fmt = ".3f" if normalize else "d"
+            text = "Confusion Matrix:\n\n"
+            text += "Predicted →\n"
+            header = " | ".join(f"{name:^10}" for name in class_names)
+            text += f"True ↓ | {header}\n"
+            text += "-" * (12 + 13 * n_classes) + "\n"
 
-            # Set ticks and labels
-            if class_names:
-                ax.set(
-                    xticks=np.arange(cm.shape[1]),
-                    yticks=np.arange(cm.shape[0]),
-                    xticklabels=class_names,
-                    yticklabels=class_names,
-                    ylabel="True label",
-                    xlabel="Predicted label",
-                )
-            else:
-                ax.set(
-                    ylabel="True label",
-                    xlabel="Predicted label",
-                )
+            for i, true_name in enumerate(class_names):
+                row = f"{true_name:^10} | "
+                row += " | ".join(f"{cm[i, j]:{fmt}^10}" for j in range(n_classes))
+                text += row + "\n"
 
-            # Rotate x labels
-            plt.setp(
-                ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor"
-            )
+            # Log as text
+            self.writer.add_text(tag, text, step)
 
-            # Add text annotations
-            fmt = ".2f" if normalize else "d"
-            thresh = cm.max() / 2.0
-            for i in range(cm.shape[0]):
-                for j in range(cm.shape[1]):
-                    ax.text(
-                        j,
-                        i,
-                        format(cm[i, j], fmt),
-                        ha="center",
-                        va="center",
-                        color="white" if cm[i, j] > thresh else "black",
-                        fontsize=10,
-                    )
-
-            ax.set_title(
-                "Normalized Confusion Matrix" if normalize else "Confusion Matrix",
-                fontsize=14,
-            )
-            fig.tight_layout()
-
-            # Convert to image and log
-            img = self._fig_to_image(fig)
-            self.writer.add_image(tag, img, step, dataformats="HWC")
-
-            plt.close(fig)
             logger.debug(f"TensorBoard: Logged confusion matrix '{tag}' at step {step}")
 
         except Exception as e:
@@ -277,9 +243,9 @@ class TensorBoardVisualizer:
         tag: str = "prediction_distribution",
         step: int = 0,
     ) -> None:
-        """Log distribution of predictions vs ground truth.
+        """Log prediction distribution metrics (lightweight version).
 
-        Useful for regression tasks to visualize prediction quality.
+        Logs histograms and statistics for regression tasks.
 
         Args:
             y_true: True values
@@ -291,48 +257,37 @@ class TensorBoardVisualizer:
             return
 
         try:
-            # Convert to numpy if needed
-            if isinstance(y_true, torch.Tensor):
-                y_true = y_true.cpu().numpy()
-            if isinstance(y_pred, torch.Tensor):
-                y_pred = y_pred.cpu().numpy()
+            # Convert to tensors if needed
+            if isinstance(y_true, np.ndarray):
+                y_true_t = torch.from_numpy(y_true)
+            else:
+                y_true_t = y_true
 
-            # Flatten arrays
-            y_true = y_true.flatten()
-            y_pred = y_pred.flatten()
+            if isinstance(y_pred, np.ndarray):
+                y_pred_t = torch.from_numpy(y_pred)
+            else:
+                y_pred_t = y_pred
 
-            # Create figure with subplots
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+            # Log histograms
+            self.writer.add_histogram(f"{tag}/true_values", y_true_t, step)
+            self.writer.add_histogram(f"{tag}/predictions", y_pred_t, step)
 
-            # Scatter plot: predicted vs actual
-            ax1.scatter(y_true, y_pred, alpha=0.5, s=20)
-            ax1.plot(
-                [y_true.min(), y_true.max()],
-                [y_true.min(), y_true.max()],
-                "r--",
-                lw=2,
+            # Compute and log residuals
+            residuals = y_pred_t - y_true_t
+            self.writer.add_histogram(f"{tag}/residuals", residuals, step)
+
+            # Log summary statistics
+            self.writer.add_scalar(
+                f"{tag}/mean_absolute_error",
+                torch.abs(residuals).mean().item(),
+                step,
             )
-            ax1.set_xlabel("True Values", fontsize=12)
-            ax1.set_ylabel("Predicted Values", fontsize=12)
-            ax1.set_title("Predictions vs Actual", fontsize=14)
-            ax1.grid(True, alpha=0.3)
+            self.writer.add_scalar(
+                f"{tag}/mean_squared_error",
+                (residuals**2).mean().item(),
+                step,
+            )
 
-            # Residual plot
-            residuals = y_pred - y_true
-            ax2.scatter(y_pred, residuals, alpha=0.5, s=20)
-            ax2.axhline(y=0, color="r", linestyle="--", lw=2)
-            ax2.set_xlabel("Predicted Values", fontsize=12)
-            ax2.set_ylabel("Residuals", fontsize=12)
-            ax2.set_title("Residual Plot", fontsize=14)
-            ax2.grid(True, alpha=0.3)
-
-            fig.tight_layout()
-
-            # Convert to image and log
-            img = self._fig_to_image(fig)
-            self.writer.add_image(tag, img, step, dataformats="HWC")
-
-            plt.close(fig)
             logger.debug(
                 f"TensorBoard: Logged prediction distribution '{tag}' at step {step}"
             )
@@ -376,7 +331,9 @@ class TensorBoardVisualizer:
         tag: str = "class_performance",
         step: int = 0,
     ) -> None:
-        """Log per-class performance metrics (precision, recall, f1).
+        """Log per-class performance metrics (lightweight version).
+
+        Computes precision, recall, and F1 manually and logs as scalars.
 
         Args:
             y_true: True class labels
@@ -389,8 +346,6 @@ class TensorBoardVisualizer:
             return
 
         try:
-            from sklearn.metrics import classification_report
-
             # Convert to numpy if needed
             if isinstance(y_true, torch.Tensor):
                 y_true = y_true.cpu().numpy()
@@ -401,47 +356,38 @@ class TensorBoardVisualizer:
             y_true = y_true.flatten()
             y_pred = y_pred.flatten()
 
-            # Get classification report
-            report = classification_report(
-                y_true,
-                y_pred,
-                target_names=class_names,
-                output_dict=True,
-                zero_division=0,
-            )
+            # Get unique classes
+            classes = np.unique(np.concatenate([y_true, y_pred]))
 
-            # Create bar chart for per-class metrics
-            classes = class_names or [f"Class {i}" for i in sorted(set(y_true))]
+            if class_names is None:
+                class_names = [f"Class_{i}" for i in classes]
 
-            metrics_to_plot = ["precision", "recall", "f1-score"]
-            x = np.arange(len(classes))
-            width = 0.25
+            # Compute per-class metrics manually
+            for i, class_id in enumerate(classes):
+                if i < len(class_names):
+                    class_name = class_names[i]
+                else:
+                    class_name = f"Class_{class_id}"
 
-            fig, ax = plt.subplots(figsize=(12, 6))
+                # True positives, false positives, false negatives
+                tp = np.sum((y_true == class_id) & (y_pred == class_id))
+                fp = np.sum((y_true != class_id) & (y_pred == class_id))
+                fn = np.sum((y_true == class_id) & (y_pred != class_id))
 
-            for idx, metric in enumerate(metrics_to_plot):
-                values = [
-                    report.get(cls, {}).get(metric, 0)
-                    for cls in class_names or classes
-                ]
-                ax.bar(x + idx * width, values, width, label=metric.capitalize())
+                # Compute metrics
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = (
+                    2 * precision * recall / (precision + recall)
+                    if (precision + recall) > 0
+                    else 0.0
+                )
 
-            ax.set_xlabel("Class", fontsize=12)
-            ax.set_ylabel("Score", fontsize=12)
-            ax.set_title("Per-Class Performance Metrics", fontsize=14)
-            ax.set_xticks(x + width)
-            ax.set_xticklabels(classes, rotation=45, ha="right")
-            ax.legend()
-            ax.grid(True, alpha=0.3, axis="y")
-            ax.set_ylim([0, 1.05])
+                # Log metrics for this class
+                self.writer.add_scalar(f"{tag}/{class_name}/precision", precision, step)
+                self.writer.add_scalar(f"{tag}/{class_name}/recall", recall, step)
+                self.writer.add_scalar(f"{tag}/{class_name}/f1_score", f1, step)
 
-            fig.tight_layout()
-
-            # Convert to image and log
-            img = self._fig_to_image(fig)
-            self.writer.add_image(tag, img, step, dataformats="HWC")
-
-            plt.close(fig)
             logger.debug(
                 f"TensorBoard: Logged class performance '{tag}' at step {step}"
             )
@@ -456,31 +402,6 @@ class TensorBoardVisualizer:
                 self.writer.close()
             except Exception as e:
                 logger.warning(f"Error closing TensorBoard writer: {e}")
-
-    def _fig_to_image(self, fig) -> np.ndarray:
-        """Convert matplotlib figure to numpy array (RGB image).
-
-        Args:
-            fig: Matplotlib figure
-
-        Returns:
-            Numpy array of shape (H, W, 3) with RGB values
-        """
-        # Save figure to buffer
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
-        buf.seek(0)
-
-        # Convert to PIL image and then numpy array
-        img = Image.open(buf)
-        img_array = np.array(img)
-
-        # Ensure RGB format (drop alpha channel if present)
-        if img_array.shape[2] == 4:
-            img_array = img_array[:, :, :3]
-
-        buf.close()
-        return img_array
 
     def __enter__(self):
         """Context manager entry."""
