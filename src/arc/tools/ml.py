@@ -1325,6 +1325,16 @@ class MLEvaluateTool(BaseTool):
         if self.ui:
             self.ui.show_info(f"🔍 Running evaluation with '{name}'...")
 
+        # Create job record for this evaluation
+        from arc.jobs.models import Job, JobType
+
+        job = Job.create(
+            job_type=JobType.EVALUATE_MODEL,
+            model_id=None,  # Not using legacy model_id
+            message=f"Evaluating {evaluator_record.id} on {data_table}",
+        )
+        self.services.jobs.create_job(job)
+
         # Create evaluation run record
         from arc.database.models.evaluation import EvaluationStatus
         from arc.database.services import EvaluationTrackingService
@@ -1337,9 +1347,13 @@ class MLEvaluateTool(BaseTool):
                 trainer_id=trainer_record.id,
                 dataset=str(data_table),
                 target_column=str(target_column),
+                job_id=job.job_id,
             )
 
-            # Update status to running
+            # Update job and run status to running
+            job.start(f"Running evaluation: {evaluator_record.id}")
+            self.services.jobs.update_job(job)
+
             tracking_service.update_run_status(
                 eval_run.run_id,
                 EvaluationStatus.RUNNING,
@@ -1380,9 +1394,17 @@ class MLEvaluateTool(BaseTool):
                 timestamp_field="completed_at",
             )
 
+            # Update job status
+            metrics_summary = ", ".join(
+                f"{k}={v:.4f}" for k, v in list(metrics_dict.items())[:3]
+            )
+            job.complete(f"Evaluation completed: {metrics_summary}")
+            self.services.jobs.update_job(job)
+
             # Display metrics
             lines.append("")
             lines.append("✓ Evaluation completed successfully.")
+            lines.append(f"  Job ID: {job.job_id}")
             lines.append(f"  Run ID: {eval_run.run_id}")
             lines.append("")
             lines.append("Metrics:")
@@ -1406,6 +1428,13 @@ class MLEvaluateTool(BaseTool):
                 )
             except Exception:  # noqa: S110
                 pass  # Ignore tracking errors
+
+            # Update job with error
+            try:
+                job.fail(f"Evaluation failed: {str(exc)[:200]}")
+                self.services.jobs.update_job(job)
+            except Exception:  # noqa: S110
+                pass  # Ignore job update errors
 
             if isinstance(exc, EvaluationError):
                 return ToolResult.error_result(

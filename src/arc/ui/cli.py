@@ -693,6 +693,53 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                         )
                         rows.append([f"  {metric_label}", metric_value])
 
+        # If this is an evaluation job, show evaluation results and metrics
+        if job_type == "evaluate_model":
+            from arc.database.services import EvaluationTrackingService
+
+            eval_tracking = EvaluationTrackingService(
+                runtime.services.trainers.db_manager
+            )
+
+            # Find evaluation run by job_id
+            eval_runs = eval_tracking.list_runs(limit=100)
+            eval_run = next((r for r in eval_runs if r.job_id == job_id), None)
+
+            if eval_run:
+                rows.append(["", ""])  # Separator
+                rows.append(["Evaluation Run ID", eval_run.run_id])
+                if eval_run.evaluator_id:
+                    rows.append(["Evaluator", eval_run.evaluator_id])
+                if eval_run.trainer_id:
+                    rows.append(["Trainer", eval_run.trainer_id])
+                if eval_run.dataset:
+                    rows.append(["Dataset", eval_run.dataset])
+                if eval_run.target_column:
+                    rows.append(["Target Column", eval_run.target_column])
+                if eval_run.prediction_table:
+                    rows.append(["Predictions Table", eval_run.prediction_table])
+
+                # Show evaluation metrics
+                if eval_run.metrics_result:
+                    import json
+
+                    try:
+                        metrics = json.loads(eval_run.metrics_result)
+                        rows.append(["", ""])  # Separator
+                        rows.append(["Evaluation Metrics", ""])
+                        for metric_name, metric_value in metrics.items():
+                            if isinstance(metric_value, (int, float)):
+                                rows.append([f"  {metric_name}", f"{metric_value:.6f}"])
+                            else:
+                                rows.append([f"  {metric_name}", str(metric_value)])
+                    except Exception:  # noqa: S110
+                        rows.append(["Metrics", eval_run.metrics_result])
+
+                # Show error if failed
+                if eval_run.error_message:
+                    rows.append(["", ""])  # Separator
+                    rows.append(["Error", eval_run.error_message])
+
         ui.show_key_values("Job Status", rows)
     else:
         raise CommandError(f"Unknown jobs subcommand: {sub}")
