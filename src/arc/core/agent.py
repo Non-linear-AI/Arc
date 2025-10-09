@@ -15,10 +15,9 @@ from arc.tools import (
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
     FileEditorTool,
+    MLEvaluateTool,
     MLModelTool,
     MLPlanTool,
-    MLPredictorGeneratorTool,
-    MLPredictTool,
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
@@ -122,7 +121,6 @@ class ArcAgent:
             self.tensorboard_manager = None
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
-        self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
         self.ml_plan_tool = (
             MLPlanTool(
                 services,
@@ -159,13 +157,15 @@ class ArcAgent:
             if services
             else None
         )
-        self.ml_predictor_generator_tool = (
-            MLPredictorGeneratorTool(
+        self.ml_evaluate_tool = (
+            MLEvaluateTool(
                 services,
+                services.ml_runtime,
                 self.api_key,
                 self.base_url,
                 self.current_model_name,
                 self.ui_interface,
+                self.tensorboard_manager,
             )
             if services
             else None
@@ -585,19 +585,6 @@ class ArcAgent:
                         "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
-            elif tool_call.name == "ml_predict":
-                if self.ml_predict_tool:
-                    return await self.ml_predict_tool.execute(
-                        model_name=args.get("model_name"),
-                        table_name=args.get("table_name"),
-                        output_table=args.get("output_table"),
-                        batch_size=args.get("batch_size"),
-                        limit=args.get("limit"),
-                        device=args.get("device"),
-                    )
-                return ToolResult.error_result(
-                    "ML predict tool not available. Database services not initialized."
-                )
             elif tool_call.name == "ml_plan":
                 if self.ml_plan_tool:
                     # Prepare conversation history for the planner
@@ -656,17 +643,19 @@ class ArcAgent:
                 return ToolResult.error_result(
                     "ML train tool not available. Database services not initialized."
                 )
-            elif tool_call.name == "ml_predictor_generator":
-                if self.ml_predictor_generator_tool:
-                    return await self.ml_predictor_generator_tool.execute(
+            elif tool_call.name == "ml_evaluate":
+                if self.ml_evaluate_tool:
+                    return await self.ml_evaluate_tool.execute(
+                        name=args.get("name"),
                         context=args.get("context"),
-                        model_spec_path=args.get("model_spec_path"),
-                        trainer_spec_path=args.get("trainer_spec_path"),
-                        output_path=args.get("output_path"),
+                        trainer_id=args.get("trainer_id"),
+                        test_table=args.get("test_table"),
+                        target_column=args.get("target_column"),
+                        metrics=args.get("metrics"),
+                        version=args.get("version"),
                     )
                 return ToolResult.error_result(
-                    "ML predictor generator tool not available. "
-                    "Database services not initialized."
+                    "ML evaluate tool not available. Database services not initialized."
                 )
             elif tool_call.name == "data_processor_generator":
                 if self.data_processor_generator_tool:
@@ -748,5 +737,17 @@ class ArcAgent:
             self.ml_plan_tool.model = model
         if getattr(self, "ml_model_tool", None):
             self.ml_model_tool.model = model
-        if getattr(self, "ml_predictor_generator_tool", None):
-            self.ml_predictor_generator_tool.model = model
+        if getattr(self, "ml_train_tool", None):
+            self.ml_train_tool.model = model
+        if getattr(self, "ml_evaluate_tool", None):
+            self.ml_evaluate_tool.model = model
+
+    def cleanup(self) -> None:
+        """Clean up resources including TensorBoard processes."""
+        if self.tensorboard_manager:
+            try:
+                count = self.tensorboard_manager.stop_all()
+                if count > 0:
+                    print(f"Stopped {count} TensorBoard process(es)")
+            except Exception as e:
+                print(f"Warning: Failed to stop TensorBoard processes: {e}")

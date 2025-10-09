@@ -860,18 +860,20 @@ class TrainingService:
             trainer: Trainer instance
             result: Training result
         """
-        # Determine version (increment from existing)
-        model_key = config.model_id
+        # Use trainer_id as artifact key (not model_id)
+        # This ensures each trainer has isolated artifacts
+        artifact_key = config.trainer_id
 
         try:
-            latest_version = self.artifact_manager.get_latest_version(model_key)
+            latest_version = self.artifact_manager.get_latest_version(artifact_key)
             version = latest_version + 1
         except FileNotFoundError:
             version = 1
 
         # Create artifact metadata
+        # Use trainer_id as model_id for artifact path isolation
         artifact = create_artifact_from_training(
-            model_id=model_key,
+            model_id=artifact_key,  # Use trainer_id for path
             model_name=config.model_name,
             version=version,
             training_config=config.trainer_spec or {},

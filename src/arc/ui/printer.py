@@ -45,7 +45,7 @@ class ArcCompleter(Completer):
             "/ml revise-plan",
             "/ml model",
             "/ml generate-trainer",
-            "/ml generate-predictor",
+            "/ml evaluate",
             "/ml train",
             "/ml predict",
             "/ml jobs",
@@ -78,12 +78,11 @@ class ArcCompleter(Completer):
                 ("--context", "Training context and requirements (required)"),
                 ("--model", "Registered model name (required)"),
             ],
-            "generate-predictor": [
-                ("--model-spec", "Path to model specification file (required)"),
-                ("--context", "Prediction requirements and use case (required)"),
-                ("--trainer-spec", "Path to trainer specification file (optional)"),
-                ("--output", "Output file path (optional)"),
-                ("--model", "AI model to use (optional)"),
+            "evaluate": [
+                ("--name", "Evaluator name (required)"),
+                ("--context", "Evaluation goals and context (required)"),
+                ("--trainer-id", "Trainer ID to evaluate (required)"),
+                ("--data-table", "Test dataset table name (required)"),
             ],
             "create-trainer": [
                 ("--name", "Trainer name (required)"),
@@ -185,7 +184,7 @@ class ArcCompleter(Completer):
                 ml_subcommands = [
                     ("model", "Generate ML model specification"),
                     ("generate-trainer", "Generate training configuration"),
-                    ("generate-predictor", "Generate prediction service"),
+                    ("evaluate", "Generate evaluator and run evaluation"),
                     ("train", "Start training job"),
                     ("predict", "Run prediction"),
                     ("jobs", "Manage ML jobs"),

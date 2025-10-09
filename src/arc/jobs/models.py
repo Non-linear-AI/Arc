@@ -21,6 +21,7 @@ class JobType(Enum):
     """Types of jobs that can be executed."""
 
     TRAIN_MODEL = "train_model"
+    EVALUATE_MODEL = "evaluate_model"
     PREDICT_MODEL = "predict_model"
     CREATE_MODEL = "create_model"
     VALIDATE_SCHEMA = "validate_schema"

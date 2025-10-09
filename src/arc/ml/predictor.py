@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from arc.database.services.ml_data_service import MLDataService
-from arc.graph import ModelSpec, PredictorSpec
+from arc.graph import ModelSpec
 from arc.ml.artifacts import ModelArtifact, ModelArtifactManager
 from arc.ml.builder import ModelBuilder
 
@@ -27,7 +27,7 @@ class ArcPredictor:
     """Handles model inference for Arc-Graph models.
 
     Supports both single predictions and batch predictions from database tables.
-    Uses the predictor specification to determine which outputs to return.
+    Returns all outputs defined in the model specification.
     """
 
     def __init__(
@@ -35,7 +35,6 @@ class ArcPredictor:
         model: nn.Module,
         model_spec: ModelSpec,
         artifact: ModelArtifact,
-        predictor_spec: PredictorSpec | None = None,
         device: str | torch.device = "cpu",
     ):
         """Initialize predictor.
@@ -44,70 +43,49 @@ class ArcPredictor:
             model: Trained PyTorch model
             model_spec: Model specification
             artifact: Model artifact metadata
-            predictor_spec: Optional predictor specification for output mapping
             device: Device for inference
         """
         self.model = model
         self.model_spec = model_spec
         self.artifact = artifact
-        self.predictor_spec = predictor_spec
         self.device = torch.device(device)
 
         # Move model to device and set to evaluation mode
         self.model.to(self.device)
         self.model.eval()
 
-        # Determine which outputs to return
+        # Determine which outputs to return from model spec
         self.output_keys = self._get_output_keys()
 
         logger.info(f"ArcPredictor initialized for model {artifact.model_id}")
         logger.info(f"Will return outputs: {self.output_keys}")
 
     def _get_output_keys(self) -> list[str]:
-        """Determine which outputs to return based on predictor and model spec."""
-        # If predictor spec is provided and has outputs, use those
-        if self.predictor_spec and self.predictor_spec.outputs:
-            return list(self.predictor_spec.outputs.keys())
-
-        # Fallback to all model outputs from ModelSpec
+        """Determine which outputs to return from model spec."""
+        # Use all model outputs from ModelSpec
         if self.model_spec.outputs:
             return list(self.model_spec.outputs.keys())
 
-        # Final fallback: assume single output named 'output'
+        # Fallback: assume single output named 'output'
         return ["output"]
 
     def _extract_outputs(
         self, model_output: dict[str, torch.Tensor] | torch.Tensor
     ) -> dict[str, torch.Tensor]:
-        """Extract and map outputs according to predictor specification."""
+        """Extract outputs from model."""
         if isinstance(model_output, dict):
             # Handle dictionary output from model
             extracted = {}
 
-            for pred_output_name in self.output_keys:
-                # Determine which model output to use for this predictor output
-                if self.predictor_spec and self.predictor_spec.outputs:
-                    # Use explicit mapping from predictor spec
-                    model_output_name = self.predictor_spec.outputs.get(
-                        pred_output_name
-                    )
-                    if model_output_name is None:
-                        raise PredictionError(
-                            f"Predictor output '{pred_output_name}' not found in "
-                            f"predictor spec mapping"
-                        )
-                else:
-                    # Direct mapping: predictor output name = model output name
-                    model_output_name = pred_output_name
-
-                if model_output_name not in model_output:
+            for output_name in self.output_keys:
+                if output_name not in model_output:
                     available = list(model_output.keys())
                     raise PredictionError(
-                        f"Model output '{model_output_name}' not found in model "
+                        f"Model output '{output_name}' not found in model "
                         f"outputs. Available: {available}"
                     )
 
-                extracted[pred_output_name] = model_output[model_output_name]
+                extracted[output_name] = model_output[output_name]
 
             return extracted
         else:
@@ -116,7 +94,7 @@ class ArcPredictor:
                 return {self.output_keys[0]: model_output}
             else:
                 raise PredictionError(
-                    f"Model returns single tensor but predictor expects "
+                    f"Model returns single tensor but expects "
                     f"multiple outputs: {self.output_keys}"
                 )
 
@@ -558,7 +536,6 @@ class ArcPredictor:
                 model=model,
                 model_spec=model_spec,
                 artifact=artifact,
-                predictor_spec=None,
                 device=device,
             )
 
@@ -614,7 +591,6 @@ class ArcPredictor:
                 model=model,
                 model_spec=model_spec,
                 artifact=artifact,
-                predictor_spec=None,
                 device=device,
             )
 
@@ -623,106 +599,3 @@ class ArcPredictor:
             raise PredictionError(
                 f"Failed to load predictor from checkpoint: {e}"
             ) from e
-
-    @classmethod
-    def load_with_predictor_spec(
-        cls,
-        artifact_manager: ModelArtifactManager,
-        predictor_spec: PredictorSpec,
-        device: str | torch.device = "cpu",
-    ) -> ArcPredictor:
-        """Load predictor using a predictor specification.
-
-        Args:
-            artifact_manager: Manager for loading artifacts
-            predictor_spec: Predictor specification with model_id and output mapping
-            device: Device for inference
-
-        Returns:
-            Loaded predictor with custom output mapping
-
-        Raises:
-            PredictionError: If loading fails
-        """
-        try:
-            logger.info(f"Loading predictor with spec: {predictor_spec.name}")
-
-            # Load model using the model_id from predictor spec
-            state_dict, artifact = artifact_manager.load_model_state_dict(
-                model_id=predictor_spec.model_id,
-                version=predictor_spec.model_version,
-                device=device,
-            )
-
-            # Reconstruct ModelSpec from metadata
-            if not artifact.model_spec:
-                raise PredictionError(
-                    f"No model specification found in artifact for model "
-                    f"{predictor_spec.model_id}"
-                )
-
-            # Convert old model_spec format to new ModelSpec if needed
-            if "model" in artifact.model_spec:
-                model_dict = artifact.model_spec["model"]
-            else:
-                model_dict = artifact.model_spec
-
-            from arc.graph.model import (
-                GraphNode,
-                ModelInput,
-                ModelSpec,
-                validate_model_dict,
-            )
-
-            # Validate the model structure
-            validate_model_dict(model_dict)
-
-            # Create ModelSpec from dict (similar to ModelSpec.from_yaml)
-            # Parse inputs
-            inputs = {}
-            for input_name, input_spec in model_dict["inputs"].items():
-                inputs[input_name] = ModelInput(
-                    dtype=input_spec["dtype"],
-                    shape=input_spec["shape"],
-                    columns=input_spec.get("columns"),
-                )
-
-            # Parse graph nodes
-            graph = []
-            for node_data in model_dict["graph"]:
-                graph.append(
-                    GraphNode(
-                        name=node_data["name"],
-                        type=node_data["type"],
-                        params=node_data.get("params", {}),
-                        inputs=node_data.get("inputs", {}),
-                    )
-                )
-
-            # Parse outputs
-            outputs = model_dict["outputs"]
-
-            model_spec = ModelSpec(
-                inputs=inputs,
-                graph=graph,
-                outputs=outputs,
-            )
-
-            # Build model from ModelSpec
-            builder = ModelBuilder()
-            model = builder.build_model(model_spec)
-
-            # Load trained weights
-            model.load_state_dict(state_dict)
-
-            return cls(
-                model=model,
-                model_spec=model_spec,
-                artifact=artifact,
-                predictor_spec=predictor_spec,
-                device=device,
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to load predictor with spec: {e}")
-            raise PredictionError(f"Failed to load predictor with spec: {e}") from e

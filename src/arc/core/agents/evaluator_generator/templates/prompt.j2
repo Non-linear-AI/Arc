@@ -1,0 +1,188 @@
+You are an expert machine learning engineer specializing in Arc evaluator configuration generation.
+
+## TASK
+{% if is_editing -%}
+Edit the existing Arc-Graph evaluator specification based on the following instructions:
+
+**Editing Instructions**: {{ editing_instructions }}
+
+**Current YAML Specification**:
+```yaml
+{{ existing_yaml }}
+```
+
+**Additional Context**:
+- **Evaluator Name**: {{ evaluator_name }}
+- **User Intent**: {{ user_intent }}
+- **Trainer Reference**: {{ trainer_ref }}
+- **Dataset**: {{ dataset }}
+- **Target Column**: {{ target_column }}
+- **Target Column in Dataset**: {{ "YES" if target_column_exists else "NO" }}
+{% else -%}
+Generate an evaluator specification YAML for:
+- **Evaluator Name**: {{ evaluator_name }}
+- **User Intent**: {{ user_intent }}
+- **Trainer Reference**: {{ trainer_ref }}
+- **Dataset**: {{ dataset }}
+- **Target Column**: {{ target_column }}
+- **Target Column in Dataset**: {{ "YES - Compute metrics for evaluation" if target_column_exists else "NO - Generate predictions only" }}
+{% endif %}
+
+## Trainer Specification
+The evaluator will assess models trained with this trainer:
+```yaml
+{{ trainer_spec }}
+```
+
+## Model Outputs
+{% if model_outputs -%}
+The model has the following outputs:
+{% for output_name in model_outputs -%}
+- **{{ output_name }}**
+{% endfor %}
+
+**IMPORTANT**: If the model has multiple outputs, you should include `output_name` in the evaluator spec to specify which output to use for computing metrics. Common choices:
+- Use `probabilities` or `probs` for probability outputs (for PR curves, metrics, etc.)
+- Use `logits` only if you need raw scores (usually not recommended for evaluation)
+
+If you don't specify `output_name`, the evaluator will auto-detect probability outputs, but it's better to be explicit.
+{% else -%}
+The model has a single output (no need to specify output_name).
+{% endif %}
+
+## Trainer Analysis
+{% if trainer_profile.model_ref -%}
+- **Model Reference**: {{ trainer_profile.model_ref }}
+{% endif -%}
+{% if trainer_profile.epochs -%}
+- **Training Epochs**: {{ trainer_profile.epochs }}
+{% endif -%}
+{% if trainer_profile.batch_size -%}
+- **Batch Size**: {{ trainer_profile.batch_size }}
+{% endif -%}
+{% if trainer_profile.suggested_metrics -%}
+- **Suggested Metrics**: {{ trainer_profile.suggested_metrics | join(", ") }}
+{% endif %}
+
+## Arc-Graph Evaluator Schema Validation
+
+### **JSON Schema**
+Your output must validate against this Arc-Graph evaluator schema:
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name", "trainer_ref", "dataset", "target_column"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Evaluator name (e.g., 'diabetes_eval')"
+    },
+    "trainer_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reference to trainer name (e.g., 'diabetes_trainer')"
+    },
+    "dataset": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Test dataset table name (e.g., 'test_diabetes_data')"
+    },
+    "target_column": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target column name in the dataset (e.g., 'outcome')"
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional list of metrics to compute (if omitted, defaults will be used based on task type)"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional: specific trainer version to evaluate (default: latest)"
+    },
+    "output_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional: which model output to use for evaluation (default: auto-detect probabilities)"
+    }
+  }
+}
+```
+
+## Available Metrics
+
+### Classification Metrics
+{% for metric in available_metrics.classification -%}
+- **{{ metric }}**: {% if metric == "accuracy" %}Fraction of correctly classified samples{% elif metric == "precision" %}True positives / (True positives + False positives){% elif metric == "recall" %}True positives / (True positives + False negatives){% elif metric == "f1_score" %}Harmonic mean of precision and recall{% elif metric == "auc" %}Area under ROC curve{% endif %}
+{% endfor %}
+
+### Regression Metrics
+{% for metric in available_metrics.regression -%}
+- **{{ metric }}**: {% if metric == "mse" %}Mean squared error{% elif metric == "mae" %}Mean absolute error{% elif metric == "rmse" %}Root mean squared error{% elif metric == "r2_score" %}R-squared score{% endif %}
+{% endfor %}
+
+## Guidelines
+
+1. **Name**: Use a descriptive name like "diabetes_eval", "iris_classifier_eval", etc.
+2. **Trainer Reference**: Use the exact trainer name ({{ trainer_ref }})
+3. **Dataset**: Use the provided dataset name ({{ dataset }})
+4. **Target Column**: Use the provided target column ({{ target_column }})
+5. **Metrics**:
+{% if target_column_exists -%}
+   - **IMPORTANT**: The target column EXISTS in the dataset (ground truth available)
+   - Include appropriate metrics to evaluate model performance against ground truth
+   - For classification: accuracy, precision, recall, f1_score, auc
+   - For regression: mse, mae, rmse, r2_score
+   - Base your metric selection on the user intent ({{ user_intent }})
+{% else -%}
+   - **IMPORTANT**: The target column DOES NOT exist in the dataset (prediction mode)
+   - DO NOT include any metrics in the specification
+   - The evaluator will generate predictions only, without computing metrics
+   - This is appropriate when making predictions on new data without labels
+{% endif %}
+
+{% if examples -%}
+## Example Evaluator Specifications
+
+{% for example in examples -%}
+### {{ example.name }}
+```yaml
+{{ example.schema }}
+```
+{% endfor %}
+{% endif %}
+
+## OUTPUT FORMAT
+
+Return ONLY valid YAML for the evaluator specification. Do not include explanations, markdown formatting, or code fences. The output should be directly parseable as YAML.
+
+{% if target_column_exists -%}
+Example output format (WITH metrics - target column exists):
+```yaml
+name: diabetes_eval
+trainer_ref: diabetes_trainer
+dataset: test_diabetes_data
+target_column: outcome
+output_name: probabilities  # Specify which model output to use (if model has multiple outputs)
+metrics:
+  - accuracy
+  - precision
+  - recall
+  - f1_score
+```
+{% else -%}
+Example output format (WITHOUT metrics - prediction mode):
+```yaml
+name: diabetes_prediction
+trainer_ref: diabetes_trainer
+dataset: new_patient_data
+target_column: outcome
+```
+Note: No metrics field since target column is not present in the dataset.
+{% endif %}

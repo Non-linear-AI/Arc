@@ -12,7 +12,6 @@ import click
 from dotenv import load_dotenv
 
 from arc.core import ArcAgent, SettingsManager
-from arc.core.agents.predictor_generator import PredictorGeneratorAgent
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
 from arc.graph.features.data_source import DataSourceSpec
@@ -225,7 +224,7 @@ async def handle_ml_command(
     if len(tokens) < 2:
         ui.show_system_error(
             "Usage: /ml <plan|revise-plan|train|predict|jobs|"
-            "model|generate-trainer|generate-predictor|data-processing> ..."
+            "model|generate-trainer|evaluate|data-processing> ..."
         )
         return
 
@@ -249,8 +248,8 @@ async def handle_ml_command(
             await _ml_model(args, ui, runtime, agent)
         elif subcommand == "generate-trainer":
             await _ml_generate_trainer(args, ui, runtime)
-        elif subcommand == "generate-predictor":
-            await _ml_generate_predictor(args, ui, runtime)
+        elif subcommand == "evaluate":
+            await _ml_evaluate(args, ui, runtime)
         elif subcommand == "data-processing":
             await _ml_data_processing(args, ui, runtime)
         else:
@@ -510,6 +509,7 @@ async def _ml_train(
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
+    tensorboard_manager = None
     try:
         # Use the MLTrainTool which includes confirmation workflow
         from arc.tools.ml import MLTrainTool
@@ -552,6 +552,10 @@ async def _ml_train(
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during training: {exc}") from exc
+    finally:
+        # Clean up TensorBoard resources if not managed by agent
+        # Note: TensorBoard processes are kept running for user access
+        pass
 
 
 def _ml_predict(
@@ -693,6 +697,53 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                             f"(epoch {metric.epoch}, step {metric.step})"
                         )
                         rows.append([f"  {metric_label}", metric_value])
+
+        # If this is an evaluation job, show evaluation results and metrics
+        if job_type == "evaluate_model":
+            from arc.database.services import EvaluationTrackingService
+
+            eval_tracking = EvaluationTrackingService(
+                runtime.services.trainers.db_manager
+            )
+
+            # Find evaluation run by job_id
+            eval_runs = eval_tracking.list_runs(limit=100)
+            eval_run = next((r for r in eval_runs if r.job_id == job_id), None)
+
+            if eval_run:
+                rows.append(["", ""])  # Separator
+                rows.append(["Evaluation Run ID", eval_run.run_id])
+                if eval_run.evaluator_id:
+                    rows.append(["Evaluator", eval_run.evaluator_id])
+                if eval_run.trainer_id:
+                    rows.append(["Trainer", eval_run.trainer_id])
+                if eval_run.dataset:
+                    rows.append(["Dataset", eval_run.dataset])
+                if eval_run.target_column:
+                    rows.append(["Target Column", eval_run.target_column])
+                if eval_run.prediction_table:
+                    rows.append(["Predictions Table", eval_run.prediction_table])
+
+                # Show evaluation metrics
+                if eval_run.metrics_result:
+                    import json
+
+                    try:
+                        metrics = json.loads(eval_run.metrics_result)
+                        rows.append(["", ""])  # Separator
+                        rows.append(["Evaluation Metrics", ""])
+                        for metric_name, metric_value in metrics.items():
+                            if isinstance(metric_value, (int, float)):
+                                rows.append([f"  {metric_name}", f"{metric_value:.6f}"])
+                            else:
+                                rows.append([f"  {metric_name}", str(metric_value)])
+                    except Exception:  # noqa: S110
+                        rows.append(["Metrics", eval_run.metrics_result])
+
+                # Show error if failed
+                if eval_run.error_message:
+                    rows.append(["", ""])  # Separator
+                    rows.append(["Error", eval_run.error_message])
 
         ui.show_key_values("Job Status", rows)
     else:
@@ -846,93 +897,69 @@ async def _ml_generate_trainer(
         ) from exc
 
 
-async def _ml_generate_predictor(
+async def _ml_evaluate(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
-    """Handle predictor specification generation command."""
+    """Handle evaluator generation and execution command."""
     options = _parse_options(
         args,
         {
-            "model-spec": True,
+            "name": True,
             "context": True,
-            "trainer-spec": True,
-            "output": True,
+            "trainer-id": True,
+            "data-table": True,
         },
     )
 
-    model_spec_path = options.get("model-spec")
+    name = options.get("name")
     context = options.get("context")
-    trainer_spec_path = options.get("trainer-spec")
-    output_path = options.get("output")
+    trainer_id = options.get("trainer-id")
+    data_table = options.get("data-table")
 
-    if not model_spec_path or not context:
-        raise CommandError("/ml generate-predictor requires --model-spec and --context")
-
-    # Check that model spec file exists
-    model_spec_file = Path(str(model_spec_path))
-    if not model_spec_file.exists():
-        raise CommandError(f"Model specification file not found: {model_spec_path}")
-
-    # Check trainer spec file if provided
-    if trainer_spec_path:
-        trainer_spec_file = Path(str(trainer_spec_path))
-        if not trainer_spec_file.exists():
-            raise CommandError(
-                f"Trainer specification file not found: {trainer_spec_path}"
-            )
-
-    # Default output path if not specified
-    if not output_path:
-        output_path = "predictor.yaml"
+    if not name or not context or not trainer_id or not data_table:
+        raise CommandError(
+            "/ml evaluate requires --name, --context, --trainer-id, and --data-table"
+        )
 
     try:
-        ui.show_info(f"📋 Using model specification: {model_spec_path}")
-        if trainer_spec_path:
-            ui.show_info(f"🏋️ Using trainer specification: {trainer_spec_path}")
+        # Use the MLEvaluateTool which combines generation + execution
+        from arc.tools.ml import MLEvaluateTool
 
-        # Get the agent configuration
-        services = runtime.services
+        # Get settings for tool initialization
         settings_manager = SettingsManager()
         api_key = settings_manager.get_api_key()
         base_url = settings_manager.get_base_url()
         model = settings_manager.get_current_model()
 
         if not api_key:
-            raise CommandError("API key required for predictor generation")
+            raise CommandError("API key required for evaluator generation")
 
-        # Create predictor generator agent (no ArcAgent dependency)
-        predictor_generator = PredictorGeneratorAgent(
-            services, api_key, base_url, model
+        # Initialize TensorBoard manager for the tool
+        try:
+            from arc.ml import TensorBoardManager
+
+            tensorboard_manager = TensorBoardManager()
+        except Exception:
+            tensorboard_manager = None
+
+        # Create the tool with proper dependencies
+        tool = MLEvaluateTool(
+            runtime.services, runtime, api_key, base_url, model, ui, tensorboard_manager
         )
 
-        # Generate the predictor specification
-        predictor_yaml = await predictor_generator.generate_predictor(
-            user_context=context,
-            model_spec_path=str(model_spec_path),
-            trainer_spec_path=str(trainer_spec_path) if trainer_spec_path else None,
+        # Execute the tool: generate spec, register, and run evaluation
+        result = await tool.execute(
+            name=name,
+            context=context,
+            trainer_id=trainer_id,
+            data_table=data_table,
         )
 
-        # Save to file
-        Path(output_path).write_text(predictor_yaml)
-
-        ui.show_system_success("✅ Predictor specification generated successfully!")
-        ui.show_info(f"📄 Saved to: {output_path}")
-
-        # Show YAML preview
-        ui.show_info("\n📋 Generated YAML:")
-        # Show first few lines of the YAML
-        yaml_lines = predictor_yaml.strip().split("\n")
-        for line in yaml_lines[:10]:  # Show first 10 lines
-            ui.show_info(f"   {line}")
-        if len(yaml_lines) > 10:
-            ui.show_info("   ...")
-
-        # Suggest next steps
-        ui.show_info("\n💡 Next steps:")
-        ui.show_info("   Use this predictor specification for model inference")
+        if not result.success:
+            ui.show_system_error(result.error or "Evaluation failed")
 
     except Exception as exc:
-        raise CommandError(f"Predictor generation failed: {exc}") from exc
+        raise CommandError(f"Unexpected error during evaluation: {exc}") from exc
 
 
 async def _ml_data_processing(
@@ -1033,6 +1060,7 @@ async def run_headless_mode(
     services: ServiceContainer,
 ):
     """Run in headless mode - process prompt and exit."""
+    agent = None
     try:
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services, None)
 
@@ -1081,6 +1109,13 @@ async def run_headless_mode(
             )
         )
         sys.exit(1)
+    finally:
+        # Clean up resources
+        from contextlib import suppress
+
+        with suppress(Exception):
+            if agent:
+                agent.cleanup()
 
 
 async def run_interactive_mode(
@@ -1396,6 +1431,10 @@ async def run_interactive_mode(
         ui.show_system_error(f"Error initializing Arc CLI: {str(e)}")
         sys.exit(1)
     finally:
+        # Clean up resources
+        with suppress(Exception):
+            if agent:
+                agent.cleanup()
         with suppress(Exception):
             services.shutdown()
 

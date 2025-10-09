@@ -379,47 +379,6 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_predict",
-            description=(
-                "Run inference with a trained Arc-Graph model "
-                "and save results to a table"
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "model_name": {
-                        "type": "string",
-                        "description": (
-                            "Name of the registered model to use for prediction"
-                        ),
-                    },
-                    "table_name": {
-                        "type": "string",
-                        "description": (
-                            "User database table or dataset containing features"
-                        ),
-                    },
-                    "output_table": {
-                        "type": "string",
-                        "description": "Destination table name for prediction results",
-                    },
-                    "batch_size": {
-                        "type": "integer",
-                        "description": "Batch size for prediction (default: 32)",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Limit the number of rows to process",
-                    },
-                    "device": {
-                        "type": "string",
-                        "description": "Torch device for inference (default: cpu)",
-                    },
-                },
-                "required": ["model_name", "table_name", "output_table"],
-            },
-        ),
-        ArcTool(
             name="ml_model",
             description="Generate Arc-Graph model YAML using the model generator agent",
             parameters={
@@ -517,35 +476,69 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_predictor_generator",
-            description="Generate Arc-Graph predictor YAML using the predictor "
-            "generator agent",
+            name="ml_evaluate",
+            description=(
+                "Generate Arc-Graph evaluator specification and run evaluation on "
+                "test data. This unified tool: 1) Generates evaluator spec via LLM "
+                "based on evaluation goals, 2) Presents interactive confirmation "
+                "workflow, 3) Auto-registers evaluator to database after approval, "
+                "4) Runs evaluation and logs metrics to TensorBoard after user "
+                "confirmation. Supports classification metrics (accuracy, precision, "
+                "recall, F1, confusion matrix, PR curves, ROC curves) and regression "
+                "metrics (MSE, MAE, R², scatter plots)."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Evaluator name for the specification",
+                    },
                     "context": {
                         "type": "string",
-                        "description": "Description of prediction requirements "
-                        "and usage",
-                    },
-                    "model_spec_path": {
-                        "type": "string",
-                        "description": "Path to model specification YAML file",
-                    },
-                    "trainer_spec_path": {
-                        "type": "string",
                         "description": (
-                            "Optional path to trainer specification YAML file"
+                            "Evaluation goals, constraints, and requirements. "
+                            "Specify which metrics to compute and any "
+                            "evaluation-specific notes."
                         ),
                     },
-                    "output_path": {
+                    "trainer_id": {
                         "type": "string",
                         "description": (
-                            "Optional file path to save the generated predictor YAML"
+                            "Trainer ID (without version, e.g., 'my_trainer')"
+                        ),
+                    },
+                    "test_table": {
+                        "type": "string",
+                        "description": "Test dataset table name",
+                    },
+                    "target_column": {
+                        "type": "string",
+                        "description": "Target column name for evaluation",
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Optional list of specific metrics to compute "
+                            "(e.g., ['accuracy', 'precision', 'recall', 'f1_score'])"
+                        ),
+                    },
+                    "version": {
+                        "type": "integer",
+                        "description": (
+                            "Optional specific trainer version to evaluate "
+                            "(default: latest version)"
                         ),
                     },
                 },
-                "required": ["context", "model_spec_path"],
+                "required": [
+                    "name",
+                    "context",
+                    "trainer_id",
+                    "test_table",
+                    "target_column",
+                ],
             },
         ),
         ArcTool(

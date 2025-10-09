@@ -175,6 +175,37 @@ class DuckDBDatabase(Database):
                 ON trainers(name, version);
             """)
 
+            # Registry for evaluator specifications linked to trainers
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS evaluators(
+                    id TEXT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    version INTEGER NOT NULL,
+                    trainer_id TEXT NOT NULL,
+                    trainer_version INTEGER NOT NULL,
+                    spec TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (name, version)
+                );
+            """)
+
+            # Create indexes for evaluator lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluators_name ON evaluators(name);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluators_trainer_id
+                ON evaluators(trainer_id);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluators_name_version
+                ON evaluators(name, version);
+            """)
+
             # Tracks long-running processes like training
             self.execute("""
                 CREATE TABLE IF NOT EXISTS jobs(
@@ -380,6 +411,36 @@ class DuckDBDatabase(Database):
             self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_training_checkpoints_run
                 ON training_checkpoints(run_id, epoch);
+            """)
+
+            # Evaluation runs table - tracks evaluation executions
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS evaluation_runs (
+                    run_id VARCHAR PRIMARY KEY,
+                    evaluator_id VARCHAR NOT NULL,
+                    job_id VARCHAR,
+                    trainer_id VARCHAR,
+                    dataset VARCHAR,
+                    target_column VARCHAR,
+                    status VARCHAR DEFAULT 'pending',
+                    started_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    metrics_result JSON,
+                    prediction_table VARCHAR,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_evaluator
+                ON evaluation_runs(evaluator_id, created_at);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_trainer
+                ON evaluation_runs(trainer_id, created_at);
             """)
 
         except Exception as e:
