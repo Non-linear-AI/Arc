@@ -724,5 +724,5 @@ class ArcAgent:
             self.ml_plan_tool.model = model
         if getattr(self, "ml_model_tool", None):
             self.ml_model_tool.model = model
-        if getattr(self, "ml_trainer_generator_tool", None):
-            self.ml_trainer_generator_tool.model = model
+        if getattr(self, "ml_train_tool", None):
+            self.ml_train_tool.model = model
