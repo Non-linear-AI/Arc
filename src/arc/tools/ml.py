@@ -1306,7 +1306,27 @@ class MLEvaluateTool(BaseTool):
         if self.ui:
             self.ui.show_info(f"🔍 Running evaluation with '{name}'...")
 
+        # Create evaluation run record
+        from arc.database.models.evaluation import EvaluationStatus
+        from arc.database.services import EvaluationTrackingService
+
+        tracking_service = EvaluationTrackingService(self.services.trainers.db_manager)
+
         try:
+            eval_run = tracking_service.create_run(
+                evaluator_id=evaluator_record.id,
+                trainer_id=trainer_record.id,
+                dataset=str(data_table),
+                target_column=str(target_column),
+            )
+
+            # Update status to running
+            tracking_service.update_run_status(
+                eval_run.run_id,
+                EvaluationStatus.RUNNING,
+                timestamp_field="started_at",
+            )
+
             # Load evaluator from trainer
             from arc.ml.evaluator import ArcEvaluator
 
@@ -1327,9 +1347,24 @@ class MLEvaluateTool(BaseTool):
 
             metrics_dict = result.metrics
 
+            # Update run with results
+            tracking_service.update_run_result(
+                eval_run.run_id,
+                metrics_result=metrics_dict,
+                prediction_table=output_table,
+            )
+
+            # Mark as completed
+            tracking_service.update_run_status(
+                eval_run.run_id,
+                EvaluationStatus.COMPLETED,
+                timestamp_field="completed_at",
+            )
+
             # Display metrics
             lines.append("")
             lines.append("✓ Evaluation completed successfully.")
+            lines.append(f"  Run ID: {eval_run.run_id}")
             lines.append("")
             lines.append("Metrics:")
             for metric_name, metric_value in metrics_dict.items():
@@ -1342,6 +1377,16 @@ class MLEvaluateTool(BaseTool):
 
         except Exception as exc:
             from arc.ml.evaluator import EvaluationError
+
+            # Update run with error
+            try:
+                tracking_service.update_run_error(eval_run.run_id, str(exc))
+                tracking_service.update_run_status(
+                    eval_run.run_id,
+                    EvaluationStatus.FAILED,
+                )
+            except Exception:  # noqa: S110
+                pass  # Ignore tracking errors
 
             if isinstance(exc, EvaluationError):
                 return ToolResult.error_result(

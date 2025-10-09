@@ -413,6 +413,36 @@ class DuckDBDatabase(Database):
                 ON training_checkpoints(run_id, epoch);
             """)
 
+            # Evaluation runs table - tracks evaluation executions
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS evaluation_runs (
+                    run_id VARCHAR PRIMARY KEY,
+                    evaluator_id VARCHAR NOT NULL,
+                    job_id VARCHAR,
+                    trainer_id VARCHAR,
+                    dataset VARCHAR,
+                    target_column VARCHAR,
+                    status VARCHAR DEFAULT 'pending',
+                    started_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    metrics_result JSON,
+                    prediction_table VARCHAR,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_evaluator
+                ON evaluation_runs(evaluator_id, created_at);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_trainer
+                ON evaluation_runs(trainer_id, created_at);
+            """)
+
         except Exception as e:
             raise DatabaseError(f"Schema initialization failed: {e}") from e
 
