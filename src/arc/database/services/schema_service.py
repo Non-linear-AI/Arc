@@ -483,7 +483,6 @@ class SchemaService(BaseService):
                 "- data_processors: Data processing pipeline registry\n"
                 "- plans: ML workflow plans\n"
                 "- plugins: Available ML algorithms\n"
-                "- plans: ML workflow plans\n"
                 "- plugin_components: Plugin specifications\n"
                 "- plugin_schemas: Plugin metadata\n\n"
                 f"Note: Schema discovery failed ({str(e)}), using basic description.\n"
