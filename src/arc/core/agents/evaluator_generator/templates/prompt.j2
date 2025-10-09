@@ -17,6 +17,7 @@ Edit the existing Arc-Graph evaluator specification based on the following instr
 - **Trainer Reference**: {{ trainer_ref }}
 - **Dataset**: {{ dataset }}
 - **Target Column**: {{ target_column }}
+- **Target Column in Dataset**: {{ "YES" if target_column_exists else "NO" }}
 {% else -%}
 Generate an evaluator specification YAML for:
 - **Evaluator Name**: {{ evaluator_name }}
@@ -24,6 +25,7 @@ Generate an evaluator specification YAML for:
 - **Trainer Reference**: {{ trainer_ref }}
 - **Dataset**: {{ dataset }}
 - **Target Column**: {{ target_column }}
+- **Target Column in Dataset**: {{ "YES - Compute metrics for evaluation" if target_column_exists else "NO - Generate predictions only" }}
 {% endif %}
 
 ## Trainer Specification
@@ -110,10 +112,19 @@ Your output must validate against this Arc-Graph evaluator schema:
 2. **Trainer Reference**: Use the exact trainer name ({{ trainer_ref }})
 3. **Dataset**: Use the provided dataset name ({{ dataset }})
 4. **Target Column**: Use the provided target column ({{ target_column }})
-5. **Metrics**: Select appropriate metrics based on the task type
+5. **Metrics**:
+{% if target_column_exists -%}
+   - **IMPORTANT**: The target column EXISTS in the dataset (ground truth available)
+   - Include appropriate metrics to evaluate model performance against ground truth
    - For classification: accuracy, precision, recall, f1_score, auc
    - For regression: mse, mae, rmse, r2_score
-   - If omitted, sensible defaults will be used
+   - Base your metric selection on the user intent ({{ user_intent }})
+{% else -%}
+   - **IMPORTANT**: The target column DOES NOT exist in the dataset (prediction mode)
+   - DO NOT include any metrics in the specification
+   - The evaluator will generate predictions only, without computing metrics
+   - This is appropriate when making predictions on new data without labels
+{% endif %}
 
 {% if examples -%}
 ## Example Evaluator Specifications
@@ -130,7 +141,8 @@ Your output must validate against this Arc-Graph evaluator schema:
 
 Return ONLY valid YAML for the evaluator specification. Do not include explanations, markdown formatting, or code fences. The output should be directly parseable as YAML.
 
-Example output format:
+{% if target_column_exists -%}
+Example output format (WITH metrics - target column exists):
 ```yaml
 name: diabetes_eval
 trainer_ref: diabetes_trainer
@@ -142,3 +154,13 @@ metrics:
   - recall
   - f1_score
 ```
+{% else -%}
+Example output format (WITHOUT metrics - prediction mode):
+```yaml
+name: diabetes_prediction
+trainer_ref: diabetes_trainer
+dataset: new_patient_data
+target_column: outcome
+```
+Note: No metrics field since target column is not present in the dataset.
+{% endif %}

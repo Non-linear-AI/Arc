@@ -1139,6 +1139,32 @@ class MLEvaluateTool(BaseTool):
                 f"Failed to retrieve model for trainer: {exc}"
             )
 
+        # Check if target column exists in data table
+        target_column_exists = False
+        try:
+            schema_info = self.services.schema.get_schema_info(target_db="user")
+            columns = schema_info.get_column_names(str(data_table))
+            target_column_exists = str(target_column) in columns
+
+            if self.ui:
+                if target_column_exists:
+                    self.ui.show_info(
+                        f"📊 Target column '{target_column}' found in data - "
+                        "will compute metrics"
+                    )
+                else:
+                    self.ui.show_info(
+                        f"📋 Target column '{target_column}' not in data - "
+                        "will generate predictions only"
+                    )
+        except Exception as exc:
+            # If schema check fails, default to assuming target exists
+            if self.ui:
+                self.ui.show_info(
+                    f"⚠️ Could not check if target column exists: {exc}"
+                )
+            target_column_exists = True
+
         # Show UI feedback if UI is available
         if self.ui:
             self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
@@ -1162,6 +1188,7 @@ class MLEvaluateTool(BaseTool):
                 trainer_spec_yaml=trainer_record.spec,
                 dataset=str(data_table),
                 target_column=str(target_column),
+                target_column_exists=target_column_exists,
             )
         except Exception as exc:
             from arc.core.agents.evaluator_generator import EvaluatorGeneratorError
@@ -1198,7 +1225,9 @@ class MLEvaluateTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(context, trainer_id, trainer_record),
+                editor_func=self._create_editor(
+                    context, trainer_id, trainer_record, target_column_exists
+                ),
                 ui_interface=self.ui,
                 yaml_type_name="evaluator",
                 yaml_suffix=".arc-evaluator.yaml",
@@ -1212,6 +1241,7 @@ class MLEvaluateTool(BaseTool):
                 "trainer_spec_yaml": trainer_record.spec,
                 "dataset": str(data_table),
                 "target_column": str(target_column),
+                "target_column_exists": target_column_exists,
             }
 
             try:
@@ -1361,7 +1391,13 @@ class MLEvaluateTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, user_context: str, trainer_id: str, trainer_record):
+    def _create_editor(
+        self,
+        user_context: str,
+        trainer_id: str,
+        trainer_record,
+        target_column_exists: bool,
+    ):
         """Create editor function for AI-assisted editing."""
 
         async def edit(
@@ -1384,6 +1420,7 @@ class MLEvaluateTool(BaseTool):
                     trainer_spec_yaml=trainer_record.spec,
                     dataset=context["dataset"],
                     target_column=context["target_column"],
+                    target_column_exists=target_column_exists,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
                 )
@@ -1462,6 +1499,32 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 f"Failed to retrieve trainer '{trainer_id}': {exc}"
             )
 
+        # Check if target column exists in data table
+        target_column_exists = False
+        try:
+            schema_info = self.services.schema.get_schema_info(target_db="user")
+            columns = schema_info.get_column_names(str(data_table))
+            target_column_exists = str(target_column) in columns
+
+            if self.ui:
+                if target_column_exists:
+                    self.ui.show_info(
+                        f"📊 Target column '{target_column}' found in data - "
+                        "will include metrics"
+                    )
+                else:
+                    self.ui.show_info(
+                        f"📋 Target column '{target_column}' not in data - "
+                        "prediction mode"
+                    )
+        except Exception as exc:
+            # If schema check fails, default to assuming target exists
+            if self.ui:
+                self.ui.show_info(
+                    f"⚠️ Could not check if target column exists: {exc}"
+                )
+            target_column_exists = True
+
         # Show UI feedback if UI is available
         if self.ui:
             self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
@@ -1484,6 +1547,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 trainer_spec_yaml=trainer_record.spec,
                 dataset=str(data_table),
                 target_column=str(target_column),
+                target_column_exists=target_column_exists,
             )
         except Exception as exc:
             # Import here to avoid circular imports

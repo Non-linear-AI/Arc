@@ -73,6 +73,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
         trainer_spec_yaml: str,
         dataset: str,
         target_column: str,
+        target_column_exists: bool = True,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
     ) -> tuple[EvaluatorSpec, str]:
@@ -85,6 +86,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             trainer_spec_yaml: Trainer specification YAML content
             dataset: Test dataset table name
             target_column: Target column name in the dataset
+            target_column_exists: Whether target column exists in dataset
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
 
@@ -102,6 +104,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             "trainer_spec": trainer_spec_yaml,
             "dataset": dataset,
             "target_column": target_column,
+            "target_column_exists": target_column_exists,
             "trainer_profile": self._extract_trainer_profile(trainer_spec_yaml),
             "available_metrics": self._get_available_metrics(),
             "examples": self._get_evaluator_examples(user_context),
