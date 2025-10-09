@@ -1308,15 +1308,10 @@ class MLEvaluateTool(BaseTool):
 
         try:
             # Load evaluator from trainer
-            from arc.ml.artifacts import ModelArtifactManager
             from arc.ml.evaluator import ArcEvaluator
 
-            artifact_manager = ModelArtifactManager(
-                self.runtime.models_dir, self.services.models
-            )
-
             evaluator = ArcEvaluator.load_from_trainer(
-                artifact_manager=artifact_manager,
+                artifact_manager=self.runtime.artifact_manager,
                 trainer_service=self.services.trainers,
                 evaluator_spec=evaluator_spec,
                 device="cpu",
