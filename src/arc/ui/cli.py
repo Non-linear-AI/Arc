@@ -509,6 +509,7 @@ async def _ml_train(
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
+    tensorboard_manager = None
     try:
         # Use the MLTrainTool which includes confirmation workflow
         from arc.tools.ml import MLTrainTool
@@ -551,6 +552,10 @@ async def _ml_train(
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during training: {exc}") from exc
+    finally:
+        # Clean up TensorBoard resources if not managed by agent
+        # Note: TensorBoard processes are kept running for user access
+        pass
 
 
 def _ml_predict(
@@ -1055,6 +1060,7 @@ async def run_headless_mode(
     services: ServiceContainer,
 ):
     """Run in headless mode - process prompt and exit."""
+    agent = None
     try:
         agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services, None)
 
@@ -1103,6 +1109,13 @@ async def run_headless_mode(
             )
         )
         sys.exit(1)
+    finally:
+        # Clean up resources
+        from contextlib import suppress
+
+        with suppress(Exception):
+            if agent:
+                agent.cleanup()
 
 
 async def run_interactive_mode(
@@ -1418,6 +1431,10 @@ async def run_interactive_mode(
         ui.show_system_error(f"Error initializing Arc CLI: {str(e)}")
         sys.exit(1)
     finally:
+        # Clean up resources
+        with suppress(Exception):
+            if agent:
+                agent.cleanup()
         with suppress(Exception):
             services.shutdown()
 

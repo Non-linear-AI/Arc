@@ -261,9 +261,9 @@ class InteractiveInterface:
             "schema_discovery": "Schema Discovery",
             "ml_train": "Train Model",
             "ml_predict": "Predict",
+            "ml_evaluate": "Evaluate Model",
             "ml_model": "Model Generator",
             "ml_trainer_generator": "Trainer Generator",
-            "ml_predictor_generator": "Predictor Generator",
             "data_processor_generator": "Data Processor Generator",
         }
         # Also handle MCP-prefixed tools nicely
@@ -298,9 +298,9 @@ class InteractiveInterface:
         elif tool_name in [
             "ml_train",
             "ml_predict",
+            "ml_evaluate",
             "ml_model",
             "ml_trainer_generator",
-            "ml_predictor_generator",
         ]:
             return "green"  # ML operations (success/completion focused)
         elif tool_name in ["data_processor_generator"]:

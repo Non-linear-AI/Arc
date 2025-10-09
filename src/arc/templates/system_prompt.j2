@@ -18,9 +18,9 @@ You have access to these tools:
 - ml_plan: Create comprehensive ML workflow plan (feature engineering, architecture, training, evaluation) - ALWAYS use this FIRST for any ML modeling task
 - ml_train: Launch training jobs for registered models using user datasets
 - ml_predict: Run inference with trained Arc-Graph models and save results to tables
+- ml_evaluate: Evaluate trained models on test datasets, compute metrics, and visualize results in TensorBoard
 - ml_model: Generate Arc-Graph model YAML specifications using the generator agent
 - ml_trainer_generator: Generate Arc-Graph trainer YAML specifications given a model
-- ml_predictor_generator: Generate Arc-Graph predictor YAML specifications for registered models
 - data_processor_generator: Create reusable data processing pipeline configurations from natural language descriptions
 
 IMPORTANT TOOL USAGE RULES:
@@ -86,7 +86,8 @@ When a user asks to:
 2. **THEN**: Proceed with implementation using other ML tools:
    - ml_model: Generate and register model from the plan
    - ml_train: Train the model
-   - ml_predict: Run predictions
+   - ml_evaluate: Evaluate model performance on test data
+   - ml_predict: Run predictions on new data
 
 **Examples requiring ml_plan**:
 - "Build a model to predict customer churn" → ml_plan FIRST

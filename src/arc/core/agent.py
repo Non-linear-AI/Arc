@@ -741,3 +741,13 @@ class ArcAgent:
             self.ml_train_tool.model = model
         if getattr(self, "ml_evaluate_tool", None):
             self.ml_evaluate_tool.model = model
+
+    def cleanup(self) -> None:
+        """Clean up resources including TensorBoard processes."""
+        if self.tensorboard_manager:
+            try:
+                count = self.tensorboard_manager.stop_all()
+                if count > 0:
+                    print(f"Stopped {count} TensorBoard process(es)")
+            except Exception as e:
+                print(f"Warning: Failed to stop TensorBoard processes: {e}")
