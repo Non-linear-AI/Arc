@@ -1031,13 +1031,39 @@ class MLEvaluateTool(BaseTool):
         self.model = model
         self.ui = ui_interface
 
+    def _infer_target_column_from_model(self, model_spec_yaml: str) -> str | None:
+        """Infer target column from model spec's loss inputs.
+
+        Args:
+            model_spec_yaml: Model specification YAML string
+
+        Returns:
+            Target column name if found in loss spec, None otherwise
+        """
+        try:
+            from arc.graph import ModelSpec
+
+            model_spec = ModelSpec.from_yaml(model_spec_yaml)
+
+            # Check if model has loss specification
+            if not model_spec.loss:
+                return None
+
+            # Look for 'target' input in loss specification
+            if model_spec.loss.inputs and "target" in model_spec.loss.inputs:
+                return model_spec.loss.inputs["target"]
+
+            return None
+        except Exception:
+            return None
+
     async def execute(
         self,
         *,
         name: str | None = None,
         context: str | None = None,
         trainer_name: str | None = None,
-        dataset: str | None = None,
+        data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
     ) -> ToolResult:
@@ -1047,8 +1073,8 @@ class MLEvaluateTool(BaseTool):
             name: Evaluator name
             context: Evaluation goals and context for LLM generation
             trainer_name: Trainer name to evaluate (references the trained model)
-            dataset: Test dataset table name
-            target_column: Target column name for evaluation
+            data_table: Test dataset table name
+            target_column: Target column (optional, inferred from model)
             auto_confirm: Skip confirmation workflows (for testing only)
 
         Returns:
@@ -1068,16 +1094,10 @@ class MLEvaluateTool(BaseTool):
             )
 
         # Validate required parameters
-        if (
-            not name
-            or not context
-            or not trainer_name
-            or not dataset
-            or not target_column
-        ):
+        if not name or not context or not trainer_name or not data_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', 'trainer_name', 'dataset', and "
-                "'target_column' are required."
+                "Parameters 'name', 'context', 'trainer_name', and 'data_table' "
+                "are required."
             )
 
         # Get the registered trainer
@@ -1093,6 +1113,36 @@ class MLEvaluateTool(BaseTool):
         except Exception as exc:
             return ToolResult.error_result(
                 f"Failed to retrieve trainer '{trainer_name}': {exc}"
+            )
+
+        # Get model spec to infer target column if not provided
+        try:
+            model_record = self.services.models.get_model_by_id(trainer_record.model_id)
+            if not model_record:
+                return ToolResult.error_result(
+                    f"Model '{trainer_record.model_id}' not found in registry"
+                )
+
+            # Infer target column from model spec if not provided
+            if not target_column:
+                inferred_target = self._infer_target_column_from_model(
+                    model_record.spec
+                )
+                if inferred_target:
+                    target_column = inferred_target
+                    if self.ui:
+                        self.ui.show_info(
+                            f"📌 Inferred target column from model: '{target_column}'"
+                        )
+                else:
+                    return ToolResult.error_result(
+                        "Cannot infer target column from model spec. "
+                        "Please specify --target-column explicitly."
+                    )
+
+        except Exception as exc:
+            return ToolResult.error_result(
+                f"Failed to retrieve model for trainer: {exc}"
             )
 
         # Show UI feedback if UI is available
@@ -1116,7 +1166,7 @@ class MLEvaluateTool(BaseTool):
                 user_context=str(context),
                 trainer_ref=str(trainer_name),
                 trainer_spec_yaml=trainer_record.spec,
-                dataset=str(dataset),
+                dataset=str(data_table),
                 target_column=str(target_column),
             )
         except Exception as exc:
@@ -1166,7 +1216,7 @@ class MLEvaluateTool(BaseTool):
                 "trainer_name": str(trainer_name),
                 "trainer_ref": str(trainer_name),
                 "trainer_spec_yaml": trainer_record.spec,
-                "dataset": str(dataset),
+                "dataset": str(data_table),
                 "target_column": str(target_column),
             }
 
@@ -1236,7 +1286,7 @@ class MLEvaluateTool(BaseTool):
             self.ui._printer.console.print(
                 f"[bold cyan]📊 Ready to evaluate trainer '{trainer_name}'[/bold cyan]"
             )
-            self.ui._printer.console.print(f"[dim]Test dataset: {dataset}[/dim]")
+            self.ui._printer.console.print(f"[dim]Test dataset: {data_table}[/dim]")
             self.ui._printer.console.print(f"[dim]Target column: {target_column}[/dim]")
             self.ui._printer.console.print()
 
@@ -1402,7 +1452,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
         name: str | None = None,
         context: str | None = None,
         trainer_name: str | None = None,
-        dataset: str | None = None,
+        data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
     ) -> ToolResult:
@@ -1422,11 +1472,11 @@ class MLEvaluatorGeneratorTool(BaseTool):
             not name
             or not context
             or not trainer_name
-            or not dataset
+            or not data_table
             or not target_column
         ):
             return ToolResult.error_result(
-                "Parameters 'name', 'context', 'trainer_name', 'dataset', and "
+                "Parameters 'name', 'context', 'trainer_name', 'data_table', and "
                 "'target_column' are required to generate an evaluator specification."
             )
 
@@ -1465,7 +1515,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 user_context=str(context),
                 trainer_ref=str(trainer_name),
                 trainer_spec_yaml=trainer_record.spec,
-                dataset=str(dataset),
+                dataset=str(data_table),
                 target_column=str(target_column),
             )
         except Exception as exc:
@@ -1515,7 +1565,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 "trainer_name": str(trainer_name),
                 "trainer_ref": str(trainer_name),
                 "trainer_spec_yaml": trainer_record.spec,
-                "dataset": str(dataset),
+                "dataset": str(data_table),
                 "target_column": str(target_column),
             }
 

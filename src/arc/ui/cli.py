@@ -855,21 +855,20 @@ async def _ml_evaluate(
             "name": True,
             "context": True,
             "trainer": True,
-            "dataset": True,
-            "target-column": True,
+            "data-table": True,
+            "target-column": False,  # Optional - can infer from model
         },
     )
 
     name = options.get("name")
     context = options.get("context")
     trainer_name = options.get("trainer")
-    dataset = options.get("dataset")
-    target_column = options.get("target-column")
+    data_table = options.get("data-table")
+    target_column = options.get("target-column")  # Optional
 
-    if not name or not context or not trainer_name or not dataset or not target_column:
+    if not name or not context or not trainer_name or not data_table:
         raise CommandError(
-            "/ml evaluate requires --name, --context, --trainer, "
-            "--dataset, and --target-column"
+            "/ml evaluate requires --name, --context, --trainer, and --data-table"
         )
 
     try:
@@ -893,8 +892,8 @@ async def _ml_evaluate(
             name=name,
             context=context,
             trainer_name=trainer_name,
-            dataset=dataset,
-            target_column=target_column,
+            data_table=data_table,
+            target_column=target_column,  # Optional - None if not specified
         )
 
         if not result.success:
