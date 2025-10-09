@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -378,11 +378,15 @@ class ModelArtifactManager:
 
         # Convert nested dicts back to dataclasses if present
         if data.get("training_config"):
-            # Filter out fields not in TrainingConfig (e.g., model_ref from old format)
+            # Filter to only include fields that are in TrainingConfig dataclass
+            # TrainerSpec has additional fields like model_ref and optimizer
+            # that TrainingConfig doesn't have
             config_data = data["training_config"]
-            # Remove model_ref if present (it's in TrainerSpec, not TrainingConfig)
-            config_data.pop("model_ref", None)
-            data["training_config"] = TrainingConfig(**config_data)
+            valid_fields = {f.name for f in fields(TrainingConfig)}
+            filtered_config = {
+                k: v for k, v in config_data.items() if k in valid_fields
+            }
+            data["training_config"] = TrainingConfig(**filtered_config)
         if data.get("training_result"):
             data["training_result"] = TrainingResult(**data["training_result"])
 
