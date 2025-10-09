@@ -229,8 +229,9 @@ class InteractiveInterface:
                     "Generate an Arc-Graph trainer specification",
                 ),
                 (
-                    "/ml generate-predictor --model-id ID --context DESC",
-                    "Generate an Arc-Graph predictor specification",
+                    "/ml evaluate --name NAME --context DESC --trainer TRAINER "
+                    "--dataset TABLE --target-column COL",
+                    "Generate evaluator and run model evaluation",
                 ),
                 (
                     "/ml data-processing --yaml PATH",
