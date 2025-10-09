@@ -420,10 +420,10 @@ class ArcEvaluator:
             db_manager = ml_data_service.db_manager
             db_manager.user_execute(f'DROP TABLE IF EXISTS "{output_table}"')
 
-            # DuckDB can directly reference pandas dataframes in SQL
-            db_manager.user_execute(
-                f'CREATE TABLE "{output_table}" AS SELECT * FROM df'
-            )
+            # Use DuckDB's SQL with CREATE TABLE AS directly from INSERT
+            # First create the table structure from the dataframe
+            conn = db_manager._get_user_db()._connection
+            conn.execute(f'CREATE TABLE "{output_table}" AS SELECT * FROM df')
 
             logger.info(
                 f"Saved {len(predictions_np)} predictions to table '{output_table}'"
