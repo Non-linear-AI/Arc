@@ -372,6 +372,7 @@ config:
         mock_training_run.artifact_path = "artifacts/test_trainer/v1/"
 
         from arc.database.models.training import TrainingStatus
+
         mock_training_run.status = TrainingStatus.COMPLETED
 
         # Mock db_manager for TrainingTrackingService
