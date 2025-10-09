@@ -1100,9 +1100,7 @@ class MLEvaluateTool(BaseTool):
 
         # Get the registered trainer
         try:
-            trainer_record = self.services.trainers.get_trainer_by_id(
-                str(trainer_id)
-            )
+            trainer_record = self.services.trainers.get_trainer_by_id(str(trainer_id))
             if not trainer_record:
                 return ToolResult.error_result(
                     f"Trainer '{trainer_id}' not found in registry. "
@@ -1160,9 +1158,7 @@ class MLEvaluateTool(BaseTool):
         except Exception as exc:
             # If schema check fails, default to assuming target exists
             if self.ui:
-                self.ui.show_info(
-                    f"⚠️ Could not check if target column exists: {exc}"
-                )
+                self.ui.show_info(f"⚠️ Could not check if target column exists: {exc}")
             target_column_exists = True
 
         # Show UI feedback if UI is available
@@ -1579,9 +1575,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
 
         # Get the registered trainer
         try:
-            trainer_record = self.services.trainers.get_trainer_by_id(
-                str(trainer_id)
-            )
+            trainer_record = self.services.trainers.get_trainer_by_id(str(trainer_id))
             if not trainer_record:
                 return ToolResult.error_result(
                     f"Trainer '{trainer_id}' not found in registry. "
@@ -1613,9 +1607,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
         except Exception as exc:
             # If schema check fails, default to assuming target exists
             if self.ui:
-                self.ui.show_info(
-                    f"⚠️ Could not check if target column exists: {exc}"
-                )
+                self.ui.show_info(f"⚠️ Could not check if target column exists: {exc}")
             target_column_exists = True
 
         # Show UI feedback if UI is available

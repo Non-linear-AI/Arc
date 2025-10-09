@@ -363,7 +363,20 @@ config:
   validation_split: 0.2
   target_column: target
 """
-        mock_trainer_service.get_trainer_by_name.return_value = mock_trainer
+        mock_trainer_service.get_trainer_by_id.return_value = mock_trainer
+
+        # Mock training runs for artifact loading
+        mock_training_run = MagicMock()
+        mock_training_run.status = MagicMock()
+        mock_training_run.status.value = "completed"
+        mock_training_run.artifact_path = "artifacts/test_trainer/v1/"
+
+        from arc.database.models.training import TrainingStatus
+        mock_training_run.status = TrainingStatus.COMPLETED
+
+        # Mock db_manager for TrainingTrackingService
+        mock_db_manager = MagicMock()
+        mock_trainer_service.db_manager = mock_db_manager
 
         # Mock artifact
         mock_artifact = MagicMock()
@@ -464,18 +477,26 @@ config:
             metrics=["accuracy"],
         )
 
-        # Load evaluator
-        evaluator = ArcEvaluator.load_from_trainer(
-            artifact_manager=mock_artifact_manager,
-            trainer_service=mock_trainer_service,
-            evaluator_spec=evaluator_spec,
-            device="cpu",
-        )
+        # Mock TrainingTrackingService
+        with patch(
+            "arc.database.services.TrainingTrackingService"
+        ) as mock_tracking_service_class:
+            mock_tracking_service = MagicMock()
+            mock_tracking_service_class.return_value = mock_tracking_service
+            mock_tracking_service.list_runs.return_value = [mock_training_run]
+
+            # Load evaluator
+            evaluator = ArcEvaluator.load_from_trainer(
+                artifact_manager=mock_artifact_manager,
+                trainer_service=mock_trainer_service,
+                evaluator_spec=evaluator_spec,
+                device="cpu",
+            )
 
         # Verify
         assert evaluator.evaluator_spec is evaluator_spec
         assert evaluator.artifact_version == 1
-        mock_trainer_service.get_trainer_by_name.assert_called_once_with("test_trainer")
+        mock_trainer_service.get_trainer_by_id.assert_called_once_with("test_trainer")
         mock_artifact_manager.load_model_state_dict.assert_called_once()
 
     @patch("arc.ml.evaluator.ModelArtifactManager")
@@ -488,7 +509,7 @@ config:
         mock_artifact_manager = MagicMock()
 
         # Trainer not found
-        mock_trainer_service.get_trainer_by_name.return_value = None
+        mock_trainer_service.get_trainer_by_id.return_value = None
 
         evaluator_spec = EvaluatorSpec(
             name="test_eval",

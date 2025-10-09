@@ -512,15 +512,13 @@ class ArcEvaluator:
 
             # Parse version from artifact_path
             # Format: artifacts/trainer-id/v{version}/
-            version_match = re.search(r'/v(\d+)/?$', latest_run.artifact_path)
+            version_match = re.search(r"/v(\d+)/?$", latest_run.artifact_path)
             if not version_match:
                 # Try to load latest version
                 version = evaluator_spec.version
             else:
                 version = int(version_match.group(1))
-                logger.info(
-                    f"Using model v{version} from run {latest_run.run_id}"
-                )
+                logger.info(f"Using model v{version} from run {latest_run.run_id}")
 
             # Load the model artifact (keyed by trainer_id, not model_ref)
             try:
