@@ -100,6 +100,7 @@ class ArcEvaluator:
     def evaluate(
         self,
         ml_data_service: MLDataService,
+        output_table: str | None = None,
     ) -> EvaluationResult:
         """Run model evaluation on test dataset.
 
@@ -107,10 +108,12 @@ class ArcEvaluator:
         1. Load test data from dataset table
         2. Run predictions
         3. Compute metrics
-        4. Return results
+        4. Optionally save predictions to output table
+        5. Return results
 
         Args:
             ml_data_service: Service for accessing ML data
+            output_table: Optional table to save predictions (features + targets)
 
         Returns:
             EvaluationResult with computed metrics
@@ -133,9 +136,16 @@ class ArcEvaluator:
             logger.info("Computing evaluation metrics")
             metrics_dict = self._compute_metrics(predictions, targets)
 
+            # 4. Save predictions to output table if specified
+            if output_table:
+                logger.info(f"Saving predictions to table: {output_table}")
+                self._save_predictions(
+                    ml_data_service, features, targets, predictions, output_table
+                )
+
             evaluation_time = time.time() - start_time
 
-            # 4. Create result
+            # 5. Create result
             result = EvaluationResult(
                 evaluator_name=self.evaluator_spec.name,
                 trainer_ref=self.evaluator_spec.trainer_ref,
@@ -361,6 +371,67 @@ class ArcEvaluator:
 
         return metric_map[metric_name_lower]()
 
+    def _save_predictions(
+        self,
+        ml_data_service: MLDataService,
+        features: torch.Tensor,
+        targets: torch.Tensor,
+        predictions: torch.Tensor,
+        output_table: str,
+    ) -> None:
+        """Save predictions along with features and targets to output table.
+
+        Args:
+            ml_data_service: Service for saving data
+            features: Feature tensor
+            targets: Target tensor
+            predictions: Prediction tensor
+            output_table: Name of output table
+
+        Raises:
+            EvaluationError: If saving fails
+        """
+        try:
+            import pandas as pd
+
+            # Get feature column names from model spec
+            first_input = next(iter(self.model_spec.inputs.values()))
+            feature_columns = first_input.columns
+
+            # Convert tensors to numpy arrays
+            features_np = features.cpu().numpy()
+            targets_np = targets.cpu().numpy().flatten()
+            predictions_np = predictions.cpu().numpy().flatten()
+
+            # Build dataframe
+            data_dict = {}
+            for idx, col_name in enumerate(feature_columns):
+                data_dict[col_name] = features_np[:, idx]
+
+            # Add target and prediction columns
+            target_col = self.evaluator_spec.target_column
+            data_dict[target_col] = targets_np
+            data_dict["prediction"] = predictions_np
+
+            df = pd.DataFrame(data_dict)  # noqa: F841 - used by DuckDB SQL
+
+            # Drop existing table and create new one
+            db_manager = ml_data_service.db_manager
+            db_manager.user_execute(f'DROP TABLE IF EXISTS "{output_table}"')
+
+            # DuckDB can directly reference pandas dataframes in SQL
+            db_manager.user_execute(
+                f'CREATE TABLE "{output_table}" AS SELECT * FROM df'
+            )
+
+            logger.info(
+                f"Saved {len(predictions_np)} predictions to table '{output_table}'"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to save predictions: {e}")
+            raise EvaluationError(f"Failed to save predictions: {e}") from e
+
     @classmethod
     def load_from_trainer(
         cls,
@@ -387,7 +458,7 @@ class ArcEvaluator:
             logger.info(f"Loading evaluator for trainer: {evaluator_spec.trainer_ref}")
 
             # 1. Load trainer spec
-            trainer = trainer_service.get_trainer_by_name(evaluator_spec.trainer_ref)
+            trainer = trainer_service.get_trainer_by_id(evaluator_spec.trainer_ref)
             if not trainer:
                 raise EvaluationError(
                     f"Trainer '{evaluator_spec.trainer_ref}' not found"

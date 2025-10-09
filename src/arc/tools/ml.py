@@ -1317,9 +1317,12 @@ class MLEvaluateTool(BaseTool):
                 device="cpu",
             )
 
+            # Derive output table name from evaluator ID
+            output_table = f"{evaluator_record.id}_predictions"
+
             # Run evaluation
             result = await asyncio.to_thread(
-                evaluator.evaluate, self.services.ml_data
+                evaluator.evaluate, self.services.ml_data, output_table
             )
 
             metrics_dict = result.metrics
@@ -1334,6 +1337,8 @@ class MLEvaluateTool(BaseTool):
             lines.append("")
             lines.append(f"Samples evaluated: {result.num_samples}")
             lines.append(f"Evaluation time: {result.evaluation_time:.2f}s")
+            lines.append("")
+            lines.append(f"Predictions saved to table: {output_table}")
 
         except Exception as exc:
             from arc.ml.evaluator import EvaluationError
