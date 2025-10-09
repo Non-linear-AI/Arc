@@ -379,47 +379,6 @@ def get_base_tools() -> list[ArcTool]:
             },
         ),
         ArcTool(
-            name="ml_predict",
-            description=(
-                "Run inference with a trained Arc-Graph model "
-                "and save results to a table"
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "model_name": {
-                        "type": "string",
-                        "description": (
-                            "Name of the registered model to use for prediction"
-                        ),
-                    },
-                    "table_name": {
-                        "type": "string",
-                        "description": (
-                            "User database table or dataset containing features"
-                        ),
-                    },
-                    "output_table": {
-                        "type": "string",
-                        "description": "Destination table name for prediction results",
-                    },
-                    "batch_size": {
-                        "type": "integer",
-                        "description": "Batch size for prediction (default: 32)",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Limit the number of rows to process",
-                    },
-                    "device": {
-                        "type": "string",
-                        "description": "Torch device for inference (default: cpu)",
-                    },
-                },
-                "required": ["model_name", "table_name", "output_table"],
-            },
-        ),
-        ArcTool(
             name="ml_model",
             description="Generate Arc-Graph model YAML using the model generator agent",
             parameters={

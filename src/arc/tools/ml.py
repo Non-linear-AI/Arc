@@ -58,62 +58,6 @@ def _as_string_list(value: Any, field_name: str) -> list[str] | None:
     raise ValueError(f"{field_name} must be an array of strings or comma-separated")
 
 
-class MLPredictTool(BaseTool):
-    """Tool for running inference and saving predictions to a table."""
-
-    def __init__(self, runtime: MLRuntime):
-        self.runtime = runtime
-
-    async def execute(
-        self,
-        *,
-        model_name: str | None = None,
-        table_name: str | None = None,
-        output_table: str | None = None,
-        batch_size: int | None = None,
-        limit: int | None = None,
-        device: str | None = None,
-    ) -> ToolResult:
-        if not model_name or not table_name or not output_table:
-            return ToolResult.error_result(
-                "Parameters 'model_name', 'table_name', and 'output_table' "
-                "are required to run prediction."
-            )
-
-        try:
-            parsed_batch_size = _as_optional_int(batch_size, "batch_size")
-            parsed_limit = _as_optional_int(limit, "limit")
-        except ValueError as exc:
-            return ToolResult.error_result(str(exc))
-
-        try:
-            summary = await asyncio.to_thread(
-                self.runtime.predict,
-                model_name=str(model_name),
-                table_name=str(table_name),
-                batch_size=parsed_batch_size or 32,
-                limit=parsed_limit,
-                output_table=str(output_table),
-                device=str(device) if device else None,
-            )
-        except MLRuntimeError as exc:
-            return ToolResult.error_result(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            return ToolResult.error_result(f"Unexpected error during prediction: {exc}")
-
-        outputs = ", ".join(summary.outputs) if summary.outputs else "None"
-        lines = [
-            "Prediction completed successfully.",
-            f"Model: {model_name}",
-            f"Source table: {table_name}",
-            f"Rows processed: {summary.total_predictions}",
-            f"Outputs: {outputs}",
-            f"Results saved to table: {summary.saved_table or output_table}",
-        ]
-
-        return ToolResult.success_result("\n".join(lines))
-
-
 class MLModelTool(BaseTool):
     """Tool for generating Arc-Graph model specifications via LLM."""
 
@@ -1369,9 +1313,17 @@ class MLEvaluateTool(BaseTool):
             # Derive output table name from evaluator ID
             output_table = f"{evaluator_record.id}_predictions"
 
-            # Run evaluation
+            # Setup TensorBoard logging directory
+            from pathlib import Path
+
+            tensorboard_log_dir = Path(f"tensorboard/run_{job.job_id}")
+
+            # Run evaluation with TensorBoard logging
             result = await asyncio.to_thread(
-                evaluator.evaluate, self.services.ml_data, output_table
+                evaluator.evaluate,
+                self.services.ml_data,
+                output_table,
+                tensorboard_log_dir,
             )
 
             metrics_dict = result.metrics
@@ -1411,6 +1363,24 @@ class MLEvaluateTool(BaseTool):
             lines.append(f"Evaluation time: {result.evaluation_time:.2f}s")
             lines.append("")
             lines.append(f"Predictions saved to table: {output_table}")
+
+            # Show TensorBoard and job status instructions
+            if not auto_confirm and self.ui:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[cyan]📊 View evaluation results:[/cyan]"
+                )
+                self.ui._printer.console.print(
+                    f"  • Status: /ml jobs status {job.job_id}"
+                )
+                self.ui._printer.console.print(
+                    f"  • TensorBoard: tensorboard --logdir {tensorboard_log_dir}"
+                )
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[dim]TensorBoard will show PR curves, ROC curves, "
+                    "confusion matrix, and more![/dim]"
+                )
 
         except Exception as exc:
             from arc.ml.evaluator import EvaluationError

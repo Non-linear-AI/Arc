@@ -17,7 +17,6 @@ from arc.tools import (
     FileEditorTool,
     MLModelTool,
     MLPlanTool,
-    MLPredictTool,
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
@@ -121,7 +120,6 @@ class ArcAgent:
             self.tensorboard_manager = None
         self.database_query_tool = DatabaseQueryTool(services) if services else None
         self.schema_discovery_tool = SchemaDiscoveryTool(services) if services else None
-        self.ml_predict_tool = MLPredictTool(services.ml_runtime) if services else None
         self.ml_plan_tool = (
             MLPlanTool(
                 services,
@@ -573,19 +571,6 @@ class ArcAgent:
                         "Schema discovery tool not available. "
                         "Database services not initialized."
                     )
-            elif tool_call.name == "ml_predict":
-                if self.ml_predict_tool:
-                    return await self.ml_predict_tool.execute(
-                        model_name=args.get("model_name"),
-                        table_name=args.get("table_name"),
-                        output_table=args.get("output_table"),
-                        batch_size=args.get("batch_size"),
-                        limit=args.get("limit"),
-                        device=args.get("device"),
-                    )
-                return ToolResult.error_result(
-                    "ML predict tool not available. Database services not initialized."
-                )
             elif tool_call.name == "ml_plan":
                 if self.ml_plan_tool:
                     # Prepare conversation history for the planner

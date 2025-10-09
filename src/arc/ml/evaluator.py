@@ -7,6 +7,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -102,6 +103,7 @@ class ArcEvaluator:
         self,
         ml_data_service: MLDataService,
         output_table: str | None = None,
+        tensorboard_log_dir: str | Path | None = None,
     ) -> EvaluationResult:
         """Run model evaluation on test dataset.
 
@@ -109,12 +111,14 @@ class ArcEvaluator:
         1. Load test data from dataset table
         2. Run predictions
         3. Compute metrics
-        4. Optionally save predictions to output table
-        5. Return results
+        4. Log visualizations to TensorBoard (if enabled)
+        5. Optionally save predictions to output table
+        6. Return results
 
         Args:
             ml_data_service: Service for accessing ML data
             output_table: Optional table to save predictions (features + targets)
+            tensorboard_log_dir: Optional directory for TensorBoard logging
 
         Returns:
             EvaluationResult with computed metrics
@@ -137,7 +141,16 @@ class ArcEvaluator:
             logger.info("Computing evaluation metrics")
             metrics_dict = self._compute_metrics(predictions, targets)
 
-            # 4. Save predictions to output table if specified
+            # 4. Log visualizations to TensorBoard if enabled
+            if tensorboard_log_dir:
+                logger.info(
+                    f"Logging visualizations to TensorBoard: {tensorboard_log_dir}"
+                )
+                self._log_to_tensorboard(
+                    predictions, targets, metrics_dict, tensorboard_log_dir
+                )
+
+            # 5. Save predictions to output table if specified
             if output_table:
                 logger.info(f"Saving predictions to table: {output_table}")
                 self._save_predictions(
@@ -146,7 +159,7 @@ class ArcEvaluator:
 
             evaluation_time = time.time() - start_time
 
-            # 5. Create result
+            # 6. Create result
             result = EvaluationResult(
                 evaluator_name=self.evaluator_spec.name,
                 trainer_ref=self.evaluator_spec.trainer_ref,
@@ -379,6 +392,156 @@ class ArcEvaluator:
             )
 
         return metric_map[metric_name_lower]()
+
+    def _log_to_tensorboard(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        metrics_dict: dict[str, float],
+        log_dir: str | Path,
+    ) -> None:
+        """Log evaluation metrics and visualizations to TensorBoard.
+
+        Args:
+            predictions: Model predictions
+            targets: Ground truth targets
+            metrics_dict: Computed metrics
+            log_dir: Directory for TensorBoard logs
+
+        Raises:
+            EvaluationError: If TensorBoard logging fails (non-fatal, logged as warning)
+        """
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+
+            from arc.ml.visualization import TensorBoardVisualizer
+
+            # Create log directory
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
+
+            # Create TensorBoard writer
+            writer = SummaryWriter(log_dir=str(log_path))
+            viz = TensorBoardVisualizer(writer, enabled=True)
+
+            # Log scalar metrics
+            viz.log_metric_summary(metrics_dict, tag_prefix="evaluation", step=1)
+
+            # Determine task type for appropriate visualizations
+            task_type = self._infer_task_type()
+
+            if task_type == "classification":
+                # Log classification visualizations
+                self._log_classification_visualizations(
+                    viz, predictions, targets, step=1
+                )
+            elif task_type == "regression":
+                # Log regression visualizations
+                viz.log_prediction_distribution(
+                    targets, predictions, tag="evaluation/predictions", step=1
+                )
+
+            # Close writer
+            viz.close()
+
+            logger.info(f"TensorBoard visualizations saved to: {log_path}")
+
+        except Exception as e:
+            # Don't fail the evaluation, just log a warning
+            logger.warning(f"Failed to log to TensorBoard: {e}")
+
+    def _log_classification_visualizations(
+        self,
+        viz: Any,  # TensorBoardVisualizer
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        step: int = 1,
+    ) -> None:
+        """Log classification-specific visualizations.
+
+        Args:
+            viz: TensorBoard visualizer instance
+            predictions: Model predictions (logits or probabilities)
+            targets: Ground truth labels
+            step: Global step for logging
+        """
+        try:
+            import numpy as np
+
+            # Convert to numpy
+            targets_np = targets.cpu().numpy()
+            predictions_np = predictions.cpu().numpy()
+
+            # Determine if binary or multi-class
+            num_classes = (
+                predictions_np.shape[-1] if len(predictions_np.shape) > 1 else 2
+            )
+
+            if num_classes == 2 or len(predictions_np.shape) == 1:
+                # Binary classification
+                # Get probabilities for positive class
+                if len(predictions_np.shape) > 1:
+                    # If predictions are [N, 2], take second column
+                    y_scores = predictions_np[:, 1]
+                else:
+                    # If predictions are [N], treat as probabilities
+                    y_scores = predictions_np
+
+                # Ensure targets are binary (0/1)
+                y_true = targets_np.flatten()
+
+                # Log PR curve
+                viz.log_pr_curve(
+                    y_true, y_scores, tag="evaluation/pr_curve", step=step
+                )
+
+                # Log ROC curve
+                viz.log_roc_curve(
+                    y_true, y_scores, tag="evaluation/roc_curve", step=step
+                )
+
+                # Get predicted classes for confusion matrix
+                y_pred = (y_scores > 0.5).astype(int)
+
+                # Log confusion matrix
+                viz.log_confusion_matrix(
+                    y_true,
+                    y_pred,
+                    class_names=["Class 0", "Class 1"],
+                    tag="evaluation/confusion_matrix",
+                    step=step,
+                )
+
+            else:
+                # Multi-class classification
+                # Get predicted classes
+                y_pred = np.argmax(predictions_np, axis=1)
+                y_true = targets_np.flatten().astype(int)
+
+                # Generate class names
+                unique_classes = sorted(set(y_true))
+                class_names = [f"Class {i}" for i in unique_classes]
+
+                # Log confusion matrix
+                viz.log_confusion_matrix(
+                    y_true,
+                    y_pred,
+                    class_names=class_names,
+                    tag="evaluation/confusion_matrix",
+                    step=step,
+                )
+
+                # Log per-class performance
+                viz.log_class_performance(
+                    y_true,
+                    y_pred,
+                    class_names=class_names,
+                    tag="evaluation/class_performance",
+                    step=step,
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to log classification visualizations: {e}")
 
     def _save_predictions(
         self,
