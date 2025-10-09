@@ -1062,7 +1062,7 @@ class MLEvaluateTool(BaseTool):
         *,
         name: str | None = None,
         context: str | None = None,
-        trainer_name: str | None = None,
+        trainer_id: str | None = None,
         data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
@@ -1072,7 +1072,7 @@ class MLEvaluateTool(BaseTool):
         Args:
             name: Evaluator name
             context: Evaluation goals and context for LLM generation
-            trainer_name: Trainer name to evaluate (references the trained model)
+            trainer_id: Trainer ID to evaluate (references the trained model)
             data_table: Test dataset table name
             target_column: Target column (optional, inferred from model)
             auto_confirm: Skip confirmation workflows (for testing only)
@@ -1094,25 +1094,25 @@ class MLEvaluateTool(BaseTool):
             )
 
         # Validate required parameters
-        if not name or not context or not trainer_name or not data_table:
+        if not name or not context or not trainer_id or not data_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', 'trainer_name', and 'data_table' "
+                "Parameters 'name', 'context', 'trainer_id', and 'data_table' "
                 "are required."
             )
 
         # Get the registered trainer
         try:
-            trainer_record = self.services.trainers.get_latest_trainer_by_name(
-                str(trainer_name)
+            trainer_record = self.services.trainers.get_trainer_by_id(
+                str(trainer_id)
             )
             if not trainer_record:
                 return ToolResult.error_result(
-                    f"Trainer '{trainer_name}' not found in registry. "
+                    f"Trainer '{trainer_id}' not found in registry. "
                     "Please train a model first using /ml train"
                 )
         except Exception as exc:
             return ToolResult.error_result(
-                f"Failed to retrieve trainer '{trainer_name}': {exc}"
+                f"Failed to retrieve trainer '{trainer_id}': {exc}"
             )
 
         # Get model spec to infer target column if not provided
@@ -1164,7 +1164,7 @@ class MLEvaluateTool(BaseTool):
             evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
                 name=str(name),
                 user_context=str(context),
-                trainer_ref=str(trainer_name),
+                trainer_ref=str(trainer_id),
                 trainer_spec_yaml=trainer_record.spec,
                 dataset=str(data_table),
                 target_column=str(target_column),
@@ -1204,7 +1204,7 @@ class MLEvaluateTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(context, trainer_name, trainer_record),
+                editor_func=self._create_editor(context, trainer_id, trainer_record),
                 ui_interface=self.ui,
                 yaml_type_name="evaluator",
                 yaml_suffix=".arc-evaluator.yaml",
@@ -1213,8 +1213,8 @@ class MLEvaluateTool(BaseTool):
             context_dict = {
                 "evaluator_name": str(name),
                 "context": str(context),
-                "trainer_name": str(trainer_name),
-                "trainer_ref": str(trainer_name),
+                "trainer_id": str(trainer_id),
+                "trainer_ref": str(trainer_id),
                 "trainer_spec_yaml": trainer_record.spec,
                 "dataset": str(data_table),
                 "target_column": str(target_column),
@@ -1251,7 +1251,7 @@ class MLEvaluateTool(BaseTool):
                 trainer_id=trainer_record.id,
                 trainer_version=trainer_record.version,
                 spec=evaluator_yaml,
-                description=f"Generated evaluator for trainer {trainer_name}",
+                description=f"Generated evaluator for trainer {trainer_id}",
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )
@@ -1284,7 +1284,7 @@ class MLEvaluateTool(BaseTool):
             # Display evaluation information
             self.ui._printer.console.print()
             self.ui._printer.console.print(
-                f"[bold cyan]📊 Ready to evaluate trainer '{trainer_name}'[/bold cyan]"
+                f"[bold cyan]📊 Ready to evaluate trainer '{trainer_id}'[/bold cyan]"
             )
             self.ui._printer.console.print(f"[dim]Test dataset: {data_table}[/dim]")
             self.ui._printer.console.print(f"[dim]Target column: {target_column}[/dim]")
@@ -1394,7 +1394,7 @@ class MLEvaluateTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, user_context: str, trainer_name: str, trainer_record):
+    def _create_editor(self, user_context: str, trainer_id: str, trainer_record):
         """Create editor function for AI-assisted editing."""
 
         async def edit(
@@ -1413,7 +1413,7 @@ class MLEvaluateTool(BaseTool):
                 _evaluator_spec, edited_yaml = await agent.generate_evaluator(
                     name=context["evaluator_name"],
                     user_context=user_context,
-                    trainer_ref=trainer_name,
+                    trainer_ref=trainer_id,
                     trainer_spec_yaml=trainer_record.spec,
                     dataset=context["dataset"],
                     target_column=context["target_column"],
@@ -1451,7 +1451,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
         *,
         name: str | None = None,
         context: str | None = None,
-        trainer_name: str | None = None,
+        trainer_id: str | None = None,
         data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
@@ -1471,28 +1471,28 @@ class MLEvaluatorGeneratorTool(BaseTool):
         if (
             not name
             or not context
-            or not trainer_name
+            or not trainer_id
             or not data_table
             or not target_column
         ):
             return ToolResult.error_result(
-                "Parameters 'name', 'context', 'trainer_name', 'data_table', and "
+                "Parameters 'name', 'context', 'trainer_id', 'data_table', and "
                 "'target_column' are required to generate an evaluator specification."
             )
 
         # Get the registered trainer
         try:
-            trainer_record = self.services.trainers.get_latest_trainer_by_name(
-                str(trainer_name)
+            trainer_record = self.services.trainers.get_trainer_by_id(
+                str(trainer_id)
             )
             if not trainer_record:
                 return ToolResult.error_result(
-                    f"Trainer '{trainer_name}' not found in registry. "
+                    f"Trainer '{trainer_id}' not found in registry. "
                     "Please register the trainer first using /ml generate-trainer"
                 )
         except Exception as exc:
             return ToolResult.error_result(
-                f"Failed to retrieve trainer '{trainer_name}': {exc}"
+                f"Failed to retrieve trainer '{trainer_id}': {exc}"
             )
 
         # Show UI feedback if UI is available
@@ -1513,7 +1513,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
             evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
                 name=str(name),
                 user_context=str(context),
-                trainer_ref=str(trainer_name),
+                trainer_ref=str(trainer_id),
                 trainer_spec_yaml=trainer_record.spec,
                 dataset=str(data_table),
                 target_column=str(target_column),
@@ -1562,8 +1562,8 @@ class MLEvaluatorGeneratorTool(BaseTool):
             context_dict = {
                 "evaluator_name": str(name),
                 "context": str(context),
-                "trainer_name": str(trainer_name),
-                "trainer_ref": str(trainer_name),
+                "trainer_id": str(trainer_id),
+                "trainer_ref": str(trainer_id),
                 "trainer_spec_yaml": trainer_record.spec,
                 "dataset": str(data_table),
                 "target_column": str(target_column),
@@ -1602,7 +1602,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 trainer_id=trainer_record.id,
                 trainer_version=trainer_record.version,
                 spec=evaluator_yaml,
-                description=f"Generated evaluator for trainer {trainer_name}",
+                description=f"Generated evaluator for trainer {trainer_id}",
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )

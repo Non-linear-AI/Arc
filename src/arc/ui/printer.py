@@ -81,7 +81,7 @@ class ArcCompleter(Completer):
             "evaluate": [
                 ("--name", "Evaluator name (required)"),
                 ("--context", "Evaluation goals and context (required)"),
-                ("--trainer", "Trainer name to evaluate (required)"),
+                ("--trainer-id", "Trainer ID to evaluate (required)"),
                 ("--data-table", "Test dataset table name (required)"),
                 ("--target-column", "Target column (optional, inferred from model)"),
             ],

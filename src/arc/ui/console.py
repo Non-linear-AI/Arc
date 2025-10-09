@@ -229,7 +229,7 @@ class InteractiveInterface:
                     "Generate an Arc-Graph trainer specification",
                 ),
                 (
-                    "/ml evaluate --name NAME --context DESC --trainer TRAINER "
+                    "/ml evaluate --name NAME --context DESC --trainer-id TRAINER_ID "
                     "--data-table TABLE [--target-column COL]",
                     "Generate evaluator and run model evaluation",
                 ),
