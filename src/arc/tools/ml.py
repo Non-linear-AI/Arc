@@ -1308,7 +1308,7 @@ class MLEvaluateTool(BaseTool):
 
         try:
             # Load evaluator from trainer
-            from arc.ml.artifact_manager import ModelArtifactManager
+            from arc.ml.artifacts import ModelArtifactManager
             from arc.ml.evaluator import ArcEvaluator
 
             artifact_manager = ModelArtifactManager(

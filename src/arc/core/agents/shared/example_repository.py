@@ -203,53 +203,8 @@ class ExampleRepository:
         else:
             logging.warning(f"Trainer example not found at {trainer_path}")
 
-        # Load predictor example
-        predictor_path = examples_dir / "diabetes_binary_classification.predictor.yaml"
-        if predictor_path.exists():
-            try:
-                predictor_content = predictor_path.read_text(encoding="utf-8")
-                # Use the same model profile as trainer
-                model_profile = {
-                    "inputs": {
-                        "patient_data": {
-                            "dtype": "float32",
-                            "shape": [None, 8],
-                            "columns": [
-                                "pregnancies",
-                                "glucose",
-                                "blood_pressure",
-                                "skin_thickness",
-                                "insulin",
-                                "bmi",
-                                "diabetes_pedigree",
-                                "age",
-                            ],
-                        }
-                    },
-                    "outputs": {
-                        "logits": "classifier.output",
-                        "prediction": "sigmoid.output",
-                    },
-                    "architecture": "binary_classification",
-                    "num_features": 8,
-                    "output_type": "sigmoid",
-                }
-
-                self.predictor_examples.append(
-                    PredictorExample(
-                        name="Diabetes Binary Classification Predictor",
-                        user_intent="Prediction service for diabetes classification "
-                        "with custom output mapping",
-                        schema=predictor_content,
-                        model_profile=model_profile,
-                        explanation="Predictor that maps model outputs to prediction, "
-                        "confidence, and raw_logits for flexible inference",
-                    )
-                )
-            except OSError as e:
-                logging.error(f"Failed to read predictor example: {e}")
-        else:
-            logging.warning(f"Predictor example not found at {predictor_path}")
+        # Note: Predictor examples removed - predictors replaced with evaluators
+        # Evaluator examples can be added here if needed in the future
 
     def retrieve_relevant_examples(
         self, _user_context: str, _data_profile: dict[str, Any], max_examples: int = 1
