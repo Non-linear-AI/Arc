@@ -261,8 +261,13 @@ class ModelArtifactManager:
 
         versions = []
         for version_dir in model_dir.iterdir():
-            if version_dir.is_dir() and version_dir.name.isdigit():
-                versions.append(int(version_dir.name))
+            if version_dir.is_dir():
+                # Support both formats: "v1" (new) and "1" (old)
+                name = version_dir.name
+                if name.startswith("v") and name[1:].isdigit():
+                    versions.append(int(name[1:]))
+                elif name.isdigit():
+                    versions.append(int(name))
 
         if not versions:
             raise FileNotFoundError(f"No valid versions found for model: {model_id}")
@@ -303,9 +308,9 @@ class ModelArtifactManager:
             version: Model version
 
         Returns:
-            Path to artifact directory
+            Path to artifact directory (format: artifacts/model-id/v{version})
         """
-        return self.artifacts_dir / model_id / str(version)
+        return self.artifacts_dir / model_id / f"v{version}"
 
     def copy_artifact(
         self,
