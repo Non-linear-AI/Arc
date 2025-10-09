@@ -1001,6 +1001,386 @@ class MLTrainTool(BaseTool):
         return edit
 
 
+class MLEvaluateTool(BaseTool):
+    """Unified tool for generating evaluator specs and running evaluation.
+
+    This tool combines evaluator generation with evaluation execution in a single
+    workflow, similar to the MLTrainTool pattern. It provides:
+    1. Evaluator spec generation via LLM
+    2. Interactive confirmation workflow for evaluator spec
+    3. Auto-registration to database
+    4. Interactive confirmation workflow for evaluation launch
+    5. Evaluation execution with metrics display
+
+    This replaces the separate generate-evaluator command with a unified workflow.
+    """
+
+    def __init__(
+        self,
+        services,
+        runtime: MLRuntime,
+        api_key: str | None,
+        base_url: str | None,
+        model: str | None,
+        ui_interface,
+    ) -> None:
+        self.services = services
+        self.runtime = runtime
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
+        self.ui = ui_interface
+
+    async def execute(
+        self,
+        *,
+        name: str | None = None,
+        context: str | None = None,
+        trainer_name: str | None = None,
+        dataset: str | None = None,
+        target_column: str | None = None,
+        auto_confirm: bool = False,
+    ) -> ToolResult:
+        """Generate evaluator spec, register it, and run evaluation with confirmation.
+
+        Args:
+            name: Evaluator name
+            context: Evaluation goals and context for LLM generation
+            trainer_name: Trainer name to evaluate (references the trained model)
+            dataset: Test dataset table name
+            target_column: Target column name for evaluation
+            auto_confirm: Skip confirmation workflows (for testing only)
+
+        Returns:
+            ToolResult with evaluation metrics
+        """
+        # Validate API key
+        if not self.api_key:
+            return ToolResult.error_result(
+                "API key required for evaluator generation. "
+                "Set ARC_API_KEY or configure an API key before using this tool."
+            )
+
+        if not self.services:
+            return ToolResult.error_result(
+                "Evaluator generation service unavailable. "
+                "Database services not initialized."
+            )
+
+        # Validate required parameters
+        if (
+            not name
+            or not context
+            or not trainer_name
+            or not dataset
+            or not target_column
+        ):
+            return ToolResult.error_result(
+                "Parameters 'name', 'context', 'trainer_name', 'dataset', and "
+                "'target_column' are required."
+            )
+
+        # Get the registered trainer
+        try:
+            trainer_record = self.services.trainers.get_latest_trainer_by_name(
+                str(trainer_name)
+            )
+            if not trainer_record:
+                return ToolResult.error_result(
+                    f"Trainer '{trainer_name}' not found in registry. "
+                    "Please train a model first using /ml train"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(
+                f"Failed to retrieve trainer '{trainer_name}': {exc}"
+            )
+
+        # Show UI feedback if UI is available
+        if self.ui:
+            self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
+            self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
+
+        # Generate evaluator spec via LLM
+        from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+
+        agent = EvaluatorGeneratorAgent(
+            self.services,
+            self.api_key,
+            self.base_url,
+            self.model,
+        )
+
+        try:
+            evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
+                name=str(name),
+                user_context=str(context),
+                trainer_ref=str(trainer_name),
+                trainer_spec_yaml=trainer_record.spec,
+                dataset=str(dataset),
+                target_column=str(target_column),
+            )
+        except Exception as exc:
+            from arc.core.agents.evaluator_generator import EvaluatorGeneratorError
+
+            if isinstance(exc, EvaluatorGeneratorError):
+                return ToolResult.error_result(str(exc))
+            return ToolResult.error_result(
+                f"Unexpected error during evaluator generation: {exc}"
+            )
+
+        # Validate the generated evaluator
+        try:
+            from arc.graph.evaluator import (
+                EvaluatorValidationError,
+                validate_evaluator_dict,
+            )
+
+            evaluator_dict = yaml.safe_load(evaluator_yaml)
+            validate_evaluator_dict(evaluator_dict)
+        except yaml.YAMLError as exc:
+            return ToolResult.error_result(
+                f"Generated evaluator contains invalid YAML: {exc}"
+            )
+        except EvaluatorValidationError as exc:
+            return ToolResult.error_result(
+                f"Generated evaluator failed validation: {exc}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error_result(
+                f"Unexpected error during evaluator validation: {exc}"
+            )
+
+        # Interactive confirmation workflow (unless auto_confirm is True)
+        if not auto_confirm:
+            workflow = YamlConfirmationWorkflow(
+                validator_func=self._create_validator(),
+                editor_func=self._create_editor(
+                    context, trainer_name, trainer_record
+                ),
+                ui_interface=self.ui,
+                yaml_type_name="evaluator",
+                yaml_suffix=".arc-evaluator.yaml",
+            )
+
+            context_dict = {
+                "evaluator_name": str(name),
+                "context": str(context),
+                "trainer_name": str(trainer_name),
+                "trainer_ref": str(trainer_name),
+                "trainer_spec_yaml": trainer_record.spec,
+                "dataset": str(dataset),
+                "target_column": str(target_column),
+            }
+
+            try:
+                proceed, final_yaml = await workflow.run_workflow(
+                    evaluator_yaml,
+                    context_dict,
+                    None,  # No output path - we register to DB
+                )
+                if not proceed:
+                    return ToolResult.success_result("✗ Evaluator cancelled.")
+                evaluator_yaml = final_yaml
+            finally:
+                workflow.cleanup()
+
+        # Auto-register evaluator to database
+        try:
+            from datetime import UTC, datetime
+
+            from arc.database.models.evaluator import Evaluator
+
+            # Get next version number
+            next_version = self.services.evaluators.get_next_version_for_name(str(name))
+
+            # Generate unique ID for evaluator
+            evaluator_id = f"{name}-v{next_version}"
+
+            evaluator_record = Evaluator(
+                id=evaluator_id,
+                name=str(name),
+                version=next_version,
+                trainer_id=trainer_record.id,
+                trainer_version=trainer_record.version,
+                spec=evaluator_yaml,
+                description=f"Generated evaluator for trainer {trainer_name}",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
+            self.services.evaluators.create_evaluator(evaluator_record)
+
+            if self.ui:
+                self.ui.show_system_success(
+                    f"✓ Evaluator registered: {evaluator_record.id}"
+                )
+        except Exception as exc:
+            return ToolResult.error_result(f"Failed to register evaluator: {exc}")
+
+        # Prepare evaluator summary
+        summary = (
+            f"Trainer: {evaluator_spec.trainer_ref} • "
+            f"Dataset: {evaluator_spec.dataset} • "
+            f"Target: {evaluator_spec.target_column}"
+        )
+
+        lines = [
+            f"✓ Evaluator '{evaluator_record.id}' created and registered.",
+            summary,
+        ]
+
+        # Confirmation dialog for evaluation launch
+        should_evaluate = auto_confirm  # Auto-confirm in tests
+
+        if not auto_confirm and self.ui:
+            # Display evaluation information
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                f"[bold cyan]📊 Ready to evaluate trainer '{trainer_name}'[/bold cyan]"
+            )
+            self.ui._printer.console.print(f"[dim]Test dataset: {dataset}[/dim]")
+            self.ui._printer.console.print(f"[dim]Target column: {target_column}[/dim]")
+            self.ui._printer.console.print()
+
+            # Show menu options
+            choice = await self.ui._printer.get_choice_async(
+                options=[
+                    ("evaluate", "Run evaluation now"),
+                    ("skip", "Skip evaluation (evaluator will be registered)"),
+                ],
+                default="evaluate",
+            )
+            should_evaluate = choice == "evaluate"
+
+        metrics_dict = None
+        if should_evaluate:
+            if self.ui:
+                self.ui.show_info(f"🔍 Running evaluation with '{name}'...")
+
+            try:
+                # Load evaluator from trainer
+                from arc.ml.artifact_manager import ModelArtifactManager
+                from arc.ml.evaluator import ArcEvaluator
+
+                artifact_manager = ModelArtifactManager(
+                    self.runtime.models_dir, self.services.models
+                )
+
+                evaluator = ArcEvaluator.load_from_trainer(
+                    artifact_manager=artifact_manager,
+                    trainer_service=self.services.trainers,
+                    evaluator_spec=evaluator_spec,
+                    device="cpu",
+                )
+
+                # Run evaluation
+                result = await asyncio.to_thread(
+                    evaluator.evaluate, self.services.ml_data
+                )
+
+                metrics_dict = result.metrics
+
+                # Display metrics
+                lines.append("")
+                lines.append("✓ Evaluation completed successfully.")
+                lines.append("")
+                lines.append("Metrics:")
+                for metric_name, metric_value in metrics_dict.items():
+                    lines.append(f"  {metric_name}: {metric_value:.4f}")
+                lines.append("")
+                lines.append(f"Samples evaluated: {result.num_samples}")
+                lines.append(f"Evaluation time: {result.evaluation_time:.2f}s")
+
+            except Exception as exc:
+                from arc.ml.evaluator import EvaluationError
+
+                if isinstance(exc, EvaluationError):
+                    return ToolResult.error_result(
+                        f"Evaluator registered but evaluation failed: {exc}"
+                    )
+                return ToolResult.error_result(
+                    f"Evaluator registered but unexpected error: {exc}"
+                )
+        else:
+            lines.append("")
+            lines.append("✓ Evaluator ready. Evaluation skipped.")
+            lines.append(f"To evaluate later, use: /ml evaluate with evaluator {name}")
+
+        # Build result metadata
+        result_metadata = {
+            "evaluator_id": evaluator_record.id,
+            "evaluator_name": name,
+            "trainer_id": trainer_record.id,
+            "yaml_content": evaluator_yaml,
+            "evaluation_ran": should_evaluate,
+        }
+
+        if metrics_dict:
+            result_metadata["metrics"] = metrics_dict
+
+        return ToolResult(
+            success=True,
+            output="\n".join(lines),
+            metadata=result_metadata,
+        )
+
+    def _create_validator(self):
+        """Create validator function for the workflow."""
+
+        def validate(yaml_str: str) -> list[str]:
+            try:
+                from arc.graph.evaluator import (
+                    EvaluatorValidationError,
+                    validate_evaluator_dict,
+                )
+
+                evaluator_dict = yaml.safe_load(yaml_str)
+                validate_evaluator_dict(evaluator_dict)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except EvaluatorValidationError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
+
+        return validate
+
+    def _create_editor(self, user_context: str, trainer_name: str, trainer_record):
+        """Create editor function for AI-assisted editing."""
+
+        async def edit(
+            yaml_content: str, feedback: str, context: dict[str, Any]
+        ) -> str | None:
+            from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+
+            agent = EvaluatorGeneratorAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
+            )
+
+            try:
+                _evaluator_spec, edited_yaml = await agent.generate_evaluator(
+                    name=context["evaluator_name"],
+                    user_context=user_context,
+                    trainer_ref=trainer_name,
+                    trainer_spec_yaml=trainer_record.spec,
+                    dataset=context["dataset"],
+                    target_column=context["target_column"],
+                    existing_yaml=yaml_content,
+                    editing_instructions=feedback,
+                )
+                return edited_yaml
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ Edit failed: {e}")
+                return None
+
+        return edit
+
+
 class MLEvaluatorGeneratorTool(BaseTool):
     """Tool for generating Arc-Graph evaluator specifications via LLM."""
 

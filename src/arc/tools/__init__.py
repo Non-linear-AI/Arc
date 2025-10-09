@@ -6,6 +6,7 @@ from arc.tools.data_processor_generator import DataProcessorGeneratorTool
 from arc.tools.database_query import DatabaseQueryTool
 from arc.tools.file_editor import FileEditorTool
 from arc.tools.ml import (
+    MLEvaluateTool,
     MLModelTool,
     MLPlanTool,
     MLPredictTool,
@@ -28,5 +29,5 @@ __all__ = [
     "MLModelTool",
     "MLPlanTool",
     "MLTrainTool",
-    "MLTrainerGeneratorTool",
+    "MLEvaluateTool",
 ]
