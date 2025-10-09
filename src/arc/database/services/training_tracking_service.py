@@ -185,6 +185,7 @@ class TrainingTrackingService(BaseService):
         limit: int = 100,
         status: TrainingStatus | None = None,
         model_id: str | None = None,
+        trainer_id: str | None = None,
     ) -> list[TrainingRun]:
         """List training runs with optional filters.
 
@@ -192,6 +193,7 @@ class TrainingTrackingService(BaseService):
             limit: Maximum number of runs to return
             status: Filter by status
             model_id: Filter by model ID
+            trainer_id: Filter by trainer ID
 
         Returns:
             List of TrainingRun objects
@@ -210,6 +212,10 @@ class TrainingTrackingService(BaseService):
             if model_id:
                 conditions.append("model_id = ?")
                 params.append(model_id)
+
+            if trainer_id:
+                conditions.append("trainer_id = ?")
+                params.append(trainer_id)
 
             where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             sql = f"""
