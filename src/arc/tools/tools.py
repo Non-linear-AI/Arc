@@ -191,7 +191,7 @@ def get_base_tools() -> list[ArcTool]:
                                 },
                                 "status": {
                                     "type": "string",
-                                    "enum": ["pending", "in_progress", "completed"],
+                                    "enum": ["pending", "completed"],
                                     "description": (
                                         "Current status of the todo item "
                                         "(default: pending)"
@@ -223,7 +223,7 @@ def get_base_tools() -> list[ArcTool]:
                                 },
                                 "status": {
                                     "type": "string",
-                                    "enum": ["pending", "in_progress", "completed"],
+                                    "enum": ["pending", "completed"],
                                     "description": "New status for the todo item",
                                 },
                                 "content": {
@@ -376,6 +376,40 @@ def get_base_tools() -> list[ArcTool]:
                     },
                 },
                 "required": ["trainer_name", "train_table"],
+            },
+        ),
+        ArcTool(
+            name="ml_plan",
+            description=(
+                "Create comprehensive ML workflow plan for a modeling task. "
+                "This tool analyzes data, user requirements, and creates a detailed plan "
+                "covering feature engineering, model architecture, training strategy, and "
+                "evaluation metrics. ALWAYS use this FIRST before building ML models."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_context": {
+                        "type": "string",
+                        "description": (
+                            "Description of the ML problem, goals, and requirements"
+                        ),
+                    },
+                    "source_tables": {
+                        "type": "string",
+                        "description": (
+                            "Comma-separated list of database tables to analyze "
+                            "(e.g., 'users,transactions' or 'pidd')"
+                        ),
+                    },
+                    "feedback": {
+                        "type": "string",
+                        "description": (
+                            "Optional feedback to revise an existing plan"
+                        ),
+                    },
+                },
+                "required": ["user_context", "source_tables"],
             },
         ),
         ArcTool(

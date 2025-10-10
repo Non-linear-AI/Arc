@@ -598,8 +598,7 @@ class ArcAgent:
                     # Execute with current plan for revisions
                     result = await self.ml_plan_tool.execute(
                         user_context=args.get("user_context"),
-                        data_table=args.get("data_table"),
-                        target_column=args.get("target_column"),
+                        source_tables=args.get("source_tables"),
                         conversation_history=conversation_history,
                         feedback=args.get("feedback"),
                         previous_plan=self.current_ml_plan,
@@ -649,10 +648,7 @@ class ArcAgent:
                         name=args.get("name"),
                         context=args.get("context"),
                         trainer_id=args.get("trainer_id"),
-                        test_table=args.get("test_table"),
-                        target_column=args.get("target_column"),
-                        metrics=args.get("metrics"),
-                        version=args.get("version"),
+                        data_table=args.get("test_table"),
                     )
                 return ToolResult.error_result(
                     "ML evaluate tool not available. Database services not initialized."
