@@ -42,11 +42,8 @@ class TensorBoardManager:
             info = self._processes[job_id]
             return info["url"], info["pid"]
 
-        # Verify logdir exists
-        if not logdir.exists():
-            raise TensorBoardError(
-                f"TensorBoard log directory does not exist: {logdir}"
-            )
+        # Create logdir if it doesn't exist
+        logdir.mkdir(parents=True, exist_ok=True)
 
         # Find available port
         actual_port = self._find_available_port(port)

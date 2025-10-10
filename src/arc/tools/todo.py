@@ -11,7 +11,7 @@ class TodoItem:
     def __init__(self, id: str, content: str, status: str = "pending"):
         self.id = id
         self.content = content
-        self.status = status  # pending, in_progress, completed
+        self.status = status  # pending, completed
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -133,9 +133,6 @@ class TodoTool(BaseTool):
             if todo.status == "completed":
                 marker = "●"
                 line_text = f"  └ {marker} [strike]{todo.content}[/strike]"
-            elif todo.status == "in_progress":
-                marker = "◐"
-                line_text = f"  └ {marker} {todo.content}"
             else:
                 marker = "○"
                 line_text = f"  └ {marker} {todo.content}"
@@ -146,7 +143,7 @@ class TodoTool(BaseTool):
 
     def get_todo_summary(self) -> dict[str, int]:
         """Get summary of TODO statuses."""
-        summary = {"pending": 0, "in_progress": 0, "completed": 0}
+        summary = {"pending": 0, "completed": 0}
         for todo in self.todos:
             summary[todo.status] += 1
         return summary
