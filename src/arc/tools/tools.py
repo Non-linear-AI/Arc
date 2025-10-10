@@ -382,9 +382,10 @@ def get_base_tools() -> list[ArcTool]:
             name="ml_plan",
             description=(
                 "Create comprehensive ML workflow plan for a modeling task. "
-                "This tool analyzes data, user requirements, and creates a detailed plan "
-                "covering feature engineering, model architecture, training strategy, and "
-                "evaluation metrics. ALWAYS use this FIRST before building ML models."
+                "This tool analyzes data, user requirements, and creates a "
+                "detailed plan covering feature engineering, model architecture, "
+                "training strategy, and evaluation metrics. "
+                "ALWAYS use this FIRST before building ML models."
             ),
             parameters={
                 "type": "object",
@@ -404,9 +405,7 @@ def get_base_tools() -> list[ArcTool]:
                     },
                     "feedback": {
                         "type": "string",
-                        "description": (
-                            "Optional feedback to revise an existing plan"
-                        ),
+                        "description": ("Optional feedback to revise an existing plan"),
                     },
                 },
                 "required": ["user_context", "source_tables"],
