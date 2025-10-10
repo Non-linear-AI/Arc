@@ -301,28 +301,6 @@ tools:
         - model_id
         - train_table
 
-  - name: ml_trainer_generator
-    description: Generate Arc-Graph trainer YAML using the trainer generator agent
-    parameters:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Trainer name to include in the specification
-        context:
-          type: string
-          description: Training goals, constraints, and notes
-        model_spec_path:
-          type: string
-          description: Path to the model specification YAML file
-        output_path:
-          type: string
-          description: Optional file path to save the generated trainer YAML
-      required:
-        - name
-        - context
-        - model_spec_path
-
   - name: ml_evaluate
     description: |
       Generate Arc-Graph evaluator specification and run evaluation on test data.
