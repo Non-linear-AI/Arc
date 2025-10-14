@@ -82,7 +82,7 @@ def chat(
 
     api_key = api_key or settings_manager.get_api_key()
     base_url = base_url or settings_manager.get_base_url()
-    model = model or settings_manager.get_current_model() or "gpt-4"
+    model = model or settings_manager.get_current_model()
 
     # Save command line settings if provided
     if api_key and click.get_current_context().params.get("api_key"):
@@ -1282,7 +1282,7 @@ async def run_interactive_mode(
                             updated_api = settings_manager.get_api_key()
                             updated_base = settings_manager.get_base_url()
                             current_model_setting = settings_manager.get_current_model()
-                            updated_model = current_model_setting or "gpt-4"
+                            updated_model = current_model_setting
                             updated_text = (
                                 f"API Key: {'*' * 8 if updated_api else 'Not set'}\n"
                                 f"Base URL: {updated_base or 'Not set'}\n"

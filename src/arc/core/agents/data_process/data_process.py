@@ -53,7 +53,7 @@ class DataProcessorGeneratorAgent:
         self.services = services
         self.api_key = api_key
         self.base_url = base_url
-        self.model = model or "gpt-4"
+        self.model = model
         self.client = ArcClient(api_key, self.model, base_url)
 
     async def generate_data_processing_yaml(
