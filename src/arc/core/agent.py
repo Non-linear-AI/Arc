@@ -94,29 +94,27 @@ class ArcAgent:
     def __init__(
         self,
         api_key: str,
-        base_url: str | None = None,
-        model: str | None = None,
+        services,
+        base_url: str,
+        model: str,
         max_tool_rounds: int = 50,
-        services=None,
         ui_interface=None,
     ):
         # Initialize logger
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        # Initialize settings and model
+        # Initialize settings manager (kept for compatibility)
         self.settings_manager = SettingsManager()
-        saved_model = self.settings_manager.get_current_model()
-        model_to_use = model or saved_model or "gpt-4"
 
         self.max_tool_rounds = max_tool_rounds
-        self.arc_client = ArcClient(api_key, model_to_use, base_url)
+        self.arc_client = ArcClient(api_key, model, base_url)
         self.api_key = api_key
-        self.base_url = self.arc_client.base_url
+        self.base_url = base_url
         self.ui_interface = ui_interface
 
         # Track the model currently configured for the client so tool calls
         # stay consistent
-        self.current_model_name = self.arc_client.get_current_model()
+        self.current_model_name = model
         self.logger.info(f"ArcAgent initialized with model: {self.current_model_name}")
 
         # ML Plan management - stores current plan across workflow
@@ -160,75 +158,66 @@ class ArcAgent:
             )
             self.tensorboard_manager = None
 
-        # Initialize and register database/ML tools if services available
-        if services:
-            self.database_query_tool = DatabaseQueryTool(services)
-            self.schema_discovery_tool = SchemaDiscoveryTool(services)
-            self.ml_plan_tool = MLPlanTool(
-                services,
-                self.api_key,
-                self.base_url,
-                self.current_model_name,
-                self.ui_interface,
-                agent=self,  # Pass agent reference for auto_accept flag
-            )
-            self.ml_model_tool = MLModelTool(
-                services,
-                self.api_key,
-                self.base_url,
-                self.current_model_name,
-                self.ui_interface,
-            )
-            self.ml_train_tool = MLTrainTool(
-                services,
-                services.ml_runtime,
-                self.api_key,
-                self.base_url,
-                self.current_model_name,
-                self.ui_interface,
-                self.tensorboard_manager,
-            )
-            self.ml_evaluate_tool = MLEvaluateTool(
-                services,
-                services.ml_runtime,
-                self.api_key,
-                self.base_url,
-                self.current_model_name,
-                self.ui_interface,
-                self.tensorboard_manager,
-            )
-            self.data_processor_generator_tool = DataProcessorGeneratorTool(
-                services,
-                self.api_key,
-                self.base_url,
-                self.current_model_name,
-            )
+        # Initialize and register database/ML tools
+        self.database_query_tool = DatabaseQueryTool(services)
+        self.schema_discovery_tool = SchemaDiscoveryTool(services)
+        self.ml_plan_tool = MLPlanTool(
+            services,
+            self.api_key,
+            self.base_url,
+            model,
+            self.ui_interface,
+            agent=self,  # Pass agent reference for auto_accept flag
+        )
+        self.ml_model_tool = MLModelTool(
+            services,
+            self.api_key,
+            self.base_url,
+            model,
+            self.ui_interface,
+        )
+        self.ml_train_tool = MLTrainTool(
+            services,
+            services.ml_runtime,
+            self.api_key,
+            self.base_url,
+            model,
+            self.ui_interface,
+            self.tensorboard_manager,
+        )
+        self.ml_evaluate_tool = MLEvaluateTool(
+            services,
+            services.ml_runtime,
+            self.api_key,
+            self.base_url,
+            model,
+            self.ui_interface,
+            self.tensorboard_manager,
+        )
+        self.data_processor_generator_tool = DataProcessorGeneratorTool(
+            services,
+            self.api_key,
+            self.base_url,
+            model,
+        )
 
-            # Register database and ML tools
-            self.tool_registry.register("database_query", self.database_query_tool)
-            self.tool_registry.register("schema_discovery", self.schema_discovery_tool)
-            self.tool_registry.register("ml_plan", self.ml_plan_tool)
-            self.tool_registry.register("ml_model", self.ml_model_tool)
-            self.tool_registry.register("ml_train", self.ml_train_tool)
-            self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
-            self.tool_registry.register(
-                "data_processor_generator", self.data_processor_generator_tool
-            )
-        else:
-            self.database_query_tool = None
-            self.schema_discovery_tool = None
-            self.ml_plan_tool = None
-            self.ml_model_tool = None
-            self.ml_train_tool = None
-            self.ml_evaluate_tool = None
-            self.data_processor_generator_tool = None
+        # Register database and ML tools
+        self.tool_registry.register("database_query", self.database_query_tool)
+        self.tool_registry.register("schema_discovery", self.schema_discovery_tool)
+        self.tool_registry.register("ml_plan", self.ml_plan_tool)
+        self.tool_registry.register("ml_model", self.ml_model_tool)
+        self.tool_registry.register("ml_train", self.ml_train_tool)
+        self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
+        self.tool_registry.register(
+            "data_processor_generator", self.data_processor_generator_tool
+        )
 
         # Validate tool registry matches tools.yaml
         self._validate_tool_registry()
         # Initialize chat history
         self.chat_history: list[ChatEntry] = []
         self.messages: list[ChatCompletionMessageParam] = []
-        self.token_counter = TokenCounter(model_to_use)
+        self.token_counter = TokenCounter(model)
 
         # Load custom instructions and initialize system message
         self._initialize_system_message()
@@ -267,17 +256,15 @@ class ArcAgent:
     def _initialize_system_message(self) -> None:
         """Initialize the system message with instructions."""
 
-        # Generate system schema if services are available
+        # Generate system schema
         system_schema = None
-        if hasattr(self, "database_query_tool") and self.database_query_tool:
-            try:
-                # Access schema service through the database query tool's services
-                services = self.database_query_tool.services
-                if services and hasattr(services, "schema"):
-                    system_schema = services.schema.generate_system_schema_prompt()
-            except Exception:
-                # Continue without system schema if generation fails
-                pass
+        try:
+            services = self.database_query_tool.services
+            if hasattr(services, "schema"):
+                system_schema = services.schema.generate_system_schema_prompt()
+        except Exception as e:
+            self.logger.warning(f"Failed to generate system schema: {e}")
+            # Continue without system schema if generation fails
 
         # Load system prompt from Jinja2 template
         template_path = Path(__file__).parent.parent / "templates" / "system_prompt.j2"

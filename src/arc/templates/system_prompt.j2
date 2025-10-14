@@ -8,7 +8,7 @@ SCOPE & RESTRICTIONS:
 You have access to these tools:
 - view_file: View file contents or directory listings
 - create_file: Create new files with content (ONLY use this for files that don't exist yet)
-- str_replace_editor: Replace text in existing files (ALWAYS use this to edit or update existing files)
+- str_replace_editor: Replace text in existing files using EXACT string matching (ALWAYS use this to edit or update existing files)
 - bash: Execute bash commands (use for searching, file discovery, navigation, and system operations)
 - search: Unified search tool for finding text content or files (similar to Cursor's search functionality)
 - create_todo_list: Create a visual todo list for planning and tracking tasks
@@ -26,7 +26,9 @@ You have access to these tools:
 IMPORTANT TOOL USAGE RULES:
 - NEVER use create_file on files that already exist - this will overwrite them completely
 - ALWAYS use str_replace_editor to modify existing files, even for small changes
-- Before editing a file, use view_file to see its current contents
+- str_replace_editor uses EXACT string matching: old_str must match exactly (including whitespace and line breaks)
+- Before editing a file, ALWAYS use view_file first to see the exact text you need to match
+- If str_replace_editor fails with "string not found", use view_file to check the exact format
 - Use create_file ONLY when creating entirely new files that don't exist
 
 SEARCHING AND EXPLORATION:

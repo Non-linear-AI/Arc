@@ -178,8 +178,57 @@ class FileEditorTool(BaseTool):
     async def str_replace_editor(
         self, path: str, old_str: str, new_str: str, replace_all: bool = False
     ) -> ToolResult:
-        """Replace text in an existing file using multi-strategy editing."""
+        """Replace text in an existing file using EXACT string matching.
+
+        This follows Claude Code's approach: exact match only, no fuzzy matching.
+        If the string is not found or appears multiple times, returns a clear error.
+        """
         try:
+            file_path = Path(path)
+
+            # Check if file exists
+            if not file_path.exists():
+                return ToolResult.error_result(
+                    f"File does not exist: {path}. Use create_file for new files."
+                )
+
+            if not file_path.is_file():
+                return ToolResult.error_result(
+                    f"Path is not a file: {path}"
+                )
+
+            # Read current content
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                return ToolResult.error_result(
+                    f"Cannot read file '{path}': not a text file"
+                )
+            except PermissionError:
+                return ToolResult.error_result(
+                    f"Permission denied reading file: {path}"
+                )
+
+            # Count occurrences for exact match
+            count = content.count(old_str)
+
+            if count == 0:
+                # Provide helpful error message
+                return ToolResult.error_result(
+                    f"String not found in {path}. "
+                    f"The old_str must match exactly (including whitespace). "
+                    f"Use view_file to see the current content and try again."
+                )
+
+            if count > 1 and not replace_all:
+                return ToolResult.error_result(
+                    f"String appears {count} times in {path}. "
+                    f"Either:\n"
+                    f"1. Provide more context in old_str to make it unique, or\n"
+                    f"2. Set replace_all=true to replace all occurrences"
+                )
+
             # Request confirmation from user
             session_flags = self.confirmation_service.get_session_flags()
             if (
@@ -192,10 +241,10 @@ class FileEditorTool(BaseTool):
                     operation_type="file",
                     content=(
                         f"Editing file: {path}\n"
-                        f"Replace: {old_str[:100]}"
+                        f"Replace {count} occurrence(s)\n"
+                        f"Old: {old_str[:100]}"
                         f"{'...' if len(old_str) > 100 else ''}\n"
-                        f"With: {new_str[:100]}{'...' if len(new_str) > 100 else ''}\n"
-                        f"Replace all: {replace_all}"
+                        f"New: {new_str[:100]}{'...' if len(new_str) > 100 else ''}"
                     ),
                 )
 
@@ -204,25 +253,26 @@ class FileEditorTool(BaseTool):
                         confirmation_result.feedback
                         or "User denied permission to edit files"
                     )
-            # Create edit instruction
-            instruction = EditInstruction(
-                file_path=path,
-                search_text=old_str,
-                replacement_text=new_str,
-                replace_all=replace_all,
-            )
 
-            # Apply edit using strategy manager
-            result = await self.editor_manager.apply_edit(instruction)
-
-            if result.success:
-                strategy_info = f" (strategy: {result.strategy_used})"
-                if result.fallback_used:
-                    strategy_info += " [fallback]"
-
-                return ToolResult.success_result(f"{result.message}{strategy_info}")
+            # Perform replacement
+            if replace_all:
+                new_content = content.replace(old_str, new_str)
             else:
-                return ToolResult.error_result(f"Edit failed: {result.message}")
+                # Replace only first occurrence
+                new_content = content.replace(old_str, new_str, 1)
+
+            # Write back to file
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(new_content)
+            except PermissionError:
+                return ToolResult.error_result(
+                    f"Permission denied writing to file: {path}"
+                )
+
+            return ToolResult.success_result(
+                f"Successfully replaced {count} occurrence(s) in {path}"
+            )
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to edit file '{path}': {str(e)}")

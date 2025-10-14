@@ -82,7 +82,7 @@ def chat(
 
     api_key = api_key or settings_manager.get_api_key()
     base_url = base_url or settings_manager.get_base_url()
-    model = model or settings_manager.get_current_model()
+    model = model or settings_manager.get_current_model() or "gpt-4"
 
     # Save command line settings if provided
     if api_key and click.get_current_context().params.get("api_key"):
@@ -101,13 +101,14 @@ def chat(
 
     # Run the appropriate mode
     if prompt:
-        # Headless mode requires an API key
+        # Headless mode requires an API key, base_url, and model
         if not api_key:
             ui.show_system_error(
                 "API key required for headless mode. Set ARC_API_KEY, "
                 "use --api-key, or run /config in interactive mode."
             )
             sys.exit(1)
+        # base_url and model always have defaults from settings
         asyncio.run(
             run_headless_mode(
                 prompt, api_key, base_url, model, max_tool_rounds, services
@@ -1054,15 +1055,15 @@ async def _ml_data_processing(
 async def run_headless_mode(
     prompt: str,
     api_key: str,
-    base_url: str | None,
-    model: str | None,
+    base_url: str,
+    model: str,
     max_tool_rounds: int,
     services: ServiceContainer,
 ):
     """Run in headless mode - process prompt and exit."""
     agent = None
     try:
-        agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services, None)
+        agent = ArcAgent(api_key, services, base_url, model, max_tool_rounds, None)
 
         # Configure confirmation service for headless mode (singleton)
         confirmation_service = ConfirmationService.get_instance()
@@ -1120,8 +1121,8 @@ async def run_headless_mode(
 
 async def run_interactive_mode(
     api_key: str | None,
-    base_url: str | None,
-    model: str | None,
+    base_url: str,
+    model: str,
     max_tool_rounds: int,
     services: ServiceContainer,
 ):
@@ -1152,7 +1153,7 @@ async def run_interactive_mode(
                     api_key = new_api.strip()
                     ui.show_system_success("API key saved to ~/.arc/user-settings.json")
                 new_url = await ui.get_user_input_async(
-                    f"Base URL [{base_url or ''}]: "
+                    f"Base URL [{base_url}]: "
                 )
                 if new_url.strip():
                     settings_manager.update_user_setting("baseURL", new_url.strip())
@@ -1160,7 +1161,7 @@ async def run_interactive_mode(
                     ui.show_system_success(
                         "Base URL saved to ~/.arc/user-settings.json"
                     )
-                new_model = await ui.get_user_input_async(f"Model [{model or ''}]: ")
+                new_model = await ui.get_user_input_async(f"Model [{model}]: ")
                 if new_model.strip():
                     settings_manager.update_user_setting("model", new_model.strip())
                     model = new_model.strip()
@@ -1169,7 +1170,7 @@ async def run_interactive_mode(
         # Initialize agent only if API key is available
         agent: ArcAgent | None = None
         if api_key:
-            agent = ArcAgent(api_key, base_url, model, max_tool_rounds, services, ui)
+            agent = ArcAgent(api_key, services, base_url, model, max_tool_rounds, ui)
         from contextlib import suppress
 
         with suppress(Exception):
@@ -1280,7 +1281,8 @@ async def run_interactive_mode(
                             # Refresh and show the updated configuration
                             updated_api = settings_manager.get_api_key()
                             updated_base = settings_manager.get_base_url()
-                            updated_model = settings_manager.get_current_model()
+                            current_model_setting = settings_manager.get_current_model()
+                            updated_model = current_model_setting or "gpt-4"
                             updated_text = (
                                 f"API Key: {'*' * 8 if updated_api else 'Not set'}\n"
                                 f"Base URL: {updated_base or 'Not set'}\n"
@@ -1294,10 +1296,10 @@ async def run_interactive_mode(
                                 try:
                                     nonlocal_agent = ArcAgent(
                                         updated_api,
+                                        services,
                                         updated_base,
                                         updated_model,
                                         max_tool_rounds,
-                                        services,
                                         ui,
                                     )
                                     agent = nonlocal_agent

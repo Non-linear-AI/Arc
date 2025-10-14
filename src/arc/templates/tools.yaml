@@ -36,7 +36,7 @@ tools:
         - content
 
   - name: str_replace_editor
-    description: Replace specific text in a file. Use this for single line edits only
+    description: Replace text in an existing file using EXACT string matching. The old_str must match exactly including whitespace and line breaks. If the string is not found or appears multiple times, the tool will return a clear error. Use view_file first to see the exact text to match.
     parameters:
       type: object
       properties:
@@ -45,7 +45,7 @@ tools:
           description: Path to the file to edit
         old_str:
           type: string
-          description: Text to replace (must match exactly, or will use fuzzy matching for multi-line strings)
+          description: Text to replace (must match exactly including all whitespace and line breaks)
         new_str:
           type: string
           description: Text to replace with
