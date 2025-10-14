@@ -97,8 +97,8 @@ class TrainingJobConfig:
     description: str | None = None
     tags: list[str] | None = None
 
-    # Training timeout configuration (in seconds)
-    max_training_time: float = 1800.0  # 30 minutes default
+    # Training timeout configuration (in seconds, None = unlimited)
+    max_training_time: float | None = None  # Unlimited by default
 
 
 class TrainingJobProgressCallback:
@@ -108,7 +108,7 @@ class TrainingJobProgressCallback:
         self,
         job_service: JobService,
         job_id: str,
-        max_training_time: float = 1800.0,
+        max_training_time: float | None = None,
         tracking_service: TrainingTrackingService | None = None,
         run_id: str | None = None,
         metric_log_frequency: int = 100,
@@ -118,7 +118,7 @@ class TrainingJobProgressCallback:
         self.total_epochs = 0
         self.current_epoch = 0
         self.current_step = 0
-        self.max_training_time = max_training_time  # 30 minutes default
+        self.max_training_time = max_training_time  # None = unlimited
         self.training_start_time = None
         self.tracking_service = tracking_service
         self.run_id = run_id
@@ -152,8 +152,8 @@ class TrainingJobProgressCallback:
         self.current_epoch = epoch
         self.total_epochs = total_epochs
 
-        # Check for timeout
-        if self.training_start_time:
+        # Check for timeout (only if max_training_time is set)
+        if self.training_start_time and self.max_training_time is not None:
             import time
 
             elapsed_time = time.time() - self.training_start_time
