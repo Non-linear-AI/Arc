@@ -176,9 +176,14 @@ class MLModelTool(BaseTool):
             )
         except ModelValidationError as exc:
             return ToolResult.error_result(f"Generated model failed validation: {exc}")
-        except Exception as exc:  # noqa: BLE001
+        except (yaml.YAMLError, ModelValidationError) as exc:
+            return ToolResult.error_result(f"Model validation failed: {exc}")
+        except Exception as exc:
+            # Log unexpected errors with full traceback
+            import logging
+            logging.exception("Unexpected error during model validation")
             return ToolResult.error_result(
-                f"Unexpected error during model validation: {exc}"
+                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
             )
 
         # Interactive confirmation workflow (unless auto_confirm is True)
@@ -659,9 +664,13 @@ class MLTrainTool(BaseTool):
             return ToolResult.error_result(
                 f"Generated trainer failed validation: {exc}"
             )
-        except Exception as exc:  # noqa: BLE001
+        except (yaml.YAMLError, TrainerValidationError) as exc:
+            return ToolResult.error_result(f"Trainer validation failed: {exc}")
+        except Exception as exc:
+            import logging
+            logging.exception("Unexpected error during trainer validation")
             return ToolResult.error_result(
-                f"Unexpected error during trainer validation: {exc}"
+                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
             )
 
         # Interactive confirmation workflow (unless auto_confirm is True)
@@ -744,10 +753,18 @@ class MLTrainTool(BaseTool):
                     if self.tensorboard_manager:
                         try:
                             await self._handle_tensorboard_launch(job_id)
-                        except Exception as e:  # noqa: BLE001
-                            # Show error but don't fail the whole training
+                        except (OSError, RuntimeError) as e:
+                            # Known TensorBoard launch failures
                             self.ui._printer.console.print(
                                 f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                            )
+                            self._show_manual_tensorboard_instructions(job_id)
+                        except Exception as e:
+                            # Log unexpected errors with full traceback
+                            import logging
+                            logging.exception("Unexpected error during TensorBoard launch")
+                            self.ui._printer.console.print(
+                                f"[yellow]⚠️  TensorBoard setup failed: {e.__class__.__name__}: {e}[/yellow]"
                             )
                             self._show_manual_tensorboard_instructions(job_id)
                     else:
@@ -759,17 +776,44 @@ class MLTrainTool(BaseTool):
                         self._show_manual_tensorboard_instructions(job_id)
 
             except MLRuntimeError as exc:
-                return ToolResult.error_result(
-                    f"Trainer registered but training failed: {exc}"
+                # Trainer was successfully registered but training launch failed
+                # Return success with warning since trainer is usable
+                lines.append("")
+                lines.append("⚠️  Training launch failed but trainer is registered.")
+                lines.append(f"Error: {exc}")
+                lines.append("")
+                lines.append(f"Retry training with: /ml jobs submit --trainer {name} --data {train_table}")
+
+                return ToolResult(
+                    success=True,  # Trainer registration succeeded
+                    output="\n".join(lines),
+                    metadata={
+                        **result_metadata,
+                        "training_launch_failed": True,
+                        "training_error": str(exc),
+                    },
                 )
-            except Exception as exc:  # noqa: BLE001
-                return ToolResult.error_result(
-                    f"Trainer registered but unexpected training error: {exc}"
+            except Exception as exc:
+                # Log unexpected errors with full traceback
+                import logging
+                logging.exception("Unexpected error during training launch")
+
+                # Trainer was successfully registered but training launch failed
+                lines.append("")
+                lines.append("⚠️  Training launch failed but trainer is registered.")
+                lines.append(f"Error: {exc.__class__.__name__}: {exc}")
+                lines.append("")
+                lines.append(f"Retry training with: /ml jobs submit --trainer {name} --data {train_table}")
+
+                return ToolResult(
+                    success=True,  # Trainer registration succeeded
+                    output="\n".join(lines),
+                    metadata={
+                        **result_metadata,
+                        "training_launch_failed": True,
+                        "training_error": f"{exc.__class__.__name__}: {exc}",
+                    },
                 )
-            lines.append(
-                f"To train later, use: /ml jobs submit --trainer {name} "
-                f"--data {train_table}"
-            )
 
         # Build result metadata
         result_metadata = {
@@ -877,9 +921,18 @@ class MLTrainTool(BaseTool):
             self.ui._printer.console.print(
                 f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
             )
-        except Exception as e:  # noqa: BLE001
+        except (OSError, RuntimeError) as e:
+            # Known TensorBoard launch failures
             self.ui._printer.console.print(
                 f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+            )
+            self._show_manual_tensorboard_instructions(job_id)
+        except Exception as e:
+            # Log unexpected errors with full traceback
+            import logging
+            logging.exception("Unexpected error during TensorBoard launch")
+            self.ui._printer.console.print(
+                f"[yellow]⚠️  Failed to launch TensorBoard: {e.__class__.__name__}: {e}[/yellow]"
             )
             self._show_manual_tensorboard_instructions(job_id)
 
@@ -1158,9 +1211,12 @@ class MLEvaluateTool(BaseTool):
             return ToolResult.error_result(
                 f"Generated evaluator failed validation: {exc}"
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Log unexpected errors with full traceback
+            import logging
+            logging.exception("Unexpected error during evaluator validation")
             return ToolResult.error_result(
-                f"Unexpected error during evaluator validation: {exc}"
+                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
             )
 
         # Interactive confirmation workflow (unless auto_confirm is True)
@@ -1210,10 +1266,19 @@ class MLEvaluateTool(BaseTool):
             )
             evaluator_record = None
 
-            spec_matches = (
-                existing_evaluator
-                and existing_evaluator.spec.strip() == evaluator_yaml.strip()
-            )
+            # Use semantic YAML comparison instead of string comparison
+            # This handles whitespace differences and formatting variations
+            spec_matches = False
+            if existing_evaluator:
+                try:
+                    existing_spec_dict = yaml.safe_load(existing_evaluator.spec)
+                    new_spec_dict = yaml.safe_load(evaluator_yaml)
+                    spec_matches = existing_spec_dict == new_spec_dict
+                except yaml.YAMLError:
+                    # If YAML parsing fails, fall back to string comparison
+                    spec_matches = (
+                        existing_evaluator.spec.strip() == evaluator_yaml.strip()
+                    )
 
             if spec_matches:
                 # Reuse existing evaluator (same spec)
@@ -1371,10 +1436,18 @@ class MLEvaluateTool(BaseTool):
                 if self.tensorboard_manager:
                     try:
                         await self._handle_tensorboard_launch(job.job_id)
-                    except Exception as e:  # noqa: BLE001
-                        # Show error but don't fail the whole evaluation
+                    except (OSError, RuntimeError) as e:
+                        # Known TensorBoard launch failures
                         self.ui._printer.console.print(
                             f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                        )
+                        self._show_manual_tensorboard_instructions(job.job_id)
+                    except Exception as e:
+                        # Log unexpected errors with full traceback
+                        import logging
+                        logging.exception("Unexpected error during TensorBoard launch")
+                        self.ui._printer.console.print(
+                            f"[yellow]⚠️  TensorBoard setup failed: {e.__class__.__name__}: {e}[/yellow]"
                         )
                         self._show_manual_tensorboard_instructions(job.job_id)
                 else:
@@ -1586,9 +1659,18 @@ class MLEvaluateTool(BaseTool):
             self.ui._printer.console.print(
                 f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
             )
-        except Exception as e:  # noqa: BLE001
+        except (OSError, RuntimeError) as e:
+            # Known TensorBoard launch failures
             self.ui._printer.console.print(
                 f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+            )
+            self._show_manual_tensorboard_instructions(job_id)
+        except Exception as e:
+            # Log unexpected errors with full traceback
+            import logging
+            logging.exception("Unexpected error during TensorBoard launch")
+            self.ui._printer.console.print(
+                f"[yellow]⚠️  Failed to launch TensorBoard: {e.__class__.__name__}: {e}[/yellow]"
             )
             self._show_manual_tensorboard_instructions(job_id)
 
@@ -1750,9 +1832,12 @@ class MLEvaluatorGeneratorTool(BaseTool):
             return ToolResult.error_result(
                 f"Generated evaluator failed validation: {exc}"
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Log unexpected errors with full traceback
+            import logging
+            logging.exception("Unexpected error during evaluator validation")
             return ToolResult.error_result(
-                f"Unexpected error during evaluator validation: {exc}"
+                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
             )
 
         # Interactive confirmation workflow (unless auto_confirm is True)
