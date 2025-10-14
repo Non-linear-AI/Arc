@@ -7,6 +7,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from arc.utils.validation import (
+    ValidationError,
+    quote_sql_identifier,
+    validate_table_name,
+)
+
 if TYPE_CHECKING:
     from arc.database.manager import DatabaseManager
     from arc.graph.features.data_source import DataSourceSpec
@@ -75,6 +81,14 @@ async def execute_data_source_pipeline(
 
     try:
         for i, step in enumerate(ordered_steps, 1):
+            # Validate step name to prevent SQL injection
+            try:
+                validate_table_name(step.name)
+            except ValidationError as e:
+                raise DataSourceExecutionError(
+                    f"Invalid step name in pipeline: {e}"
+                ) from e
+
             # Determine if this is an output step (should create table) or
             # intermediate (view)
             step_type = "table" if step.name in spec.outputs else "view"
@@ -93,13 +107,16 @@ async def execute_data_source_pipeline(
             # CREATE TABLE/VIEW AS)
             sql = sql.rstrip().rstrip(";").rstrip()
 
+            # Quote step name for safe SQL execution
+            quoted_name = quote_sql_identifier(step.name)
+
             try:
                 if step.name in spec.outputs:
                     # Create persistent table for output steps
-                    create_sql = f"CREATE TABLE {step.name} AS ({sql})"
+                    create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
                 else:
                     # Create regular view for intermediate steps (allows debugging)
-                    create_sql = f"CREATE VIEW {step.name} AS ({sql})"
+                    create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
                     intermediate_views.append(step.name)  # Track for cleanup
 
                 # Execute using database manager directly to ensure same session
@@ -119,7 +136,9 @@ async def execute_data_source_pipeline(
         if intermediate_views:
             for view_name in intermediate_views:
                 try:
-                    cleanup_sql = f"DROP VIEW IF EXISTS {view_name}"
+                    # Quote view name for safe cleanup
+                    quoted_view = quote_sql_identifier(view_name)
+                    cleanup_sql = f"DROP VIEW IF EXISTS {quoted_view}"
                     if target_db == "system":
                         db_manager.system_execute(cleanup_sql)
                     else:
