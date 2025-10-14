@@ -29,8 +29,8 @@ class FileEditorTool(BaseTool):
             )
         elif action == "create":
             return await self.create_file(kwargs["path"], kwargs["content"])
-        elif action == "str_replace":
-            return await self.str_replace_editor(
+        elif action == "edit":
+            return await self.edit_file(
                 kwargs["path"],
                 kwargs["old_str"],
                 kwargs["new_str"],
@@ -127,7 +127,7 @@ class FileEditorTool(BaseTool):
             if Path(path).exists():
                 return ToolResult.error_result(
                     f"File already exists: {path}. "
-                    f"Use str_replace_editor to modify existing files."
+                    f"Use edit_file to modify existing files."
                 )
 
             # Request confirmation from user
@@ -175,10 +175,10 @@ class FileEditorTool(BaseTool):
             return ToolResult.error_result(f"Failed to create file '{path}': {str(e)}")
 
     @timed("file_edit_time")
-    async def str_replace_editor(
+    async def edit_file(
         self, path: str, old_str: str, new_str: str, replace_all: bool = False
     ) -> ToolResult:
-        """Replace text in an existing file using EXACT string matching.
+        """Edit an existing file by replacing text using EXACT string matching.
 
         This follows Claude Code's approach: exact match only, no fuzzy matching.
         If the string is not found or appears multiple times, returns a clear error.

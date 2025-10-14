@@ -252,7 +252,7 @@ class InteractiveInterface:
         mapping = {
             "view_file": "Read",
             "create_file": "Create",
-            "str_replace_editor": "Update",
+            "edit_file": "Update",
             "bash": "Bash",
             "search": "Search",
             "create_todo_list": "Create Plan",
@@ -291,7 +291,7 @@ class InteractiveInterface:
             return "red"  # System commands (potentially risky)
         elif tool_name in ["search"]:
             return "yellow"  # Search operations (attention/discovery)
-        elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
+        elif tool_name in ["view_file", "create_file", "edit_file"]:
             return "yellow"  # File operations (user attention needed)
         elif tool_name in ["database_query", "schema_discovery"]:
             return "blue"  # Database/system operations

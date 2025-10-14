@@ -137,7 +137,7 @@ class ArcAgent:
         # Register basic tools
         self.tool_registry.register("view_file", self.file_editor)
         self.tool_registry.register("create_file", self.file_editor)
-        self.tool_registry.register("str_replace_editor", self.file_editor)
+        self.tool_registry.register("edit_file", self.file_editor)
         self.tool_registry.register("bash", self.bash_tool)
         self.tool_registry.register("search", self.search_tool)
         self.tool_registry.register("create_todo_list", self.todo_tool)
