@@ -2,7 +2,7 @@
 
 from arc.tools.base import ToolResult
 from arc.tools.bash import BashTool
-from arc.tools.data_processor_generator import DataProcessorGeneratorTool
+from arc.tools.data_process import DataProcessorGeneratorTool
 from arc.tools.database_query import DatabaseQueryTool
 from arc.tools.file_editor import FileEditorTool
 from arc.tools.ml import (

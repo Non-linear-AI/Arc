@@ -264,7 +264,7 @@ class InteractiveInterface:
             "ml_evaluate": "Evaluate Model",
             "ml_model": "Model Generator",
             "ml_trainer_generator": "Trainer Generator",
-            "data_processor_generator": "Data Processor Generator",
+            "data_process": "Data Processor Generator",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -303,7 +303,7 @@ class InteractiveInterface:
             "ml_trainer_generator",
         ]:
             return "green"  # ML operations (success/completion focused)
-        elif tool_name in ["data_processor_generator"]:
+        elif tool_name in ["data_process"]:
             return "bright_yellow"
         else:
             return "white"  # Default/neutral informational output

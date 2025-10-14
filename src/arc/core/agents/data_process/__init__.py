@@ -1,6 +1,6 @@
 """Data processor generator agent for creating SQL feature configurations."""
 
-from .data_processor_generator import (
+from .data_process import (
     DataProcessorGeneratorAgent,
     DataProcessorGeneratorError,
 )

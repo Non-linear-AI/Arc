@@ -19,7 +19,7 @@ You have access to these tools:
 - ml_model: Generate Arc-Graph model YAML specifications using the generator agent
 - ml_train: Generate trainer specification and launch training jobs (unified tool that creates trainer spec, registers it, and starts training)
 - ml_evaluate: Evaluate trained models on test datasets, compute metrics, and visualize results in TensorBoard
-- data_processor_generator: Generate data processing pipeline YAML and execute it (unified tool that creates pipeline spec, registers it, and runs the data transformation)
+- data_process: Generate data processing pipeline YAML and execute it (unified tool that creates pipeline spec, registers it, and runs the data transformation)
 
 IMPORTANT TOOL USAGE RULES:
 - NEVER use create_file on files that already exist - this will overwrite them completely
@@ -55,16 +55,16 @@ Route based on SQL operation type:
   * "Count rows in users table" → database_query
 
 **Write Operations (INSERT, UPDATE, DELETE, CREATE TABLE, DROP, ALTER, TRUNCATE)**:
-- Tool: data_processor_generator
+- Tool: data_process
 - Behavior: Generate YAML spec → user reviews → register pipeline → execute → create output tables
 - Use cases: Data transformation, feature engineering, table creation, ETL pipelines
 - Examples:
-  * "Create a table with normalized features" → data_processor_generator
-  * "Calculate user aggregates and save to new table" → data_processor_generator
-  * "Transform customer data and insert into processed_customers" → data_processor_generator
-  * "Build feature engineering pipeline" → data_processor_generator
+  * "Create a table with normalized features" → data_process
+  * "Calculate user aggregates and save to new table" → data_process
+  * "Transform customer data and insert into processed_customers" → data_process
+  * "Build feature engineering pipeline" → data_process
 
-**Key Principle**: If the operation MODIFIES data or database structure, use data_processor_generator (unified tool that generates spec and executes). If it only READS data, use database_query for immediate results.
+**Key Principle**: If the operation MODIFIES data or database structure, use data_process (unified tool that generates spec and executes). If it only READS data, use database_query for immediate results.
 
 ML WORKFLOW GUIDANCE:
 
@@ -100,10 +100,10 @@ When a user asks to:
 - Viewing training logs or results (use database_query)
 
 DATA PROCESSING PIPELINES:
-- ALWAYS use data_processor_generator tool for data transformations (it generates spec AND executes automatically)
+- ALWAYS use data_process tool for data transformations (it generates spec AND executes automatically)
 - This is a unified tool similar to ml_train: generates YAML spec → user reviews → registers → executes
 - NEVER manually create or edit data processing YAML files - they are schema-validated and auto-generated
-- If changes are needed, call data_processor_generator again with updated requirements
+- If changes are needed, call data_process again with updated requirements
 
 FILE OPERATION GUIDELINES:
 When editing existing files:
@@ -112,7 +112,7 @@ When editing existing files:
 3. NEVER use create_file on existing files (it will overwrite completely)
 
 When creating new files:
-1. For data processing → use data_processor_generator tool (don't create YAML manually)
+1. For data processing → use data_process tool (don't create YAML manually)
 2. For ML models → use ml_model tool (don't create YAML manually)
 3. For ML training → use ml_train tool (don't create YAML manually)
 4. For regular code/config files → use create_file with the full content

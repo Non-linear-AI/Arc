@@ -194,7 +194,7 @@ class ArcAgent:
             self.ui_interface,
             self.tensorboard_manager,
         )
-        self.data_processor_generator_tool = DataProcessorGeneratorTool(
+        self.data_process_tool = DataProcessorGeneratorTool(
             services,
             self.api_key,
             self.base_url,
@@ -209,7 +209,7 @@ class ArcAgent:
         self.tool_registry.register("ml_train", self.ml_train_tool)
         self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
         self.tool_registry.register(
-            "data_processor_generator", self.data_processor_generator_tool
+            "data_process", self.data_process_tool
         )
 
         # Validate tool registry matches tools.yaml
