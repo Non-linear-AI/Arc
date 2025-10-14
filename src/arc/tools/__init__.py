@@ -11,12 +11,14 @@ from arc.tools.ml import (
     MLPlanTool,
     MLTrainTool,
 )
+from arc.tools.registry import ToolRegistry
 from arc.tools.schema_discovery import SchemaDiscoveryTool
 from arc.tools.search import SearchTool
 from arc.tools.todo import TodoTool
 
 __all__ = [
     "ToolResult",
+    "ToolRegistry",
     "BashTool",
     "DataProcessorGeneratorTool",
     "DatabaseQueryTool",
