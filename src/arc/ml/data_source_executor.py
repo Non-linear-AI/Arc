@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from arc.utils.validation import (
     ValidationError,
     quote_sql_identifier,
+    validate_sql_syntax,
     validate_table_name,
 )
 
@@ -74,6 +75,27 @@ async def execute_data_source_pipeline(
     steps_executed = []  # Track executed steps
     progress_log = []  # Accumulate progress messages
 
+    # Validate all SQL syntax before execution
+    validation_errors = []
+    for step in ordered_steps:
+        # Validate step name
+        try:
+            validate_table_name(step.name)
+        except ValidationError as e:
+            validation_errors.append(f"Step '{step.name}': {e}")
+            continue
+
+        # Validate SQL syntax
+        sql = spec.substitute_vars(step.sql)
+        sql_errors = validate_sql_syntax(sql)
+        if sql_errors:
+            validation_errors.append(f"Step '{step.name}': " + "; ".join(sql_errors))
+
+    # Fail early if validation errors found
+    if validation_errors:
+        error_msg = "Pipeline validation failed:\n  " + "\n  ".join(validation_errors)
+        raise DataSourceExecutionError(error_msg)
+
     # Report progress: starting
     if progress_callback:
         progress_callback("🤖 Executing pipeline...", "info")
@@ -81,16 +103,9 @@ async def execute_data_source_pipeline(
 
     try:
         for i, step in enumerate(ordered_steps, 1):
-            # Validate step name to prevent SQL injection
-            try:
-                validate_table_name(step.name)
-            except ValidationError as e:
-                raise DataSourceExecutionError(
-                    f"Invalid step name in pipeline: {e}"
-                ) from e
-
             # Determine if this is an output step (should create table) or
             # intermediate (view)
+            # Note: Step names and SQL already validated above
             step_type = "table" if step.name in spec.outputs else "view"
             steps_executed.append((step.name, step_type))
 

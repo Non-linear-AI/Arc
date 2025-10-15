@@ -287,3 +287,55 @@ def validate_model_id(model_id: str) -> None:
             f"Invalid model ID '{model_id}'. Expected format: <name>-v<version> "
             "(e.g., 'my_model-v1')"
         )
+
+
+def validate_sql_syntax(sql: str, connection=None) -> list[str]:
+    """Validate SQL syntax using DuckDB's EXPLAIN.
+
+    Args:
+        sql: SQL query to validate
+        connection: Optional DuckDB connection. If None, creates temporary connection.
+
+    Returns:
+        List of syntax error messages (empty if valid).
+        Only returns parser/syntax errors, not catalog errors (missing tables/columns).
+
+    Note:
+        Uses DuckDB's native EXPLAIN to validate syntax without executing.
+        This ensures perfect compatibility with DuckDB's SQL dialect.
+        Catalog errors (table/column not found) are ignored as they're expected
+        during validation without the actual data present.
+    """
+    if not sql or not sql.strip():
+        return ["SQL query cannot be empty"]
+
+    errors = []
+    close_conn = False
+
+    try:
+        # Import here to avoid circular dependency
+        import duckdb
+
+        # Use provided connection or create temporary one
+        if connection is None:
+            connection = duckdb.connect(":memory:")
+            close_conn = True
+
+        # Use EXPLAIN to validate syntax without executing
+        # Strip trailing semicolons as they can cause issues with EXPLAIN
+        clean_sql = sql.rstrip().rstrip(";").rstrip()
+        connection.execute(f"EXPLAIN {clean_sql}")
+
+    except Exception as e:
+        error_msg = str(e)
+        # Only report syntax/parser errors, not catalog errors
+        # Catalog errors (table/column not found) are expected during validation
+        if "Parser Error" in error_msg or "syntax error" in error_msg.lower():
+            errors.append(f"SQL syntax error: {error_msg}")
+        # Ignore catalog errors like "Table does not exist" during validation
+        # These are expected when validating SQL without the actual data
+    finally:
+        if close_conn and connection:
+            connection.close()
+
+    return errors
