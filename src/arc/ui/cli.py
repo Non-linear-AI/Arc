@@ -1,7 +1,6 @@
 """Command-line interface for Arc CLI."""
 
 import asyncio
-import json
 import os
 import shlex
 import sys
@@ -18,6 +17,7 @@ from arc.graph.features.data_source import DataSourceSpec
 from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.ui.console import InteractiveInterface
 from arc.utils import ConfirmationService
+from arc.utils.cli_parsing import OptionParsingError, parse_options
 from arc.utils.report import (
     build_issue_url,
     compose_issue_body,
@@ -50,12 +50,6 @@ def cli():
     "-m", "--model", default=None, help="AI model to use (e.g., gpt-4, claude-3-sonnet)"
 )
 @click.option(
-    "-p",
-    "--prompt",
-    default=None,
-    help="Process a single prompt and exit (headless mode)",
-)
-@click.option(
     "--max-tool-rounds", default=400, help="Maximum number of tool execution rounds"
 )
 def chat(
@@ -63,7 +57,6 @@ def chat(
     api_key: str | None,
     base_url: str | None,
     model: str | None,
-    prompt: str | None,
     max_tool_rounds: int,
 ):
     """Start an interactive chat session with Arc CLI."""
@@ -93,31 +86,16 @@ def chat(
         settings_manager.update_user_setting("baseURL", base_url)
         ui.show_system_success("Base URL saved to ~/.arc/user-settings.json")
 
-    # Initialize database services (shared by both modes)
+    # Initialize database services
     system_db_path = settings_manager.get_system_database_path()
     user_db_path = settings_manager.get_user_database_path()
     db_manager = DatabaseManager(system_db_path, user_db_path)
     services = ServiceContainer(db_manager, artifacts_dir="artifacts")
 
-    # Run the appropriate mode
-    if prompt:
-        # Headless mode requires an API key, base_url, and model
-        if not api_key:
-            ui.show_system_error(
-                "API key required for headless mode. Set ARC_API_KEY, "
-                "use --api-key, or run /config in interactive mode."
-            )
-            sys.exit(1)
-        # base_url and model always have defaults from settings
-        asyncio.run(
-            run_headless_mode(
-                prompt, api_key, base_url, model, max_tool_rounds, services
-            )
-        )
-    else:
-        asyncio.run(
-            run_interactive_mode(api_key, base_url, model, max_tool_rounds, services)
-        )
+    # Run interactive mode
+    asyncio.run(
+        run_interactive_mode(api_key, base_url, model, max_tool_rounds, services)
+    )
 
 
 async def handle_sql_command(
@@ -183,27 +161,55 @@ class CommandError(Exception):
     """Raised when ML command parsing or validation fails."""
 
 
-def _parse_options(args: list[str], spec: dict[str, bool]) -> dict[str, str | bool]:
-    options: dict[str, str | bool] = {}
-    idx = 0
-    while idx < len(args):
-        token = args[idx]
-        if not token.startswith("--"):
-            raise CommandError(f"Unexpected argument '{token}'")
-        key = token[2:]
-        if key not in spec:
-            raise CommandError(f"Unknown option '--{key}'")
-        expects_value = spec[key]
-        if not expects_value:
-            options[key] = True
-            idx += 1
-            continue
-        idx += 1
-        if idx >= len(args):
-            raise CommandError(f"Option '--{key}' requires a value")
-        options[key] = args[idx]
-        idx += 1
-    return options
+def _parse_options(
+    args: list[str], spec: dict[str, bool], command_name: str = ""
+) -> dict[str, str | bool]:
+    """Parse command-line options and convert errors to CommandError.
+
+    This is a wrapper around parse_options that converts OptionParsingError
+    to CommandError for consistency with existing error handling.
+
+    Args:
+        args: List of argument tokens
+        spec: Dict mapping option names to whether they expect values
+        command_name: Command name for better error messages
+
+    Returns:
+        Dict of parsed options
+
+    Raises:
+        CommandError: If parsing fails
+    """
+    try:
+        return parse_options(args, spec, command_name)
+    except OptionParsingError as e:
+        raise CommandError(str(e)) from e
+
+
+def _get_ml_tool_config() -> tuple[str, str, str | None]:
+    """Get configuration required for ML tools.
+
+    Returns:
+        Tuple of (api_key, base_url, model) where:
+        - api_key: API key (required, never None)
+        - base_url: Base URL for API
+        - model: Model name (optional, may be None)
+
+    Raises:
+        CommandError: If API key is not configured
+    """
+    settings = SettingsManager()
+    api_key = settings.get_api_key()
+
+    if not api_key:
+        raise CommandError(
+            "API key required. Set ARC_API_KEY environment variable or run /config"
+        )
+
+    base_url = settings.get_base_url()
+    model = settings.get_current_model()
+
+    return api_key, base_url, model
 
 
 async def handle_ml_command(
@@ -279,6 +285,7 @@ async def _ml_plan(
             "context": True,
             "data-source": True,
         },
+        command_name="/ml plan",
     )
 
     user_context = options.get("context")
@@ -442,6 +449,7 @@ async def _ml_train(
             "context": True,
             "plan-id": True,
         },
+        command_name="/ml train",
     )
 
     name = options.get("name")
@@ -511,18 +519,13 @@ async def _ml_train(
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
     tensorboard_manager = None
+    training_succeeded = False
     try:
         # Use the MLTrainTool which includes confirmation workflow
         from arc.tools.ml import MLTrainTool
 
         # Get settings for tool initialization
-        settings_manager = SettingsManager()
-        api_key = settings_manager.get_api_key()
-        base_url = settings_manager.get_base_url()
-        model = settings_manager.get_current_model()
-
-        if not api_key:
-            raise CommandError("API key required for trainer generation")
+        api_key, base_url, model = _get_ml_tool_config()
 
         # Initialize TensorBoard manager for the tool
         try:
@@ -549,14 +552,25 @@ async def _ml_train(
         if not result.success:
             raise CommandError(f"Training failed: {result.error}")
 
+        # Mark success to keep TensorBoard running
+        training_succeeded = True
         # Success message already shown by tool
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during training: {exc}") from exc
     finally:
-        # Clean up TensorBoard resources if not managed by agent
-        # Note: TensorBoard processes are kept running for user access
-        pass
+        # Clean up TensorBoard on failure (keep running on success for user access)
+        if tensorboard_manager and not training_succeeded:
+            try:
+                stopped_count = tensorboard_manager.stop_all()
+                if stopped_count > 0:
+                    ui.show_warning(
+                        f"Stopped {stopped_count} TensorBoard process(es) "
+                        "due to failure"
+                    )
+            except Exception:
+                # Don't fail cleanup if TensorBoard stop fails
+                pass
 
 
 def _ml_predict(
@@ -569,6 +583,7 @@ def _ml_predict(
             "data": True,
             "output": True,
         },
+        command_name="/ml predict",
     )
 
     model_name = options.get("model")
@@ -767,6 +782,7 @@ async def _ml_model(
             "target-column": True,  # Target column for task-aware generation
             "plan-id": True,  # ML plan ID to use for guidance
         },
+        command_name="/ml model",
     )
 
     name = options.get("name")
@@ -810,13 +826,7 @@ async def _ml_model(
         from arc.tools.ml import MLModelTool
 
         # Get settings for tool initialization
-        settings_manager = SettingsManager()
-        api_key = settings_manager.get_api_key()
-        base_url = settings_manager.get_base_url()
-        model = settings_manager.get_current_model()
-
-        if not api_key:
-            raise CommandError("API key required for model generation")
+        api_key, base_url, model = _get_ml_tool_config()
 
         # Create the tool with proper dependencies
         tool = MLModelTool(runtime.services, api_key, base_url, model, ui)
@@ -864,13 +874,7 @@ async def _ml_generate_trainer(
         from arc.tools.ml import MLTrainerGeneratorTool
 
         # Get settings for tool initialization
-        settings_manager = SettingsManager()
-        api_key = settings_manager.get_api_key()
-        base_url = settings_manager.get_base_url()
-        model = settings_manager.get_current_model()
-
-        if not api_key:
-            raise CommandError("API key required for trainer generation")
+        api_key, base_url, model = _get_ml_tool_config()
 
         # Create the tool with proper dependencies
         tool = MLTrainerGeneratorTool(runtime.services, api_key, base_url, model, ui)
@@ -922,18 +926,14 @@ async def _ml_evaluate(
             "/ml evaluate requires --name, --context, --trainer-id, and --data-table"
         )
 
+    tensorboard_manager = None
+    evaluation_succeeded = False
     try:
         # Use the MLEvaluateTool which combines generation + execution
         from arc.tools.ml import MLEvaluateTool
 
         # Get settings for tool initialization
-        settings_manager = SettingsManager()
-        api_key = settings_manager.get_api_key()
-        base_url = settings_manager.get_base_url()
-        model = settings_manager.get_current_model()
-
-        if not api_key:
-            raise CommandError("API key required for evaluator generation")
+        api_key, base_url, model = _get_ml_tool_config()
 
         # Initialize TensorBoard manager for the tool
         try:
@@ -958,9 +958,25 @@ async def _ml_evaluate(
 
         if not result.success:
             ui.show_system_error(result.error or "Evaluation failed")
+        else:
+            # Mark success to keep TensorBoard running
+            evaluation_succeeded = True
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during evaluation: {exc}") from exc
+    finally:
+        # Clean up TensorBoard on failure (keep running on success for user access)
+        if tensorboard_manager and not evaluation_succeeded:
+            try:
+                stopped_count = tensorboard_manager.stop_all()
+                if stopped_count > 0:
+                    ui.show_warning(
+                        f"Stopped {stopped_count} TensorBoard process(es) "
+                        "due to failure"
+                    )
+            except Exception:
+                # Don't fail cleanup if TensorBoard stop fails
+                pass
 
 
 async def _ml_data_processing(
@@ -1050,73 +1066,6 @@ async def _ml_data_processing(
         ) from parse_error
     except Exception as exc:
         raise CommandError(f"Data processing failed: {exc}") from exc
-
-
-async def run_headless_mode(
-    prompt: str,
-    api_key: str,
-    base_url: str,
-    model: str,
-    max_tool_rounds: int,
-    services: ServiceContainer,
-):
-    """Run in headless mode - process prompt and exit."""
-    agent = None
-    try:
-        agent = ArcAgent(api_key, services, base_url, model, max_tool_rounds, None)
-
-        # Configure confirmation service for headless mode (singleton)
-        confirmation_service = ConfirmationService.get_instance()
-        confirmation_service.set_session_flag("allOperations", True)
-
-        # Process the user message
-        chat_entries = await agent.process_user_message(prompt)
-
-        # Output each message as JSON (OpenAI compatible format)
-        for entry in chat_entries:
-            if entry.type == "user":
-                print(json.dumps({"role": "user", "content": entry.content}))
-            elif entry.type == "assistant":
-                message = {"role": "assistant", "content": entry.content}
-                if entry.tool_calls:
-                    message["tool_calls"] = [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.name, "arguments": tc.arguments},
-                        }
-                        for tc in entry.tool_calls
-                    ]
-                print(json.dumps(message))
-            elif entry.type == "tool_result" and entry.tool_call:
-                print(
-                    json.dumps(
-                        {
-                            "role": "tool",
-                            "tool_call_id": entry.tool_call.id,
-                            "content": entry.content,
-                        }
-                    )
-                )
-
-    except Exception as e:
-        # Output error in OpenAI compatible format
-        print(
-            json.dumps(
-                {
-                    "role": "assistant",
-                    "content": f"Error: {str(e)}",
-                }
-            )
-        )
-        sys.exit(1)
-    finally:
-        # Clean up resources
-        from contextlib import suppress
-
-        with suppress(Exception):
-            if agent:
-                agent.cleanup()
 
 
 async def run_interactive_mode(

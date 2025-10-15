@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from arc.utils.validation import ValidationError, validate_api_key, validate_url
+
 
 class SettingsManager:
     """Manages user settings and configuration."""
@@ -34,7 +36,49 @@ class SettingsManager:
             print(f"Warning: Could not save settings: {e}")
 
     def update_user_setting(self, key: str, value: Any) -> None:
-        """Update a single user setting."""
+        """Update a single user setting with validation.
+
+        Args:
+            key: Setting key to update
+            value: Setting value
+
+        Raises:
+            ValidationError: If the value is invalid for the given key
+        """
+        # Validate based on key
+        if key == "apiKey":
+            value = validate_api_key(value)
+        elif key == "baseURL":
+            value = validate_url(value)
+        elif key == "model":
+            # Validate model name (non-empty string)
+            if not value or not isinstance(value, str):
+                raise ValidationError("Model name must be a non-empty string")
+            value = value.strip()
+            if not value:
+                raise ValidationError("Model name cannot be only whitespace")
+        elif key == "systemDatabasePath" or key == "userDatabasePath":
+            # Validate database path is non-empty string
+            if not value or not isinstance(value, str):
+                raise ValidationError(f"{key} must be a non-empty string")
+            value = value.strip()
+            if not value:
+                raise ValidationError(f"{key} cannot be only whitespace")
+        elif key == "tensorboardMode":
+            # Already validated in set_tensorboard_mode(), but validate here too
+            if value not in ("always", "ask", "never"):
+                raise ValidationError(
+                    f"Invalid tensorboard mode: {value}. "
+                    "Must be 'always', 'ask', or 'never'"
+                )
+        elif key == "tensorboardPort" and (
+            not isinstance(value, int) or not (1024 <= value <= 65535)
+        ):
+            # Already validated in set_tensorboard_port(), but validate here too
+            raise ValidationError(
+                f"Invalid port: {value}. Must be an integer between 1024 and 65535"
+            )
+
         settings = self.load_user_settings()
         settings[key] = value
         self.save_user_settings(settings)

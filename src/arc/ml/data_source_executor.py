@@ -7,6 +7,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from arc.utils.validation import (
+    ValidationError,
+    quote_sql_identifier,
+    validate_sql_syntax,
+    validate_table_name,
+)
+
 if TYPE_CHECKING:
     from arc.database.manager import DatabaseManager
     from arc.graph.features.data_source import DataSourceSpec
@@ -68,6 +75,27 @@ async def execute_data_source_pipeline(
     steps_executed = []  # Track executed steps
     progress_log = []  # Accumulate progress messages
 
+    # Validate all SQL syntax before execution
+    validation_errors = []
+    for step in ordered_steps:
+        # Validate step name
+        try:
+            validate_table_name(step.name)
+        except ValidationError as e:
+            validation_errors.append(f"Step '{step.name}': {e}")
+            continue
+
+        # Validate SQL syntax
+        sql = spec.substitute_vars(step.sql)
+        sql_errors = validate_sql_syntax(sql)
+        if sql_errors:
+            validation_errors.append(f"Step '{step.name}': " + "; ".join(sql_errors))
+
+    # Fail early if validation errors found
+    if validation_errors:
+        error_msg = "Pipeline validation failed:\n  " + "\n  ".join(validation_errors)
+        raise DataSourceExecutionError(error_msg)
+
     # Report progress: starting
     if progress_callback:
         progress_callback("🤖 Executing pipeline...", "info")
@@ -77,6 +105,7 @@ async def execute_data_source_pipeline(
         for i, step in enumerate(ordered_steps, 1):
             # Determine if this is an output step (should create table) or
             # intermediate (view)
+            # Note: Step names and SQL already validated above
             step_type = "table" if step.name in spec.outputs else "view"
             steps_executed.append((step.name, step_type))
 
@@ -93,13 +122,16 @@ async def execute_data_source_pipeline(
             # CREATE TABLE/VIEW AS)
             sql = sql.rstrip().rstrip(";").rstrip()
 
+            # Quote step name for safe SQL execution
+            quoted_name = quote_sql_identifier(step.name)
+
             try:
                 if step.name in spec.outputs:
                     # Create persistent table for output steps
-                    create_sql = f"CREATE TABLE {step.name} AS ({sql})"
+                    create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
                 else:
                     # Create regular view for intermediate steps (allows debugging)
-                    create_sql = f"CREATE VIEW {step.name} AS ({sql})"
+                    create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
                     intermediate_views.append(step.name)  # Track for cleanup
 
                 # Execute using database manager directly to ensure same session
@@ -119,7 +151,9 @@ async def execute_data_source_pipeline(
         if intermediate_views:
             for view_name in intermediate_views:
                 try:
-                    cleanup_sql = f"DROP VIEW IF EXISTS {view_name}"
+                    # Quote view name for safe cleanup
+                    quoted_view = quote_sql_identifier(view_name)
+                    cleanup_sql = f"DROP VIEW IF EXISTS {quoted_view}"
                     if target_db == "system":
                         db_manager.system_execute(cleanup_sql)
                     else:
