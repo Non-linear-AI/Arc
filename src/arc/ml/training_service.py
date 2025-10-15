@@ -97,6 +97,9 @@ class TrainingJobConfig:
     description: str | None = None
     tags: list[str] | None = None
 
+    # Training timeout configuration (in seconds, None = unlimited)
+    max_training_time: float | None = None  # Unlimited by default
+
 
 class TrainingJobProgressCallback:
     """Progress callback that updates job status and training metrics in database."""
@@ -105,7 +108,7 @@ class TrainingJobProgressCallback:
         self,
         job_service: JobService,
         job_id: str,
-        max_training_time: float = 1800.0,
+        max_training_time: float | None = None,
         tracking_service: TrainingTrackingService | None = None,
         run_id: str | None = None,
         metric_log_frequency: int = 100,
@@ -115,7 +118,7 @@ class TrainingJobProgressCallback:
         self.total_epochs = 0
         self.current_epoch = 0
         self.current_step = 0
-        self.max_training_time = max_training_time  # 30 minutes default
+        self.max_training_time = max_training_time  # None = unlimited
         self.training_start_time = None
         self.tracking_service = tracking_service
         self.run_id = run_id
@@ -149,8 +152,8 @@ class TrainingJobProgressCallback:
         self.current_epoch = epoch
         self.total_epochs = total_epochs
 
-        # Check for timeout
-        if self.training_start_time:
+        # Check for timeout (only if max_training_time is set)
+        if self.training_start_time and self.max_training_time is not None:
             import time
 
             elapsed_time = time.time() - self.training_start_time
@@ -276,27 +279,14 @@ class TrainingJobProgressCallback:
                     "Failed to log batch loss for training run %s", self.run_id
                 )
 
-    def on_training_end(self, final_metrics: dict[str, float]) -> None:
-        """Called when training ends."""
-        metrics_str = " | ".join(
-            [
-                f"{k}: {v:.4f}"
-                for k, v in final_metrics.items()
-                if isinstance(v, (int, float))
-            ]
-        )
+    def on_training_end(self, _final_metrics: dict[str, float]) -> None:
+        """Called when training ends.
 
-        message = f"Training completed - {metrics_str}"
-        try:
-            self.job_service.update_job_status(
-                self.job_id, JobStatus.COMPLETED, message
-            )
-        except DatabaseError:
-            logger.exception(
-                "Failed to mark job %s completed in progress callback", self.job_id
-            )
-
-        # Mark training run as completed
+        Note: Does NOT update job status to COMPLETED - that's handled by the
+        thread wrapper to avoid race conditions. Only updates training run status.
+        """
+        # Mark training run as completed if tracking is enabled
+        # Job status will be updated by the thread wrapper after this callback returns
         if self.tracking_service and self.run_id:
             try:
                 self.tracking_service.update_run_status(
@@ -309,7 +299,9 @@ class TrainingJobProgressCallback:
                     "Failed to mark training run %s completed", self.run_id
                 )
 
-        logger.info(f"Training job {self.job_id} completed")
+        logger.info(
+            f"Training job {self.job_id} completed (status update deferred to wrapper)"
+        )
 
 
 class TrainingService:
@@ -353,6 +345,9 @@ class TrainingService:
         Returns:
             Job ID for tracking the training job
         """
+        # Clean up any completed jobs to prevent memory leaks
+        self.cleanup_completed_jobs()
+
         # Generate job ID
         job_id = str(uuid.uuid4())
 
@@ -456,6 +451,7 @@ class TrainingService:
             progress_callback = TrainingJobProgressCallback(
                 self.job_service,
                 job_id,
+                max_training_time=config.max_training_time,
                 tracking_service=self.tracking_service,
                 run_id=run_id,
             )
@@ -1020,20 +1016,36 @@ class TrainingService:
         return list(self.active_jobs.keys())
 
     def cleanup_completed_jobs(self) -> None:
-        """Clean up completed/failed job tasks."""
+        """Clean up completed/failed job tasks.
+
+        This method removes entries for jobs that have finished execution,
+        preventing memory leaks from accumulating in active_jobs and _cancel_events.
+        It's called automatically on job submission and can be called manually.
+        """
         completed_jobs = []
 
-        for job_id, task in self.active_jobs.items():
+        for job_id, task in list(self.active_jobs.items()):
             if task.done():
                 completed_jobs.append(job_id)
 
         for job_id in completed_jobs:
-            del self.active_jobs[job_id]
+            if job_id in self.active_jobs:
+                del self.active_jobs[job_id]
             if job_id in self._cancel_events:
                 del self._cancel_events[job_id]
 
-        if completed_jobs:
-            logger.info(f"Cleaned up {len(completed_jobs)} completed jobs")
+        # Also clean up orphaned cancel events (events without corresponding jobs)
+        orphaned_events = [
+            job_id for job_id in self._cancel_events if job_id not in self.active_jobs
+        ]
+        for job_id in orphaned_events:
+            del self._cancel_events[job_id]
+
+        if completed_jobs or orphaned_events:
+            logger.debug(
+                f"Cleaned up {len(completed_jobs)} completed jobs "
+                f"and {len(orphaned_events)} orphaned events"
+            )
 
     def wait_for_job(
         self, job_id: str, timeout: float | None = None
