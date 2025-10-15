@@ -17,11 +17,23 @@ class TensorBoardManager:
     Provides functionality to launch, stop, and track TensorBoard instances
     for visualizing training metrics. Each instance is associated with a
     specific job ID and runs on a dedicated port.
+
+    This is a singleton class - all instances share the same process registry.
     """
 
+    _instance: "TensorBoardManager | None" = None
+    _processes: dict[str, dict] = {}
+
+    def __new__(cls):
+        """Create or return the singleton instance."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        """Initialize the TensorBoard manager."""
-        self._processes: dict[str, dict] = {}
+        """Initialize the TensorBoard manager (no-op for singleton)."""
+        # Initialization only happens once when _instance is created
+        pass
 
     def launch(self, job_id: str, logdir: Path, port: int = 6006) -> tuple[str, int]:
         """Launch TensorBoard for a training job.

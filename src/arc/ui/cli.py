@@ -1387,6 +1387,13 @@ async def run_interactive_mode(
         with suppress(Exception):
             services.shutdown()
 
+        # Clean up TensorBoard processes
+        with suppress(Exception):
+            from arc.ml import TensorBoardManager
+
+            tb_manager = TensorBoardManager()
+            tb_manager.stop_all()
+
 
 if __name__ == "__main__":
     cli()
