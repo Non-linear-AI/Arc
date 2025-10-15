@@ -12,14 +12,14 @@ from arc.utils import ConfirmationService
 from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 if TYPE_CHECKING:
-    from arc.core.agents.data_processor_generator.data_processor_generator import (
+    from arc.core.agents.data_process.data_process import (
         DataProcessorGeneratorAgent,
     )
     from arc.database.services.container import ServiceContainer
 else:
     # Avoid circular imports at runtime
     try:
-        from arc.core.agents.data_processor_generator.data_processor_generator import (
+        from arc.core.agents.data_process.data_process import (
             DataProcessorGeneratorAgent,
             DataProcessorGeneratorError,
         )

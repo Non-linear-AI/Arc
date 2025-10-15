@@ -1,5 +1,6 @@
 """Base classes for tool implementations."""
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -16,9 +17,11 @@ class ToolResult:
     metadata: dict[str, Any] | None = None
 
     @classmethod
-    def success_result(cls, output: str = "Success") -> "ToolResult":
+    def success_result(
+        cls, output: str = "Success", metadata: dict[str, Any] | None = None
+    ) -> "ToolResult":
         """Create a successful result."""
-        return cls(success=True, output=output)
+        return cls(success=True, output=output, metadata=metadata)
 
     @classmethod
     def error_result(
@@ -29,9 +32,24 @@ class ToolResult:
 
 
 class BaseTool(ABC):
-    """Base class for all tools."""
+    """Base class for all tools.
+
+    Tools can optionally use built-in error handling by implementing _execute_impl
+    instead of execute. This provides automatic:
+    - Logging of execution start/end
+    - Error handling with recovery suggestions
+    - Execution time tracking
+    """
+
+    def __init__(self):
+        """Initialize base tool with logger."""
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     async def execute(self, **kwargs: Any) -> ToolResult:
-        """Execute the tool with given arguments."""
+        """Execute the tool with given arguments.
+
+        Subclasses should implement this method directly, OR implement
+        _execute_impl() to get automatic error handling and logging.
+        """
         pass

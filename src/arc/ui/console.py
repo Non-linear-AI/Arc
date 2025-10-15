@@ -252,7 +252,7 @@ class InteractiveInterface:
         mapping = {
             "view_file": "Read",
             "create_file": "Create",
-            "str_replace_editor": "Update",
+            "edit_file": "Update",
             "bash": "Bash",
             "search": "Search",
             "create_todo_list": "Create Plan",
@@ -264,7 +264,7 @@ class InteractiveInterface:
             "ml_evaluate": "Evaluate Model",
             "ml_model": "Model Generator",
             "ml_trainer_generator": "Trainer Generator",
-            "data_processor_generator": "Data Processor Generator",
+            "data_process": "Data Processor Generator",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -291,7 +291,7 @@ class InteractiveInterface:
             return "red"  # System commands (potentially risky)
         elif tool_name in ["search"]:
             return "yellow"  # Search operations (attention/discovery)
-        elif tool_name in ["view_file", "create_file", "str_replace_editor"]:
+        elif tool_name in ["view_file", "create_file", "edit_file"]:
             return "yellow"  # File operations (user attention needed)
         elif tool_name in ["database_query", "schema_discovery"]:
             return "blue"  # Database/system operations
@@ -303,7 +303,7 @@ class InteractiveInterface:
             "ml_trainer_generator",
         ]:
             return "green"  # ML operations (success/completion focused)
-        elif tool_name in ["data_processor_generator"]:
+        elif tool_name in ["data_process"]:
             return "bright_yellow"
         else:
             return "white"  # Default/neutral informational output
