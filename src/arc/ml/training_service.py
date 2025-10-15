@@ -279,7 +279,7 @@ class TrainingJobProgressCallback:
                     "Failed to log batch loss for training run %s", self.run_id
                 )
 
-    def on_training_end(self, final_metrics: dict[str, float]) -> None:
+    def on_training_end(self, _final_metrics: dict[str, float]) -> None:
         """Called when training ends.
 
         Note: Does NOT update job status to COMPLETED - that's handled by the
@@ -299,7 +299,9 @@ class TrainingJobProgressCallback:
                     "Failed to mark training run %s completed", self.run_id
                 )
 
-        logger.info(f"Training job {self.job_id} completed (status update deferred to wrapper)")
+        logger.info(
+            f"Training job {self.job_id} completed (status update deferred to wrapper)"
+        )
 
 
 class TrainingService:
@@ -1034,9 +1036,7 @@ class TrainingService:
 
         # Also clean up orphaned cancel events (events without corresponding jobs)
         orphaned_events = [
-            job_id
-            for job_id in self._cancel_events
-            if job_id not in self.active_jobs
+            job_id for job_id in self._cancel_events if job_id not in self.active_jobs
         ]
         for job_id in orphaned_events:
             del self._cancel_events[job_id]
