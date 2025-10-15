@@ -1152,9 +1152,7 @@ async def run_interactive_mode(
                     settings_manager.update_user_setting("apiKey", new_api.strip())
                     api_key = new_api.strip()
                     ui.show_system_success("API key saved to ~/.arc/user-settings.json")
-                new_url = await ui.get_user_input_async(
-                    f"Base URL [{base_url}]: "
-                )
+                new_url = await ui.get_user_input_async(f"Base URL [{base_url}]: ")
                 if new_url.strip():
                     settings_manager.update_user_setting("baseURL", new_url.strip())
                     base_url = new_url.strip()

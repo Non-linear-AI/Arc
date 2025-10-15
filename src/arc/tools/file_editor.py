@@ -193,9 +193,7 @@ class FileEditorTool(BaseTool):
                 )
 
             if not file_path.is_file():
-                return ToolResult.error_result(
-                    f"Path is not a file: {path}"
-                )
+                return ToolResult.error_result(f"Path is not a file: {path}")
 
             # Read current content
             try:

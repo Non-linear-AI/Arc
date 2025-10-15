@@ -208,9 +208,7 @@ class ArcAgent:
         self.tool_registry.register("ml_model", self.ml_model_tool)
         self.tool_registry.register("ml_train", self.ml_train_tool)
         self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
-        self.tool_registry.register(
-            "data_process", self.data_process_tool
-        )
+        self.tool_registry.register("data_process", self.data_process_tool)
 
         # Validate tool registry matches tools.yaml
         self._validate_tool_registry()
