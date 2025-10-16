@@ -13,6 +13,7 @@ from arc.core.client import ArcClient, ArcToolCall
 from arc.core.config import SettingsManager
 from arc.tools import (
     BashTool,
+    CreateTodoListTool,
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
     FileEditorTool,
@@ -22,7 +23,8 @@ from arc.tools import (
     MLTrainTool,
     SchemaDiscoveryTool,
     SearchTool,
-    TodoTool,
+    TodoManager,
+    UpdateTodoListTool,
     ToolResult,
 )
 from arc.utils import TokenCounter
@@ -132,7 +134,11 @@ class ArcAgent:
         self.file_editor = FileEditorTool()
         self.bash_tool = BashTool()
         self.search_tool = SearchTool()
-        self.todo_tool = TodoTool()
+
+        # Initialize todo manager and tools with shared state
+        self.todo_manager = TodoManager()
+        self.create_todo_tool = CreateTodoListTool(self.todo_manager)
+        self.update_todo_tool = UpdateTodoListTool(self.todo_manager)
 
         # Register basic tools
         self.tool_registry.register("view_file", self.file_editor)
@@ -140,8 +146,8 @@ class ArcAgent:
         self.tool_registry.register("edit_file", self.file_editor)
         self.tool_registry.register("bash", self.bash_tool)
         self.tool_registry.register("search", self.search_tool)
-        self.tool_registry.register("create_todo_list", self.todo_tool)
-        self.tool_registry.register("update_todo_list", self.todo_tool)
+        self.tool_registry.register("create_todo_list", self.create_todo_tool)
+        self.tool_registry.register("update_todo_list", self.update_todo_tool)
 
         # Initialize TensorBoard manager
         try:

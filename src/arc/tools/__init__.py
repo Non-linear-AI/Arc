@@ -14,7 +14,12 @@ from arc.tools.ml import (
 from arc.tools.registry import ToolRegistry
 from arc.tools.schema_discovery import SchemaDiscoveryTool
 from arc.tools.search import SearchTool
-from arc.tools.todo import TodoTool
+from arc.tools.todo import (
+    CreateTodoListTool,
+    TodoManager,
+    TodoTool,
+    UpdateTodoListTool,
+)
 
 __all__ = [
     "ToolResult",
@@ -26,6 +31,9 @@ __all__ = [
     "SchemaDiscoveryTool",
     "SearchTool",
     "TodoTool",
+    "CreateTodoListTool",
+    "UpdateTodoListTool",
+    "TodoManager",
     "MLModelTool",
     "MLPlanTool",
     "MLTrainTool",

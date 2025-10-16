@@ -829,10 +829,10 @@ class InteractiveInterface:
         with self._printer.section(color="blue") as p:
             p.print(table)
 
-    def get_user_input(self, prompt: str = "\n> ") -> str:
+    def get_user_input(self, prompt: str = "> ") -> str:
         return self._printer.get_input(prompt).strip()
 
-    async def get_user_input_async(self, prompt: str = "\n> ") -> str:
+    async def get_user_input_async(self, prompt: str = "> ") -> str:
         """Async version of get_user_input for use in async contexts."""
         result = await self._printer.get_input_async(prompt)
         return result.strip()
