@@ -35,18 +35,31 @@ class TodoTool(BaseTool):
     """Tool for managing TODO lists."""
 
     def __init__(self):
+        super().__init__()
         self.todos: list[TodoItem] = []
 
-    async def execute(self, action: str, **kwargs) -> ToolResult:
-        """Execute TODO operation."""
-        if action == "create":
-            return await self.create_todo_list(kwargs["todos"])
-        elif action == "update":
-            return await self.update_todo_list(kwargs["updates"])
-        elif action == "view":
+    async def execute(
+        self,
+        todos: list[dict[str, Any]] | None = None,
+        updates: list[dict[str, Any]] | None = None,
+        **kwargs,
+    ) -> ToolResult:
+        """Execute TODO operation.
+
+        This method is called by the tool registry with parameters from tools.yaml.
+        Either 'todos' (for create_todo_list) or 'updates' (for update_todo_list)
+        will be provided.
+        """
+        if todos is not None:
+            return await self.create_todo_list(todos)
+        elif updates is not None:
+            return await self.update_todo_list(updates)
+        elif "action" in kwargs and kwargs["action"] == "view":
             return await self.view_todo_list()
         else:
-            return ToolResult.error_result(f"Unknown TODO action: {action}")
+            return ToolResult.error_result(
+                "TodoTool requires either 'todos' or 'updates' parameter"
+            )
 
     async def create_todo_list(self, todos: list[dict[str, Any]]) -> ToolResult:
         """Create a new TODO list with items."""
