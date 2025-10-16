@@ -63,6 +63,7 @@ class DataProcessorGeneratorAgent:
         target_db: str = "user",
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
+        ml_plan_feature_engineering: str | None = None,
     ) -> tuple[DataSourceSpec, str]:
         """Generate data processing YAML from natural language description.
 
@@ -72,6 +73,7 @@ class DataProcessorGeneratorAgent:
             target_db: Target database for schema discovery
             existing_yaml: Existing YAML content to edit (optional)
             editing_instructions: Instructions for editing existing YAML (optional)
+            ml_plan_feature_engineering: Optional ML plan feature engineering guidance
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string)
@@ -85,7 +87,12 @@ class DataProcessorGeneratorAgent:
 
             # Render prompt and build messages
             user_prompt = await self._render_prompt(
-                context, schema_info, target_tables, existing_yaml, editing_instructions
+                context,
+                schema_info,
+                target_tables,
+                existing_yaml,
+                editing_instructions,
+                ml_plan_feature_engineering,
             )
             messages = [
                 {"role": "system", "content": self.SYSTEM_MESSAGE},
@@ -195,6 +202,7 @@ class DataProcessorGeneratorAgent:
         target_tables: list[str] | None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
+        ml_plan_feature_engineering: str | None = None,
     ) -> str:
         """Render the prompt template with context.
 
@@ -204,6 +212,7 @@ class DataProcessorGeneratorAgent:
             target_tables: Target tables list
             existing_yaml: Existing YAML content to edit (optional)
             editing_instructions: Instructions for editing (optional)
+            ml_plan_feature_engineering: Optional ML plan feature engineering guidance
 
         Returns:
             Rendered prompt string for user message
@@ -230,6 +239,7 @@ class DataProcessorGeneratorAgent:
                 target_tables=target_tables or [],
                 existing_yaml=existing_yaml,
                 editing_instructions=editing_instructions,
+                ml_plan_feature_engineering=ml_plan_feature_engineering,
             )
 
             return prompt

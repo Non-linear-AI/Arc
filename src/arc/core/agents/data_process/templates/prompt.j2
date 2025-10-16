@@ -9,6 +9,16 @@
 {% if target_tables %}- **Target Tables**: {{ target_tables | join(", ") }}
 {% endif %}- **Database**: {{ schema_info.database }}
 {% endif %}
+{% if ml_plan_feature_engineering %}
+
+## ML PLAN FEATURE ENGINEERING GUIDANCE
+
+The following feature engineering strategy was recommended by the ML Plan tool after analyzing the data characteristics and ML task requirements:
+
+{{ ml_plan_feature_engineering }}
+
+**CRITICAL**: This guidance from the ML Plan represents a carefully considered feature engineering design. Follow this strategy closely when generating the data processing pipeline to ensure the features are properly prepared for the ML model.
+{% endif %}
 
 ## Available Tables
 {% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**:

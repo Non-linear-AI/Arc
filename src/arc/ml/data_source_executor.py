@@ -35,6 +35,52 @@ class DataSourceExecutionError(Exception):
     """Exception raised when data source pipeline execution fails."""
 
 
+def _quote_ddl_identifiers(sql: str) -> str:
+    """Quote table/view names in DDL statements if they contain special characters.
+
+    Args:
+        sql: DDL SQL statement (DROP, ALTER, TRUNCATE, etc.)
+
+    Returns:
+        SQL with properly quoted identifiers
+
+    Examples:
+        DROP TABLE my-table => DROP TABLE "my-table"
+        DROP TABLE IF EXISTS my-table => DROP TABLE IF EXISTS "my-table"
+    """
+    import re
+
+    # Pattern to match table/view names in DDL statements
+    # Matches: DROP TABLE [IF EXISTS] table_name
+    #          DROP VIEW [IF EXISTS] view_name
+    #          ALTER TABLE table_name
+    #          TRUNCATE TABLE table_name
+
+    # First, check if identifiers are already quoted
+    if '"' in sql:
+        # Already has quotes, return as-is
+        return sql
+
+    # For DROP/TRUNCATE TABLE/VIEW [IF EXISTS] <name>
+    # Match the table/view name after TABLE/VIEW [IF EXISTS]
+    patterns = [
+        # DROP TABLE [IF EXISTS] name
+        (r"(DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?)([\w\-]+)", r'\1"\2"'),
+        # DROP VIEW [IF EXISTS] name
+        (r"(DROP\s+VIEW\s+(?:IF\s+EXISTS\s+)?)([\w\-]+)", r'\1"\2"'),
+        # ALTER TABLE name
+        (r"(ALTER\s+TABLE\s+)([\w\-]+)", r'\1"\2"'),
+        # TRUNCATE TABLE name
+        (r"(TRUNCATE\s+TABLE\s+)([\w\-]+)", r'\1"\2"'),
+    ]
+
+    result = sql
+    for pattern, replacement in patterns:
+        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+
+    return result
+
+
 async def execute_data_source_pipeline(
     spec: DataSourceSpec,
     target_db: str,
@@ -103,47 +149,79 @@ async def execute_data_source_pipeline(
 
     try:
         for i, step in enumerate(ordered_steps, 1):
-            # Determine if this is an output step (should create table) or
-            # intermediate (view)
-            # Note: Step names and SQL already validated above
-            step_type = "table" if step.name in spec.outputs else "view"
-            steps_executed.append((step.name, step_type))
-
-            # Report progress: step
-            step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
-            if progress_callback:
-                progress_callback(step_msg, "step")
-                progress_log.append((step_msg, "step"))
-
-            # Substitute variables in SQL
+            # Substitute variables in SQL first
             sql = spec.substitute_vars(step.sql)
 
-            # Strip trailing semicolons (they cause syntax errors in
-            # CREATE TABLE/VIEW AS)
+            # Strip trailing semicolons
             sql = sql.rstrip().rstrip(";").rstrip()
 
-            # Quote step name for safe SQL execution
-            quoted_name = quote_sql_identifier(step.name)
+            # Check if this is a DDL statement (DROP, ALTER, TRUNCATE, etc.)
+            sql_upper = sql.strip().upper()
+            is_ddl = any(
+                sql_upper.startswith(stmt)
+                for stmt in ["DROP ", "ALTER ", "TRUNCATE ", "GRANT ", "REVOKE "]
+            )
 
-            try:
-                if step.name in spec.outputs:
-                    # Create persistent table for output steps
-                    create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
-                else:
-                    # Create regular view for intermediate steps (allows debugging)
-                    create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
-                    intermediate_views.append(step.name)  # Track for cleanup
+            # DDL statements are executed directly, not wrapped in CREATE TABLE/VIEW
+            if is_ddl:
+                step_type = "ddl"
+                steps_executed.append((step.name, step_type))
 
-                # Execute using database manager directly to ensure same session
-                if target_db == "system":
-                    db_manager.system_execute(create_sql)
-                else:
-                    db_manager.user_execute(create_sql)
+                # Report progress: step
+                step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
+                if progress_callback:
+                    progress_callback(step_msg, "step")
+                    progress_log.append((step_msg, "step"))
 
-            except Exception as step_error:
-                raise DataSourceExecutionError(
-                    f"Failed to execute step '{step.name}': {str(step_error)}"
-                ) from step_error
+                try:
+                    # For DDL statements, we need to quote table names with special chars
+                    # Extract table name from DROP/ALTER/TRUNCATE statements and quote if needed
+                    ddl_sql = _quote_ddl_identifiers(sql)
+
+                    # Execute DDL directly without wrapping
+                    if target_db == "system":
+                        db_manager.system_execute(ddl_sql)
+                    else:
+                        db_manager.user_execute(ddl_sql)
+
+                except Exception as step_error:
+                    raise DataSourceExecutionError(
+                        f"Failed to execute step '{step.name}': {str(step_error)}"
+                    ) from step_error
+
+            else:
+                # For DML/DQL statements (SELECT, INSERT, etc.), wrap in CREATE TABLE/VIEW
+                step_type = "table" if step.name in spec.outputs else "view"
+                steps_executed.append((step.name, step_type))
+
+                # Report progress: step
+                step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
+                if progress_callback:
+                    progress_callback(step_msg, "step")
+                    progress_log.append((step_msg, "step"))
+
+                # Quote step name for safe SQL execution
+                quoted_name = quote_sql_identifier(step.name)
+
+                try:
+                    if step.name in spec.outputs:
+                        # Create persistent table for output steps
+                        create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
+                    else:
+                        # Create regular view for intermediate steps (allows debugging)
+                        create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
+                        intermediate_views.append(step.name)  # Track for cleanup
+
+                    # Execute using database manager directly to ensure same session
+                    if target_db == "system":
+                        db_manager.system_execute(create_sql)
+                    else:
+                        db_manager.user_execute(create_sql)
+
+                except Exception as step_error:
+                    raise DataSourceExecutionError(
+                        f"Failed to execute step '{step.name}': {str(step_error)}"
+                    ) from step_error
 
     finally:
         # Clean up intermediate views

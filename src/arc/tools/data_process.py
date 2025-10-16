@@ -96,6 +96,7 @@ class DataProcessorGeneratorTool(BaseTool):
         output_path: str | None = None,
         target_db: str = "user",
         auto_confirm: bool = False,
+        ml_plan: dict | None = None,
     ) -> ToolResult:
         """Generate YAML configuration from natural language context using LLM.
 
@@ -106,6 +107,7 @@ class DataProcessorGeneratorTool(BaseTool):
             output_path: Path to save generated YAML file (optional, for backup)
             target_db: Target database - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
+            ml_plan: Optional ML plan dict containing feature engineering guidance
 
         Returns:
             ToolResult with operation result
@@ -127,6 +129,15 @@ class DataProcessorGeneratorTool(BaseTool):
             return ToolResult.error_result(
                 f"Invalid target database: {target_db}. Must be 'system' or 'user'."
             )
+
+        # Extract feature engineering guidance from ML plan if provided
+        ml_plan_feature_engineering = None
+        if ml_plan:
+            from arc.core.ml_plan import MLPlan
+
+            plan = MLPlan.from_dict(ml_plan)
+            # Extract feature engineering guidance for data processing
+            ml_plan_feature_engineering = plan.feature_engineering
 
         try:
             # Show progress to build trust
@@ -168,7 +179,10 @@ class DataProcessorGeneratorTool(BaseTool):
                 spec,
                 yaml_content,
             ) = await self.generator_agent.generate_data_processing_yaml(
-                context=context, target_tables=target_tables, target_db=target_db
+                context=context,
+                target_tables=target_tables,
+                target_db=target_db,
+                ml_plan_feature_engineering=ml_plan_feature_engineering,
             )
 
             # Interactive confirmation workflow
@@ -191,6 +205,7 @@ class DataProcessorGeneratorTool(BaseTool):
                     "context": str(context),
                     "target_tables": target_tables,
                     "target_db": target_db,
+                    "ml_plan_feature_engineering": ml_plan_feature_engineering,
                 }
 
                 try:
@@ -390,6 +405,7 @@ class DataProcessorGeneratorTool(BaseTool):
                     target_db=context.get("target_db", "user"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
+                    ml_plan_feature_engineering=context.get("ml_plan_feature_engineering"),
                 )
                 return edited_yaml
 
