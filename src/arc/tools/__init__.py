@@ -17,7 +17,6 @@ from arc.tools.search import SearchTool
 from arc.tools.todo import (
     CreateTodoListTool,
     TodoManager,
-    TodoTool,
     UpdateTodoListTool,
 )
 
@@ -30,7 +29,6 @@ __all__ = [
     "FileEditorTool",
     "SchemaDiscoveryTool",
     "SearchTool",
-    "TodoTool",
     "CreateTodoListTool",
     "UpdateTodoListTool",
     "TodoManager",

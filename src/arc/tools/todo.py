@@ -207,7 +207,3 @@ class UpdateTodoListTool(BaseTool):
             return ToolResult.error_result(str(e))
         except Exception as e:
             return ToolResult.error_result(f"Failed to update todo list: {str(e)}")
-
-
-# Legacy alias for backward compatibility during transition
-TodoTool = CreateTodoListTool
