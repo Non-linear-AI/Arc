@@ -24,8 +24,8 @@ from arc.tools import (
     SchemaDiscoveryTool,
     SearchTool,
     TodoManager,
-    UpdateTodoListTool,
     ToolResult,
+    UpdateTodoListTool,
 )
 from arc.utils import TokenCounter
 
