@@ -336,16 +336,7 @@ class YamlConfirmationWorkflow:
             yaml_content: YAML content to display
             output_path: Optional output file path for diff display
         """
-
-        def output(text):
-            if self.ui:
-                self.ui.show_info(text)
-
-        output("\n" + "=" * 50)
-        output(f"¶ Arc-Graph {self.yaml_type_name.title()} Specification")
-        output("=" * 50)
-
-        # Use printer to display YAML with diff support
+        # Display YAML with diff support (title already shown by tool before generation)
         if self.ui:
             self.ui._printer.display_yaml_with_diff(yaml_content, output_path)
 

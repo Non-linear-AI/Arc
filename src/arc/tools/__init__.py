@@ -4,7 +4,12 @@ from arc.tools.base import ToolResult
 from arc.tools.bash import BashTool
 from arc.tools.data_process import DataProcessorGeneratorTool
 from arc.tools.database_query import DatabaseQueryTool
-from arc.tools.file_editor import FileEditorTool
+from arc.tools.file_editor import (
+    CreateFileTool,
+    EditFileTool,
+    FileEditorTool,
+    ViewFileTool,
+)
 from arc.tools.ml import (
     MLEvaluateTool,
     MLModelTool,
@@ -27,6 +32,9 @@ __all__ = [
     "DataProcessorGeneratorTool",
     "DatabaseQueryTool",
     "FileEditorTool",
+    "ViewFileTool",
+    "CreateFileTool",
+    "EditFileTool",
     "SchemaDiscoveryTool",
     "SearchTool",
     "CreateTodoListTool",

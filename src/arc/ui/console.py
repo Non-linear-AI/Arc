@@ -182,16 +182,16 @@ class InteractiveInterface:
         with self._printer.section(color="blue") as p:
             p.print("How to Use Arc")
             p.print(
-                "  [dim]Ask questions in natural language or use slash commands "
+                "[dim]Ask questions in natural language or use slash commands "
                 "below.[/dim]"
             )
             p.print(
-                "  [dim]Examples: 'analyze my data', 'help me train a model', "
+                "[dim]Examples: 'analyze my data', 'help me train a model', "
                 "'/config'[/dim]"
             )
 
             p.print()
-            p.print("  System Commands")
+            p.print("System Commands")
             commands = [
                 ("/help", "Show available commands and features"),
                 ("/config", "View or edit configuration"),
@@ -204,10 +204,10 @@ class InteractiveInterface:
                 ("/exit", "Exit the application"),
             ]
             for cmd, desc in commands:
-                p.print(f"  - [cyan]{cmd}[/cyan]: {desc}")
+                p.print(f"- [cyan]{cmd}[/cyan]: {desc}")
 
             p.print()
-            p.print("  ML Commands")
+            p.print("ML Commands")
             ml_commands = [
                 (
                     "/ml plan --context DESC --data-table TABLE --target-column COL",
@@ -246,7 +246,7 @@ class InteractiveInterface:
                 ("/ml jobs status JOB_ID", "Inspect an individual job"),
             ]
             for cmd, desc in ml_commands:
-                p.print(f"  - [cyan]{cmd}[/cyan]: {desc}")
+                p.print(f"- [cyan]{cmd}[/cyan]: {desc}")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
@@ -368,7 +368,7 @@ class InteractiveInterface:
         if progress_line:
             target.print(f"{label} {progress_line}")
         for item in todo_items:
-            target.print(f"  {item}")
+            target.print(item)
 
     def _print_todo_content(self, content: str) -> None:
         """Print todo content with progress bar format."""
@@ -383,28 +383,29 @@ class InteractiveInterface:
                     p.print(f"  {line}")
 
     def _print_details_block(
-        self, content: str, _max_lines: int = 8, printer: Any | None = None
+        self, content: str, _max_lines: int = 10, printer: Any | None = None
     ) -> None:
-        """Print details block matching the exact format from the example."""
+        """Print details block with automatic indentation from printer."""
         lines = content.splitlines()
         if not lines:
             return
 
-        # Show first line with ⎿ marker
-        first = lines[0].rstrip()
         target = printer if printer else self._printer
-        target.print(f"  [dim]⎿ {first}[/dim]")
 
-        # Show up to 2 more lines with proper indentation
-        rest = lines[1:5]  # Only show 2 more lines max
+        # Show first line
+        first = lines[0].rstrip()
+        target.print(f"[dim]{first}[/dim]")
+
+        # Show up to max_lines-1 more lines
+        rest = lines[1:_max_lines]
         for ln in rest:
-            if ln.strip():  # Skip empty lines
-                target.print(f"     [dim]{ln.rstrip()}[/dim]")
+            # Show all lines including empty ones for better context
+            target.print(f"[dim]{ln.rstrip()}[/dim]")
 
         # Show ellipsis if there are more lines
-        if len(lines) > 5:
-            remaining = len(lines) - 5
-            target.print(f"     [dim]… +{remaining} lines (ctrl+r to expand)[/dim]")
+        if len(lines) > _max_lines:
+            remaining = len(lines) - _max_lines
+            target.print(f"[dim]… +{remaining} more lines[/dim]")
 
     def show_user_message(self, content: str):
         """Clear the input line and show user message inside a light border."""
@@ -434,6 +435,8 @@ class InteractiveInterface:
 
         # Render the user message in soft purple-gray (no border)
         if lines:
+            # User messages don't use section context, so we manually
+            # indent continuation lines
             self._printer.print(
                 f"[color(245)]>[/color(245)] [color(245)]{lines[0]}[/color(245)]"
             )
@@ -453,7 +456,7 @@ class InteractiveInterface:
             with self._printer.section(color="cyan") as p:
                 p.print(f"{lines[0]}")
                 for ln in lines[1:]:
-                    p.print(f"  {ln}")
+                    p.print(ln)
 
     @contextmanager
     def assistant_response(self):
@@ -720,7 +723,7 @@ class InteractiveInterface:
             p.print(f"{header}")
 
             if result.empty():
-                p.print("\n [dim]No results found[/dim]")
+                p.print("[dim]No results found[/dim]")
                 return
 
             # Build clean table for panel display
@@ -768,10 +771,10 @@ class InteractiveInterface:
             p.print(table)
             total_rows = result.count()
             if total_rows > max_rows:
-                p.print(f" [dim]Showing {max_rows} of {total_rows} rows[/dim]")
+                p.print(f"[dim]Showing {max_rows} of {total_rows} rows[/dim]")
             else:
                 row_text = "row" if total_rows == 1 else "rows"
-                p.print(f" [dim]{total_rows} {row_text} returned[/dim]")
+                p.print(f"[dim]{total_rows} {row_text} returned[/dim]")
 
     # System and misc helpers using Printer
     def show_system_error(self, message: str) -> None:

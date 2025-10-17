@@ -130,16 +130,20 @@ class MLModelTool(BaseTool):
                 "to generate a model specification."
             )
 
-        # Show UI feedback if UI is available
+        # Show section title before generation starts
+        # Keep the section printer reference to use later for registration message
+        ml_model_section_printer = None
         if self.ui:
-            if ml_plan:
-                self.ui.show_info(
-                    f"🤖 Generating model specification for '{name}' "
-                    "using ML plan guidance..."
-                )
-            else:
-                self.ui.show_info(f"🤖 Generating model specification for '{name}'...")
+            self._ml_model_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_model_section_printer = self._ml_model_section.__enter__()
+            ml_model_section_printer.print("ML Model")
+            ml_model_section_printer.print(
+                "[dim]Generating Arc-Graph model specification...[/dim]"
+            )
 
+        # Generate model using agent
         agent = ModelGeneratorAgent(
             self.services,
             self.api_key,
@@ -205,6 +209,17 @@ class MLModelTool(BaseTool):
                     None,  # No file path
                 )
                 if not proceed:
+                    # Show cancellation message in the ML Model section
+                    if ml_model_section_printer:
+                        ml_model_section_printer.print(
+                            ""
+                        )  # Empty line before cancellation
+                        ml_model_section_printer.print(
+                            "✗ Model generation cancelled by user"
+                        )
+                    # Close the section before returning
+                    if self.ui and hasattr(self, "_ml_model_section"):
+                        self._ml_model_section.__exit__(None, None, None)
                     return ToolResult.success_result(
                         "✗ Model generation cancelled by user."
                     )
@@ -248,22 +263,21 @@ class MLModelTool(BaseTool):
         except Exception as exc:
             return ToolResult.error_result(f"Failed to save model to DB: {exc}")
 
-        summary = (
-            f"Inputs: {len(model_spec.inputs)} • Nodes: {len(model_spec.graph)} "
-            f"• Outputs: {len(model_spec.outputs)}"
-        )
+        # Display registration confirmation in the ML Model section
+        if ml_model_section_printer:
+            ml_model_section_printer.print("")  # Empty line before confirmation
+            ml_model_section_printer.print(
+                f"✓ Model '{name}' registered to database "
+                f"({model_id} • {len(model_spec.inputs)} inputs • "
+                f"{len(model_spec.graph)} nodes • {len(model_spec.outputs)} outputs)"
+            )
 
-        lines = [
-            f"✓ Model '{name}' generated and saved to DB.",
-            f"Model ID: {model_id}",
-            summary,
-        ]
+        # Close the ML Model section
+        if self.ui and hasattr(self, "_ml_model_section"):
+            self._ml_model_section.__exit__(None, None, None)
 
-        if auto_confirm:
-            lines.append("\n✓ YAML:")
-            lines.append(model_yaml.strip())
-        else:
-            lines.append("✓ Model approved and ready for use.")
+        # Build simple output for ToolResult (detailed output already shown in UI)
+        lines = [f"Model '{name}' registered successfully as {model_id}"]
 
         # Build metadata
         result_metadata = {
@@ -618,10 +632,18 @@ class MLTrainTool(BaseTool):
                 f"Failed to retrieve model '{model_id}': {exc}"
             )
 
-        # Show UI feedback if UI is available
+        # Show section title before generation starts
+        # Keep the section printer reference to use later for registration message
+        ml_trainer_section_printer = None
         if self.ui:
-            self.ui.show_info(f"📋 Using registered model: {model_record.id}")
-            self.ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
+            self._ml_trainer_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_trainer_section_printer = self._ml_trainer_section.__enter__()
+            ml_trainer_section_printer.print("ML Trainer")
+            ml_trainer_section_printer.print(
+                "[dim]Generating Arc-Graph trainer specification...[/dim]"
+            )
 
         # Generate trainer spec via LLM
         agent = TrainerGeneratorAgent(
@@ -685,6 +707,17 @@ class MLTrainTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
+                    # Show cancellation message in the ML Trainer section
+                    if ml_trainer_section_printer:
+                        ml_trainer_section_printer.print(
+                            ""
+                        )  # Empty line before cancellation
+                        ml_trainer_section_printer.print(
+                            "✗ Trainer generation cancelled by user"
+                        )
+                    # Close the section before returning
+                    if self.ui and hasattr(self, "_ml_trainer_section"):
+                        self._ml_trainer_section.__exit__(None, None, None)
                     return ToolResult.success_result("✗ Trainer generation cancelled.")
                 trainer_yaml = final_yaml
             finally:
@@ -699,23 +732,19 @@ class MLTrainTool(BaseTool):
                 description=f"Generated trainer for model {model_id}",
             )
 
-            if self.ui:
-                self.ui.show_system_success(
-                    f"✓ Trainer registered: {trainer_record.id}"
+            # Display registration confirmation in the ML Trainer section
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")  # Empty line before confirmation
+                ml_trainer_section_printer.print(
+                    f"✓ Trainer '{name}' registered to database "
+                    f"({trainer_record.id} • Model: {trainer_spec.model_ref} • "
+                    f"Optimizer: {trainer_spec.optimizer.type})"
                 )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register trainer: {exc}")
 
-        # Prepare trainer summary
-        summary = (
-            f"Model: {trainer_spec.model_ref} • "
-            f"Optimizer: {trainer_spec.optimizer.type}"
-        )
-
-        lines = [
-            f"✓ Trainer '{trainer_record.id}' created and registered.",
-            summary,
-        ]
+        # Build simple output for ToolResult (detailed output already shown in UI)
+        lines = [f"Trainer '{name}' registered successfully as {trainer_record.id}"]
 
         # Build result metadata (before auto-launch to use in error handling)
         result_metadata = {
@@ -730,8 +759,11 @@ class MLTrainTool(BaseTool):
         job_id = None
 
         if True:  # Always train when trainer is accepted
-            if self.ui:
-                self.ui.show_info(f"🚀 Launching training with trainer '{name}'...")
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")  # Empty line before training
+                ml_trainer_section_printer.print(
+                    f"→ Launching training with trainer '{name}'..."
+                )
 
             try:
                 job_id = await asyncio.to_thread(
@@ -745,17 +777,35 @@ class MLTrainTool(BaseTool):
                 lines.append(f"Training table: {train_table}")
                 lines.append(f"Job ID: {job_id}")
 
+                # Show job monitoring instructions in section
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        "[cyan]ℹ Monitor training progress:[/cyan]"
+                    )
+                    ml_trainer_section_printer.print(
+                        f"  • Status: /ml jobs status {job_id}"
+                    )
+                    ml_trainer_section_printer.print(
+                        f"  • Logs: /ml jobs logs {job_id}"
+                    )
+
                 # Handle TensorBoard launch
                 if not auto_confirm and self.ui:
                     if self.tensorboard_manager:
                         try:
-                            await self._handle_tensorboard_launch(job_id)
+                            await self._handle_tensorboard_launch(
+                                job_id, ml_trainer_section_printer
+                            )
                         except (OSError, RuntimeError) as e:
                             # Known TensorBoard launch failures
-                            self.ui._printer.console.print(
-                                f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                            if ml_trainer_section_printer:
+                                ml_trainer_section_printer.print(
+                                    f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job_id, ml_trainer_section_printer
                             )
-                            self._show_manual_tensorboard_instructions(job_id)
                         except Exception as e:
                             # Log unexpected errors with full traceback
                             import logging
@@ -764,20 +814,26 @@ class MLTrainTool(BaseTool):
                                 "Unexpected error during TensorBoard launch"
                             )
                             error_msg = f"{e.__class__.__name__}: {e}"
-                            self.ui._printer.console.print(
-                                "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
+                            if ml_trainer_section_printer:
+                                ml_trainer_section_printer.print(
+                                    "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
+                                )
+                                ml_trainer_section_printer.print(
+                                    f"[yellow]{error_msg}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job_id, ml_trainer_section_printer
                             )
-                            self.ui._printer.console.print(
-                                f"[yellow]{error_msg}[/yellow]"
-                            )
-                            self._show_manual_tensorboard_instructions(job_id)
                     else:
                         # No TensorBoard manager available
-                        self.ui._printer.console.print(
-                            "[dim]ℹ️  TensorBoard auto-launch not available "
-                            "(restart arc chat to enable)[/dim]"
+                        if ml_trainer_section_printer:
+                            ml_trainer_section_printer.print(
+                                "[dim]ℹ️  TensorBoard auto-launch not available "
+                                "(restart arc chat to enable)[/dim]"
+                            )
+                        self._show_manual_tensorboard_instructions(
+                            job_id, ml_trainer_section_printer
                         )
-                        self._show_manual_tensorboard_instructions(job_id)
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
@@ -834,17 +890,22 @@ class MLTrainTool(BaseTool):
         if job_id:
             result_metadata["job_id"] = job_id
 
+        # Close the ML Trainer section
+        if self.ui and hasattr(self, "_ml_trainer_section"):
+            self._ml_trainer_section.__exit__(None, None, None)
+
         return ToolResult(
             success=True,
             output="\n".join(lines),
             metadata=result_metadata,
         )
 
-    async def _handle_tensorboard_launch(self, job_id: str):
+    async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.
 
         Args:
             job_id: Training job identifier
+            section_printer: Section printer for indented output
         """
 
         from arc.core.config import SettingsManager
@@ -857,25 +918,37 @@ class MLTrainTool(BaseTool):
         if mode is None:
             mode, should_launch = await prompt_tensorboard_preference(self.ui)
             settings.set_tensorboard_mode(mode)
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[green]✓ TensorBoard preference saved: {mode}[/green]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
 
             # Launch immediately if user chose to
             if should_launch:
-                await self._launch_tensorboard(job_id)
+                await self._launch_tensorboard(job_id, section_printer)
             else:
-                self._show_manual_tensorboard_instructions(job_id)
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
 
         # Subsequent times - respect saved preference
         elif mode == "always":
-            await self._launch_tensorboard(job_id)
+            await self._launch_tensorboard(job_id, section_printer)
         elif mode == "ask":
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
             choice = await self.ui._printer.get_choice_async(
                 options=[
                     ("yes", "Yes, launch now"),
@@ -889,23 +962,30 @@ class MLTrainTool(BaseTool):
             if choice == "always":
                 # Update preference to always
                 settings.set_tensorboard_mode("always")
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[green]✓ TensorBoard preference updated: always[/green]"
-                )
-                await self._launch_tensorboard(job_id)
+                if section_printer:
+                    section_printer.print("")
+                    section_printer.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                else:
+                    self.ui._printer.console.print()
+                    self.ui._printer.console.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                await self._launch_tensorboard(job_id, section_printer)
             elif choice == "yes":
-                await self._launch_tensorboard(job_id)
+                await self._launch_tensorboard(job_id, section_printer)
             else:  # "no"
-                self._show_manual_tensorboard_instructions(job_id)
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
         else:  # "never"
-            self._show_manual_tensorboard_instructions(job_id)
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
 
-    async def _launch_tensorboard(self, job_id: str):
+    async def _launch_tensorboard(self, job_id: str, section_printer=None):
         """Launch TensorBoard and show info.
 
         Args:
             job_id: Training job identifier
+            section_printer: Section printer for indented output
         """
         from pathlib import Path
 
@@ -919,45 +999,73 @@ class MLTrainTool(BaseTool):
 
             url, pid = self.tensorboard_manager.launch(job_id, logdir, port)
 
-            self.ui._printer.console.print()
-            self.ui._printer.console.print("[green]🚀 Launching TensorBoard...[/green]")
-            self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
-            self.ui._printer.console.print(f"   • Process ID: {pid}")
-            self.ui._printer.console.print(f"   • Logs: {logdir}")
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print("[green]→ Launching TensorBoard...[/green]")
+                section_printer.print(f"  • URL: [bold]{url}[/bold]")
+                section_printer.print(f"  • Process ID: {pid}")
+                section_printer.print(f"  • Logs: {logdir}")
+                section_printer.print("")
+                section_printer.print(f"  To stop: /ml tensorboard stop {job_id}")
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[green]→ Launching TensorBoard...[/green]"
+                )
+                self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
+                self.ui._printer.console.print(f"  • Process ID: {pid}")
+                self.ui._printer.console.print(f"  • Logs: {logdir}")
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"  To stop: /ml tensorboard stop {job_id}"
+                )
         except (OSError, RuntimeError) as e:
             # Known TensorBoard launch failures
-            self.ui._printer.console.print(
-                f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
-            )
-            self._show_manual_tensorboard_instructions(job_id)
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
         except Exception as e:
             # Log unexpected errors with full traceback
             import logging
 
             logging.exception("Unexpected error during TensorBoard launch")
             error_msg = f"{e.__class__.__name__}: {e}"
-            self.ui._printer.console.print(
-                f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
-            )
-            self._show_manual_tensorboard_instructions(job_id)
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
 
-    def _show_manual_tensorboard_instructions(self, job_id: str):
+    def _show_manual_tensorboard_instructions(self, job_id: str, section_printer=None):
         """Show manual TensorBoard instructions.
 
         Args:
             job_id: Training job identifier
+            section_printer: Section printer for indented output
         """
         logdir = f"tensorboard/run_{job_id}"
-        self.ui._printer.console.print()
-        self.ui._printer.console.print("[cyan]📊 Track training:[/cyan]")
-        self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
-        self.ui._printer.console.print(
-            f"  • TensorBoard: tensorboard --logdir {logdir}"
-        )
+        if section_printer:
+            section_printer.print("")
+            section_printer.print("[cyan]ℹ Track training:[/cyan]")
+            section_printer.print(f"  • Status: /ml jobs status {job_id}")
+            section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
+        else:
+            self.ui._printer.console.print()
+            self.ui._printer.console.print("[cyan]ℹ Track training:[/cyan]")
+            self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+            self.ui._printer.console.print(
+                f"  • TensorBoard: tensorboard --logdir {logdir}"
+            )
 
     def _create_validator(self):
         """Create validator function for the workflow."""
@@ -1135,11 +1243,6 @@ class MLEvaluateTool(BaseTool):
                     "Ensure model's loss spec includes a 'target' input."
                 )
 
-            if self.ui:
-                self.ui.show_info(
-                    f"📌 Inferred target column from model: '{target_column}'"
-                )
-
         except Exception as exc:
             return ToolResult.error_result(
                 f"Failed to retrieve model for trainer: {exc}"
@@ -1151,28 +1254,22 @@ class MLEvaluateTool(BaseTool):
             schema_info = self.services.schema.get_schema_info(target_db="user")
             columns = schema_info.get_column_names(str(data_table))
             target_column_exists = str(target_column) in columns
-
-            if self.ui:
-                if target_column_exists:
-                    self.ui.show_info(
-                        f"📊 Target column '{target_column}' found in data - "
-                        "will compute metrics"
-                    )
-                else:
-                    self.ui.show_info(
-                        f"📋 Target column '{target_column}' not in data - "
-                        "will generate predictions only"
-                    )
-        except Exception as exc:
+        except Exception:
             # If schema check fails, default to assuming target exists
-            if self.ui:
-                self.ui.show_info(f"⚠️ Could not check if target column exists: {exc}")
             target_column_exists = True
 
-        # Show UI feedback if UI is available
+        # Show section title
+        # Keep the section printer reference to use later for registration message
+        ml_evaluator_section_printer = None
         if self.ui:
-            self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
-            self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
+            self._ml_evaluator_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_evaluator_section_printer = self._ml_evaluator_section.__enter__()
+            ml_evaluator_section_printer.print("ML Evaluator")
+            ml_evaluator_section_printer.print(
+                "[dim]Generating Arc-Graph evaluator specification...[/dim]"
+            )
 
         # Generate evaluator spec via LLM
         from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
@@ -1259,6 +1356,17 @@ class MLEvaluateTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
+                    # Show cancellation message in the ML Evaluator section
+                    if ml_evaluator_section_printer:
+                        ml_evaluator_section_printer.print(
+                            ""
+                        )  # Empty line before cancellation
+                        ml_evaluator_section_printer.print(
+                            "✗ Evaluator generation cancelled by user"
+                        )
+                    # Close the section before returning
+                    if self.ui and hasattr(self, "_ml_evaluator_section"):
+                        self._ml_evaluator_section.__exit__(None, None, None)
                     return ToolResult.success_result("✗ Evaluator cancelled.")
                 evaluator_yaml = final_yaml
             finally:
@@ -1293,9 +1401,16 @@ class MLEvaluateTool(BaseTool):
             if spec_matches:
                 # Reuse existing evaluator (same spec)
                 evaluator_record = existing_evaluator
-                if self.ui:
-                    self.ui.show_system_success(
-                        f"✓ Using existing evaluator: {evaluator_record.id}"
+                # Display "using existing" message in the ML Evaluator section
+                if ml_evaluator_section_printer:
+                    ml_evaluator_section_printer.print(
+                        ""
+                    )  # Empty line before confirmation
+                    ml_evaluator_section_printer.print(
+                        f"✓ Using existing evaluator '{name}' "
+                        f"({evaluator_record.id} • "
+                        f"Trainer: {evaluator_spec.trainer_ref} • "
+                        f"Dataset: {evaluator_spec.dataset})"
                     )
             else:
                 # Create new version (spec changed or first time)
@@ -1318,29 +1433,28 @@ class MLEvaluateTool(BaseTool):
 
                 self.services.evaluators.create_evaluator(evaluator_record)
 
-                if self.ui:
-                    self.ui.show_system_success(
-                        f"✓ Evaluator registered: {evaluator_record.id}"
+                # Display registration confirmation in the ML Evaluator section
+                if ml_evaluator_section_printer:
+                    ml_evaluator_section_printer.print(
+                        ""
+                    )  # Empty line before confirmation
+                    ml_evaluator_section_printer.print(
+                        f"✓ Evaluator '{name}' registered to database "
+                        f"({evaluator_record.id} • "
+                        f"Trainer: {evaluator_spec.trainer_ref} • "
+                        f"Dataset: {evaluator_spec.dataset})"
                     )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register evaluator: {exc}")
 
-        # Prepare evaluator summary
-        summary = (
-            f"Trainer: {evaluator_spec.trainer_ref} • "
-            f"Dataset: {evaluator_spec.dataset} • "
-            f"Target: {evaluator_spec.target_column}"
-        )
-
-        lines = [
-            f"✓ Evaluator '{evaluator_record.id}' created and registered.",
-            summary,
-        ]
+        # Build simple output for ToolResult (detailed output already shown in UI)
+        lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
 
         # Run evaluation automatically after registration
         metrics_dict = None
-        if self.ui:
-            self.ui.show_info(f"🔍 Running evaluation with '{name}'...")
+        if ml_evaluator_section_printer:
+            ml_evaluator_section_printer.print("")
+            ml_evaluator_section_printer.print(f"→ Running evaluation with '{name}'...")
 
         # Create job record for this evaluation
         from arc.jobs.models import Job, JobType
@@ -1445,30 +1559,42 @@ class MLEvaluateTool(BaseTool):
             if not auto_confirm and self.ui:
                 if self.tensorboard_manager:
                     try:
-                        await self._handle_tensorboard_launch(job.job_id)
+                        await self._handle_tensorboard_launch(
+                            job.job_id, ml_evaluator_section_printer
+                        )
                     except (OSError, RuntimeError) as e:
                         # Known TensorBoard launch failures
-                        self.ui._printer.console.print(
-                            f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                        if ml_evaluator_section_printer:
+                            ml_evaluator_section_printer.print(
+                                f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                            )
+                        self._show_manual_tensorboard_instructions(
+                            job.job_id, ml_evaluator_section_printer
                         )
-                        self._show_manual_tensorboard_instructions(job.job_id)
                     except Exception as e:
                         # Log unexpected errors with full traceback
                         import logging
 
                         logging.exception("Unexpected error during TensorBoard launch")
                         error_msg = f"{e.__class__.__name__}: {e}"
-                        self.ui._printer.console.print(
-                            f"[yellow]⚠️  TensorBoard setup failed: {error_msg}[/yellow]"
+                        if ml_evaluator_section_printer:
+                            ml_evaluator_section_printer.print(
+                                f"[yellow]⚠️  TensorBoard setup failed: "
+                                f"{error_msg}[/yellow]"
+                            )
+                        self._show_manual_tensorboard_instructions(
+                            job.job_id, ml_evaluator_section_printer
                         )
-                        self._show_manual_tensorboard_instructions(job.job_id)
                 else:
                     # No TensorBoard manager available
-                    self.ui._printer.console.print(
-                        "[dim]ℹ️  TensorBoard auto-launch not available "
-                        "(restart arc chat to enable)[/dim]"
+                    if ml_evaluator_section_printer:
+                        ml_evaluator_section_printer.print(
+                            "[dim]ℹ️  TensorBoard auto-launch not available "
+                            "(restart arc chat to enable)[/dim]"
+                        )
+                    self._show_manual_tensorboard_instructions(
+                        job.job_id, ml_evaluator_section_printer
                     )
-                    self._show_manual_tensorboard_instructions(job.job_id)
 
         except Exception as exc:
             from arc.ml.evaluator import EvaluationError
@@ -1497,6 +1623,10 @@ class MLEvaluateTool(BaseTool):
             return ToolResult.error_result(
                 f"Evaluator registered but unexpected error: {exc}"
             )
+
+        # Close the ML Evaluator section
+        if self.ui and hasattr(self, "_ml_evaluator_section"):
+            self._ml_evaluator_section.__exit__(None, None, None)
 
         # Build result metadata
         result_metadata = {
@@ -1579,11 +1709,12 @@ class MLEvaluateTool(BaseTool):
 
         return edit
 
-    async def _handle_tensorboard_launch(self, job_id: str):
+    async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.
 
         Args:
             job_id: Evaluation job identifier
+            section_printer: Section printer for indented output
         """
         from arc.core.config import SettingsManager
         from arc.utils.tensorboard_workflow import prompt_tensorboard_preference
@@ -1595,25 +1726,37 @@ class MLEvaluateTool(BaseTool):
         if mode is None:
             mode, should_launch = await prompt_tensorboard_preference(self.ui)
             settings.set_tensorboard_mode(mode)
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[green]✓ TensorBoard preference saved: {mode}[/green]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
 
             # Launch immediately if user chose to
             if should_launch:
-                await self._launch_tensorboard(job_id)
+                await self._launch_tensorboard(job_id, section_printer)
             else:
-                self._show_manual_tensorboard_instructions(job_id)
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
 
         # Subsequent times - respect saved preference
         elif mode == "always":
-            await self._launch_tensorboard(job_id)
+            await self._launch_tensorboard(job_id, section_printer)
         elif mode == "ask":
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
             choice = await self.ui._printer.get_choice_async(
                 options=[
                     ("yes", "Yes, launch now"),
@@ -1627,23 +1770,30 @@ class MLEvaluateTool(BaseTool):
             if choice == "always":
                 # Update preference to always
                 settings.set_tensorboard_mode("always")
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[green]✓ TensorBoard preference updated: always[/green]"
-                )
-                await self._launch_tensorboard(job_id)
+                if section_printer:
+                    section_printer.print("")
+                    section_printer.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                else:
+                    self.ui._printer.console.print()
+                    self.ui._printer.console.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                await self._launch_tensorboard(job_id, section_printer)
             elif choice == "yes":
-                await self._launch_tensorboard(job_id)
+                await self._launch_tensorboard(job_id, section_printer)
             else:  # "no"
-                self._show_manual_tensorboard_instructions(job_id)
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
         else:  # "never"
-            self._show_manual_tensorboard_instructions(job_id)
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
 
-    async def _launch_tensorboard(self, job_id: str):
+    async def _launch_tensorboard(self, job_id: str, section_printer=None):
         """Launch TensorBoard and show info.
 
         Args:
             job_id: Evaluation job identifier
+            section_printer: Section printer for indented output
         """
         from pathlib import Path
 
@@ -1657,55 +1807,83 @@ class MLEvaluateTool(BaseTool):
 
             url, pid = self.tensorboard_manager.launch(job_id, logdir, port)
 
-            self.ui._printer.console.print()
-            self.ui._printer.console.print("[green]🚀 Launching TensorBoard...[/green]")
-            self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
-            self.ui._printer.console.print(f"   • Process ID: {pid}")
-            self.ui._printer.console.print(f"   • Logs: {logdir}")
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                "[dim]TensorBoard shows PR curves, ROC curves, "
-                "confusion matrix, and more![/dim]"
-            )
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print("[green]→ Launching TensorBoard...[/green]")
+                section_printer.print(f"  • URL: [bold]{url}[/bold]")
+                section_printer.print(f"  • Process ID: {pid}")
+                section_printer.print(f"  • Logs: {logdir}")
+                section_printer.print("")
+                section_printer.print(f"  To stop: /ml tensorboard stop {job_id}")
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[green]→ Launching TensorBoard...[/green]"
+                )
+                self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
+                self.ui._printer.console.print(f"  • Process ID: {pid}")
+                self.ui._printer.console.print(f"  • Logs: {logdir}")
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"  To stop: /ml tensorboard stop {job_id}"
+                )
         except (OSError, RuntimeError) as e:
             # Known TensorBoard launch failures
-            self.ui._printer.console.print(
-                f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
-            )
-            self._show_manual_tensorboard_instructions(job_id)
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
         except Exception as e:
             # Log unexpected errors with full traceback
             import logging
 
             logging.exception("Unexpected error during TensorBoard launch")
             error_msg = f"{e.__class__.__name__}: {e}"
-            self.ui._printer.console.print(
-                f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
-            )
-            self._show_manual_tensorboard_instructions(job_id)
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
 
-    def _show_manual_tensorboard_instructions(self, job_id: str):
+    def _show_manual_tensorboard_instructions(self, job_id: str, section_printer=None):
         """Show manual TensorBoard instructions.
 
         Args:
             job_id: Evaluation job identifier
+            section_printer: Section printer for indented output
         """
         logdir = f"tensorboard/run_{job_id}"
-        self.ui._printer.console.print()
-        self.ui._printer.console.print("[cyan]📊 View evaluation results:[/cyan]")
-        self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
-        self.ui._printer.console.print(
-            f"  • TensorBoard: tensorboard --logdir {logdir}"
-        )
-        self.ui._printer.console.print()
-        self.ui._printer.console.print(
-            "[dim]TensorBoard will show PR curves, ROC curves, "
-            "confusion matrix, and more![/dim]"
-        )
+        if section_printer:
+            section_printer.print("")
+            section_printer.print("[cyan]ℹ View evaluation results:[/cyan]")
+            section_printer.print(f"  • Status: /ml jobs status {job_id}")
+            section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
+            section_printer.print("")
+            section_printer.print(
+                "[dim]TensorBoard will show PR curves, ROC curves, "
+                "confusion matrix, and more![/dim]"
+            )
+        else:
+            self.ui._printer.console.print()
+            self.ui._printer.console.print("[cyan]ℹ View evaluation results:[/cyan]")
+            self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+            self.ui._printer.console.print(
+                f"  • TensorBoard: tensorboard --logdir {logdir}"
+            )
+            self.ui._printer.console.print()
+            self.ui._printer.console.print(
+                "[dim]TensorBoard will show PR curves, ROC curves, "
+                "confusion matrix, and more![/dim]"
+            )
 
 
 class MLEvaluatorGeneratorTool(BaseTool):
@@ -1782,12 +1960,12 @@ class MLEvaluatorGeneratorTool(BaseTool):
             if self.ui:
                 if target_column_exists:
                     self.ui.show_info(
-                        f"📊 Target column '{target_column}' found in data - "
+                        f"ℹ Target column '{target_column}' found in data - "
                         "will include metrics"
                     )
                 else:
                     self.ui.show_info(
-                        f"📋 Target column '{target_column}' not in data - "
+                        f"ℹ Target column '{target_column}' not in data - "
                         "prediction mode"
                     )
         except Exception as exc:
@@ -1798,7 +1976,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
 
         # Show UI feedback if UI is available
         if self.ui:
-            self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
+            self.ui.show_info(f"ℹ Using registered trainer: {trainer_record.id}")
             self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
 
         from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent

@@ -180,6 +180,8 @@ class TrainingJobProgressCallback:
         progress_pct = int((epoch / total_epochs) * 100)
         elapsed_str = ""
         if self.training_start_time:
+            import time
+
             elapsed_time = time.time() - self.training_start_time
             elapsed_str = f" ({elapsed_time:.1f}s elapsed)"
 

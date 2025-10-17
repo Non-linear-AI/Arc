@@ -13,10 +13,11 @@ from arc.core.client import ArcClient, ArcToolCall
 from arc.core.config import SettingsManager
 from arc.tools import (
     BashTool,
+    CreateFileTool,
     CreateTodoListTool,
     DatabaseQueryTool,
     DataProcessorGeneratorTool,
-    FileEditorTool,
+    EditFileTool,
     MLEvaluateTool,
     MLModelTool,
     MLPlanTool,
@@ -26,6 +27,7 @@ from arc.tools import (
     TodoManager,
     ToolResult,
     UpdateTodoListTool,
+    ViewFileTool,
 )
 from arc.utils import TokenCounter
 
@@ -131,7 +133,9 @@ class ArcAgent:
         self.tool_registry = ToolRegistry(default_timeout=300)
 
         # Initialize and register tools
-        self.file_editor = FileEditorTool()
+        self.view_file_tool = ViewFileTool()
+        self.create_file_tool = CreateFileTool()
+        self.edit_file_tool = EditFileTool()
         self.bash_tool = BashTool()
         self.search_tool = SearchTool()
 
@@ -141,9 +145,9 @@ class ArcAgent:
         self.update_todo_tool = UpdateTodoListTool(self.todo_manager)
 
         # Register basic tools
-        self.tool_registry.register("view_file", self.file_editor)
-        self.tool_registry.register("create_file", self.file_editor)
-        self.tool_registry.register("edit_file", self.file_editor)
+        self.tool_registry.register("view_file", self.view_file_tool)
+        self.tool_registry.register("create_file", self.create_file_tool)
+        self.tool_registry.register("edit_file", self.edit_file_tool)
         self.tool_registry.register("bash", self.bash_tool)
         self.tool_registry.register("search", self.search_tool)
         self.tool_registry.register("create_todo_list", self.create_todo_tool)

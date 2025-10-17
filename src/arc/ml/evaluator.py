@@ -143,9 +143,6 @@ class ArcEvaluator:
 
             # 4. Log visualizations to TensorBoard if enabled
             if tensorboard_log_dir:
-                logger.warning(
-                    f"📈 Logging visualizations to TensorBoard: {tensorboard_log_dir}"
-                )
                 self._log_to_tensorboard(
                     predictions, targets, metrics_dict, tensorboard_log_dir
                 )
@@ -489,8 +486,6 @@ class ArcEvaluator:
             # Close writer
             writer.flush()
             writer.close()
-
-            logger.warning(f"✅ TensorBoard visualizations saved to: {log_path}")
 
         except Exception as e:
             # Don't fail the evaluation, just log a warning with full traceback

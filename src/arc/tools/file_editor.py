@@ -9,7 +9,7 @@ from arc.utils.performance import cached, performance_manager, timed
 
 
 class FileEditorTool(BaseTool):
-    """Tool for file operations: view, create, and edit files."""
+    """Base tool for file operations: view, create, and edit files."""
 
     def __init__(self):
         super().__init__()
@@ -17,27 +17,8 @@ class FileEditorTool(BaseTool):
         self.confirmation_service = ConfirmationService.get_instance()
 
     async def execute(self, **kwargs) -> ToolResult:
-        """Execute file operation based on action."""
-        action = kwargs.get("action")
-
-        # Track file operations
-        performance_manager.metrics["file_operations"] += 1
-
-        if action == "view":
-            return await self.view_file(
-                kwargs["path"], kwargs.get("start_line"), kwargs.get("end_line")
-            )
-        elif action == "create":
-            return await self.create_file(kwargs["path"], kwargs["content"])
-        elif action == "edit":
-            return await self.edit_file(
-                kwargs["path"],
-                kwargs["old_str"],
-                kwargs["new_str"],
-                kwargs.get("replace_all", False),
-            )
-        else:
-            return ToolResult.error_result(f"Unknown action: {action}")
+        """Execute file operation. Override in subclasses."""
+        raise NotImplementedError("Subclasses must implement execute()")
 
     @cached(ttl=60, use_file_cache=False)  # Cache for 1 minute
     @timed("file_view_time")
@@ -274,3 +255,37 @@ class FileEditorTool(BaseTool):
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to edit file '{path}': {str(e)}")
+
+
+class ViewFileTool(FileEditorTool):
+    """Tool for viewing file or directory contents."""
+
+    async def execute(self, **kwargs) -> ToolResult:
+        """Execute view_file operation."""
+        performance_manager.metrics["file_operations"] += 1
+        return await self.view_file(
+            kwargs["path"], kwargs.get("start_line"), kwargs.get("end_line")
+        )
+
+
+class CreateFileTool(FileEditorTool):
+    """Tool for creating new files."""
+
+    async def execute(self, **kwargs) -> ToolResult:
+        """Execute create_file operation."""
+        performance_manager.metrics["file_operations"] += 1
+        return await self.create_file(kwargs["path"], kwargs["content"])
+
+
+class EditFileTool(FileEditorTool):
+    """Tool for editing existing files."""
+
+    async def execute(self, **kwargs) -> ToolResult:
+        """Execute edit_file operation."""
+        performance_manager.metrics["file_operations"] += 1
+        return await self.edit_file(
+            kwargs["path"],
+            kwargs["old_str"],
+            kwargs["new_str"],
+            kwargs.get("replace_all", False),
+        )

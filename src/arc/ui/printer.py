@@ -309,14 +309,18 @@ class Printer:
                 # Check if we're printing a Rich object (Table, Panel, etc.)
                 is_rich_object = args and hasattr(args[0], "__rich_console__")
 
+                # Rich objects handle their own formatting - print as-is
+                if is_rich_object:
+                    if not self.printer._section_started:
+                        self.printer._section_started = True
+                    self.printer.console.print(*args, **kwargs)
+                    return
+
+                # Standard indent for content alignment (2 spaces to match dot width)
+                indent = "  "
+
                 # Add dot prefix on first print call within this section
-                # (but not for Rich objects)
-                if (
-                    not self.printer._section_started
-                    and self.add_dot
-                    and not is_rich_object
-                ):
-                    # Extract first line and add dot prefix
+                if not self.printer._section_started and self.add_dot:
                     if args:
                         first_arg = str(args[0])
                         lines = first_arg.split("\n")
@@ -325,11 +329,13 @@ class Printer:
                             prefixed_first = (
                                 f"[{self.color}]⏺[/{self.color}] {lines[0]}"
                             )
+                            # Indent all subsequent lines with 2 spaces
                             if len(lines) > 1:
-                                # Reconstruct with remaining lines
-                                remaining_lines = "\n".join(lines[1:])
+                                indented_rest = "\n".join(
+                                    f"{indent}{line}" for line in lines[1:]
+                                )
                                 new_args = (
-                                    prefixed_first + "\n" + remaining_lines,
+                                    prefixed_first + "\n" + indented_rest,
                                 ) + args[1:]
                             else:
                                 new_args = (prefixed_first,) + args[1:]
@@ -340,11 +346,20 @@ class Printer:
                         self.printer.console.print(*args, **kwargs)
                     self.printer._section_started = True
                 else:
-                    # Regular print for subsequent calls or Rich objects
-                    # (which handle their own formatting)
+                    # Subsequent print calls: indent all lines with 2 spaces
                     if not self.printer._section_started:
                         self.printer._section_started = True
-                    self.printer.console.print(*args, **kwargs)
+
+                    if self.add_dot and args:
+                        # Apply indentation to all lines
+                        first_arg = str(args[0])
+                        lines = first_arg.split("\n")
+                        indented_lines = "\n".join(f"{indent}{line}" for line in lines)
+                        new_args = (indented_lines,) + args[1:]
+                        self.printer.console.print(*new_args, **kwargs)
+                    else:
+                        # No dot mode (e.g., add_dot=False) - print as-is
+                        self.printer.console.print(*args, **kwargs)
 
             def print_panel(self, panel, **kwargs):
                 """Print a Rich Panel object with appropriate handling.
