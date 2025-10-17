@@ -124,9 +124,11 @@ async def handle_sql_command(
 
     # Check if this is a database switch command
     if len(parts) >= 3 and parts[1].lower() == "use":
-        db_name = parts[2].lower()
+        db_name = parts[2].lower().rstrip(";")  # Support trailing semicolon
         if db_name in ["system", "user"]:
-            ui.show_system_success(f"Switched to {db_name} database")
+            # Use section printer for indented output
+            with ui._printer.section(color="blue") as p:
+                p.print(f"✓ Switched to {db_name} database")
             return db_name
         else:
             ui.show_system_error("Invalid database. Use 'system' or 'user'")
