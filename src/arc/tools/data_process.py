@@ -179,6 +179,27 @@ class MLDataProcessTool(BaseTool):
                 target_db=target_db,
             )
 
+            # Validate the generated spec before confirmation workflow
+            try:
+                # Parse and validate structure
+                from arc.graph.features.data_source import DataSourceSpec
+
+                validation_result = DataSourceSpec.validate_yaml_string(yaml_content)
+                if not validation_result.success:
+                    return ToolResult.error_result(
+                        f"Generated data processor failed validation: "
+                        f"{validation_result.error}"
+                    )
+
+                # Validate dependencies and execution order
+                spec.validate_dependencies()
+                _ = spec.get_execution_order()
+
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Data processor validation failed: {str(e)}"
+                )
+
             # Interactive confirmation workflow
             # (unless auto_confirm is True or no UI available)
             # Get UI from singleton if not provided directly
