@@ -139,6 +139,9 @@ class MLModelTool(BaseTool):
             )
             ml_model_section_printer = self._ml_model_section.__enter__()
             ml_model_section_printer.print("ML Model")
+            ml_model_section_printer.print(
+                "[dim]Generating Arc-Graph model specification...[/dim]"
+            )
 
         # Generate model using agent
         agent = ModelGeneratorAgent(
@@ -638,6 +641,9 @@ class MLTrainTool(BaseTool):
             )
             ml_trainer_section_printer = self._ml_trainer_section.__enter__()
             ml_trainer_section_printer.print("ML Trainer")
+            ml_trainer_section_printer.print(
+                "[dim]Generating Arc-Graph trainer specification...[/dim]"
+            )
 
         # Generate trainer spec via LLM
         agent = TrainerGeneratorAgent(
@@ -1282,6 +1288,9 @@ class MLEvaluateTool(BaseTool):
             )
             ml_evaluator_section_printer = self._ml_evaluator_section.__enter__()
             ml_evaluator_section_printer.print("ML Evaluator")
+            ml_evaluator_section_printer.print(
+                "[dim]Generating Arc-Graph evaluator specification...[/dim]"
+            )
 
         # Generate evaluator spec via LLM
         from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
