@@ -130,16 +130,15 @@ class MLModelTool(BaseTool):
                 "to generate a model specification."
             )
 
-        # Show UI feedback if UI is available
+        # Show section title before generation starts
+        # Keep the section printer reference to use later for registration message
+        ml_model_section_printer = None
         if self.ui:
-            if ml_plan:
-                self.ui.show_info(
-                    f"🤖 Generating model specification for '{name}' "
-                    "using ML plan guidance..."
-                )
-            else:
-                self.ui.show_info(f"🤖 Generating model specification for '{name}'...")
+            self._ml_model_section = self.ui._printer.section(color="cyan", add_dot=True)
+            ml_model_section_printer = self._ml_model_section.__enter__()
+            ml_model_section_printer.print("ML Model")
 
+        # Generate model using agent
         agent = ModelGeneratorAgent(
             self.services,
             self.api_key,
@@ -205,6 +204,13 @@ class MLModelTool(BaseTool):
                     None,  # No file path
                 )
                 if not proceed:
+                    # Show cancellation message in the ML Model section
+                    if ml_model_section_printer:
+                        ml_model_section_printer.print("")  # Empty line before cancellation
+                        ml_model_section_printer.print("✗ Model generation cancelled by user")
+                    # Close the section before returning
+                    if self.ui and hasattr(self, '_ml_model_section'):
+                        self._ml_model_section.__exit__(None, None, None)
                     return ToolResult.success_result(
                         "✗ Model generation cancelled by user."
                     )
@@ -248,22 +254,21 @@ class MLModelTool(BaseTool):
         except Exception as exc:
             return ToolResult.error_result(f"Failed to save model to DB: {exc}")
 
-        summary = (
-            f"Inputs: {len(model_spec.inputs)} • Nodes: {len(model_spec.graph)} "
-            f"• Outputs: {len(model_spec.outputs)}"
-        )
+        # Display registration confirmation in the ML Model section
+        if ml_model_section_printer:
+            ml_model_section_printer.print("")  # Empty line before confirmation
+            ml_model_section_printer.print(
+                f"✓ Model '{name}' registered to database "
+                f"({model_id} • {len(model_spec.inputs)} inputs • "
+                f"{len(model_spec.graph)} nodes • {len(model_spec.outputs)} outputs)"
+            )
 
-        lines = [
-            f"✓ Model '{name}' generated and saved to DB.",
-            f"Model ID: {model_id}",
-            summary,
-        ]
+        # Close the ML Model section
+        if self.ui and hasattr(self, '_ml_model_section'):
+            self._ml_model_section.__exit__(None, None, None)
 
-        if auto_confirm:
-            lines.append("\n✓ YAML:")
-            lines.append(model_yaml.strip())
-        else:
-            lines.append("✓ Model approved and ready for use.")
+        # Build simple output for ToolResult (detailed output already shown in UI)
+        lines = [f"Model '{name}' registered successfully as {model_id}"]
 
         # Build metadata
         result_metadata = {
