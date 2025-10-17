@@ -267,9 +267,9 @@ class MLModelTool(BaseTool):
         if ml_model_section_printer:
             ml_model_section_printer.print("")  # Empty line before confirmation
             ml_model_section_printer.print(
-                f"✓ Model '{name}' registered to database "
+                f"[dim]✓ Model '{name}' registered to database "
                 f"({model_id} • {len(model_spec.inputs)} inputs • "
-                f"{len(model_spec.graph)} nodes • {len(model_spec.outputs)} outputs)"
+                f"{len(model_spec.graph)} nodes • {len(model_spec.outputs)} outputs)[/dim]"
             )
 
         # Close the ML Model section
@@ -736,9 +736,9 @@ class MLTrainTool(BaseTool):
             if ml_trainer_section_printer:
                 ml_trainer_section_printer.print("")  # Empty line before confirmation
                 ml_trainer_section_printer.print(
-                    f"✓ Trainer '{name}' registered to database "
+                    f"[dim]✓ Trainer '{name}' registered to database "
                     f"({trainer_record.id} • Model: {trainer_spec.model_ref} • "
-                    f"Optimizer: {trainer_spec.optimizer.type})"
+                    f"Optimizer: {trainer_spec.optimizer.type})[/dim]"
                 )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register trainer: {exc}")
@@ -781,13 +781,13 @@ class MLTrainTool(BaseTool):
                 if ml_trainer_section_printer:
                     ml_trainer_section_printer.print("")
                     ml_trainer_section_printer.print(
-                        "[cyan]ℹ Monitor training progress:[/cyan]"
+                        "[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]"
                     )
                     ml_trainer_section_printer.print(
-                        f"  • Status: /ml jobs status {job_id}"
+                        f"[dim]  • Status: /ml jobs status {job_id}[/dim]"
                     )
                     ml_trainer_section_printer.print(
-                        f"  • Logs: /ml jobs logs {job_id}"
+                        f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]"
                     )
 
                 # Handle TensorBoard launch
@@ -1003,10 +1003,10 @@ class MLTrainTool(BaseTool):
                 section_printer.print("")
                 section_printer.print("[green]→ Launching TensorBoard...[/green]")
                 section_printer.print(f"  • URL: [bold]{url}[/bold]")
-                section_printer.print(f"  • Process ID: {pid}")
-                section_printer.print(f"  • Logs: {logdir}")
+                section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
+                section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
                 section_printer.print("")
-                section_printer.print(f"  To stop: /ml tensorboard stop {job_id}")
+                section_printer.print(f"[dim]  To stop: /ml tensorboard stop {job_id}[/dim]")
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
@@ -1056,9 +1056,9 @@ class MLTrainTool(BaseTool):
         logdir = f"tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
-            section_printer.print("[cyan]ℹ Track training:[/cyan]")
-            section_printer.print(f"  • Status: /ml jobs status {job_id}")
-            section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
+            section_printer.print("[dim][cyan]ℹ Track training:[/cyan][/dim]")
+            section_printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
+            section_printer.print(f"[dim]  • TensorBoard: tensorboard --logdir {logdir}[/dim]")
         else:
             self.ui._printer.console.print()
             self.ui._printer.console.print("[cyan]ℹ Track training:[/cyan]")
@@ -1407,10 +1407,10 @@ class MLEvaluateTool(BaseTool):
                         ""
                     )  # Empty line before confirmation
                     ml_evaluator_section_printer.print(
-                        f"✓ Using existing evaluator '{name}' "
+                        f"[dim]✓ Using existing evaluator '{name}' "
                         f"({evaluator_record.id} • "
                         f"Trainer: {evaluator_spec.trainer_ref} • "
-                        f"Dataset: {evaluator_spec.dataset})"
+                        f"Dataset: {evaluator_spec.dataset})[/dim]"
                     )
             else:
                 # Create new version (spec changed or first time)
@@ -1439,10 +1439,10 @@ class MLEvaluateTool(BaseTool):
                         ""
                     )  # Empty line before confirmation
                     ml_evaluator_section_printer.print(
-                        f"✓ Evaluator '{name}' registered to database "
+                        f"[dim]✓ Evaluator '{name}' registered to database "
                         f"({evaluator_record.id} • "
                         f"Trainer: {evaluator_spec.trainer_ref} • "
-                        f"Dataset: {evaluator_spec.dataset})"
+                        f"Dataset: {evaluator_spec.dataset})[/dim]"
                     )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register evaluator: {exc}")
@@ -1811,10 +1811,10 @@ class MLEvaluateTool(BaseTool):
                 section_printer.print("")
                 section_printer.print("[green]→ Launching TensorBoard...[/green]")
                 section_printer.print(f"  • URL: [bold]{url}[/bold]")
-                section_printer.print(f"  • Process ID: {pid}")
-                section_printer.print(f"  • Logs: {logdir}")
+                section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
+                section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
                 section_printer.print("")
-                section_printer.print(f"  To stop: /ml tensorboard stop {job_id}")
+                section_printer.print(f"[dim]  To stop: /ml tensorboard stop {job_id}[/dim]")
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
@@ -1864,9 +1864,9 @@ class MLEvaluateTool(BaseTool):
         logdir = f"tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
-            section_printer.print("[cyan]ℹ View evaluation results:[/cyan]")
-            section_printer.print(f"  • Status: /ml jobs status {job_id}")
-            section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
+            section_printer.print("[dim][cyan]ℹ View evaluation results:[/cyan][/dim]")
+            section_printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
+            section_printer.print(f"[dim]  • TensorBoard: tensorboard --logdir {logdir}[/dim]")
             section_printer.print("")
             section_printer.print(
                 "[dim]TensorBoard will show PR curves, ROC curves, "
