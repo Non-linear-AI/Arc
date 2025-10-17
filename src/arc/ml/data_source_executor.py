@@ -128,10 +128,12 @@ async def execute_data_source_pipeline(
             try:
                 if step.name in spec.outputs:
                     # Create persistent table for output steps
-                    create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
+                    # Use CREATE OR REPLACE to handle re-runs
+                    create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
                 else:
                     # Create regular view for intermediate steps (allows debugging)
-                    create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
+                    # Use CREATE OR REPLACE to handle re-runs
+                    create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
                     intermediate_views.append(step.name)  # Track for cleanup
 
                 # Execute using database manager directly to ensure same session
