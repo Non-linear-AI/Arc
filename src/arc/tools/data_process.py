@@ -143,7 +143,7 @@ class MLDataProcessTool(BaseTool):
         ml_data_process_section_printer = None
         if self.ui:
             self._ml_data_process_section = self.ui._printer.section(
-                color="cyan", add_dot=True
+                color="magenta", add_dot=True
             )
             ml_data_process_section_printer = self._ml_data_process_section.__enter__()
             ml_data_process_section_printer.print("Data Processor")
