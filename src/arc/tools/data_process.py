@@ -435,16 +435,15 @@ class MLDataProcessTool(BaseTool):
             """
             try:
                 # Call the generator agent with existing YAML
-                # and editing instructions
+                # feedback becomes the instruction in edit mode
                 (
                     _spec,
                     edited_yaml,
                 ) = await self.generator_agent.generate_data_processing_yaml(
-                    instruction=context["instruction"],
+                    instruction=feedback,  # User's change request
                     target_tables=context.get("target_tables"),
                     target_db=context.get("target_db", "user"),
                     existing_yaml=yaml_content,
-                    editing_instructions=feedback,
                 )
                 return edited_yaml
 

@@ -1,10 +1,8 @@
-You are an expert SQL data engineer. {% if existing_yaml and editing_instructions %}Edit the data processing configuration based on user feedback while maintaining production quality.{% else %}Generate a complete, production-ready data processing pipeline.{% endif %}
+You are an expert SQL data engineer. {% if existing_yaml %}Edit the data processing configuration based on user feedback while maintaining production quality.{% else %}Generate a complete, production-ready data processing pipeline.{% endif %}
 
 # Task
 
-{% if editing_instructions %}**Editing Instructions**: {{ editing_instructions }}
-
-**Original Instruction**: {{ user_instruction }}
+{% if existing_yaml %}**Changes Requested**: {{ user_instruction }}
 {% else %}**Instruction**: {{ user_instruction }}
 {% endif %}
 {% if target_tables %}**Target Tables**: {{ target_tables | join(", ") }}
@@ -20,13 +18,13 @@ You are an expert SQL data engineer. {% if existing_yaml and editing_instruction
 {% endfor %}{% else %}*No schema information available.*
 {% endif %}
 
-{% if existing_yaml and editing_instructions %}# Current Configuration
+{% if existing_yaml %}# Current Configuration
 
 ```json
 {{ existing_yaml }}
 ```
 
-Apply the editing instructions above while maintaining production-ready quality.
+Apply the changes requested above while maintaining production-ready quality.
 
 {% endif %}# JSON Schema
 
@@ -136,7 +134,7 @@ Note: `drop_old_table` (execute) NOT in outputs. `user_features` (table) IS in o
 
 # Output
 
-{% if existing_yaml and editing_instructions %}Generate the complete, modified JSON configuration.{% else %}Generate the complete, production-ready JSON configuration that will be used directly without modifications.{% endif %}
+{% if existing_yaml %}Generate the complete, modified JSON configuration.{% else %}Generate the complete, production-ready JSON configuration that will be used directly without modifications.{% endif %}
 
 **Critical:**
 - Output ONLY valid JSON (no markdown, no explanations)

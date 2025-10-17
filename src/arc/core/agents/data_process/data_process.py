@@ -62,17 +62,16 @@ class DataProcessorGeneratorAgent:
         target_tables: list[str] | None = None,
         target_db: str = "user",
         existing_yaml: str | None = None,
-        editing_instructions: str | None = None,
     ) -> tuple[DataSourceSpec, str]:
-        """Generate data processing YAML from instruction.
+        """Generate or edit data processing YAML from instruction.
 
         Args:
-            instruction: Detailed instruction for data processing (shaped by main agent
-                or from ML plan feature engineering guidance)
+            instruction: Detailed instruction for data processing. For generation: shaped
+                by main agent or from ML plan. For editing: user feedback on what to change.
             target_tables: List of tables to analyze (optional)
             target_db: Target database for schema discovery
-            existing_yaml: Existing YAML content to edit (optional)
-            editing_instructions: Instructions for editing existing YAML (optional)
+            existing_yaml: Existing YAML content to edit (optional). If provided, switches
+                to editing mode where instruction describes the changes to make.
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string)
@@ -85,12 +84,12 @@ class DataProcessorGeneratorAgent:
             schema_info = await self._get_schema_context(target_tables, target_db)
 
             # Render prompt and build messages
+            # Mode determined by presence of existing_yaml
             user_prompt = await self._render_prompt(
                 instruction,
                 schema_info,
                 target_tables,
                 existing_yaml,
-                editing_instructions,
             )
             messages = [
                 {"role": "system", "content": self.SYSTEM_MESSAGE},
@@ -225,16 +224,14 @@ class DataProcessorGeneratorAgent:
         schema_info: dict,
         target_tables: list[str] | None,
         existing_yaml: str | None = None,
-        editing_instructions: str | None = None,
     ) -> str:
         """Render the prompt template with instruction.
 
         Args:
-            instruction: Detailed instruction for data processing
+            instruction: Detailed instruction (for generation or editing)
             schema_info: Database schema information
             target_tables: Target tables list
             existing_yaml: Existing YAML content to edit (optional)
-            editing_instructions: Instructions for editing (optional)
 
         Returns:
             Rendered prompt string for user message
@@ -260,7 +257,6 @@ class DataProcessorGeneratorAgent:
                 schema_info=schema_info,
                 target_tables=target_tables or [],
                 existing_yaml=existing_yaml,
-                editing_instructions=editing_instructions,
             )
 
             return prompt
