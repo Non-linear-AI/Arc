@@ -74,13 +74,14 @@ Each step requires a `type` field:
 
 # Requirements
 
-Your configuration must be production-ready:
+Your configuration must be **COMPREHENSIVE and production-ready**:
 
 **Data Quality**
 - Handle NULLs explicitly (COALESCE, IFNULL, IS NULL checks)
 - Validate ranges and constraints
-- Filter invalid records
+- Filter invalid/corrupted records
 - Add type conversions where needed
+- Anticipate edge cases and data issues
 
 **SQL Best Practices**
 - Use concrete values (no placeholders unless in `vars`)
@@ -93,6 +94,13 @@ Your configuration must be production-ready:
 - Use snake_case names (e.g., `clean_transactions`, `user_features`)
 - Steps execute in dependency order automatically
 - Break complex logic into modular steps
+
+**Common Patterns**
+- Data Cleaning: Remove nulls, deduplicate, standardize formats
+- Aggregations: GROUP BY with COUNT, SUM, AVG, MIN, MAX
+- Feature Engineering: Calculated fields, ratios, time-based features
+- Joins: Combine data from multiple sources
+- Window Functions: Rankings, running totals, row_number
 
 # Example
 
@@ -128,13 +136,13 @@ Note: `drop_old_table` (execute) NOT in outputs. `user_features` (table) IS in o
 
 # Output
 
-{% if existing_yaml and editing_instructions %}Generate the complete, modified JSON configuration.{% else %}Generate the complete, production-ready JSON configuration.{% endif %}
+{% if existing_yaml and editing_instructions %}Generate the complete, modified JSON configuration.{% else %}Generate the complete, production-ready JSON configuration that will be used directly without modifications.{% endif %}
 
 **Critical:**
 - Output ONLY valid JSON (no markdown, no explanations)
-- Follow the exact schema
+- Follow the exact schema structure
 - Assign correct `type` to each step
-- Include data quality checks
-- Use concrete SQL
+- Include comprehensive data quality checks
+- Use concrete SQL with actual values
 
-Your configuration will be used in production. Make it bulletproof.
+Your configuration will be used directly in production. Make it bulletproof.
