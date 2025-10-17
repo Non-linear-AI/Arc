@@ -986,30 +986,33 @@ async def _ml_evaluate(
 async def _ml_data_processing(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
-    """Handle data processing pipeline execution command."""
+    """Handle data processing pipeline generation or execution command.
+
+    Supports two modes:
+    1. Generation mode: --name + (--context OR --plan-id) + --data-tables
+    2. Execution mode: --yaml OR --name (load existing processor)
+    """
     options = _parse_options(
         args,
         {
-            "yaml": True,
             "name": True,
+            "context": True,
+            "data-tables": True,
+            "plan-id": True,
+            "yaml": True,
             "version": True,
             "target-db": True,
         },
+        command_name="/ml data-processing",
     )
 
+    name = options.get("name")
+    context = options.get("context")
+    data_tables_str = options.get("data-tables")
+    plan_id = options.get("plan-id")
     yaml_path = options.get("yaml")
-    processor_name = options.get("name")
     version_str = options.get("version")
     target_db = options.get("target-db", "user")
-
-    # Validate: either --yaml OR --name, not both
-    if yaml_path and processor_name:
-        raise CommandError("Use either --yaml <path> OR --name <name>, not both")
-
-    if not yaml_path and not processor_name:
-        raise CommandError(
-            "/ml data-processing requires either --yaml <path> or --name <name>"
-        )
 
     # Validate target database
     if target_db not in ["system", "user"]:
@@ -1017,59 +1020,137 @@ async def _ml_data_processing(
             "Invalid target database. Use --target-db system or --target-db user"
         )
 
-    # Parse version if provided
-    version = int(version_str) if version_str else None
+    # Determine mode: generation vs execution
+    is_generation_mode = context or plan_id
+    is_execution_mode = yaml_path or (name and not is_generation_mode)
 
-    # Load spec from database or file
-    try:
-        if processor_name:
-            # Load from database
-            processor, spec = runtime.load_data_processor(processor_name, version)
-            msg = (
-                f"📦 Loaded '{processor.name}' version {processor.version} "
-                "from database"
-            )
-            ui.show_info(msg)
-            ui.show_info(f"Pipeline: {len(spec.steps)} steps")
-        else:
-            # Load from file (existing behavior)
-            yaml_file = Path(str(yaml_path))
-            if not yaml_file.exists():
-                raise CommandError(f"Data processing file not found: {yaml_path}")
-
-            ui.show_info(f"📄 Data Processing: {yaml_path}")
-            spec = DataSourceSpec.from_yaml_file(str(yaml_file))
-            ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
-
-        # Execute the pipeline using the centralized executor
-        from arc.ml.data_source_executor import execute_data_source_pipeline
-
-        # Define progress callback for CLI usage
-        def cli_progress(message: str, level: str):
-            """Handle progress updates for CLI."""
-            if level == "success":
-                ui.show_system_success(message)
-            elif level == "warning":
-                ui.show_warning(message)
-            elif level == "error":
-                ui.show_system_error(message)
-            elif level == "step":
-                ui.show_info(f"  {message}")
-            else:  # "info"
-                ui.show_info(message)
-
-        await execute_data_source_pipeline(
-            spec, str(target_db), runtime.services.db_manager, cli_progress
+    if is_generation_mode and is_execution_mode:
+        raise CommandError(
+            "Cannot mix generation mode (--context/--plan-id) with "
+            "execution mode (--yaml)"
         )
 
-    except MLRuntimeError as e:
-        raise CommandError(str(e)) from e
-    except ValueError as parse_error:
-        raise CommandError(
-            f"Invalid YAML specification: {str(parse_error)}"
-        ) from parse_error
-    except Exception as exc:
-        raise CommandError(f"Data processing failed: {exc}") from exc
+    # GENERATION MODE: Create new data processor
+    if is_generation_mode:
+        if not name:
+            raise CommandError("/ml data-processing generation requires --name")
+
+        # context is optional when using a plan
+        if not plan_id and not context:
+            raise CommandError(
+                "/ml data-processing requires --context when not using --plan-id"
+            )
+
+        # Parse data tables if provided
+        data_tables = None
+        if data_tables_str:
+            data_tables = [t.strip() for t in str(data_tables_str).split(",")]
+
+        # If plan-id is provided, fetch the plan from database
+        ml_plan = None
+        if plan_id:
+            try:
+                # Fetch plan from database
+                db_plan = runtime.services.ml_plans.get_plan_by_id(str(plan_id))
+                if not db_plan:
+                    raise CommandError(f"Plan '{plan_id}' not found in database")
+
+                # Parse YAML to dict for the tool
+                import yaml
+
+                ml_plan = yaml.safe_load(db_plan.plan_yaml)
+                ml_plan["plan_id"] = db_plan.plan_id
+
+                ui.show_info(f"📊 Using ML plan: {plan_id}")
+            except Exception as e:
+                raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
+
+        try:
+            # Use the MLDataProcessTool for generation with confirmation workflow
+            from arc.tools.data_process import MLDataProcessTool
+
+            # Get settings for tool initialization
+            api_key, base_url, model = _get_ml_tool_config()
+
+            # Create the tool with proper dependencies
+            tool = MLDataProcessTool(runtime.services, api_key, base_url, model, ui)
+
+            # Execute the tool with confirmation workflow
+            result = await tool.execute(
+                name=name,
+                context=context,
+                target_tables=data_tables,
+                target_db=target_db,
+                ml_plan=ml_plan,
+            )
+
+            if not result.success:
+                raise CommandError(f"Data processor generation failed: {result.error}")
+
+        except Exception as exc:
+            raise CommandError(
+                f"Unexpected error during data processor generation: {exc}"
+            ) from exc
+
+    # EXECUTION MODE: Load and execute existing processor
+    else:
+        # Parse version if provided
+        version = int(version_str) if version_str else None
+
+        # Load spec from database or file
+        try:
+            if name:
+                # Load from database
+                processor, spec = runtime.load_data_processor(name, version)
+                msg = (
+                    f"📦 Loaded '{processor.name}' version {processor.version} "
+                    "from database"
+                )
+                ui.show_info(msg)
+                ui.show_info(f"Pipeline: {len(spec.steps)} steps")
+            elif yaml_path:
+                # Load from file (existing behavior)
+                yaml_file = Path(str(yaml_path))
+                if not yaml_file.exists():
+                    raise CommandError(f"Data processing file not found: {yaml_path}")
+
+                ui.show_info(f"📄 Data Processing: {yaml_path}")
+                spec = DataSourceSpec.from_yaml_file(str(yaml_file))
+                ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
+            else:
+                raise CommandError(
+                    "/ml data-processing requires either --yaml <path> or --name <name>"
+                )
+
+            # Execute the pipeline using the centralized executor
+            from arc.ml.data_source_executor import execute_data_source_pipeline
+
+            # Define progress callback for CLI usage
+            def cli_progress(message: str, level: str):
+                """Handle progress updates for CLI."""
+                if level == "success":
+                    ui.show_system_success(message)
+                elif level == "warning":
+                    ui.show_warning(message)
+                elif level == "error":
+                    ui.show_system_error(message)
+                elif level == "step":
+                    ui.show_info(f"  {message}")
+                else:  # "info"
+                    ui.show_info(message)
+
+            await execute_data_source_pipeline(
+                spec, str(target_db), runtime.services.db_manager, cli_progress
+            )
+
+        except MLRuntimeError as e:
+            raise CommandError(str(e)) from e
+        except ValueError as parse_error:
+            raise CommandError(
+                f"Invalid YAML specification: {str(parse_error)}"
+            ) from parse_error
+        except Exception as exc:
+            raise CommandError(f"Data processing failed: {exc}") from exc
 
 
 async def run_interactive_mode(
