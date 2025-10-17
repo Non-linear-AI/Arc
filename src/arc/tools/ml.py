@@ -134,7 +134,9 @@ class MLModelTool(BaseTool):
         # Keep the section printer reference to use later for registration message
         ml_model_section_printer = None
         if self.ui:
-            self._ml_model_section = self.ui._printer.section(color="cyan", add_dot=True)
+            self._ml_model_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
             ml_model_section_printer = self._ml_model_section.__enter__()
             ml_model_section_printer.print("ML Model")
 
@@ -206,10 +208,14 @@ class MLModelTool(BaseTool):
                 if not proceed:
                     # Show cancellation message in the ML Model section
                     if ml_model_section_printer:
-                        ml_model_section_printer.print("")  # Empty line before cancellation
-                        ml_model_section_printer.print("✗ Model generation cancelled by user")
+                        ml_model_section_printer.print(
+                            ""
+                        )  # Empty line before cancellation
+                        ml_model_section_printer.print(
+                            "✗ Model generation cancelled by user"
+                        )
                     # Close the section before returning
-                    if self.ui and hasattr(self, '_ml_model_section'):
+                    if self.ui and hasattr(self, "_ml_model_section"):
                         self._ml_model_section.__exit__(None, None, None)
                     return ToolResult.success_result(
                         "✗ Model generation cancelled by user."
@@ -264,7 +270,7 @@ class MLModelTool(BaseTool):
             )
 
         # Close the ML Model section
-        if self.ui and hasattr(self, '_ml_model_section'):
+        if self.ui and hasattr(self, "_ml_model_section"):
             self._ml_model_section.__exit__(None, None, None)
 
         # Build simple output for ToolResult (detailed output already shown in UI)
@@ -623,10 +629,15 @@ class MLTrainTool(BaseTool):
                 f"Failed to retrieve model '{model_id}': {exc}"
             )
 
-        # Show UI feedback if UI is available
+        # Show section title before generation starts
+        # Keep the section printer reference to use later for registration message
+        ml_trainer_section_printer = None
         if self.ui:
-            self.ui.show_info(f"📋 Using registered model: {model_record.id}")
-            self.ui.show_info(f"🤖 Generating trainer specification for '{name}'...")
+            self._ml_trainer_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_trainer_section_printer = self._ml_trainer_section.__enter__()
+            ml_trainer_section_printer.print("ML Trainer")
 
         # Generate trainer spec via LLM
         agent = TrainerGeneratorAgent(
@@ -690,6 +701,17 @@ class MLTrainTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
+                    # Show cancellation message in the ML Trainer section
+                    if ml_trainer_section_printer:
+                        ml_trainer_section_printer.print(
+                            ""
+                        )  # Empty line before cancellation
+                        ml_trainer_section_printer.print(
+                            "✗ Trainer generation cancelled by user"
+                        )
+                    # Close the section before returning
+                    if self.ui and hasattr(self, "_ml_trainer_section"):
+                        self._ml_trainer_section.__exit__(None, None, None)
                     return ToolResult.success_result("✗ Trainer generation cancelled.")
                 trainer_yaml = final_yaml
             finally:
@@ -704,23 +726,23 @@ class MLTrainTool(BaseTool):
                 description=f"Generated trainer for model {model_id}",
             )
 
-            if self.ui:
-                self.ui.show_system_success(
-                    f"✓ Trainer registered: {trainer_record.id}"
+            # Display registration confirmation in the ML Trainer section
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")  # Empty line before confirmation
+                ml_trainer_section_printer.print(
+                    f"✓ Trainer '{name}' registered to database "
+                    f"({trainer_record.id} • Model: {trainer_spec.model_ref} • "
+                    f"Optimizer: {trainer_spec.optimizer.type})"
                 )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register trainer: {exc}")
 
-        # Prepare trainer summary
-        summary = (
-            f"Model: {trainer_spec.model_ref} • "
-            f"Optimizer: {trainer_spec.optimizer.type}"
-        )
+        # Close the ML Trainer section
+        if self.ui and hasattr(self, "_ml_trainer_section"):
+            self._ml_trainer_section.__exit__(None, None, None)
 
-        lines = [
-            f"✓ Trainer '{trainer_record.id}' created and registered.",
-            summary,
-        ]
+        # Build simple output for ToolResult (detailed output already shown in UI)
+        lines = [f"Trainer '{name}' registered successfully as {trainer_record.id}"]
 
         # Build result metadata (before auto-launch to use in error handling)
         result_metadata = {
@@ -1174,10 +1196,15 @@ class MLEvaluateTool(BaseTool):
                 self.ui.show_info(f"⚠️ Could not check if target column exists: {exc}")
             target_column_exists = True
 
-        # Show UI feedback if UI is available
+        # Show section title before generation starts
+        # Keep the section printer reference to use later for registration message
+        ml_evaluator_section_printer = None
         if self.ui:
-            self.ui.show_info(f"📋 Using registered trainer: {trainer_record.id}")
-            self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
+            self._ml_evaluator_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_evaluator_section_printer = self._ml_evaluator_section.__enter__()
+            ml_evaluator_section_printer.print("ML Evaluator")
 
         # Generate evaluator spec via LLM
         from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
@@ -1264,6 +1291,17 @@ class MLEvaluateTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
+                    # Show cancellation message in the ML Evaluator section
+                    if ml_evaluator_section_printer:
+                        ml_evaluator_section_printer.print(
+                            ""
+                        )  # Empty line before cancellation
+                        ml_evaluator_section_printer.print(
+                            "✗ Evaluator generation cancelled by user"
+                        )
+                    # Close the section before returning
+                    if self.ui and hasattr(self, "_ml_evaluator_section"):
+                        self._ml_evaluator_section.__exit__(None, None, None)
                     return ToolResult.success_result("✗ Evaluator cancelled.")
                 evaluator_yaml = final_yaml
             finally:
@@ -1298,9 +1336,16 @@ class MLEvaluateTool(BaseTool):
             if spec_matches:
                 # Reuse existing evaluator (same spec)
                 evaluator_record = existing_evaluator
-                if self.ui:
-                    self.ui.show_system_success(
-                        f"✓ Using existing evaluator: {evaluator_record.id}"
+                # Display "using existing" message in the ML Evaluator section
+                if ml_evaluator_section_printer:
+                    ml_evaluator_section_printer.print(
+                        ""
+                    )  # Empty line before confirmation
+                    ml_evaluator_section_printer.print(
+                        f"✓ Using existing evaluator '{name}' "
+                        f"({evaluator_record.id} • "
+                        f"Trainer: {evaluator_spec.trainer_ref} • "
+                        f"Dataset: {evaluator_spec.dataset})"
                     )
             else:
                 # Create new version (spec changed or first time)
@@ -1323,24 +1368,26 @@ class MLEvaluateTool(BaseTool):
 
                 self.services.evaluators.create_evaluator(evaluator_record)
 
-                if self.ui:
-                    self.ui.show_system_success(
-                        f"✓ Evaluator registered: {evaluator_record.id}"
+                # Display registration confirmation in the ML Evaluator section
+                if ml_evaluator_section_printer:
+                    ml_evaluator_section_printer.print(
+                        ""
+                    )  # Empty line before confirmation
+                    ml_evaluator_section_printer.print(
+                        f"✓ Evaluator '{name}' registered to database "
+                        f"({evaluator_record.id} • "
+                        f"Trainer: {evaluator_spec.trainer_ref} • "
+                        f"Dataset: {evaluator_spec.dataset})"
                     )
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register evaluator: {exc}")
 
-        # Prepare evaluator summary
-        summary = (
-            f"Trainer: {evaluator_spec.trainer_ref} • "
-            f"Dataset: {evaluator_spec.dataset} • "
-            f"Target: {evaluator_spec.target_column}"
-        )
+        # Close the ML Evaluator section
+        if self.ui and hasattr(self, "_ml_evaluator_section"):
+            self._ml_evaluator_section.__exit__(None, None, None)
 
-        lines = [
-            f"✓ Evaluator '{evaluator_record.id}' created and registered.",
-            summary,
-        ]
+        # Build simple output for ToolResult (detailed output already shown in UI)
+        lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
 
         # Run evaluation automatically after registration
         metrics_dict = None
