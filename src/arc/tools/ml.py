@@ -756,7 +756,7 @@ class MLTrainTool(BaseTool):
             if ml_trainer_section_printer:
                 ml_trainer_section_printer.print("")  # Empty line before training
                 ml_trainer_section_printer.print(
-                    f">> Launching training with trainer '{name}'..."
+                    f"→ Launching training with trainer '{name}'..."
                 )
 
             try:
@@ -775,7 +775,7 @@ class MLTrainTool(BaseTool):
                 if ml_trainer_section_printer:
                     ml_trainer_section_printer.print("")
                     ml_trainer_section_printer.print(
-                        "[cyan]>> Monitor training progress:[/cyan]"
+                        "[cyan]ℹ Monitor training progress:[/cyan]"
                     )
                     ml_trainer_section_printer.print(
                         f"  • Status: /ml jobs status {job_id}"
@@ -995,10 +995,10 @@ class MLTrainTool(BaseTool):
 
             if section_printer:
                 section_printer.print("")
-                section_printer.print("[green]>> Launching TensorBoard...[/green]")
-                section_printer.print(f"   • URL: [bold]{url}[/bold]")
-                section_printer.print(f"   • Process ID: {pid}")
-                section_printer.print(f"   • Logs: {logdir}")
+                section_printer.print("[green]→ Launching TensorBoard...[/green]")
+                section_printer.print(f"  • URL: [bold]{url}[/bold]")
+                section_printer.print(f"  • Process ID: {pid}")
+                section_printer.print(f"  • Logs: {logdir}")
                 section_printer.print("")
                 section_printer.print(
                     f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
@@ -1006,11 +1006,11 @@ class MLTrainTool(BaseTool):
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
-                    "[green]>> Launching TensorBoard...[/green]"
+                    "[green]→ Launching TensorBoard...[/green]"
                 )
-                self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
-                self.ui._printer.console.print(f"   • Process ID: {pid}")
-                self.ui._printer.console.print(f"   • Logs: {logdir}")
+                self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
+                self.ui._printer.console.print(f"  • Process ID: {pid}")
+                self.ui._printer.console.print(f"  • Logs: {logdir}")
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
                     f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
@@ -1052,12 +1052,12 @@ class MLTrainTool(BaseTool):
         logdir = f"tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
-            section_printer.print("[cyan]>> Track training:[/cyan]")
+            section_printer.print("[cyan]ℹ Track training:[/cyan]")
             section_printer.print(f"  • Status: /ml jobs status {job_id}")
             section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
         else:
             self.ui._printer.console.print()
-            self.ui._printer.console.print("[cyan]>> Track training:[/cyan]")
+            self.ui._printer.console.print("[cyan]ℹ Track training:[/cyan]")
             self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
             self.ui._printer.console.print(
                 f"  • TensorBoard: tensorboard --logdir {logdir}"
