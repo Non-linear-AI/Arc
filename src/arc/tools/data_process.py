@@ -159,16 +159,24 @@ class MLDataProcessTool(BaseTool):
                 "[dim]Generating Arc-Graph data processor specification...[/dim]"
             )
 
+        # Augment context with ML plan feature engineering guidance if provided
+        enhanced_context = context
+        if ml_plan_feature_engineering:
+            enhanced_context = (
+                f"{context}\n\n"
+                f"ML Plan Feature Engineering Guidance:\n"
+                f"{ml_plan_feature_engineering}"
+            )
+
         try:
             # Generate using LLM (generator_agent is guaranteed to exist)
             (
                 spec,
                 yaml_content,
             ) = await self.generator_agent.generate_data_processing_yaml(
-                context=context,
+                context=enhanced_context,
                 target_tables=target_tables,
                 target_db=target_db,
-                ml_plan_feature_engineering=ml_plan_feature_engineering,
             )
 
             # Interactive confirmation workflow
@@ -188,10 +196,9 @@ class MLDataProcessTool(BaseTool):
                 )
 
                 context_dict = {
-                    "context": str(context),
+                    "context": str(enhanced_context),
                     "target_tables": target_tables,
                     "target_db": target_db,
-                    "ml_plan_feature_engineering": ml_plan_feature_engineering,
                 }
 
                 try:
@@ -401,9 +408,6 @@ class MLDataProcessTool(BaseTool):
                     target_db=context.get("target_db", "user"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
-                    ml_plan_feature_engineering=context.get(
-                        "ml_plan_feature_engineering"
-                    ),
                 )
                 return edited_yaml
 
