@@ -45,9 +45,14 @@ You must generate JSON that follows this exact schema:
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "depends_on", "sql"],
+        "required": ["name", "depends_on", "sql", "type"],
         "properties": {
           "name": {"type": "string", "description": "Unique name for this processing step"},
+          "type": {
+            "type": "string",
+            "enum": ["table", "view", "execute"],
+            "description": "Step type: 'table' for final output tables (SELECT queries), 'view' for intermediate results (SELECT queries), 'execute' for DDL/DML statements (DROP, INSERT, UPDATE, DELETE, etc.)"
+          },
           "depends_on": {
             "type": "array",
             "items": {"type": "string"},
@@ -74,11 +79,13 @@ You must generate JSON that follows this exact schema:
   "steps": [
     {
       "name": "clean_data",
+      "type": "view",
       "depends_on": ["source_table"],
       "sql": "SELECT * FROM source_table WHERE date >= '2023-01-01' AND amount > 100"
     },
     {
       "name": "user_aggregates",
+      "type": "table",
       "depends_on": ["clean_data"],
       "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
     }
@@ -89,19 +96,28 @@ You must generate JSON that follows this exact schema:
 
 ## Rules
 1. **Step Names**: Use descriptive names (clean_data, user_aggregates, final_features)
-2. **Dependencies**: Each step must list all tables/steps it depends on in the depends_on array
-3. **SQL Quality**: Write clean, efficient SQL with concrete values
-4. **Concrete SQL**: Write specific SQL queries with actual values, dates, and thresholds - no variables or placeholders
-5. **Outputs**: Only list steps that should be persisted as tables in the outputs array
-6. **Execution Order**: Steps will be executed in dependency order automatically
-7. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
+2. **Step Types**: REQUIRED for every step. Choose carefully:
+   - **'table'**: For SELECT queries that create final output tables (must be in outputs)
+   - **'view'**: For SELECT queries that create intermediate/temporary results (NOT in outputs)
+   - **'execute'**: For DDL/DML statements that don't return data (DROP, INSERT, UPDATE, DELETE, ALTER, TRUNCATE, etc.) - CANNOT be in outputs
+3. **Type Selection Rules**:
+   - Use 'table' for steps listed in outputs (SELECT queries)
+   - Use 'view' for intermediate SELECT queries not in outputs
+   - Use 'execute' for DROP TABLE, INSERT, UPDATE, DELETE, ALTER TABLE, etc.
+   - Steps with type='execute' cannot be in outputs (they don't create tables)
+4. **Dependencies**: Each step must list all tables/steps it depends on in the depends_on array
+5. **SQL Quality**: Write clean, efficient SQL with concrete values
+6. **Concrete SQL**: Write specific SQL queries with actual values, dates, and thresholds - no variables or placeholders
+7. **Outputs**: Only list steps that should be persisted as tables in the outputs array (must have type='table')
+8. **Execution Order**: Steps will be executed in dependency order automatically
+9. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
 
 ## Production-Ready Configuration Requirements
-8. **Completeness**: Generate a COMPREHENSIVE configuration that requires NO further modifications
-9. **Data Quality**: Include proper data validation, null handling, and edge case management
-10. **Error Prevention**: Anticipate common data issues and include appropriate safeguards
-11. **Best Practices**: Follow SQL best practices for performance and maintainability
-12. **Schema Compliance**: Ensure the configuration strictly follows the DataSourceSpec schema
+10. **Completeness**: Generate a COMPREHENSIVE configuration that requires NO further modifications
+11. **Data Quality**: Include proper data validation, null handling, and edge case management
+12. **Error Prevention**: Anticipate common data issues and include appropriate safeguards
+13. **Best Practices**: Follow SQL best practices for performance and maintainability
+14. **Schema Compliance**: Ensure the configuration strictly follows the DataSourceSpec schema
 
 ## Common Patterns
 - **Data Cleaning**: Filter nulls, invalid values, standardize formats

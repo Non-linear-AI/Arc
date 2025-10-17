@@ -103,10 +103,8 @@ async def execute_data_source_pipeline(
 
     try:
         for i, step in enumerate(ordered_steps, 1):
-            # Determine if this is an output step (should create table) or
-            # intermediate (view)
-            # Note: Step names and SQL already validated above
-            step_type = "table" if step.name in spec.outputs else "view"
+            # Get step type from the step itself (defaults to 'table' if not set)
+            step_type = getattr(step, "type", "table")
             steps_executed.append((step.name, step_type))
 
             # Report progress: step
@@ -122,25 +120,38 @@ async def execute_data_source_pipeline(
             # CREATE TABLE/VIEW AS)
             sql = sql.rstrip().rstrip(";").rstrip()
 
-            # Quote step name for safe SQL execution
+            # Quote step name for safe SQL execution (not used for execute type)
             quoted_name = quote_sql_identifier(step.name)
 
             try:
-                if step.name in spec.outputs:
-                    # Create persistent table for output steps
-                    # Use CREATE OR REPLACE to handle re-runs
-                    create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
-                else:
-                    # Create regular view for intermediate steps (allows debugging)
+                if step_type == "execute":
+                    # Execute directly without wrapping (DDL/DML statements)
+                    # These don't create artifacts - just run the SQL as-is
+                    if target_db == "system":
+                        db_manager.system_execute(sql)
+                    else:
+                        db_manager.user_execute(sql)
+                elif step_type == "view":
+                    # Create temporary view for intermediate steps
                     # Use CREATE OR REPLACE to handle re-runs
                     create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
                     intermediate_views.append(step.name)  # Track for cleanup
-
-                # Execute using database manager directly to ensure same session
-                if target_db == "system":
-                    db_manager.system_execute(create_sql)
+                    if target_db == "system":
+                        db_manager.system_execute(create_sql)
+                    else:
+                        db_manager.user_execute(create_sql)
+                elif step_type == "table":
+                    # Create persistent table for output steps
+                    # Use CREATE OR REPLACE to handle re-runs
+                    create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
+                    if target_db == "system":
+                        db_manager.system_execute(create_sql)
+                    else:
+                        db_manager.user_execute(create_sql)
                 else:
-                    db_manager.user_execute(create_sql)
+                    raise DataSourceExecutionError(
+                        f"Unknown step type '{step_type}' for step '{step.name}'"
+                    )
 
             except Exception as step_error:
                 raise DataSourceExecutionError(
