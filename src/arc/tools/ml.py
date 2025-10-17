@@ -775,7 +775,7 @@ class MLTrainTool(BaseTool):
                 if ml_trainer_section_printer:
                     ml_trainer_section_printer.print("")
                     ml_trainer_section_printer.print(
-                        "[cyan]📊 Monitor training progress:[/cyan]"
+                        "[cyan]>> Monitor training progress:[/cyan]"
                     )
                     ml_trainer_section_printer.print(
                         f"  • Status: /ml jobs status {job_id}"
@@ -1052,12 +1052,12 @@ class MLTrainTool(BaseTool):
         logdir = f"tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
-            section_printer.print("[cyan]📊 Track training:[/cyan]")
+            section_printer.print("[cyan]>> Track training:[/cyan]")
             section_printer.print(f"  • Status: /ml jobs status {job_id}")
             section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
         else:
             self.ui._printer.console.print()
-            self.ui._printer.console.print("[cyan]📊 Track training:[/cyan]")
+            self.ui._printer.console.print("[cyan]>> Track training:[/cyan]")
             self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
             self.ui._printer.console.print(
                 f"  • TensorBoard: tensorboard --logdir {logdir}"
