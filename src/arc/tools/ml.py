@@ -1006,9 +1006,7 @@ class MLTrainTool(BaseTool):
                 section_printer.print(f"  • Process ID: {pid}")
                 section_printer.print(f"  • Logs: {logdir}")
                 section_printer.print("")
-                section_printer.print(
-                    f"  To stop: /ml tensorboard stop {job_id}"
-                )
+                section_printer.print(f"  To stop: /ml tensorboard stop {job_id}")
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
@@ -1256,7 +1254,7 @@ class MLEvaluateTool(BaseTool):
             schema_info = self.services.schema.get_schema_info(target_db="user")
             columns = schema_info.get_column_names(str(data_table))
             target_column_exists = str(target_column) in columns
-        except Exception as exc:
+        except Exception:
             # If schema check fails, default to assuming target exists
             target_column_exists = True
 
@@ -1816,9 +1814,7 @@ class MLEvaluateTool(BaseTool):
                 section_printer.print(f"  • Process ID: {pid}")
                 section_printer.print(f"  • Logs: {logdir}")
                 section_printer.print("")
-                section_printer.print(
-                    f"  To stop: /ml tensorboard stop {job_id}"
-                )
+                section_printer.print(f"  To stop: /ml tensorboard stop {job_id}")
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
