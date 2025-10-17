@@ -130,7 +130,7 @@ async def handle_sql_command(
             db_label = "System DB" if db_name == "system" else "User DB"
             with ui._printer.section(color="blue") as p:
                 p.print(f"SQL Query ({db_label})")
-                p.print(f"✓ Switched to {db_name} database")
+                p.print(f"[dim]✓ Switched to {db_name} database[/dim]")
             return db_name
         else:
             ui.show_system_error("Invalid database. Use 'system' or 'user'")
