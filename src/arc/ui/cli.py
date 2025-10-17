@@ -126,8 +126,10 @@ async def handle_sql_command(
     if len(parts) >= 3 and parts[1].lower() == "use":
         db_name = parts[2].lower().rstrip(";")  # Support trailing semicolon
         if db_name in ["system", "user"]:
-            # Use section printer for indented output
+            # Use section printer for indented output matching SQL query style
+            db_label = "System DB" if db_name == "system" else "User DB"
             with ui._printer.section(color="blue") as p:
+                p.print(f"SQL Query ({db_label})")
                 p.print(f"✓ Switched to {db_name} database")
             return db_name
         else:
