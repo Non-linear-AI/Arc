@@ -122,14 +122,14 @@ class DataProcessorGeneratorAgent:
     async def _get_schema_context(
         self, target_tables: list[str] | None, target_db: str
     ) -> dict:
-        """Get schema information for context.
+        """Get schema information with statistics for context.
 
         Args:
             target_tables: Specific tables to analyze
             target_db: Target database
 
         Returns:
-            Dictionary with schema information
+            Dictionary with schema information and table statistics
         """
         try:
             schema_service = self.services.schema
@@ -141,41 +141,67 @@ class DataProcessorGeneratorAgent:
                 "total_tables": len(schema_info.tables),
             }
 
-            # If specific tables requested, get detailed info for those
+            # If specific tables requested, get detailed info with statistics
             if target_tables:
                 for table_name in target_tables:
                     if schema_info.table_exists(table_name):
+                        # Get schema columns
                         columns = schema_info.get_columns_for_table(table_name)
-                        context["tables"].append(
-                            {
-                                "name": table_name,
-                                "columns": [
-                                    {
-                                        "name": col.column_name,
-                                        "type": col.data_type,
-                                        "nullable": col.is_nullable,
-                                    }
-                                    for col in columns
-                                ],
-                            }
-                        )
-            else:
-                # Get basic info for all tables
-                for table in schema_info.tables[:10]:  # Limit to first 10 tables
-                    columns = schema_info.get_columns_for_table(table.name)
-                    context["tables"].append(
-                        {
-                            "name": table.name,
+
+                        # Get table statistics using ml_data service
+                        table_info = {
+                            "name": table_name,
                             "columns": [
                                 {
                                     "name": col.column_name,
                                     "type": col.data_type,
                                     "nullable": col.is_nullable,
                                 }
-                                for col in columns[:5]  # Limit to first 5 columns
+                                for col in columns
                             ],
                         }
-                    )
+
+                        # Try to get dataset info for row counts
+                        try:
+                            dataset_info = self.services.ml_data.get_dataset_info(
+                                table_name
+                            )
+                            if dataset_info:
+                                table_info["row_count"] = dataset_info.row_count
+                        except Exception:
+                            # If statistics fail, continue without them
+                            pass
+
+                        context["tables"].append(table_info)
+            else:
+                # Get basic info for all tables (limit to 10)
+                for table in schema_info.tables[:10]:
+                    columns = schema_info.get_columns_for_table(table.name)
+
+                    table_info = {
+                        "name": table.name,
+                        "columns": [
+                            {
+                                "name": col.column_name,
+                                "type": col.data_type,
+                                "nullable": col.is_nullable,
+                            }
+                            for col in columns[:5]  # Limit to 5 columns
+                        ],
+                    }
+
+                    # Try to get row count for each table
+                    try:
+                        dataset_info = self.services.ml_data.get_dataset_info(
+                            table.name
+                        )
+                        if dataset_info:
+                            table_info["row_count"] = dataset_info.row_count
+                    except Exception:
+                        # If statistics fail, continue without them
+                        pass
+
+                    context["tables"].append(table_info)
 
             return context
 

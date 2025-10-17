@@ -1,0 +1,144 @@
+## TASK
+{% if existing_yaml and editing_instructions %}Edit an existing data processing JSON configuration based on the following changes:
+- **Editing Instructions**: {{ editing_instructions }}
+- **Original Requirements**: {{ user_context }}
+{% if target_tables %}- **Target Tables**: {{ target_tables | join(", ") }}
+{% endif %}- **Database**: {{ schema_info.database }}
+{% else %}Generate a data processing JSON configuration for:
+- **User Requirements**: {{ user_context }}
+{% if target_tables %}- **Target Tables**: {{ target_tables | join(", ") }}
+{% endif %}- **Database**: {{ schema_info.database }}
+{% endif %}
+
+## Available Tables
+{% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**:
+{% for column in table.columns %}  - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
+{% endfor %}
+
+{% endfor %}{% else %}No table schema information available.
+{% endif %}
+{% if existing_yaml and editing_instructions %}
+## Existing Configuration
+The current YAML configuration that needs to be edited:
+```yaml
+{{ existing_yaml }}
+```
+
+Apply the editing instructions above to this configuration. Make the requested changes while preserving the overall structure and any parts not affected by the edits.
+
+{% endif %}
+## JSON Schema
+You must generate JSON that follows this exact schema:
+
+```json
+{
+  "type": "object",
+  "required": ["name", "description", "steps", "outputs"],
+  "properties": {
+    "name": {"type": "string", "description": "Name of the data processing pipeline"},
+    "description": {"type": "string", "description": "Description of what this pipeline does"},
+    "vars": {
+      "type": "object",
+      "description": "Optional variables for SQL substitution (${var} syntax)"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "depends_on", "sql", "type"],
+        "properties": {
+          "name": {"type": "string", "description": "Unique name for this processing step"},
+          "type": {
+            "type": "string",
+            "enum": ["table", "view", "execute"],
+            "description": "Step type: 'table' for final output tables (SELECT queries), 'view' for intermediate results (SELECT queries), 'execute' for DDL/DML statements (DROP, INSERT, UPDATE, DELETE, etc.)"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of table names or step names this step depends on"
+          },
+          "sql": {"type": "string", "description": "Concrete SQL query for this transformation step"}
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of step names that should be materialized as final output tables"
+    }
+  }
+}
+```
+
+## Example JSON Structure
+```json
+{
+  "name": "user_transaction_aggregates",
+  "description": "Process transaction data to create user-level aggregates",
+  "steps": [
+    {
+      "name": "clean_data",
+      "type": "view",
+      "depends_on": ["source_table"],
+      "sql": "SELECT * FROM source_table WHERE date >= '2023-01-01' AND amount > 100"
+    },
+    {
+      "name": "user_aggregates",
+      "type": "table",
+      "depends_on": ["clean_data"],
+      "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
+    }
+  ],
+  "outputs": ["user_aggregates"]
+}
+```
+
+## Rules
+1. **Step Names**: Use descriptive names (clean_data, user_aggregates, final_features)
+2. **Step Types**: REQUIRED for every step. Choose carefully:
+   - **'table'**: For SELECT queries that create final output tables (must be in outputs)
+   - **'view'**: For SELECT queries that create intermediate/temporary results (NOT in outputs)
+   - **'execute'**: For DDL/DML statements that don't return data (DROP, INSERT, UPDATE, DELETE, ALTER, TRUNCATE, etc.) - CANNOT be in outputs
+3. **Type Selection Rules**:
+   - Use 'table' for steps listed in outputs (SELECT queries)
+   - Use 'view' for intermediate SELECT queries not in outputs
+   - Use 'execute' for DROP TABLE, INSERT, UPDATE, DELETE, ALTER TABLE, etc.
+   - Steps with type='execute' cannot be in outputs (they don't create tables)
+4. **Dependencies**: Each step must list all tables/steps it depends on in the depends_on array
+5. **SQL Quality**: Write clean, efficient SQL with concrete values
+6. **Concrete SQL**: Write specific SQL queries with actual values, dates, and thresholds - no variables or placeholders
+7. **Outputs**: Only list steps that should be persisted as tables in the outputs array (must have type='table')
+8. **Execution Order**: Steps will be executed in dependency order automatically
+9. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
+
+## Production-Ready Configuration Requirements
+10. **Completeness**: Generate a COMPREHENSIVE configuration that requires NO further modifications
+11. **Data Quality**: Include proper data validation, null handling, and edge case management
+12. **Error Prevention**: Anticipate common data issues and include appropriate safeguards
+13. **Best Practices**: Follow SQL best practices for performance and maintainability
+14. **Schema Compliance**: Ensure the configuration strictly follows the DataSourceSpec schema
+
+## Common Patterns
+- **Data Cleaning**: Filter nulls, invalid values, standardize formats
+- **Aggregations**: GROUP BY with COUNT, SUM, AVG for time periods or categories
+- **Feature Engineering**: Create calculated fields, ratios, time-based features
+- **Joins**: Combine data from multiple tables
+- **Windowing**: Running totals, rankings, time-based calculations
+
+
+## Output Requirements
+- Generate only valid JSON, no markdown blocks or explanations
+- Include name and description fields at the root level
+- Ensure all strings are properly escaped
+- Follow the exact schema structure above
+- Create a COMPLETE, PRODUCTION-READY configuration that needs no enhancements
+
+## Critical Instruction
+{% if existing_yaml and editing_instructions %}Your edited configuration must maintain the same level of quality and completeness as the original. Apply only the requested changes while preserving the production-ready nature of the configuration.
+
+Edit the data processing configuration according to the instructions:
+{% else %}Your generated configuration must be comprehensive and final. It will be used directly in production without any modifications. Include all necessary data processing steps, validations, and transformations in your first response.
+
+Generate the data processing configuration:
+{% endif %}
