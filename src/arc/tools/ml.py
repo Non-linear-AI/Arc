@@ -771,6 +771,19 @@ class MLTrainTool(BaseTool):
                 lines.append(f"Training table: {train_table}")
                 lines.append(f"Job ID: {job_id}")
 
+                # Show job monitoring instructions in section
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        "[cyan]📊 Monitor training progress:[/cyan]"
+                    )
+                    ml_trainer_section_printer.print(
+                        f"  • Status: /ml jobs status {job_id}"
+                    )
+                    ml_trainer_section_printer.print(
+                        f"  • Logs: /ml jobs logs {job_id}"
+                    )
+
                 # Handle TensorBoard launch
                 if not auto_confirm and self.ui:
                     if self.tensorboard_manager:
