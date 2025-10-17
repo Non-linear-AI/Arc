@@ -4,8 +4,8 @@ You are an expert SQL data engineer. {% if existing_yaml and editing_instruction
 
 {% if editing_instructions %}**Editing Instructions**: {{ editing_instructions }}
 
-**Original Context**: {{ user_context }}
-{% else %}**Goal**: {{ user_context }}
+**Original Instruction**: {{ user_instruction }}
+{% else %}**Instruction**: {{ user_instruction }}
 {% endif %}
 {% if target_tables %}**Target Tables**: {{ target_tables | join(", ") }}
 {% endif %}**Database**: {{ schema_info.database }}

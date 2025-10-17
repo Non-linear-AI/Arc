@@ -58,16 +58,17 @@ class DataProcessorGeneratorAgent:
 
     async def generate_data_processing_yaml(
         self,
-        context: str,
+        instruction: str,
         target_tables: list[str] | None = None,
         target_db: str = "user",
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
     ) -> tuple[DataSourceSpec, str]:
-        """Generate data processing YAML from natural language description.
+        """Generate data processing YAML from instruction.
 
         Args:
-            context: Natural language description of data processing requirements
+            instruction: Detailed instruction for data processing (shaped by main agent
+                or from ML plan feature engineering guidance)
             target_tables: List of tables to analyze (optional)
             target_db: Target database for schema discovery
             existing_yaml: Existing YAML content to edit (optional)
@@ -85,7 +86,11 @@ class DataProcessorGeneratorAgent:
 
             # Render prompt and build messages
             user_prompt = await self._render_prompt(
-                context, schema_info, target_tables, existing_yaml, editing_instructions
+                instruction,
+                schema_info,
+                target_tables,
+                existing_yaml,
+                editing_instructions,
             )
             messages = [
                 {"role": "system", "content": self.SYSTEM_MESSAGE},
@@ -216,16 +221,16 @@ class DataProcessorGeneratorAgent:
 
     async def _render_prompt(
         self,
-        context: str,
+        instruction: str,
         schema_info: dict,
         target_tables: list[str] | None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
     ) -> str:
-        """Render the prompt template with context.
+        """Render the prompt template with instruction.
 
         Args:
-            context: User's natural language description
+            instruction: Detailed instruction for data processing
             schema_info: Database schema information
             target_tables: Target tables list
             existing_yaml: Existing YAML content to edit (optional)
@@ -251,7 +256,7 @@ class DataProcessorGeneratorAgent:
             # Load and render template
             template = env.get_template("prompt.j2")
             prompt = template.render(
-                user_context=context,
+                user_instruction=instruction,
                 schema_info=schema_info,
                 target_tables=target_tables or [],
                 existing_yaml=existing_yaml,

@@ -91,23 +91,26 @@ class MLDataProcessTool(BaseTool):
     async def generate(
         self,
         name: str,
-        context: str,
+        instruction: str | None = None,
         target_tables: list[str] | None = None,
         output_path: str | None = None,
         target_db: str = "user",
         auto_confirm: bool = False,
         ml_plan: dict | None = None,
+        context: str | None = None,  # Deprecated: use instruction instead
     ) -> ToolResult:
-        """Generate YAML configuration from natural language context using LLM.
+        """Generate YAML configuration from instruction using LLM.
 
         Args:
             name: Name for the data processor (will be registered in database)
-            context: Natural language description of data processing requirements
+            instruction: Detailed instruction for data processing (shaped by main agent
+                or from ML plan). If not provided, will use context for backward compat.
             target_tables: List of tables to analyze for generation
             output_path: Path to save generated YAML file (optional, for backup)
             target_db: Target database - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
             ml_plan: Optional ML plan dict containing feature engineering guidance
+            context: DEPRECATED - use instruction instead
 
         Returns:
             ToolResult with operation result
@@ -118,10 +121,12 @@ class MLDataProcessTool(BaseTool):
                 "Provide a name for the data processor."
             )
 
-        if not context:
+        # Support both instruction (new) and context (backward compat)
+        final_instruction = instruction or context
+        if not final_instruction:
             return ToolResult.error_result(
-                "Context is required for YAML generation. "
-                "Provide a natural language description of your data processing needs."
+                "Instruction is required for YAML generation. "
+                "Provide a detailed instruction for your data processing needs."
             )
 
         # Validate target database
@@ -131,6 +136,7 @@ class MLDataProcessTool(BaseTool):
             )
 
         # Extract feature engineering guidance from ML plan if provided
+        # If ML plan is provided, use it as baseline and augment with instruction
         ml_plan_feature_engineering = None
         if ml_plan:
             from arc.core.ml_plan import MLPlan
@@ -159,14 +165,17 @@ class MLDataProcessTool(BaseTool):
                 "[dim]Generating Arc-Graph data processor specification...[/dim]"
             )
 
-        # Augment context with ML plan feature engineering guidance if provided
-        enhanced_context = context
+        # Build final instruction: use ML plan as baseline context if available
+        # Main agent can provide shaped instruction that builds on the plan
         if ml_plan_feature_engineering:
-            enhanced_context = (
-                f"{context}\n\n"
-                f"ML Plan Feature Engineering Guidance:\n"
+            # ML plan provides baseline, instruction adds specifics
+            enhanced_instruction = (
+                f"{final_instruction}\n\n"
+                f"ML Plan Feature Engineering Guidance (use as baseline):\n"
                 f"{ml_plan_feature_engineering}"
             )
+        else:
+            enhanced_instruction = final_instruction
 
         try:
             # Generate using LLM (generator_agent is guaranteed to exist)
@@ -174,7 +183,7 @@ class MLDataProcessTool(BaseTool):
                 spec,
                 yaml_content,
             ) = await self.generator_agent.generate_data_processing_yaml(
-                context=enhanced_context,
+                instruction=enhanced_instruction,
                 target_tables=target_tables,
                 target_db=target_db,
             )
@@ -217,7 +226,7 @@ class MLDataProcessTool(BaseTool):
                 )
 
                 context_dict = {
-                    "context": str(enhanced_context),
+                    "instruction": str(enhanced_instruction),
                     "target_tables": target_tables,
                     "target_db": target_db,
                 }
@@ -439,7 +448,7 @@ class MLDataProcessTool(BaseTool):
                     _spec,
                     edited_yaml,
                 ) = await self.generator_agent.generate_data_processing_yaml(
-                    context=context["context"],
+                    instruction=context["instruction"],
                     target_tables=context.get("target_tables"),
                     target_db=context.get("target_db", "user"),
                     existing_yaml=yaml_content,
