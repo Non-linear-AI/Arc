@@ -781,7 +781,7 @@ class InteractiveInterface:
         self._printer.show_message(f"❌ {message}", style="red", use_section=False)
 
     def show_system_success(self, message: str) -> None:
-        self._printer.show_message(f"✅ {message}", use_section=False)
+        self._printer.show_message(f"✓ {message}", use_section=False)
 
     def show_warning(self, message: str) -> None:
         self._printer.show_message(f"⚠️ {message}", style="yellow", use_section=False)
