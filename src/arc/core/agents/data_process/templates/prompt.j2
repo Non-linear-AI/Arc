@@ -1,168 +1,108 @@
-## Objective
+You are an expert SQL data engineer. {% if existing_yaml and editing_instructions %}Edit the data processing configuration based on user feedback while maintaining production quality.{% else %}Generate a complete, production-ready data processing pipeline.{% endif %}
 
-{% if existing_yaml and editing_instructions %}**EDIT** the provided data processing configuration based on user feedback while preserving production quality.
-{% else %}**GENERATE** a complete, production-ready data processing pipeline that requires no modifications.
-{% endif %}
-
----
-
-## User Requirements
+# Task
 
 {% if editing_instructions %}**Editing Instructions**: {{ editing_instructions }}
 
 **Original Context**: {{ user_context }}
 {% else %}**Goal**: {{ user_context }}
 {% endif %}
-{% if target_tables %}
-**Target Tables**: {{ target_tables | join(", ") }}
-{% endif %}
-**Database**: {{ schema_info.database }}
+{% if target_tables %}**Target Tables**: {{ target_tables | join(", ") }}
+{% endif %}**Database**: {{ schema_info.database }}
 
----
+# Available Tables
 
-## Available Data Sources
-
-{% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**{% if table.row_count %} — {{ "{:,}".format(table.row_count) }} rows{% endif %}
+{% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**{% if table.row_count %} ({{ "{:,}".format(table.row_count) }} rows){% endif %}
 
 {% for column in table.columns %}  • `{{ column.name }}`: {{ column.type }}{% if not column.nullable %} (NOT NULL){% endif %}
 
 {% endfor %}
-{% endfor %}{% else %}
-*No schema information available.*
+{% endfor %}{% else %}*No schema information available.*
 {% endif %}
 
----
-
-{% if existing_yaml and editing_instructions %}
-## Existing Configuration
+{% if existing_yaml and editing_instructions %}# Current Configuration
 
 ```json
 {{ existing_yaml }}
 ```
 
-**Apply the editing instructions above while maintaining:**
-- Production-ready quality
-- Comprehensive data validation
-- Proper error handling
-- Clear step dependencies
+Apply the editing instructions above while maintaining production-ready quality.
 
----
+{% endif %}# JSON Schema
 
-{% endif %}
-## JSON Schema (Strict Compliance Required)
+You MUST generate valid JSON matching this schema:
 
 ```json
 {
   "type": "object",
   "required": ["name", "description", "steps", "outputs"],
   "properties": {
-    "name": {
-      "type": "string",
-      "description": "Pipeline name (snake_case)"
-    },
-    "description": {
-      "type": "string",
-      "description": "Clear description of pipeline purpose"
-    },
-    "vars": {
-      "type": "object",
-      "description": "Optional variables for SQL substitution using ${var} syntax"
-    },
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "vars": {"type": "object"},
     "steps": {
       "type": "array",
-      "description": "Ordered list of data processing steps",
       "items": {
         "type": "object",
         "required": ["name", "type", "depends_on", "sql"],
         "properties": {
-          "name": {
-            "type": "string",
-            "description": "Unique step identifier (snake_case)"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["table", "view", "execute"],
-            "description": "Step type determines execution behavior"
-          },
-          "depends_on": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Source tables or previous step names this step requires"
-          },
-          "sql": {
-            "type": "string",
-            "description": "Concrete SQL query or statement (no placeholders)"
-          }
+          "name": {"type": "string"},
+          "type": {"type": "string", "enum": ["table", "view", "execute"]},
+          "depends_on": {"type": "array", "items": {"type": "string"}},
+          "sql": {"type": "string"}
         }
       }
     },
-    "outputs": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "Step names to materialize as final output tables"
-    }
+    "outputs": {"type": "array", "items": {"type": "string"}}
   }
 }
 ```
 
----
+# Step Types
 
-## Step Type Selection (Critical)
+Each step requires a `type` field:
 
-Each step MUST have a `type` field. Choose wisely:
-
-- **`"table"`**: SELECT queries creating final outputs (must be in `outputs` array)
-- **`"view"`**: SELECT queries for intermediate transforms (auto-cleaned, NOT in outputs)
-- **`"execute"`**: DDL/DML statements (DROP, INSERT, UPDATE, DELETE — NOT in outputs)
+- **`table`**: SELECT queries creating final outputs (MUST be in `outputs`)
+- **`view`**: SELECT queries for intermediate processing (NOT in outputs, auto-cleaned)
+- **`execute`**: DDL/DML statements like DROP, INSERT, UPDATE, DELETE (NOT in outputs)
 
 **Rules:**
 1. Output steps → `type: "table"` + include in `outputs`
 2. Intermediate SELECT → `type: "view"`
-3. Non-query SQL → `type: "execute"`
-4. Only `table` type can appear in `outputs`
+3. DDL/DML → `type: "execute"`
+4. Only `table` type allowed in `outputs`
 
----
+# Requirements
 
-## Production-Ready Requirements
+Your configuration must be production-ready:
 
-Your configuration must be **comprehensive and final**. Include:
+**Data Quality**
+- Handle NULLs explicitly (COALESCE, IFNULL, IS NULL checks)
+- Validate ranges and constraints
+- Filter invalid records
+- Add type conversions where needed
 
-### 1. Data Quality & Validation
-- Handle NULL values explicitly (COALESCE, IFNULL, IS NULL checks)
-- Validate data ranges and constraints
-- Filter invalid/corrupted records
-- Add data type conversions where needed
+**SQL Best Practices**
+- Use concrete values (no placeholders unless in `vars`)
+- Write efficient queries
+- Use clear aliases
+- Filter data early with WHERE clauses
 
-### 2. SQL Best Practices
-- Use concrete values (no variables unless in `vars` section)
-- Write efficient queries (proper indexing consideration)
-- Use meaningful aliases for clarity
-- Add WHERE clauses to filter unnecessary data early
+**Pipeline Design**
+- List ALL dependencies in `depends_on`
+- Use snake_case names (e.g., `clean_transactions`, `user_features`)
+- Steps execute in dependency order automatically
+- Break complex logic into modular steps
 
-### 3. Pipeline Design
-- **Dependencies**: Accurately list ALL source tables and dependent steps
-- **Step Naming**: Use descriptive snake_case names (e.g., `clean_transactions`, `aggregate_by_user`)
-- **Execution Order**: Steps execute in dependency-order automatically
-- **Modularity**: Break complex logic into logical steps
-
-### 4. Common Patterns
-- **Data Cleaning**: Remove nulls, deduplicate, standardize formats
-- **Feature Engineering**: Create calculated fields, ratios, time-based features
-- **Aggregations**: GROUP BY with COUNT, SUM, AVG, MIN, MAX
-- **Joins**: Combine data from multiple sources
-- **Window Functions**: Rankings, running totals, time-based calculations
-
----
-
-## Example
+# Example
 
 ```json
 {
   "name": "user_behavior_features",
-  "description": "Clean raw events and create user-level behavioral features",
+  "description": "Clean events and create user features",
   "steps": [
     {
-      "name": "drop_old_features",
+      "name": "drop_old_table",
       "type": "execute",
       "depends_on": [],
       "sql": "DROP TABLE IF EXISTS user_features"
@@ -177,31 +117,24 @@ Your configuration must be **comprehensive and final**. Include:
       "name": "user_features",
       "type": "table",
       "depends_on": ["clean_events"],
-      "sql": "SELECT user_id, COUNT(*) AS events, SUM(value) AS total_value, CAST(SUM(value) AS FLOAT) / NULLIF(COUNT(*), 0) AS avg_value FROM clean_events GROUP BY user_id HAVING COUNT(*) >= 5"
+      "sql": "SELECT user_id, COUNT(*) AS events, SUM(value) AS total_value FROM clean_events GROUP BY user_id HAVING COUNT(*) >= 5"
     }
   ],
   "outputs": ["user_features"]
 }
 ```
 
-Note: Step `drop_old_features` (type=execute) is NOT in outputs. Step `user_features` (type=table) IS in outputs.
+Note: `drop_old_table` (execute) NOT in outputs. `user_features` (table) IS in outputs.
 
----
+# Output
 
-## Output Instructions
+{% if existing_yaml and editing_instructions %}Generate the complete, modified JSON configuration.{% else %}Generate the complete, production-ready JSON configuration.{% endif %}
 
-{% if existing_yaml and editing_instructions %}
-Apply the requested edits and generate the **complete, modified JSON configuration**.
-{% else %}
-Generate the **complete, production-ready JSON configuration**.
-{% endif %}
-
-**Critical reminders:**
-- Output ONLY valid JSON (no markdown formatting, no explanations)
-- Follow the exact schema structure
+**Critical:**
+- Output ONLY valid JSON (no markdown, no explanations)
+- Follow the exact schema
 - Assign correct `type` to each step
-- Include comprehensive data quality checks
-- Use concrete SQL with real values
-- Test your logic mentally before finalizing
+- Include data quality checks
+- Use concrete SQL
 
-Your configuration will be used directly in production. Make it bulletproof.
+Your configuration will be used in production. Make it bulletproof.
