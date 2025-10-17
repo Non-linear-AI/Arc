@@ -28,7 +28,7 @@ else:
         DataProcessorGeneratorError = Exception
 
 
-class DataProcessorGeneratorTool(BaseTool):
+class MLDataProcessTool(BaseTool):
     """Tool for generating data processing YAML configurations from natural language.
 
     This tool has a single purpose: convert natural language descriptions into
@@ -44,7 +44,7 @@ class DataProcessorGeneratorTool(BaseTool):
         model: str | None = None,
         ui_interface=None,
     ):
-        """Initialize DataProcessorGeneratorTool.
+        """Initialize MLDataProcessTool.
 
         Args:
             services: ServiceContainer instance providing database access
@@ -59,7 +59,7 @@ class DataProcessorGeneratorTool(BaseTool):
         """
         if not api_key:
             raise ValueError(
-                "API key is required for DataProcessorGeneratorTool. "
+                "API key is required for MLDataProcessTool. "
                 "This tool uses LLM-powered generation and cannot function "
                 "without an API key."
             )
@@ -96,6 +96,7 @@ class DataProcessorGeneratorTool(BaseTool):
         output_path: str | None = None,
         target_db: str = "user",
         auto_confirm: bool = False,
+        ml_plan: dict | None = None,
     ) -> ToolResult:
         """Generate YAML configuration from natural language context using LLM.
 
@@ -106,6 +107,7 @@ class DataProcessorGeneratorTool(BaseTool):
             output_path: Path to save generated YAML file (optional, for backup)
             target_db: Target database - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
+            ml_plan: Optional ML plan dict containing feature engineering guidance
 
         Returns:
             ToolResult with operation result
@@ -128,47 +130,45 @@ class DataProcessorGeneratorTool(BaseTool):
                 f"Invalid target database: {target_db}. Must be 'system' or 'user'."
             )
 
+        # Extract feature engineering guidance from ML plan if provided
+        ml_plan_feature_engineering = None
+        if ml_plan:
+            from arc.core.ml_plan import MLPlan
+
+            plan = MLPlan.from_dict(ml_plan)
+            # Extract feature engineering guidance for data processing
+            ml_plan_feature_engineering = plan.feature_engineering
+
+        # Show section title and ML plan guidance if provided
+        ml_data_process_section_printer = None
+        if self.ui:
+            self._ml_data_process_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_data_process_section_printer = self._ml_data_process_section.__enter__()
+            ml_data_process_section_printer.print("Data Processor")
+
+            # Show ML plan feature engineering guidance if provided
+            if ml_plan_feature_engineering:
+                ml_data_process_section_printer.print(
+                    "[dim][cyan]ℹ Using ML plan feature engineering "
+                    "guidance[/cyan][/dim]"
+                )
+
+            ml_data_process_section_printer.print(
+                "[dim]Generating Arc-Graph data processor specification...[/dim]"
+            )
+
         try:
-            # Show progress to build trust
-            progress_lines = [
-                "🔍 Analyzing database schema and table structure...",
-            ]
-
-            # Get schema information first to show what we found
-            schema_service = self.services.schema
-            schema_info = schema_service.get_schema_info(target_db)
-
-            if target_tables:
-                available_tables = [
-                    t for t in target_tables if schema_info.table_exists(t)
-                ]
-                progress_lines.append(
-                    f"📊 Found {len(available_tables)} specified tables with "
-                    "detailed schema"
-                )
-                if len(available_tables) != len(target_tables):
-                    missing = set(target_tables) - set(available_tables)
-                    progress_lines.append(
-                        f"⚠️  Note: {len(missing)} tables not found: "
-                        f"{', '.join(missing)}"
-                    )
-            else:
-                progress_lines.append(
-                    f"📊 Discovered {len(schema_info.tables)} available tables in "
-                    f"{target_db} database"
-                )
-
-            progress_lines.append("🤖 Generating optimized SQL pipeline with LLM...")
-
-            # Show progress so far (for logging purposes)
-            # progress_result = ToolResult.success_result("\n".join(progress_lines))
-
             # Generate using LLM (generator_agent is guaranteed to exist)
             (
                 spec,
                 yaml_content,
             ) = await self.generator_agent.generate_data_processing_yaml(
-                context=context, target_tables=target_tables, target_db=target_db
+                context=context,
+                target_tables=target_tables,
+                target_db=target_db,
+                ml_plan_feature_engineering=ml_plan_feature_engineering,
             )
 
             # Interactive confirmation workflow
@@ -191,6 +191,7 @@ class DataProcessorGeneratorTool(BaseTool):
                     "context": str(context),
                     "target_tables": target_tables,
                     "target_db": target_db,
+                    "ml_plan_feature_engineering": ml_plan_feature_engineering,
                 }
 
                 try:
@@ -198,6 +199,17 @@ class DataProcessorGeneratorTool(BaseTool):
                         yaml_content, context_dict, output_path
                     )
                     if not proceed:
+                        # Show cancellation message in the Data Processor section
+                        if ml_data_process_section_printer:
+                            ml_data_process_section_printer.print(
+                                ""
+                            )  # Empty line before cancellation
+                            ml_data_process_section_printer.print(
+                                "✗ Data processor generation cancelled by user"
+                            )
+                        # Close the section before returning
+                        if self.ui and hasattr(self, "_ml_data_process_section"):
+                            self._ml_data_process_section.__exit__(None, None, None)
                         return ToolResult.success_result(
                             "✗ Data processor generation cancelled by user."
                         )
@@ -209,10 +221,6 @@ class DataProcessorGeneratorTool(BaseTool):
                 finally:
                     workflow.cleanup()
 
-            # Add blank line after confirmation menu
-            if ui:
-                ui.show_info("")
-
             # Register data processor in database
             from arc.ml.runtime import MLRuntime, MLRuntimeError
 
@@ -221,12 +229,13 @@ class DataProcessorGeneratorTool(BaseTool):
                 processor = runtime.register_data_processor(
                     name=name, spec=spec, description=spec.description
                 )
-                if ui:
-                    msg = (
-                        f"Registered as '{processor.name}' "
-                        f"version {processor.version} (id={processor.id})"
+                # Display registration confirmation in the Data Processor section
+                if ml_data_process_section_printer:
+                    ml_data_process_section_printer.print("")
+                    ml_data_process_section_printer.print(
+                        f"[dim]✓ Data processor '{name}' registered to database "
+                        f"({processor.id} • {len(spec.steps)} steps)[/dim]"
                     )
-                    ui.show_system_success(msg)
             except MLRuntimeError as e:
                 return ToolResult.error_result(
                     f"Failed to register data processor: {str(e)}"
@@ -244,20 +253,27 @@ class DataProcessorGeneratorTool(BaseTool):
                 execute_data_source_pipeline,
             )
 
+            # Show execution message
+            if ml_data_process_section_printer:
+                ml_data_process_section_printer.print("")
+                ml_data_process_section_printer.print(
+                    "→ Executing data processing pipeline..."
+                )
+
             # Define progress callback for real-time updates
             def progress_callback(message: str, level: str):
                 """Handle progress updates during execution."""
-                if ui:
-                    if level == "success":
-                        ui.show_system_success(message)
+                if ml_data_process_section_printer:
+                    if level == "step":
+                        ml_data_process_section_printer.print(f"[dim]  {message}[/dim]")
                     elif level == "warning":
-                        ui.show_warning(message)
+                        ml_data_process_section_printer.print(
+                            f"[yellow]  ⚠️ {message}[/yellow]"
+                        )
                     elif level == "error":
-                        ui.show_system_error(message)
-                    elif level == "step":
-                        ui.show_info(f"  {message}")
-                    else:  # "info"
-                        ui.show_info(message)
+                        ml_data_process_section_printer.print(
+                            f"[red]  ❌ {message}[/red]"
+                        )
 
             try:
                 execution_result = await execute_data_source_pipeline(
@@ -269,51 +285,46 @@ class DataProcessorGeneratorTool(BaseTool):
 
             except DataSourceExecutionError as e:
                 # YAML is saved even if execution fails (for debugging)
-                error_msg = [
-                    f"❌ Pipeline execution failed: {str(e)}",
-                ]
-                if output_path:
-                    error_msg.append(f"YAML saved to: {output_path}")
-                    error_msg.append(
-                        f"You can retry with: /ml data-processing --yaml {output_path}"
+                if ml_data_process_section_printer:
+                    ml_data_process_section_printer.print("")
+                    ml_data_process_section_printer.print(
+                        f"[red]❌ Pipeline execution failed: {str(e)}[/red]"
                     )
-                return ToolResult.error_result("\n".join(error_msg))
+                    if output_path:
+                        ml_data_process_section_printer.print(
+                            f"[dim]YAML saved to: {output_path}[/dim]"
+                        )
+                # Close the section before returning
+                if self.ui and hasattr(self, "_ml_data_process_section"):
+                    self._ml_data_process_section.__exit__(None, None, None)
+                return ToolResult.error_result(f"Pipeline execution failed: {str(e)}")
 
-            # Create concise context for header (similar to SQL Query format)
-            context_summary = context[:80] + "..." if len(context) > 80 else context
+            # Show success summary
+            if ml_data_process_section_printer:
+                ml_data_process_section_printer.print("")
+                ml_data_process_section_printer.print(
+                    f"[dim]✓ Pipeline executed successfully "
+                    f"({', '.join(execution_result.created_tables)} created • "
+                    f"{execution_result.execution_time:.2f}s)[/dim]"
+                )
 
+            # Close the Data Processor section
+            if self.ui and hasattr(self, "_ml_data_process_section"):
+                self._ml_data_process_section.__exit__(None, None, None)
+
+            # Build simple output for ToolResult
             lines = [
-                f"Data Processor Generator: {context_summary}",
-                "",
-                f"Registered: '{processor.name}' version {processor.version}",
-                "Pipeline executed successfully",
-                f"Tables created: {', '.join(execution_result.created_tables)}",
-                f"Execution time: {execution_result.execution_time:.2f}s",
+                f"Data processor '{name}' registered successfully as {processor.id}",
+                f"Pipeline executed: "
+                f"{', '.join(execution_result.created_tables)} created",
             ]
-
-            if output_path:
-                lines.append(f"YAML saved to: {output_path}")
-
-            lines.extend(
-                [
-                    "",
-                    "Pipeline Details:",
-                    f"  Total steps: {len(spec.steps)}",
-                ]
-            )
-
-            if target_tables:
-                lines.append(f"  Target tables: {', '.join(target_tables)}")
-            if spec.vars:
-                lines.append(f"  Variables: {', '.join(spec.vars.keys())}")
-
-            lines.append("")
-            lines.append("Generated YAML:")
-            lines.append(yaml_content)
 
             return ToolResult.success_result("\n".join(lines))
 
         except Exception as e:
+            # Close the section before returning error
+            if self.ui and hasattr(self, "_ml_data_process_section"):
+                self._ml_data_process_section.__exit__(None, None, None)
             return ToolResult.error_result(
                 f"Failed to generate YAML using LLM: {str(e)}. "
                 "Please check your API key and network connection, "
@@ -390,6 +401,9 @@ class DataProcessorGeneratorTool(BaseTool):
                     target_db=context.get("target_db", "user"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
+                    ml_plan_feature_engineering=context.get(
+                        "ml_plan_feature_engineering"
+                    ),
                 )
                 return edited_yaml
 
