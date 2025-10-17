@@ -737,10 +737,6 @@ class MLTrainTool(BaseTool):
         except Exception as exc:
             return ToolResult.error_result(f"Failed to register trainer: {exc}")
 
-        # Close the ML Trainer section
-        if self.ui and hasattr(self, "_ml_trainer_section"):
-            self._ml_trainer_section.__exit__(None, None, None)
-
         # Build simple output for ToolResult (detailed output already shown in UI)
         lines = [f"Trainer '{name}' registered successfully as {trainer_record.id}"]
 
@@ -757,8 +753,11 @@ class MLTrainTool(BaseTool):
         job_id = None
 
         if True:  # Always train when trainer is accepted
-            if self.ui:
-                self.ui.show_info(f"🚀 Launching training with trainer '{name}'...")
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")  # Empty line before training
+                ml_trainer_section_printer.print(
+                    f">> Launching training with trainer '{name}'..."
+                )
 
             try:
                 job_id = await asyncio.to_thread(
@@ -776,13 +775,18 @@ class MLTrainTool(BaseTool):
                 if not auto_confirm and self.ui:
                     if self.tensorboard_manager:
                         try:
-                            await self._handle_tensorboard_launch(job_id)
+                            await self._handle_tensorboard_launch(
+                                job_id, ml_trainer_section_printer
+                            )
                         except (OSError, RuntimeError) as e:
                             # Known TensorBoard launch failures
-                            self.ui._printer.console.print(
-                                f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                            if ml_trainer_section_printer:
+                                ml_trainer_section_printer.print(
+                                    f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job_id, ml_trainer_section_printer
                             )
-                            self._show_manual_tensorboard_instructions(job_id)
                         except Exception as e:
                             # Log unexpected errors with full traceback
                             import logging
@@ -791,20 +795,26 @@ class MLTrainTool(BaseTool):
                                 "Unexpected error during TensorBoard launch"
                             )
                             error_msg = f"{e.__class__.__name__}: {e}"
-                            self.ui._printer.console.print(
-                                "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
+                            if ml_trainer_section_printer:
+                                ml_trainer_section_printer.print(
+                                    "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
+                                )
+                                ml_trainer_section_printer.print(
+                                    f"[yellow]{error_msg}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job_id, ml_trainer_section_printer
                             )
-                            self.ui._printer.console.print(
-                                f"[yellow]{error_msg}[/yellow]"
-                            )
-                            self._show_manual_tensorboard_instructions(job_id)
                     else:
                         # No TensorBoard manager available
-                        self.ui._printer.console.print(
-                            "[dim]ℹ️  TensorBoard auto-launch not available "
-                            "(restart arc chat to enable)[/dim]"
+                        if ml_trainer_section_printer:
+                            ml_trainer_section_printer.print(
+                                "[dim]ℹ️  TensorBoard auto-launch not available "
+                                "(restart arc chat to enable)[/dim]"
+                            )
+                        self._show_manual_tensorboard_instructions(
+                            job_id, ml_trainer_section_printer
                         )
-                        self._show_manual_tensorboard_instructions(job_id)
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
@@ -861,17 +871,22 @@ class MLTrainTool(BaseTool):
         if job_id:
             result_metadata["job_id"] = job_id
 
+        # Close the ML Trainer section
+        if self.ui and hasattr(self, "_ml_trainer_section"):
+            self._ml_trainer_section.__exit__(None, None, None)
+
         return ToolResult(
             success=True,
             output="\n".join(lines),
             metadata=result_metadata,
         )
 
-    async def _handle_tensorboard_launch(self, job_id: str):
+    async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.
 
         Args:
             job_id: Training job identifier
+            section_printer: Section printer for indented output
         """
 
         from arc.core.config import SettingsManager
@@ -884,25 +899,37 @@ class MLTrainTool(BaseTool):
         if mode is None:
             mode, should_launch = await prompt_tensorboard_preference(self.ui)
             settings.set_tensorboard_mode(mode)
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[green]✓ TensorBoard preference saved: {mode}[/green]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
 
             # Launch immediately if user chose to
             if should_launch:
-                await self._launch_tensorboard(job_id)
+                await self._launch_tensorboard(job_id, section_printer)
             else:
-                self._show_manual_tensorboard_instructions(job_id)
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
 
         # Subsequent times - respect saved preference
         elif mode == "always":
-            await self._launch_tensorboard(job_id)
+            await self._launch_tensorboard(job_id, section_printer)
         elif mode == "ask":
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
             choice = await self.ui._printer.get_choice_async(
                 options=[
                     ("yes", "Yes, launch now"),
@@ -916,23 +943,30 @@ class MLTrainTool(BaseTool):
             if choice == "always":
                 # Update preference to always
                 settings.set_tensorboard_mode("always")
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[green]✓ TensorBoard preference updated: always[/green]"
-                )
-                await self._launch_tensorboard(job_id)
+                if section_printer:
+                    section_printer.print("")
+                    section_printer.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                else:
+                    self.ui._printer.console.print()
+                    self.ui._printer.console.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                await self._launch_tensorboard(job_id, section_printer)
             elif choice == "yes":
-                await self._launch_tensorboard(job_id)
+                await self._launch_tensorboard(job_id, section_printer)
             else:  # "no"
-                self._show_manual_tensorboard_instructions(job_id)
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
         else:  # "never"
-            self._show_manual_tensorboard_instructions(job_id)
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
 
-    async def _launch_tensorboard(self, job_id: str):
+    async def _launch_tensorboard(self, job_id: str, section_printer=None):
         """Launch TensorBoard and show info.
 
         Args:
             job_id: Training job identifier
+            section_printer: Section printer for indented output
         """
         from pathlib import Path
 
@@ -946,45 +980,75 @@ class MLTrainTool(BaseTool):
 
             url, pid = self.tensorboard_manager.launch(job_id, logdir, port)
 
-            self.ui._printer.console.print()
-            self.ui._printer.console.print("[green]🚀 Launching TensorBoard...[/green]")
-            self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
-            self.ui._printer.console.print(f"   • Process ID: {pid}")
-            self.ui._printer.console.print(f"   • Logs: {logdir}")
-            self.ui._printer.console.print()
-            self.ui._printer.console.print(
-                f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
-            )
+            if section_printer:
+                section_printer.print("")
+                section_printer.print("[green]>> Launching TensorBoard...[/green]")
+                section_printer.print(f"   • URL: [bold]{url}[/bold]")
+                section_printer.print(f"   • Process ID: {pid}")
+                section_printer.print(f"   • Logs: {logdir}")
+                section_printer.print("")
+                section_printer.print(
+                    f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[green]>> Launching TensorBoard...[/green]"
+                )
+                self.ui._printer.console.print(f"   • URL: [bold]{url}[/bold]")
+                self.ui._printer.console.print(f"   • Process ID: {pid}")
+                self.ui._printer.console.print(f"   • Logs: {logdir}")
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"[dim]Stop with: /ml tensorboard stop {job_id}[/dim]"
+                )
         except (OSError, RuntimeError) as e:
             # Known TensorBoard launch failures
-            self.ui._printer.console.print(
-                f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
-            )
-            self._show_manual_tensorboard_instructions(job_id)
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
         except Exception as e:
             # Log unexpected errors with full traceback
             import logging
 
             logging.exception("Unexpected error during TensorBoard launch")
             error_msg = f"{e.__class__.__name__}: {e}"
-            self.ui._printer.console.print(
-                f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
-            )
-            self._show_manual_tensorboard_instructions(job_id)
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
 
-    def _show_manual_tensorboard_instructions(self, job_id: str):
+    def _show_manual_tensorboard_instructions(self, job_id: str, section_printer=None):
         """Show manual TensorBoard instructions.
 
         Args:
             job_id: Training job identifier
+            section_printer: Section printer for indented output
         """
         logdir = f"tensorboard/run_{job_id}"
-        self.ui._printer.console.print()
-        self.ui._printer.console.print("[cyan]📊 Track training:[/cyan]")
-        self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
-        self.ui._printer.console.print(
-            f"  • TensorBoard: tensorboard --logdir {logdir}"
-        )
+        if section_printer:
+            section_printer.print("")
+            section_printer.print("[cyan]📊 Track training:[/cyan]")
+            section_printer.print(f"  • Status: /ml jobs status {job_id}")
+            section_printer.print(f"  • TensorBoard: tensorboard --logdir {logdir}")
+        else:
+            self.ui._printer.console.print()
+            self.ui._printer.console.print("[cyan]📊 Track training:[/cyan]")
+            self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+            self.ui._printer.console.print(
+                f"  • TensorBoard: tensorboard --logdir {logdir}"
+            )
 
     def _create_validator(self):
         """Create validator function for the workflow."""
