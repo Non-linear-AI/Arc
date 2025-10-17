@@ -995,7 +995,6 @@ async def _ml_data_processing(
         {
             "name": True,
             "instruction": True,
-            "context": True,  # Deprecated: backward compatibility
             "data-tables": True,
             "plan-id": True,
             "target-db": True,
@@ -1005,20 +1004,16 @@ async def _ml_data_processing(
 
     name = options.get("name")
     instruction = options.get("instruction")
-    context = options.get("context")  # Deprecated
     data_tables_str = options.get("data-tables")
     plan_id = options.get("plan-id")
     target_db = options.get("target-db", "user")
-
-    # Support both instruction (new) and context (deprecated)
-    final_instruction = instruction or context
 
     # Validate required parameters
     if not name:
         raise CommandError("/ml data-processing requires --name")
 
     # instruction is optional when using a plan
-    if not plan_id and not final_instruction:
+    if not plan_id and not instruction:
         raise CommandError(
             "/ml data-processing requires --instruction when not using --plan-id"
         )
@@ -1067,7 +1062,7 @@ async def _ml_data_processing(
         # This will generate YAML, register to database, and execute the pipeline
         result = await tool.execute(
             name=name,
-            instruction=final_instruction,
+            instruction=instruction,
             target_tables=data_tables,
             target_db=target_db,
             ml_plan=ml_plan,

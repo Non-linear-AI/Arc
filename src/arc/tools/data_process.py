@@ -97,20 +97,18 @@ class MLDataProcessTool(BaseTool):
         target_db: str = "user",
         auto_confirm: bool = False,
         ml_plan: dict | None = None,
-        context: str | None = None,  # Deprecated: use instruction instead
     ) -> ToolResult:
         """Generate YAML configuration from instruction using LLM.
 
         Args:
             name: Name for the data processor (will be registered in database)
             instruction: Detailed instruction for data processing (shaped by main agent
-                or from ML plan). If not provided, will use context for backward compat.
+                or from ML plan)
             target_tables: List of tables to analyze for generation
             output_path: Path to save generated YAML file (optional, for backup)
             target_db: Target database - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
             ml_plan: Optional ML plan dict containing feature engineering guidance
-            context: DEPRECATED - use instruction instead
 
         Returns:
             ToolResult with operation result
@@ -121,9 +119,7 @@ class MLDataProcessTool(BaseTool):
                 "Provide a name for the data processor."
             )
 
-        # Support both instruction (new) and context (backward compat)
-        final_instruction = instruction or context
-        if not final_instruction:
+        if not instruction:
             return ToolResult.error_result(
                 "Instruction is required for YAML generation. "
                 "Provide a detailed instruction for your data processing needs."
@@ -170,12 +166,12 @@ class MLDataProcessTool(BaseTool):
         if ml_plan_feature_engineering:
             # ML plan provides baseline, instruction adds specifics
             enhanced_instruction = (
-                f"{final_instruction}\n\n"
+                f"{instruction}\n\n"
                 f"ML Plan Feature Engineering Guidance (use as baseline):\n"
                 f"{ml_plan_feature_engineering}"
             )
         else:
-            enhanced_instruction = final_instruction
+            enhanced_instruction = instruction
 
         try:
             # Generate using LLM (generator_agent is guaranteed to exist)
@@ -383,12 +379,8 @@ class MLDataProcessTool(BaseTool):
                 "or try simplifying your request."
             )
 
-    # Keep execute method for backward compatibility (delegate to generate)
     async def execute(self, **kwargs) -> ToolResult:
         """Execute method for BaseTool compatibility."""
-        # Remove action parameter if present and delegate to generate
-        kwargs.pop("action", None)  # Remove deprecated action parameter
-        kwargs.pop("yaml_content", None)  # Remove validation-related parameter
         return await self.generate(**kwargs)
 
     def _create_validator(self):
