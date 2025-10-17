@@ -805,9 +805,8 @@ class DataSourceSpec:
                                 "enum": ["table", "view", "execute"],
                                 "description": (
                                     "Step type: 'table' for final output tables "
-                                    "(SELECT queries), 'view' for intermediate results "
-                                    "(SELECT queries), 'execute' for DDL/DML statements "
-                                    "(DROP, INSERT, UPDATE, DELETE, etc.)"
+                                    "(SELECT), 'view' for intermediate results "
+                                    "(SELECT), 'execute' for DDL/DML (DROP, etc.)"
                                 ),
                             },
                             "depends_on": {

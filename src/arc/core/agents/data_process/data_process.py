@@ -66,12 +66,14 @@ class DataProcessorGeneratorAgent:
         """Generate or edit data processing YAML from instruction.
 
         Args:
-            instruction: Detailed instruction for data processing. For generation: shaped
-                by main agent or from ML plan. For editing: user feedback on what to change.
+            instruction: Detailed instruction for data processing.
+                For generation: shaped by main agent or from ML plan.
+                For editing: user feedback on what to change.
             target_tables: List of tables to analyze (optional)
             target_db: Target database for schema discovery
-            existing_yaml: Existing YAML content to edit (optional). If provided, switches
-                to editing mode where instruction describes the changes to make.
+            existing_yaml: Existing YAML content to edit (optional).
+                If provided, switches to editing mode where instruction
+                describes the changes to make.
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string)
