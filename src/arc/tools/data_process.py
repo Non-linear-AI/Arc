@@ -291,11 +291,20 @@ class MLDataProcessTool(BaseTool):
                 self.services.schema.invalidate_cache(target_db)
 
             except DataSourceExecutionError as e:
-                # YAML is saved even if execution fails (for debugging)
+                # Generation and registration succeeded, but execution failed
                 if ml_data_process_section_printer:
                     ml_data_process_section_printer.print("")
                     ml_data_process_section_printer.print(
-                        f"[red]❌ Pipeline execution failed: {str(e)}[/red]"
+                        f"[yellow]⚠️  Pipeline execution failed: {str(e)}[/yellow]"
+                    )
+                    ml_data_process_section_printer.print("")
+                    ml_data_process_section_printer.print(
+                        "[dim]The data processor was successfully generated and "
+                        "registered to the database.[/dim]"
+                    )
+                    ml_data_process_section_printer.print(
+                        "[dim]You can review and fix the SQL queries, then re-run "
+                        "the processor.[/dim]"
                     )
                     if output_path:
                         ml_data_process_section_printer.print(
@@ -304,7 +313,13 @@ class MLDataProcessTool(BaseTool):
                 # Close the section before returning
                 if self.ui and hasattr(self, "_ml_data_process_section"):
                     self._ml_data_process_section.__exit__(None, None, None)
-                return ToolResult.error_result(f"Pipeline execution failed: {str(e)}")
+
+                # Return success with warning message
+                # Generation/registration succeeded, execution failed
+                return ToolResult.success_result(
+                    f"Data processor '{name}' registered as {processor.id}, "
+                    f"but execution failed: {str(e)}"
+                )
 
             # Show success summary
             if ml_data_process_section_printer:
