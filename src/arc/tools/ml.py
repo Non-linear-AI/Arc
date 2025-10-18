@@ -272,16 +272,15 @@ class MLModelTool(BaseTool):
             "from_ml_plan": ml_plan is not None,
         }
 
-        # Include plan feedback if using ML plan
+        # Include plan architecture comparison if using ML plan
         if change_info is not None:
-            result_metadata["plan_feedback"] = {
-                "architecture_changed": change_info["changed"],
-                "change_confidence": change_info["confidence"],
-                "change_summary": change_info["summary"],
-                "original_architecture": ml_plan_architecture,
-                "final_architecture_yaml": model_yaml,
-                "missing_terms": change_info["missing_from_yaml"],
-                "added_terms": change_info["added_in_yaml"],
+            result_metadata["plan_comparison"] = {
+                "plan_architecture": ml_plan_architecture,
+                "final_yaml": model_yaml,
+                "plan_terms": change_info["plan_terms"],
+                "yaml_terms": change_info["yaml_terms"],
+                "missing_from_yaml": change_info["missing_from_yaml"],
+                "added_in_yaml": change_info["added_in_yaml"],
             }
 
         return ToolResult(
@@ -355,24 +354,23 @@ class MLModelTool(BaseTool):
     def _detect_architecture_changes(
         self, ml_plan_architecture: str, final_yaml: str
     ) -> dict:
-        """Detect if final YAML differs significantly from ML plan architecture.
+        """Compare final YAML with ML plan architecture (factual comparison only).
 
         Args:
             ml_plan_architecture: Original architecture guidance from ML plan
             final_yaml: Final generated/edited YAML content
 
         Returns:
-            Dictionary with change detection details:
-                - changed: bool - True if significant changes detected
-                - confidence: float - Confidence level (0.0 to 1.0)
+            Dictionary with factual comparison details:
+                - plan_terms: list[str] - Architectural terms mentioned in plan
+                - yaml_terms: list[str] - Architectural terms found in YAML
                 - missing_from_yaml: list[str] - Terms in plan but not in YAML
                 - added_in_yaml: list[str] - Terms in YAML but not in plan
-                - summary: str - Human-readable summary of changes
         """
         plan_lower = ml_plan_architecture.lower()
         yaml_lower = final_yaml.lower()
 
-        # Extract key architectural terms from plan
+        # Extract key architectural terms
         all_architectural_terms = [
             "linear",
             "relu",
@@ -398,50 +396,15 @@ class MLModelTool(BaseTool):
         # Terms mentioned in YAML
         yaml_terms = [term for term in all_architectural_terms if term in yaml_lower]
 
-        # Compute differences
+        # Compute differences (factual only)
         missing_from_yaml = [term for term in plan_terms if term not in yaml_lower]
         added_in_yaml = [term for term in yaml_terms if term not in plan_lower]
 
-        # Determine if changed
-        if not plan_terms:
-            # No architectural terms in plan, cannot detect changes
-            return {
-                "changed": False,
-                "confidence": 0.0,
-                "missing_from_yaml": [],
-                "added_in_yaml": added_in_yaml,
-                "summary": "No architectural terms detected in plan for comparison.",
-            }
-
-        # Calculate change metrics
-        missing_ratio = len(missing_from_yaml) / len(plan_terms)
-        added_ratio = len(added_in_yaml) / max(len(yaml_terms), 1)
-
-        # Changed if >30% of terms are missing OR significant terms were added
-        changed = missing_ratio > 0.3 or (added_in_yaml and added_ratio > 0.3)
-
-        # Confidence based on how many terms we found
-        confidence = min(len(plan_terms) / 5.0, 1.0)  # Max confidence at 5+ terms
-
-        # Build summary
-        if changed:
-            summary_parts = []
-            if missing_from_yaml:
-                summary_parts.append(
-                    f"Missing from YAML: {', '.join(missing_from_yaml)}"
-                )
-            if added_in_yaml:
-                summary_parts.append(f"Added to YAML: {', '.join(added_in_yaml)}")
-            summary = "; ".join(summary_parts)
-        else:
-            summary = "Architecture matches ML plan guidance."
-
         return {
-            "changed": changed,
-            "confidence": confidence,
+            "plan_terms": plan_terms,
+            "yaml_terms": yaml_terms,
             "missing_from_yaml": missing_from_yaml,
             "added_in_yaml": added_in_yaml,
-            "summary": summary,
         }
 
     def _save_model_to_db(
@@ -543,7 +506,7 @@ class MLTrainTool(BaseTool):
         self,
         *,
         name: str | None = None,
-        context: str | None = None,
+        instruction: str | None = None,
         model_id: str | None = None,
         train_table: str | None = None,
         auto_confirm: bool = False,
@@ -553,7 +516,7 @@ class MLTrainTool(BaseTool):
 
         Args:
             name: Trainer name
-            context: Training goals and constraints for LLM generation
+            instruction: User's instruction for training configuration
             model_id: Model ID (with version, e.g., 'my_model-v1')
             train_table: Training data table
             auto_confirm: Skip confirmation workflows (for testing only)
@@ -578,9 +541,9 @@ class MLTrainTool(BaseTool):
             )
 
         # Validate required parameters
-        if not name or not context or not model_id or not train_table:
+        if not name or not instruction or not model_id or not train_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', 'model_id', and 'train_table' "
+                "Parameters 'name', 'instruction', 'model_id', and 'train_table' "
                 "are required."
             )
 
@@ -628,7 +591,7 @@ class MLTrainTool(BaseTool):
         try:
             trainer_spec, trainer_yaml = await agent.generate_trainer(
                 name=str(name),
-                user_context=str(context),
+                instruction=str(instruction),
                 model_id=model_record.id,
                 model_spec_yaml=model_record.spec,
                 ml_plan_training_config=ml_plan_training_config,
@@ -660,7 +623,7 @@ class MLTrainTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(context, model_record),
+                editor_func=self._create_editor(instruction, model_record),
                 ui_interface=self.ui,
                 yaml_type_name="trainer",
                 yaml_suffix=".arc-trainer.yaml",
@@ -668,7 +631,7 @@ class MLTrainTool(BaseTool):
 
             context_dict = {
                 "trainer_name": str(name),
-                "context": str(context),
+                "instruction": str(instruction),
                 "model_id": model_record.id,
                 "model_spec_yaml": model_record.spec,
             }
@@ -808,56 +771,8 @@ class MLTrainTool(BaseTool):
                             job_id, ml_trainer_section_printer
                         )
 
-                # Wait for training completion and analyze results (Phase 3)
-                training_feedback = None
-                if job_id and ml_plan:
-                    # Get training service from runtime to wait for job completion
-                    if hasattr(self.runtime, 'training_service'):
-                        training_service = self.runtime.training_service
-
-                        if ml_trainer_section_printer:
-                            ml_trainer_section_printer.print("")
-                            ml_trainer_section_printer.print(
-                                "[dim]→ Waiting for training to complete (max 60s)...[/dim]"
-                            )
-
-                        # Wait for job completion with 60 second timeout
-                        training_result = await asyncio.to_thread(
-                            training_service.wait_for_job,
-                            job_id,
-                            timeout=60.0
-                        )
-
-                        if training_result and training_result.success:
-                            # Training completed within timeout - analyze results
-                            training_feedback = self._analyze_training_results(
-                                training_result, ml_plan
-                            )
-
-                            if training_feedback.get("needs_revision"):
-                                if ml_trainer_section_printer:
-                                    issues = ", ".join(training_feedback["issues_detected"])
-                                    ml_trainer_section_printer.print(
-                                        f"[yellow]⚠  Training issues detected: {issues}[/yellow]"
-                                    )
-                            else:
-                                if ml_trainer_section_printer:
-                                    ml_trainer_section_printer.print(
-                                        "[green]✓ Training completed successfully[/green]"
-                                    )
-                        elif training_result and not training_result.success:
-                            # Training completed but failed
-                            if ml_trainer_section_printer:
-                                error_msg = training_result.error_message or "Unknown error"
-                                ml_trainer_section_printer.print(
-                                    f"[red]✗ Training failed: {error_msg}[/red]"
-                                )
-                        else:
-                            # Timeout - training still running
-                            if ml_trainer_section_printer:
-                                ml_trainer_section_printer.print(
-                                    "[dim]⏱  Training still running (timeout reached)[/dim]"
-                                )
+                # Training job launched successfully - job status can be checked separately
+                # The agent will monitor job status and analyze results when training completes
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
@@ -915,9 +830,9 @@ class MLTrainTool(BaseTool):
         if job_id:
             result_metadata["job_id"] = job_id
 
-        # Include plan feedback if training completed and was analyzed
-        if training_feedback is not None:
-            result_metadata["plan_feedback"] = training_feedback
+        # Include original plan training config for reference (if using ML plan)
+        if ml_plan and ml_plan_training_config:
+            result_metadata["plan_training_config"] = ml_plan_training_config
 
         # Close the ML Trainer section
         if self.ui and hasattr(self, "_ml_trainer_section"):
@@ -1100,117 +1015,6 @@ class MLTrainTool(BaseTool):
                 f"  • TensorBoard: tensorboard --logdir {logdir}"
             )
 
-    def _analyze_training_results(
-        self, training_result, ml_plan: dict | None = None
-    ) -> dict:
-        """Analyze training results for potential issues and plan feedback.
-
-        Args:
-            training_result: TrainingResult object from completed training
-            ml_plan: Optional ML plan dict containing training_configuration
-
-        Returns:
-            Dictionary with training feedback:
-                - needs_revision: bool - True if issues detected
-                - issues_detected: list[str] - List of detected issues
-                - suggestions: list[str] - Suggestions for improvement
-                - final_metrics: dict - Final training metrics
-                - original_training_config: str - Training config from plan (if provided)
-        """
-        issues_detected = []
-        suggestions = []
-
-        # Extract final metrics
-        final_metrics = {}
-        if training_result.train_losses:
-            final_metrics["final_train_loss"] = training_result.train_losses[-1]
-        if training_result.val_losses:
-            final_metrics["final_val_loss"] = training_result.val_losses[-1]
-
-        # Add other metrics from metrics_history
-        if training_result.metrics_history:
-            # Get last epoch metrics
-            for metric_name, values in training_result.metrics_history.items():
-                if values:
-                    final_metrics[metric_name] = values[-1]
-
-        # 1. Check for overfitting
-        if training_result.train_losses and training_result.val_losses:
-            final_train_loss = training_result.train_losses[-1]
-            final_val_loss = training_result.val_losses[-1]
-
-            # Overfitting: validation loss much higher than training loss
-            if final_val_loss > final_train_loss * 1.5:
-                issues_detected.append("overfitting")
-                suggestions.append(
-                    "Consider adding dropout or regularization to reduce overfitting"
-                )
-                suggestions.append(
-                    "Try reducing model capacity or using early stopping"
-                )
-
-        # 2. Check for underfitting (high training loss)
-        if training_result.train_losses:
-            final_train_loss = training_result.train_losses[-1]
-            # If final training loss is still high, might be underfitting
-            # This is a heuristic - we consider > 0.5 as potentially high
-            if final_train_loss > 0.5:
-                issues_detected.append("potentially_underfitting")
-                suggestions.append(
-                    "Training loss is still relatively high - consider increasing model capacity"
-                )
-                suggestions.append(
-                    "Try training for more epochs or adjusting learning rate"
-                )
-
-        # 3. Check for convergence issues (loss not decreasing)
-        if training_result.train_losses and len(training_result.train_losses) >= 5:
-            # Check if loss plateaued early
-            recent_losses = training_result.train_losses[-5:]
-            loss_variance = max(recent_losses) - min(recent_losses)
-
-            # If loss barely changed in last 5 epochs
-            if loss_variance < 0.001:
-                issues_detected.append("early_plateau")
-                suggestions.append(
-                    "Loss plateaued early - consider adjusting learning rate"
-                )
-
-        # 4. Check for training instability (loss increasing)
-        if training_result.train_losses and len(training_result.train_losses) >= 3:
-            # Check if loss increased significantly in later epochs
-            mid_loss = training_result.train_losses[len(training_result.train_losses) // 2]
-            final_loss = training_result.train_losses[-1]
-
-            if final_loss > mid_loss * 1.2:
-                issues_detected.append("training_instability")
-                suggestions.append(
-                    "Training loss increased - learning rate may be too high"
-                )
-                suggestions.append(
-                    "Consider reducing learning rate or using learning rate scheduler"
-                )
-
-        # Extract original training config from ML plan if provided
-        original_training_config = None
-        if ml_plan:
-            training_config = ml_plan.get("training_configuration", "")
-            if training_config:
-                original_training_config = training_config
-
-        # Determine if revision is needed
-        needs_revision = len(issues_detected) > 0
-
-        return {
-            "needs_revision": needs_revision,
-            "issues_detected": issues_detected,
-            "suggestions": suggestions,
-            "final_metrics": final_metrics,
-            "original_training_config": original_training_config,
-            "total_epochs": training_result.total_epochs,
-            "training_time": training_result.training_time,
-        }
-
     def _create_validator(self):
         """Create validator function for the workflow."""
 
@@ -1228,7 +1032,7 @@ class MLTrainTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, user_context: str, model_record):
+    def _create_editor(self, user_instruction: str, model_record):
         """Create editor function for AI-assisted editing."""
 
         async def edit(
@@ -1244,11 +1048,10 @@ class MLTrainTool(BaseTool):
             try:
                 _trainer_spec, edited_yaml = await agent.generate_trainer(
                     name=context["trainer_name"],
-                    user_context=user_context,
+                    instruction=feedback,
                     model_id=model_record.id,
                     model_spec_yaml=model_record.spec,
                     existing_yaml=yaml_content,
-                    editing_instructions=feedback,
                 )
                 return edited_yaml
             except Exception as e:
@@ -1321,7 +1124,7 @@ class MLEvaluateTool(BaseTool):
         self,
         *,
         name: str | None = None,
-        context: str | None = None,
+        instruction: str | None = None,
         trainer_id: str | None = None,
         data_table: str | None = None,
         auto_confirm: bool = False,
@@ -1331,7 +1134,7 @@ class MLEvaluateTool(BaseTool):
 
         Args:
             name: Evaluator name
-            context: Evaluation goals and context for LLM generation
+            instruction: User's instruction for evaluation setup
             trainer_id: Trainer ID to evaluate (references the trained model)
             data_table: Test dataset table name
             auto_confirm: Skip confirmation workflows (for testing only)
@@ -1354,9 +1157,9 @@ class MLEvaluateTool(BaseTool):
             )
 
         # Validate required parameters
-        if not name or not context or not trainer_id or not data_table:
+        if not name or not instruction or not trainer_id or not data_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'context', 'trainer_id', and 'data_table' "
+                "Parameters 'name', 'instruction', 'trainer_id', and 'data_table' "
                 "are required."
             )
 
@@ -1438,7 +1241,7 @@ class MLEvaluateTool(BaseTool):
         try:
             evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
                 name=str(name),
-                user_context=str(context),
+                instruction=str(instruction),
                 trainer_ref=str(trainer_id),
                 trainer_spec_yaml=trainer_record.spec,
                 dataset=str(data_table),
@@ -1486,7 +1289,7 @@ class MLEvaluateTool(BaseTool):
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
                 editor_func=self._create_editor(
-                    context, trainer_id, trainer_record, target_column_exists
+                    instruction, trainer_id, trainer_record, target_column_exists
                 ),
                 ui_interface=self.ui,
                 yaml_type_name="evaluator",
@@ -1495,7 +1298,7 @@ class MLEvaluateTool(BaseTool):
 
             context_dict = {
                 "evaluator_name": str(name),
-                "context": str(context),
+                "instruction": str(instruction),
                 "trainer_id": str(trainer_id),
                 "trainer_ref": str(trainer_id),
                 "trainer_spec_yaml": trainer_record.spec,
@@ -1674,26 +1477,7 @@ class MLEvaluateTool(BaseTool):
 
             metrics_dict = result.metrics
 
-            # Analyze evaluation results for plan feedback (Phase 4)
-            evaluation_feedback = None
-            if ml_plan:
-                evaluation_feedback = self._analyze_evaluation_results(
-                    result, metrics_dict, ml_plan
-                )
-
-                if evaluation_feedback.get("needs_revision"):
-                    if ml_evaluator_section_printer:
-                        issues = ", ".join(evaluation_feedback["performance_issues"])
-                        ml_evaluator_section_printer.print("")
-                        ml_evaluator_section_printer.print(
-                            f"[yellow]⚠  Performance issues detected: {issues}[/yellow]"
-                        )
-                else:
-                    if ml_evaluator_section_printer:
-                        ml_evaluator_section_printer.print("")
-                        ml_evaluator_section_printer.print(
-                            "[green]✓ Evaluation results meet expectations[/green]"
-                        )
+            # Evaluation completed - metrics will be analyzed by the agent
 
             # Update run with results
             tracking_service.update_run_result(
@@ -1817,121 +1601,15 @@ class MLEvaluateTool(BaseTool):
         if metrics_dict:
             result_metadata["metrics"] = metrics_dict
 
-        # Include plan feedback if evaluation was analyzed
-        if evaluation_feedback is not None:
-            result_metadata["plan_feedback"] = evaluation_feedback
+        # Include original plan evaluation section for reference (if using ML plan)
+        if ml_plan and ml_plan_evaluation:
+            result_metadata["plan_evaluation"] = ml_plan_evaluation
 
         return ToolResult(
             success=True,
             output="\n".join(lines),
             metadata=result_metadata,
         )
-
-    def _analyze_evaluation_results(
-        self, evaluation_result, metrics_dict: dict, ml_plan: dict | None = None
-    ) -> dict:
-        """Analyze evaluation results for potential issues and plan feedback.
-
-        Args:
-            evaluation_result: EvaluationResult object from completed evaluation
-            metrics_dict: Dictionary of evaluation metrics
-            ml_plan: Optional ML plan dict containing evaluation expectations
-
-        Returns:
-            Dictionary with evaluation feedback:
-                - needs_revision: bool - True if issues detected
-                - performance_issues: list[str] - List of detected issues
-                - root_causes: list[str] - Potential root causes
-                - suggestions: list[str] - Suggestions for improvement
-                - actual_metrics: dict - Actual evaluation metrics
-                - expected_metrics: str - Expected metrics from plan (if provided)
-        """
-        performance_issues = []
-        root_causes = []
-        suggestions = []
-
-        # Extract metrics for analysis
-        accuracy = metrics_dict.get("accuracy")
-        auc = metrics_dict.get("auc") or metrics_dict.get("roc_auc")
-        precision = metrics_dict.get("precision")
-        recall = metrics_dict.get("recall")
-        f1_score = metrics_dict.get("f1") or metrics_dict.get("f1_score")
-
-        # 1. Check for low accuracy
-        if accuracy is not None and accuracy < 0.7:
-            performance_issues.append("low_accuracy")
-            if accuracy < 0.5:
-                root_causes.append("model_barely_better_than_random")
-                suggestions.append(
-                    "Accuracy is very low - consider reviewing data quality and feature engineering"
-                )
-            else:
-                root_causes.append("underfitting_or_insufficient_features")
-                suggestions.append(
-                    "Accuracy is below target - consider adding more features or increasing model capacity"
-                )
-
-        # 2. Check for low AUC (for classification)
-        if auc is not None and auc < 0.75:
-            performance_issues.append("poor_discrimination")
-            root_causes.append("weak_separation_between_classes")
-            suggestions.append(
-                "AUC is low - model struggles to distinguish between classes. Consider feature engineering or different architecture"
-            )
-
-        # 3. Check for precision-recall imbalance
-        if precision is not None and recall is not None:
-            if precision > 0.8 and recall < 0.5:
-                performance_issues.append("low_recall")
-                root_causes.append("model_too_conservative")
-                suggestions.append(
-                    "High precision but low recall - model is too conservative. Consider adjusting decision threshold or class weights"
-                )
-            elif recall > 0.8 and precision < 0.5:
-                performance_issues.append("low_precision")
-                root_causes.append("model_too_aggressive")
-                suggestions.append(
-                    "High recall but low precision - model predicts positive too often. Consider adjusting decision threshold"
-                )
-
-        # 4. Check for poor F1 score
-        if f1_score is not None and f1_score < 0.6:
-            performance_issues.append("poor_f1_score")
-            root_causes.append("overall_weak_performance")
-            suggestions.append(
-                "F1 score is low - indicates poor overall performance. Consider data augmentation or model redesign"
-            )
-
-        # 5. Check for class imbalance issues (if we have precision and recall)
-        if precision is not None and recall is not None:
-            precision_recall_gap = abs(precision - recall)
-            if precision_recall_gap > 0.3:
-                performance_issues.append("class_imbalance_likely")
-                root_causes.append("imbalanced_training_data")
-                suggestions.append(
-                    "Large gap between precision and recall suggests class imbalance. Consider SMOTE, class weights, or threshold tuning"
-                )
-
-        # Extract expected metrics from ML plan if provided
-        expected_metrics = None
-        if ml_plan:
-            evaluation_section = ml_plan.get("evaluation", "")
-            if evaluation_section:
-                expected_metrics = evaluation_section
-
-        # Determine if revision is needed
-        needs_revision = len(performance_issues) > 0
-
-        return {
-            "needs_revision": needs_revision,
-            "performance_issues": performance_issues,
-            "root_causes": root_causes,
-            "suggestions": suggestions,
-            "actual_metrics": metrics_dict,
-            "expected_metrics": expected_metrics,
-            "num_samples": evaluation_result.num_samples,
-            "evaluation_time": evaluation_result.evaluation_time,
-        }
 
     def _create_validator(self):
         """Create validator function for the workflow."""
@@ -1957,7 +1635,7 @@ class MLEvaluateTool(BaseTool):
 
     def _create_editor(
         self,
-        user_context: str,
+        user_instruction: str,
         trainer_id: str,
         trainer_record,
         target_column_exists: bool,
@@ -1979,14 +1657,13 @@ class MLEvaluateTool(BaseTool):
             try:
                 _evaluator_spec, edited_yaml = await agent.generate_evaluator(
                     name=context["evaluator_name"],
-                    user_context=user_context,
+                    instruction=feedback,
                     trainer_ref=trainer_id,
                     trainer_spec_yaml=trainer_record.spec,
                     dataset=context["dataset"],
                     target_column=context["target_column"],
                     target_column_exists=target_column_exists,
                     existing_yaml=yaml_content,
-                    editing_instructions=feedback,
                 )
                 return edited_yaml
             except Exception as e:

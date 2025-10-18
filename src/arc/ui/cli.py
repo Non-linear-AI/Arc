@@ -449,7 +449,7 @@ async def _ml_train(
             "name": True,
             "model-id": True,
             "data": True,
-            "context": True,
+            "instruction": True,
             "plan-id": True,
         },
         command_name="/ml train",
@@ -458,7 +458,7 @@ async def _ml_train(
     name = options.get("name")
     model_id = options.get("model-id")
     train_table = options.get("data")
-    context = options.get("context")
+    instruction = options.get("instruction")
     plan_id = options.get("plan-id")
 
     # Validate required parameters
@@ -471,17 +471,17 @@ async def _ml_train(
     if not train_table:
         raise CommandError("/ml train requires --data")
 
-    # Must provide either context or plan-id (mutually exclusive)
-    if not context and not plan_id:
-        raise CommandError("/ml train requires either --context or --plan-id")
+    # Must provide either instruction or plan-id (mutually exclusive)
+    if not instruction and not plan_id:
+        raise CommandError("/ml train requires either --instruction or --plan-id")
 
-    if context and plan_id:
+    if instruction and plan_id:
         raise CommandError(
-            "/ml train cannot use both --context and --plan-id (choose one)"
+            "/ml train cannot use both --instruction and --plan-id (choose one)"
         )
 
-    # If using plan, extract training instructions and embed into context
-    training_context = context
+    # If using plan, extract training instructions and embed into instruction
+    training_instruction = instruction
     if plan_id:
         try:
             # Get the plan from database
@@ -509,10 +509,10 @@ async def _ml_train(
                 training_instructions.append(plan_data["rationale"])
 
             if training_instructions:
-                training_context = "\n".join(training_instructions)
+                training_instruction = "\n".join(training_instructions)
             else:
-                # Fallback: use entire plan as context
-                training_context = (
+                # Fallback: use entire plan as instruction
+                training_instruction = (
                     f"Follow the training strategy from plan '{plan_id}':\n"
                     f"{db_plan.plan_yaml}"
                 )
@@ -547,7 +547,7 @@ async def _ml_train(
         # This will generate trainer, confirm, register, and launch training
         result = await tool.execute(
             name=name,
-            context=training_context,
+            instruction=training_instruction,
             model_id=model_id,
             train_table=train_table,
         )
@@ -913,20 +913,20 @@ async def _ml_evaluate(
         args,
         {
             "name": True,
-            "context": True,
+            "instruction": True,
             "trainer-id": True,
             "data-table": True,
         },
     )
 
     name = options.get("name")
-    context = options.get("context")
+    instruction = options.get("instruction")
     trainer_id = options.get("trainer-id")
     data_table = options.get("data-table")
 
-    if not name or not context or not trainer_id or not data_table:
+    if not name or not instruction or not trainer_id or not data_table:
         raise CommandError(
-            "/ml evaluate requires --name, --context, --trainer-id, and --data-table"
+            "/ml evaluate requires --name, --instruction, --trainer-id, and --data-table"
         )
 
     tensorboard_manager = None
@@ -954,7 +954,7 @@ async def _ml_evaluate(
         # Execute the tool: generate spec, register, and run evaluation
         result = await tool.execute(
             name=name,
-            context=context,
+            instruction=instruction,
             trainer_id=trainer_id,
             data_table=data_table,
         )

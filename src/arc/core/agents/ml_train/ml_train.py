@@ -54,22 +54,22 @@ class MLTrainAgent(BaseAgent):
     async def generate_trainer(
         self,
         name: str,
-        user_context: str,
+        instruction: str,
         model_id: str,
         model_spec_yaml: str,
         existing_yaml: str | None = None,
-        editing_instructions: str | None = None,
         ml_plan_training_config: str | None = None,
     ) -> tuple[TrainerSpec, str]:
-        """Generate Arc trainer specification based on model and context.
+        """Generate Arc trainer specification based on model and instruction.
 
         Args:
             name: Trainer name for the specification
-            user_context: User description of desired training setup
+            instruction: User's instruction for training setup.
+                For generation: requirements for training configuration.
+                For editing: changes to make to existing YAML.
             model_id: ID of the registered model (e.g., "diabetes-logistic-v1")
             model_spec_yaml: Model specification YAML content
-            existing_yaml: Optional existing YAML to edit
-            editing_instructions: Optional instructions for editing existing YAML
+            existing_yaml: Optional existing YAML to edit (switches to editing mode)
             ml_plan_training_config: Optional training configuration from ML plan
 
         Returns:
@@ -81,15 +81,13 @@ class MLTrainAgent(BaseAgent):
         # Build simple context for LLM
         context = {
             "trainer_name": name,
-            "user_intent": user_context,
+            "instruction": instruction,
             "model_id": model_id,
             "model_spec": model_spec_yaml,
             "model_profile": self._extract_model_profile(model_spec_yaml),
             "available_components": self._get_training_components(),
-            "examples": self._get_trainer_examples(user_context),
-            "is_editing": existing_yaml is not None,
+            "examples": self._get_trainer_examples(instruction),
             "existing_yaml": existing_yaml,
-            "editing_instructions": editing_instructions,
             "ml_plan_training_config": ml_plan_training_config,
         }
 

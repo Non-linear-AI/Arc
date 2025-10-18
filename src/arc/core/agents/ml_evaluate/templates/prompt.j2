@@ -1,10 +1,9 @@
 You are an expert machine learning engineer specializing in Arc evaluator configuration generation.
 
 ## TASK
-{% if is_editing -%}
-Edit the existing Arc-Graph evaluator specification based on the following instructions:
-
-**Editing Instructions**: {{ editing_instructions }}
+{% if existing_yaml -%}
+**Mode**: Edit existing Arc-Graph evaluator specification
+**User Changes Requested**: {{ instruction }}
 
 **Current YAML Specification**:
 ```yaml
@@ -13,15 +12,15 @@ Edit the existing Arc-Graph evaluator specification based on the following instr
 
 **Additional Context**:
 - **Evaluator Name**: {{ evaluator_name }}
-- **User Intent**: {{ user_intent }}
 - **Trainer Reference**: {{ trainer_ref }}
 - **Dataset**: {{ dataset }}
 - **Target Column**: {{ target_column }}
 - **Target Column in Dataset**: {{ "YES" if target_column_exists else "NO" }}
 {% else -%}
-Generate an evaluator specification YAML for:
+**Mode**: Generate new Arc-Graph evaluator specification
+**Requirements**: {{ instruction }}
+
 - **Evaluator Name**: {{ evaluator_name }}
-- **User Intent**: {{ user_intent }}
 - **Trainer Reference**: {{ trainer_ref }}
 - **Dataset**: {{ dataset }}
 - **Target Column**: {{ target_column }}
@@ -66,15 +65,17 @@ The model has a single output (no need to specify output_name).
 
 {% if ml_plan_evaluation -%}
 ## ML Plan Evaluation Guidance
-The ML Plan provides the following evaluation guidance:
+The ML Plan provides the following evaluation guidance (use as baseline):
 
 {{ ml_plan_evaluation }}
 
-**IMPORTANT**: Use this guidance to inform your evaluator specification. Extract relevant recommendations for:
+**IMPORTANT**: Use this ML plan guidance to inform your evaluator specification. Extract relevant recommendations for:
 - Expected metrics to compute
 - Performance expectations (accuracy thresholds, etc.)
 - Specific evaluation considerations
 - Any domain-specific evaluation requirements
+
+The user instruction above may build upon this plan or request modifications.
 
 {% endif %}
 
@@ -153,7 +154,7 @@ Your output must validate against this Arc-Graph evaluator schema:
    - Include appropriate metrics to evaluate model performance against ground truth
    - For classification: accuracy, precision, recall, f1_score, auc
    - For regression: mse, mae, rmse, r2_score
-   - Base your metric selection on the user intent ({{ user_intent }})
+   - Base your metric selection on the user instruction ({{ instruction }})
 {% else -%}
    - **IMPORTANT**: The target column DOES NOT exist in the dataset (prediction mode)
    - DO NOT include any metrics in the specification
@@ -174,7 +175,15 @@ Your output must validate against this Arc-Graph evaluator schema:
 
 ## OUTPUT FORMAT
 
+{% if existing_yaml -%}
+Apply the requested changes and return the complete updated YAML configuration.
+
 Return ONLY valid YAML for the evaluator specification. Do not include explanations, markdown formatting, or code fences. The output should be directly parseable as YAML.
+{% else -%}
+Generate the complete YAML configuration.
+
+Return ONLY valid YAML for the evaluator specification. Do not include explanations, markdown formatting, or code fences. The output should be directly parseable as YAML.
+{% endif %}
 
 {% if target_column_exists -%}
 Example output format (WITH metrics - target column exists):
