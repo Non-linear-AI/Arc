@@ -91,10 +91,10 @@ class MLDataProcessTool(BaseTool):
     async def generate(
         self,
         name: str,
+        source_tables: list[str],
         instruction: str | None = None,
-        target_tables: list[str] | None = None,
         output_path: str | None = None,
-        target_db: str = "user",
+        database: str = "user",
         auto_confirm: bool = False,
         ml_plan: dict | None = None,
     ) -> ToolResult:
@@ -102,11 +102,12 @@ class MLDataProcessTool(BaseTool):
 
         Args:
             name: Name for the data processor (will be registered in database)
+            source_tables: List of source tables to read from (required to narrow
+                scope of data exploration)
             instruction: Detailed instruction for data processing (shaped by main agent
                 or from ML plan)
-            target_tables: List of tables to analyze for generation
             output_path: Path to save generated YAML file (optional, for backup)
-            target_db: Target database - "system" or "user"
+            database: Database to use - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
             ml_plan: Optional ML plan dict containing feature engineering guidance
 
@@ -125,10 +126,16 @@ class MLDataProcessTool(BaseTool):
                 "Provide a detailed instruction for your data processing needs."
             )
 
-        # Validate target database
-        if target_db not in ["system", "user"]:
+        if not source_tables or len(source_tables) == 0:
             return ToolResult.error_result(
-                f"Invalid target database: {target_db}. Must be 'system' or 'user'."
+                "source_tables is required to narrow the scope of data exploration. "
+                "Specify which tables to read from (e.g., ['users', 'transactions'])."
+            )
+
+        # Validate database
+        if database not in ["system", "user"]:
+            return ToolResult.error_result(
+                f"Invalid database: {database}. Must be 'system' or 'user'."
             )
 
         # Extract feature engineering guidance from ML plan if provided
@@ -180,8 +187,8 @@ class MLDataProcessTool(BaseTool):
                 yaml_content,
             ) = await self.generator_agent.generate_data_processing_yaml(
                 instruction=enhanced_instruction,
-                target_tables=target_tables,
-                target_db=target_db,
+                source_tables=source_tables,
+                database=database,
             )
 
             # Validate the generated spec before confirmation workflow
@@ -223,8 +230,8 @@ class MLDataProcessTool(BaseTool):
 
                 context_dict = {
                     "instruction": str(enhanced_instruction),
-                    "target_tables": target_tables,
-                    "target_db": target_db,
+                    "source_tables": source_tables,
+                    "database": database,
                 }
 
                 try:
@@ -310,11 +317,11 @@ class MLDataProcessTool(BaseTool):
 
             try:
                 execution_result = await execute_data_source_pipeline(
-                    spec, target_db, self.services.db_manager, progress_callback
+                    spec, database, self.services.db_manager, progress_callback
                 )
 
                 # Invalidate schema cache since new tables were created
-                self.services.schema.invalidate_cache(target_db)
+                self.services.schema.invalidate_cache(database)
 
             except DataSourceExecutionError as e:
                 # Generation and registration succeeded, but execution failed
@@ -441,8 +448,8 @@ class MLDataProcessTool(BaseTool):
                     edited_yaml,
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=feedback,  # User's change request
-                    target_tables=context.get("target_tables"),
-                    target_db=context.get("target_db", "user"),
+                    source_tables=context.get("source_tables"),
+                    database=context.get("database", "user"),
                     existing_yaml=yaml_content,
                 )
                 return edited_yaml

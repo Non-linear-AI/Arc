@@ -1006,11 +1006,17 @@ async def _ml_data_processing(
     instruction = options.get("instruction")
     data_tables_str = options.get("data-tables")
     plan_id = options.get("plan-id")
-    target_db = options.get("target-db", "user")
+    database = options.get("target-db", "user")  # Keep CLI option as --target-db
 
     # Validate required parameters
     if not name:
         raise CommandError("/ml data-processing requires --name")
+
+    if not data_tables_str:
+        raise CommandError(
+            "/ml data-processing requires --data-tables to narrow the scope of "
+            "data exploration"
+        )
 
     # instruction is optional when using a plan
     if not plan_id and not instruction:
@@ -1018,10 +1024,10 @@ async def _ml_data_processing(
             "/ml data-processing requires --instruction when not using --plan-id"
         )
 
-    # Validate target database
-    if target_db not in ["system", "user"]:
+    # Validate database
+    if database not in ["system", "user"]:
         raise CommandError(
-            "Invalid target database. Use --target-db system or --target-db user"
+            "Invalid database. Use --target-db system or --target-db user"
         )
 
     # Parse data tables if provided
@@ -1063,8 +1069,8 @@ async def _ml_data_processing(
         result = await tool.execute(
             name=name,
             instruction=instruction,
-            target_tables=data_tables,
-            target_db=target_db,
+            source_tables=data_tables,
+            database=database,
             ml_plan=ml_plan,
         )
 
