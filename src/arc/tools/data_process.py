@@ -12,20 +12,20 @@ from arc.utils import ConfirmationService
 from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 if TYPE_CHECKING:
-    from arc.core.agents.data_process.data_process import (
-        DataProcessorGeneratorAgent,
+    from arc.core.agents.ml_data.ml_data import (
+        MLDataAgent,
     )
     from arc.database.services.container import ServiceContainer
 else:
     # Avoid circular imports at runtime
     try:
-        from arc.core.agents.data_process.data_process import (
-            DataProcessorGeneratorAgent,
-            DataProcessorGeneratorError,
+        from arc.core.agents.ml_data.ml_data import (
+            MLDataAgent,
+            MLDataError,
         )
     except ImportError:
-        DataProcessorGeneratorAgent = None
-        DataProcessorGeneratorError = Exception
+        MLDataAgent = None
+        MLDataError = Exception
 
 
 class MLDataProcessTool(BaseTool):
@@ -33,7 +33,7 @@ class MLDataProcessTool(BaseTool):
 
     This tool has a single purpose: convert natural language descriptions into
     structured SQL data processing pipelines using LLM generation.
-    It requires an API key and uses the DataProcessorGeneratorAgent.
+    It requires an API key and uses the MLDataAgent.
     """
 
     def __init__(
@@ -55,7 +55,7 @@ class MLDataProcessTool(BaseTool):
 
         Raises:
             ValueError: If API key is not provided
-            RuntimeError: If DataProcessorGeneratorAgent cannot be initialized
+            RuntimeError: If MLDataAgent cannot be initialized
         """
         if not api_key:
             raise ValueError(
@@ -64,9 +64,9 @@ class MLDataProcessTool(BaseTool):
                 "without an API key."
             )
 
-        if DataProcessorGeneratorAgent is None:
+        if MLDataAgent is None:
             raise RuntimeError(
-                "DataProcessorGeneratorAgent is not available. "
+                "MLDataAgent is not available. "
                 "This is likely due to missing dependencies or circular imports."
             )
 
@@ -78,12 +78,12 @@ class MLDataProcessTool(BaseTool):
 
         # Initialize the generator agent (required)
         try:
-            self.generator_agent = DataProcessorGeneratorAgent(
+            self.generator_agent = MLDataAgent(
                 services=services, api_key=api_key, base_url=base_url, model=model
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize DataProcessorGeneratorAgent: {str(e)}. "
+                f"Failed to initialize MLDataAgent: {str(e)}. "
                 "This tool requires a working LLM connection for data processing "
                 "generation."
             ) from e

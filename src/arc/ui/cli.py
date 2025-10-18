@@ -234,7 +234,7 @@ async def handle_ml_command(
     if len(tokens) < 2:
         ui.show_system_error(
             "Usage: /ml <plan|revise-plan|train|predict|jobs|"
-            "model|evaluate|data-processing> ..."
+            "model|evaluate|data> ..."
         )
         return
 
@@ -260,7 +260,7 @@ async def handle_ml_command(
             await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "evaluate":
             await _ml_evaluate(args, ui, runtime)
-        elif subcommand == "data-processing":
+        elif subcommand == "data":
             await _ml_data_processing(args, ui, runtime)
         else:
             raise CommandError(f"Unknown ML command: {subcommand}")
@@ -999,7 +999,7 @@ async def _ml_data_processing(
             "plan-id": True,
             "target-db": True,
         },
-        command_name="/ml data-processing",
+        command_name="/ml data",
     )
 
     name = options.get("name")
@@ -1010,14 +1010,14 @@ async def _ml_data_processing(
 
     # Validate required parameters
     if not name:
-        raise CommandError("/ml data-processing requires --name")
+        raise CommandError("/ml data requires --name")
 
     if not instruction:
-        raise CommandError("/ml data-processing requires --instruction")
+        raise CommandError("/ml data requires --instruction")
 
     if not data_tables_str:
         raise CommandError(
-            "/ml data-processing requires --data-tables to narrow the scope of "
+            "/ml data requires --data-tables to narrow the scope of "
             "data exploration"
         )
 

@@ -1,4 +1,4 @@
-"""Data processor generator agent for creating SQL feature configurations."""
+"""Arc ML data agent for creating SQL feature configurations."""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ if TYPE_CHECKING:
     from arc.database.services.container import ServiceContainer
 
 
-class DataProcessorGeneratorError(Exception):
+class MLDataError(Exception):
     """Exception raised when data processor generation fails."""
 
 
-class DataProcessorGeneratorAgent:
+class MLDataAgent:
     """Agent for generating data processing YAML from natural language."""
 
     def __init__(
@@ -28,7 +28,7 @@ class DataProcessorGeneratorAgent:
         base_url: str | None = None,
         model: str | None = None,
     ) -> None:
-        """Initialize DataProcessorGeneratorAgent.
+        """Initialize MLDataAgent.
 
         Args:
             services: Service container for database access
@@ -65,7 +65,7 @@ class DataProcessorGeneratorAgent:
             Tuple of (DataSourceSpec object, YAML string)
 
         Raises:
-            DataProcessorGeneratorError: If generation fails
+            MLDataError: If generation fails
         """
         try:
             # Get schema information for available tables
@@ -97,14 +97,14 @@ class DataProcessorGeneratorAgent:
                 )
                 if retry_result:
                     return retry_result
-                raise DataProcessorGeneratorError(
+                raise MLDataError(
                     f"Generated invalid YAML configuration: {e}"
                 ) from e
 
         except Exception as e:
-            if isinstance(e, DataProcessorGeneratorError):
+            if isinstance(e, MLDataError):
                 raise
-            raise DataProcessorGeneratorError(
+            raise MLDataError(
                 f"Failed to generate data processing configuration: {e}"
             ) from e
 
@@ -222,7 +222,7 @@ class DataProcessorGeneratorAgent:
             Rendered prompt string for system message
 
         Raises:
-            DataProcessorGeneratorError: If template cannot be loaded or rendered
+            MLDataError: If template cannot be loaded or rendered
         """
         template_path = Path(__file__).parent / "templates" / "prompt.j2"
 
@@ -247,17 +247,17 @@ class DataProcessorGeneratorAgent:
             return prompt
 
         except jinja2.TemplateNotFound as e:
-            raise DataProcessorGeneratorError(
+            raise MLDataError(
                 f"Prompt template not found: {template_path}. "
-                "This is a configuration error in the DataProcessorGeneratorAgent."
+                "This is a configuration error in the MLDataAgent."
             ) from e
         except jinja2.TemplateError as e:
-            raise DataProcessorGeneratorError(
+            raise MLDataError(
                 f"Failed to render prompt template: {e}. "
                 "Check the template syntax in {template_path}."
             ) from e
         except Exception as e:
-            raise DataProcessorGeneratorError(
+            raise MLDataError(
                 f"Unexpected error loading prompt template: {e}"
             ) from e
 
@@ -271,13 +271,13 @@ class DataProcessorGeneratorAgent:
             Generated YAML content
 
         Raises:
-            DataProcessorGeneratorError: If LLM generation fails
+            MLDataError: If LLM generation fails
         """
         try:
             response = await self.client.chat(messages, tools=[])
 
             if not response.content:
-                raise DataProcessorGeneratorError("LLM returned empty response")
+                raise MLDataError("LLM returned empty response")
 
             # Extract YAML from response (handle cases where LLM adds markdown)
             yaml_content = response.content.strip()
@@ -294,7 +294,7 @@ class DataProcessorGeneratorAgent:
             return yaml_content.strip()
 
         except Exception as e:
-            raise DataProcessorGeneratorError(f"LLM generation failed: {e}") from e
+            raise MLDataError(f"LLM generation failed: {e}") from e
 
     async def _retry_generation_with_feedback(
         self,

@@ -12,7 +12,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from arc.core.agents.data_process.data_process import DataProcessorGeneratorAgent
+from arc.core.agents.ml_data.ml_data import MLDataAgent
 from arc.database.manager import DatabaseManager
 from arc.database.services.container import ServiceContainer
 
@@ -92,7 +92,7 @@ async def render_generation_prompt():
     create_sample_tables(db_manager)
 
     # Create agent (dummy API key since we're just rendering the prompt)
-    agent = DataProcessorGeneratorAgent(
+    agent = MLDataAgent(
         services=services,
         api_key="dummy-key-for-rendering",
         model="gpt-4",
@@ -153,7 +153,7 @@ async def render_editing_prompt():
     create_sample_tables(db_manager)
 
     # Create agent
-    agent = DataProcessorGeneratorAgent(
+    agent = MLDataAgent(
         services=services,
         api_key="dummy-key-for-rendering",
         model="gpt-4",
