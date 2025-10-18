@@ -13,9 +13,9 @@ if TYPE_CHECKING:
     from arc.database.models.model import Model
 
 from arc.core.agents.ml_plan import MLPlanAgent
-from arc.core.agents.model_generator import ModelGeneratorAgent
-from arc.core.agents.trainer_generator import (
-    TrainerGeneratorAgent,
+from arc.core.agents.ml_model import MLModelAgent
+from arc.core.agents.ml_trainer import (
+    MLTrainerAgent,
 )
 from arc.graph.model import ModelValidationError, validate_model_dict
 from arc.graph.trainer import TrainerValidationError, validate_trainer_dict
@@ -144,7 +144,7 @@ class MLModelTool(BaseTool):
             )
 
         # Generate model using agent
-        agent = ModelGeneratorAgent(
+        agent = MLModelAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -162,9 +162,9 @@ class MLModelTool(BaseTool):
             )
         except Exception as exc:
             # Import here to avoid circular imports
-            from arc.core.agents.model_generator import ModelGeneratorError
+            from arc.core.agents.ml_model import MLModelError
 
-            if isinstance(exc, ModelGeneratorError):
+            if isinstance(exc, MLModelError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during model generation: {exc}"
@@ -327,7 +327,7 @@ class MLModelTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            agent = ModelGeneratorAgent(
+            agent = MLModelAgent(
                 self.services,
                 self.api_key,
                 self.base_url,
@@ -618,7 +618,7 @@ class MLTrainTool(BaseTool):
             ml_plan_training_config = plan.training_configuration
 
         # Generate trainer spec via LLM
-        agent = TrainerGeneratorAgent(
+        agent = MLTrainerAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -634,9 +634,9 @@ class MLTrainTool(BaseTool):
                 ml_plan_training_config=ml_plan_training_config,
             )
         except Exception as exc:
-            from arc.core.agents.trainer_generator import TrainerGeneratorError
+            from arc.core.agents.ml_trainer import MLTrainerError
 
-            if isinstance(exc, TrainerGeneratorError):
+            if isinstance(exc, MLTrainerError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during trainer generation: {exc}"
@@ -1234,7 +1234,7 @@ class MLTrainTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            agent = TrainerGeneratorAgent(
+            agent = MLTrainerAgent(
                 self.services,
                 self.api_key,
                 self.base_url,
@@ -1426,9 +1426,9 @@ class MLEvaluateTool(BaseTool):
             ml_plan_evaluation = plan.evaluation
 
         # Generate evaluator spec via LLM
-        from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+        from arc.core.agents.ml_evaluator import MLEvaluatorAgent
 
-        agent = EvaluatorGeneratorAgent(
+        agent = MLEvaluatorAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -1447,9 +1447,9 @@ class MLEvaluateTool(BaseTool):
                 ml_plan_evaluation=ml_plan_evaluation,
             )
         except Exception as exc:
-            from arc.core.agents.evaluator_generator import EvaluatorGeneratorError
+            from arc.core.agents.ml_evaluator import MLEvaluatorError
 
-            if isinstance(exc, EvaluatorGeneratorError):
+            if isinstance(exc, MLEvaluatorError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during evaluator generation: {exc}"
@@ -1967,9 +1967,9 @@ class MLEvaluateTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+            from arc.core.agents.ml_evaluator import MLEvaluatorAgent
 
-            agent = EvaluatorGeneratorAgent(
+            agent = MLEvaluatorAgent(
                 self.services,
                 self.api_key,
                 self.base_url,
@@ -2270,9 +2270,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
             self.ui.show_info(f"ℹ Using registered trainer: {trainer_record.id}")
             self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
 
-        from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+        from arc.core.agents.ml_evaluator import MLEvaluatorAgent
 
-        agent = EvaluatorGeneratorAgent(
+        agent = MLEvaluatorAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -2291,9 +2291,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
             )
         except Exception as exc:
             # Import here to avoid circular imports
-            from arc.core.agents.evaluator_generator import EvaluatorGeneratorError
+            from arc.core.agents.ml_evaluator import MLEvaluatorError
 
-            if isinstance(exc, EvaluatorGeneratorError):
+            if isinstance(exc, MLEvaluatorError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during evaluator generation: {exc}"
@@ -2446,9 +2446,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
+            from arc.core.agents.ml_evaluator import MLEvaluatorAgent
 
-            agent = EvaluatorGeneratorAgent(
+            agent = MLEvaluatorAgent(
                 self.services,
                 self.api_key,
                 self.base_url,

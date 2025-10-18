@@ -1,4 +1,4 @@
-"""Arc evaluator specification generation agent."""
+"""Arc ML evaluator agent."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from arc.graph.evaluator import (
 logger = logging.getLogger(__name__)
 
 
-class EvaluatorGeneratorError(AgentError):
+class MLEvaluatorError(AgentError):
     """Raised when evaluator generation fails."""
 
 
-class EvaluatorGeneratorAgent(BaseAgent):
+class MLEvaluatorAgent(BaseAgent):
     """Specialized agent for generating Arc evaluator specifications using LLM."""
 
     AVAILABLE_METRICS = {
@@ -129,7 +129,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             return evaluator_spec, evaluator_yaml
 
         except AgentError as e:
-            raise EvaluatorGeneratorError(str(e)) from e
+            raise MLEvaluatorError(str(e)) from e
 
     def _validate_evaluator_comprehensive(
         self, evaluator_yaml: str, context: dict[str, Any]

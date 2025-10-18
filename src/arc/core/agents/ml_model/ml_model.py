@@ -1,4 +1,4 @@
-"""Arc model specification generation agent."""
+"""Arc ML model agent."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from arc.database.services import ServiceContainer
 from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS, ModelSpec, validate_model_dict
 
 
-class ModelGeneratorError(AgentError):
+class MLModelError(AgentError):
     """Raised when model generation fails."""
 
 
-class ModelGeneratorAgent(BaseAgent):
+class MLModelAgent(BaseAgent):
     """Specialized agent for generating Arc model specifications using LLM."""
 
     def __init__(
@@ -138,7 +138,7 @@ class ModelGeneratorAgent(BaseAgent):
             return model_spec, model_yaml
 
         except AgentError as e:
-            raise ModelGeneratorError(str(e)) from e
+            raise MLModelError(str(e)) from e
 
     def _detect_category_from_context(
         self, user_context: str, _data_profile: dict[str, Any]

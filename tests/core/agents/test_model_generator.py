@@ -1,15 +1,15 @@
-"""Tests for ModelGeneratorAgent in the separated architecture."""
+"""Tests for MLModelAgent in the separated architecture."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from arc.core.agents.model_generator import ModelGeneratorAgent, ModelGeneratorError
+from arc.core.agents.ml_model import MLModelAgent, MLModelError
 from arc.graph.model import ModelSpec
 
 
-class TestModelGeneratorAgent:
-    """Test ModelGeneratorAgent functionality."""
+class TestMLModelAgent:
+    """Test MLModelAgent functionality."""
 
     @pytest.fixture
     def mock_services(self):
@@ -35,10 +35,10 @@ class TestModelGeneratorAgent:
 
     @pytest.fixture
     def model_generator(self, mock_services):
-        """ModelGeneratorAgent instance."""
+        """MLModelAgent instance."""
         from unittest.mock import AsyncMock, MagicMock
 
-        generator = ModelGeneratorAgent(mock_services, "test_api_key")
+        generator = MLModelAgent(mock_services, "test_api_key")
 
         # Mock the arc_client to avoid actual API calls
         mock_client = MagicMock()
@@ -134,8 +134,8 @@ loss:
         mock_response.content = "invalid: yaml: content: ["
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
-        # Should raise ModelGeneratorError
-        with pytest.raises(ModelGeneratorError):
+        # Should raise MLModelError
+        with pytest.raises(MLModelError):
             await model_generator.generate_model(
                 name="test_model", user_context="Test model", table_name="test_table"
             )
@@ -156,8 +156,8 @@ loss:
         mock_response.content = incomplete_yaml
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
-        # Should raise ModelGeneratorError
-        with pytest.raises(ModelGeneratorError):
+        # Should raise MLModelError
+        with pytest.raises(MLModelError):
             await model_generator.generate_model(
                 name="test_model", user_context="Test model", table_name="test_table"
             )
@@ -184,8 +184,8 @@ loss:
         mock_response.content = invalid_yaml
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
-        # Should raise ModelGeneratorError due to validation
-        with pytest.raises(ModelGeneratorError):
+        # Should raise MLModelError due to validation
+        with pytest.raises(MLModelError):
             await model_generator.generate_model(
                 name="test_model", user_context="Test model", table_name="test_table"
             )
