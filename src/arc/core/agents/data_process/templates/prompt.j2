@@ -1,128 +1,352 @@
-## TASK
-{% if existing_yaml and editing_instructions %}Edit an existing data processing JSON configuration based on the following changes:
-- **Editing Instructions**: {{ editing_instructions }}
-- **Original Requirements**: {{ user_context }}
-{% if target_tables %}- **Target Tables**: {{ target_tables | join(", ") }}
-{% endif %}- **Database**: {{ schema_info.database }}
-{% else %}Generate a data processing JSON configuration for:
-- **User Requirements**: {{ user_context }}
-{% if target_tables %}- **Target Tables**: {{ target_tables | join(", ") }}
-{% endif %}- **Database**: {{ schema_info.database }}
+# ROLE
+
+You are a senior SQL data engineer specializing in production data pipelines and feature engineering. Your work goes directly into production without human review.
+
+# OBJECTIVE
+
+{% if existing_yaml %}**Edit an existing data processing pipeline** based on user feedback.
+{% else %}**Create a complete data processing pipeline** from scratch.
 {% endif %}
 
-## Available Tables
-{% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**:
-{% for column in table.columns %}  - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
+Generate a COMPLETE, PRODUCTION-READY YAML configuration that:
+- Requires NO further modifications or enhancements
+- Validates against the provided schema
+- Uses concrete SQL with actual values (no placeholders)
+- Handles data quality issues defensively
+- Follows all production best practices
+
+# TASK SPECIFICATION
+
+{% if existing_yaml %}**Mode**: Edit existing configuration
+**User Changes Requested**: {{ user_instruction }}
+{% else %}**Mode**: Generate new configuration
+**Requirements**: {{ user_instruction }}
+{% endif %}
+{% if source_tables %}**Source Tables**: {{ source_tables | join(", ") }}
+{% endif %}**Database**: {{ schema_info.database }}
+
+# AVAILABLE DATA
+
+{% if schema_info.tables %}{% for table in schema_info.tables %}**{{ table.name }}**{% if table.row_count %} ({{ "{:,}".format(table.row_count) }} rows){% endif %}:
+{% for column in table.columns %}  - `{{ column.name }}` ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
 {% endfor %}
 
 {% endfor %}{% else %}No table schema information available.
 {% endif %}
-{% if existing_yaml and editing_instructions %}
-## Existing Configuration
-The current YAML configuration that needs to be edited:
+{% if existing_yaml %}
+# CURRENT CONFIGURATION
+
 ```yaml
 {{ existing_yaml }}
 ```
 
-Apply the editing instructions above to this configuration. Make the requested changes while preserving the overall structure and any parts not affected by the edits.
+Apply the requested changes while preserving production-ready quality and overall structure.
 
 {% endif %}
-## JSON Schema
-You must generate JSON that follows this exact schema:
+# CONFIGURATION STRUCTURE
+
+**Required Fields:**
+- `name`: Pipeline name (snake_case)
+- `description`: What this pipeline does
+- `steps`: Array of transformation steps
+- `outputs`: Array of step names that produce final tables
+
+**Optional Fields:**
+- `vars`: Variables for SQL substitution using ${var_name} syntax
+
+**Step Structure:**
+```yaml
+- name: step_name          # Unique identifier (snake_case)
+  type: table|view|execute # Materialization type
+  depends_on: [...]        # Source tables or prior steps
+  sql: "SELECT ..."        # Complete SQL query
+```
+
+**Step Types:**
+- `table`: SELECT query → final output table (MUST be in outputs array)
+- `view`: SELECT query → intermediate result (NOT in outputs array)
+- `execute`: DDL/DML with no result set (DROP, INSERT, etc.)
+
+# PRODUCTION REQUIREMENTS
+
+## 1. SQL Quality - Write Defensive, Concrete SQL
+
+**Be Concrete - Use Actual Values:**
+```sql
+✓ WHERE transaction_date >= '2023-01-01' AND amount > 0
+✗ WHERE transaction_date >= 'YYYY-MM-DD' AND amount > your_threshold
+```
+
+**Handle NULLs Explicitly:**
+```sql
+✓ COALESCE(zip_code, 'UNKNOWN') as zip_code
+✓ WHERE user_id IS NOT NULL
+✗ WHERE user_id != NULL  -- This is wrong!
+```
+
+**Prevent Division by Zero:**
+```sql
+✓ CASE WHEN total_orders > 0 THEN revenue / total_orders ELSE 0 END
+✗ revenue / total_orders  -- Crashes if total_orders = 0
+```
+
+**Type Casting:**
+```sql
+✓ CAST(amount AS DECIMAL(10,2))
+✓ WHERE created_at::DATE >= '2023-01-01'
+```
+
+**Filter Early:**
+```sql
+✓ SELECT ... FROM (SELECT * FROM big_table WHERE date >= '2023-01-01')
+✗ SELECT ... FROM big_table WHERE ... -- filtering after join
+```
+
+## 2. Idempotency - Make Pipelines Re-runnable
+
+Always use `DROP TABLE IF EXISTS` before creating tables:
+```yaml
+- name: drop_old_results
+  type: execute
+  depends_on: []
+  sql: DROP TABLE IF EXISTS user_features
+
+- name: user_features
+  type: table
+  depends_on: [drop_old_results, users, transactions]
+  sql: SELECT ...
+```
+
+## 3. Dependencies - Declare Everything
+
+List ALL dependencies (source tables AND prior steps):
+```yaml
+✓ depends_on: [drop_old_table, raw_users, raw_orders]
+✗ depends_on: [raw_users]  -- Missing drop step and raw_orders
+```
+
+## 4. Pipeline Structure - Modular and Clear
+
+**Break complex logic into steps:**
+```yaml
+# Good: Separate cleaning, joining, aggregating
+steps:
+  - name: clean_transactions
+    type: view
+  - name: clean_users
+    type: view
+  - name: join_user_transactions
+    type: view
+  - name: user_aggregates
+    type: table
+
+# Bad: Everything in one massive query
+steps:
+  - name: final_output
+    type: table
+    sql: SELECT ... FROM (SELECT ... FROM (SELECT ...)) -- Hard to debug
+```
+
+**Use descriptive names:**
+```yaml
+✓ filter_valid_transactions, aggregate_monthly_revenue
+✗ step_1, temp_table, output
+```
+
+## 5. Common Patterns
+
+**Window Functions (for ranking, running totals):**
+```sql
+SELECT
+  user_id,
+  transaction_date,
+  amount,
+  ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY transaction_date DESC) as recency_rank,
+  SUM(amount) OVER (PARTITION BY user_id ORDER BY transaction_date) as running_total
+FROM transactions
+```
+
+**Aggregations (for features):**
+```sql
+SELECT
+  user_id,
+  COUNT(*) as transaction_count,
+  SUM(amount) as total_spent,
+  AVG(amount) as avg_transaction,
+  MAX(transaction_date) as last_transaction_date
+FROM transactions
+GROUP BY user_id
+HAVING COUNT(*) >= 5  -- Filter groups
+```
+
+**Joins (combine data sources):**
+```sql
+SELECT
+  u.user_id,
+  u.signup_date,
+  t.transaction_count,
+  t.total_spent
+FROM users u
+LEFT JOIN user_transaction_stats t ON u.user_id = t.user_id
+WHERE u.signup_date >= '2023-01-01'
+```
+
+## 6. Anti-Patterns - What NOT to Do
+
+❌ **Don't use SELECT \***
+```sql
+✗ SELECT * FROM transactions
+✓ SELECT user_id, amount, transaction_date FROM transactions
+```
+
+❌ **Don't leave placeholders**
+```sql
+✗ WHERE amount > ${THRESHOLD}  -- unless using vars feature
+✓ WHERE amount > 100
+```
+
+❌ **Don't create circular dependencies**
+```sql
+✗ step_a depends_on: [step_b]
+  step_b depends_on: [step_a]
+```
+
+❌ **Don't ignore outputs array consistency**
+```sql
+✗ type: table, but name NOT in outputs array
+✗ type: view, but name IS in outputs array
+```
+
+# COMPLETE EXAMPLE
+
+This example demonstrates: idempotency, NULL handling, joins, window functions, and multiple outputs.
+
+```yaml
+name: user_behavior_features
+description: Creates user behavioral features from transactions and sessions, with recency and frequency metrics
+
+vars:
+  min_date: '2023-01-01'
+
+steps:
+  # Idempotency - drop old tables
+  - name: drop_old_transaction_features
+    type: execute
+    depends_on: []
+    sql: DROP TABLE IF EXISTS user_transaction_features
+
+  - name: drop_old_session_features
+    type: execute
+    depends_on: []
+    sql: DROP TABLE IF EXISTS user_session_features
+
+  # Clean and filter source data
+  - name: clean_transactions
+    type: view
+    depends_on: [transactions]
+    sql: |
+      SELECT
+        user_id,
+        CAST(amount AS DECIMAL(10,2)) as amount,
+        transaction_date,
+        COALESCE(category, 'UNKNOWN') as category
+      FROM transactions
+      WHERE transaction_date >= '${min_date}'
+        AND amount > 0
+        AND user_id IS NOT NULL
+
+  - name: clean_sessions
+    type: view
+    depends_on: [sessions]
+    sql: |
+      SELECT
+        user_id,
+        session_date,
+        duration_seconds
+      FROM sessions
+      WHERE session_date >= '${min_date}'
+        AND user_id IS NOT NULL
+        AND duration_seconds > 0
+
+  # Aggregate transaction features with window functions
+  - name: user_transaction_features
+    type: table
+    depends_on: [drop_old_transaction_features, clean_transactions]
+    sql: |
+      SELECT
+        user_id,
+        COUNT(*) as transaction_count,
+        SUM(amount) as total_spent,
+        AVG(amount) as avg_transaction_amount,
+        MAX(transaction_date) as last_transaction_date,
+        MIN(transaction_date) as first_transaction_date,
+        COUNT(DISTINCT category) as unique_categories,
+        MAX(CASE WHEN category = 'ELECTRONICS' THEN 1 ELSE 0 END) as has_electronics_purchase
+      FROM clean_transactions
+      GROUP BY user_id
+      HAVING COUNT(*) >= 3
+
+  # Aggregate session features with recency ranking
+  - name: user_session_features
+    type: table
+    depends_on: [drop_old_session_features, clean_sessions]
+    sql: |
+      WITH ranked_sessions AS (
+        SELECT
+          user_id,
+          session_date,
+          duration_seconds,
+          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY session_date DESC) as recency_rank
+        FROM clean_sessions
+      )
+      SELECT
+        user_id,
+        COUNT(*) as session_count,
+        AVG(duration_seconds) as avg_session_duration,
+        MAX(CASE WHEN recency_rank = 1 THEN session_date END) as last_session_date,
+        SUM(CASE WHEN recency_rank <= 7 THEN 1 ELSE 0 END) as sessions_last_week
+      FROM ranked_sessions
+      GROUP BY user_id
+
+outputs: [user_transaction_features, user_session_features]
+```
+
+# OUTPUT FORMAT
+
+Return ONLY valid YAML. No explanations, no markdown code blocks, no commentary.
+
+{% if existing_yaml %}Apply the requested changes and return the complete updated YAML configuration.
+{% else %}Generate the complete YAML configuration.
+{% endif %}
+
+---
+
+# SCHEMA REFERENCE
+
+Your output must validate against this structure:
 
 ```json
 {
   "type": "object",
   "required": ["name", "description", "steps", "outputs"],
   "properties": {
-    "name": {"type": "string", "description": "Name of the data processing pipeline"},
-    "description": {"type": "string", "description": "Description of what this pipeline does"},
-    "vars": {
-      "type": "object",
-      "description": "Optional variables for SQL substitution (${var} syntax)"
-    },
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "vars": {"type": "object"},
     "steps": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "depends_on", "sql"],
+        "required": ["name", "type", "depends_on", "sql"],
         "properties": {
-          "name": {"type": "string", "description": "Unique name for this processing step"},
-          "depends_on": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "List of table names or step names this step depends on"
-          },
-          "sql": {"type": "string", "description": "Concrete SQL query for this transformation step"}
+          "name": {"type": "string"},
+          "type": {"enum": ["table", "view", "execute"]},
+          "depends_on": {"type": "array", "items": {"type": "string"}},
+          "sql": {"type": "string"}
         }
       }
     },
-    "outputs": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "List of step names that should be materialized as final output tables"
-    }
+    "outputs": {"type": "array", "items": {"type": "string"}}
   }
 }
 ```
-
-## Example JSON Structure
-```json
-{
-  "name": "user_transaction_aggregates",
-  "description": "Process transaction data to create user-level aggregates",
-  "steps": [
-    {
-      "name": "clean_data",
-      "depends_on": ["source_table"],
-      "sql": "SELECT * FROM source_table WHERE date >= '2023-01-01' AND amount > 100"
-    },
-    {
-      "name": "user_aggregates",
-      "depends_on": ["clean_data"],
-      "sql": "SELECT user_id, COUNT(*) as transaction_count, SUM(amount) as total_amount FROM clean_data GROUP BY user_id"
-    }
-  ],
-  "outputs": ["user_aggregates"]
-}
-```
-
-## Rules
-1. **Step Names**: Use descriptive names (clean_data, user_aggregates, final_features)
-2. **Dependencies**: Each step must list all tables/steps it depends on in the depends_on array
-3. **SQL Quality**: Write clean, efficient SQL with concrete values
-4. **Concrete SQL**: Write specific SQL queries with actual values, dates, and thresholds - no variables or placeholders
-5. **Outputs**: Only list steps that should be persisted as tables in the outputs array
-6. **Execution Order**: Steps will be executed in dependency order automatically
-7. **JSON Format**: Must be valid JSON with proper escaping of quotes in SQL strings
-
-## Production-Ready Configuration Requirements
-8. **Completeness**: Generate a COMPREHENSIVE configuration that requires NO further modifications
-9. **Data Quality**: Include proper data validation, null handling, and edge case management
-10. **Error Prevention**: Anticipate common data issues and include appropriate safeguards
-11. **Best Practices**: Follow SQL best practices for performance and maintainability
-12. **Schema Compliance**: Ensure the configuration strictly follows the DataSourceSpec schema
-
-## Common Patterns
-- **Data Cleaning**: Filter nulls, invalid values, standardize formats
-- **Aggregations**: GROUP BY with COUNT, SUM, AVG for time periods or categories
-- **Feature Engineering**: Create calculated fields, ratios, time-based features
-- **Joins**: Combine data from multiple tables
-- **Windowing**: Running totals, rankings, time-based calculations
-
-
-## Output Requirements
-- Generate only valid JSON, no markdown blocks or explanations
-- Include name and description fields at the root level
-- Ensure all strings are properly escaped
-- Follow the exact schema structure above
-- Create a COMPLETE, PRODUCTION-READY configuration that needs no enhancements
-
-## Critical Instruction
-{% if existing_yaml and editing_instructions %}Your edited configuration must maintain the same level of quality and completeness as the original. Apply only the requested changes while preserving the production-ready nature of the configuration.
-
-Edit the data processing configuration according to the instructions:
-{% else %}Your generated configuration must be comprehensive and final. It will be used directly in production without any modifications. Include all necessary data processing steps, validations, and transformations in your first response.
-
-Generate the data processing configuration:
-{% endif %}

@@ -16,8 +16,8 @@ from arc.tools import (
     CreateFileTool,
     CreateTodoListTool,
     DatabaseQueryTool,
-    DataProcessorGeneratorTool,
     EditFileTool,
+    MLDataProcessTool,
     MLEvaluateTool,
     MLModelTool,
     MLPlanTool,
@@ -204,11 +204,12 @@ class ArcAgent:
             self.ui_interface,
             self.tensorboard_manager,
         )
-        self.data_process_tool = DataProcessorGeneratorTool(
+        self.data_process_tool = MLDataProcessTool(
             services,
             self.api_key,
             self.base_url,
             model,
+            self.ui_interface,
         )
 
         # Register database and ML tools

@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from arc.core import ArcAgent, SettingsManager
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
-from arc.graph.features.data_source import DataSourceSpec
 from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.ui.console import InteractiveInterface
 from arc.utils import ConfirmationService
@@ -235,7 +234,7 @@ async def handle_ml_command(
     if len(tokens) < 2:
         ui.show_system_error(
             "Usage: /ml <plan|revise-plan|train|predict|jobs|"
-            "model|generate-trainer|evaluate|data-processing> ..."
+            "model|evaluate|data-processing> ..."
         )
         return
 
@@ -986,90 +985,99 @@ async def _ml_evaluate(
 async def _ml_data_processing(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
-    """Handle data processing pipeline execution command."""
+    """Handle data processing pipeline generation command.
+
+    Generates a new data processor from natural language and registers it to the
+    data_processors system table. The processor is then automatically executed.
+    """
     options = _parse_options(
         args,
         {
-            "yaml": True,
             "name": True,
-            "version": True,
+            "instruction": True,
+            "data-tables": True,
+            "plan-id": True,
             "target-db": True,
         },
+        command_name="/ml data-processing",
     )
 
-    yaml_path = options.get("yaml")
-    processor_name = options.get("name")
-    version_str = options.get("version")
-    target_db = options.get("target-db", "user")
+    name = options.get("name")
+    instruction = options.get("instruction")
+    data_tables_str = options.get("data-tables")
+    plan_id = options.get("plan-id")
+    database = options.get("target-db", "user")  # Keep CLI option as --target-db
 
-    # Validate: either --yaml OR --name, not both
-    if yaml_path and processor_name:
-        raise CommandError("Use either --yaml <path> OR --name <name>, not both")
+    # Validate required parameters
+    if not name:
+        raise CommandError("/ml data-processing requires --name")
 
-    if not yaml_path and not processor_name:
+    if not instruction:
+        raise CommandError("/ml data-processing requires --instruction")
+
+    if not data_tables_str:
         raise CommandError(
-            "/ml data-processing requires either --yaml <path> or --name <name>"
+            "/ml data-processing requires --data-tables to narrow the scope of "
+            "data exploration"
         )
 
-    # Validate target database
-    if target_db not in ["system", "user"]:
+    # Validate database
+    if database not in ["system", "user"]:
         raise CommandError(
-            "Invalid target database. Use --target-db system or --target-db user"
+            "Invalid database. Use --target-db system or --target-db user"
         )
 
-    # Parse version if provided
-    version = int(version_str) if version_str else None
+    # Parse data tables if provided
+    data_tables = None
+    if data_tables_str:
+        data_tables = [t.strip() for t in str(data_tables_str).split(",")]
 
-    # Load spec from database or file
+    # If plan-id is provided, fetch the plan from database
+    ml_plan = None
+    if plan_id:
+        try:
+            # Fetch plan from database
+            db_plan = runtime.services.ml_plans.get_plan_by_id(str(plan_id))
+            if not db_plan:
+                raise CommandError(f"Plan '{plan_id}' not found in database")
+
+            # Parse YAML to dict for the tool
+            import yaml
+
+            ml_plan = yaml.safe_load(db_plan.plan_yaml)
+            ml_plan["plan_id"] = db_plan.plan_id
+
+            ui.show_info(f"📊 Using ML plan: {plan_id}")
+        except Exception as e:
+            raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
+
     try:
-        if processor_name:
-            # Load from database
-            processor, spec = runtime.load_data_processor(processor_name, version)
-            msg = (
-                f"📦 Loaded '{processor.name}' version {processor.version} "
-                "from database"
-            )
-            ui.show_info(msg)
-            ui.show_info(f"Pipeline: {len(spec.steps)} steps")
-        else:
-            # Load from file (existing behavior)
-            yaml_file = Path(str(yaml_path))
-            if not yaml_file.exists():
-                raise CommandError(f"Data processing file not found: {yaml_path}")
+        # Use the MLDataProcessTool for generation with confirmation workflow
+        from arc.tools.data_process import MLDataProcessTool
 
-            ui.show_info(f"📄 Data Processing: {yaml_path}")
-            spec = DataSourceSpec.from_yaml_file(str(yaml_file))
-            ui.show_info(f"Pipeline loaded: {len(spec.steps)} steps")
+        # Get settings for tool initialization
+        api_key, base_url, model = _get_ml_tool_config()
 
-        # Execute the pipeline using the centralized executor
-        from arc.ml.data_source_executor import execute_data_source_pipeline
+        # Create the tool with proper dependencies
+        tool = MLDataProcessTool(runtime.services, api_key, base_url, model, ui)
 
-        # Define progress callback for CLI usage
-        def cli_progress(message: str, level: str):
-            """Handle progress updates for CLI."""
-            if level == "success":
-                ui.show_system_success(message)
-            elif level == "warning":
-                ui.show_warning(message)
-            elif level == "error":
-                ui.show_system_error(message)
-            elif level == "step":
-                ui.show_info(f"  {message}")
-            else:  # "info"
-                ui.show_info(message)
-
-        await execute_data_source_pipeline(
-            spec, str(target_db), runtime.services.db_manager, cli_progress
+        # Execute the tool with confirmation workflow
+        # This will generate YAML, register to database, and execute the pipeline
+        result = await tool.execute(
+            name=name,
+            instruction=instruction,
+            source_tables=data_tables,
+            database=database,
+            ml_plan=ml_plan,
         )
 
-    except MLRuntimeError as e:
-        raise CommandError(str(e)) from e
-    except ValueError as parse_error:
-        raise CommandError(
-            f"Invalid YAML specification: {str(parse_error)}"
-        ) from parse_error
+        if not result.success:
+            raise CommandError(f"Data processor generation failed: {result.error}")
+
     except Exception as exc:
-        raise CommandError(f"Data processing failed: {exc}") from exc
+        raise CommandError(
+            f"Unexpected error during data processor generation: {exc}"
+        ) from exc
 
 
 async def run_interactive_mode(

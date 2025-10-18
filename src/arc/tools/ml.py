@@ -135,7 +135,7 @@ class MLModelTool(BaseTool):
         ml_model_section_printer = None
         if self.ui:
             self._ml_model_section = self.ui._printer.section(
-                color="cyan", add_dot=True
+                color="magenta", add_dot=True
             )
             ml_model_section_printer = self._ml_model_section.__enter__()
             ml_model_section_printer.print("ML Model")
@@ -638,7 +638,7 @@ class MLTrainTool(BaseTool):
         ml_trainer_section_printer = None
         if self.ui:
             self._ml_trainer_section = self.ui._printer.section(
-                color="cyan", add_dot=True
+                color="magenta", add_dot=True
             )
             ml_trainer_section_printer = self._ml_trainer_section.__enter__()
             ml_trainer_section_printer.print("ML Trainer")
@@ -1268,7 +1268,7 @@ class MLEvaluateTool(BaseTool):
         ml_evaluator_section_printer = None
         if self.ui:
             self._ml_evaluator_section = self.ui._printer.section(
-                color="cyan", add_dot=True
+                color="magenta", add_dot=True
             )
             ml_evaluator_section_printer = self._ml_evaluator_section.__enter__()
             ml_evaluator_section_printer.print("ML Evaluator")

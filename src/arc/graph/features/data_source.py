@@ -44,6 +44,7 @@ class DataSourceStep:
     name: str
     depends_on: list[str]
     sql: str
+    type: str = "table"  # Default to 'table' for backward compatibility
 
     def __post_init__(self):
         """Validate step configuration after initialization."""
@@ -56,6 +57,14 @@ class DataSourceStep:
         # Ensure depends_on is a list
         if not isinstance(self.depends_on, list):
             raise ValueError(f"depends_on must be a list for step '{self.name}'")
+
+        # Validate type field
+        valid_types = ["table", "view", "execute"]
+        if self.type not in valid_types:
+            raise ValueError(
+                f"Invalid type '{self.type}' for step '{self.name}'. "
+                f"Must be one of: {', '.join(valid_types)}"
+            )
 
 
 @dataclass
@@ -87,6 +96,14 @@ class DataSourceSpec:
         for output in self.outputs:
             if output not in step_names:
                 raise ValueError(f"Output '{output}' not found in steps")
+
+        # Validate that execute-type steps are not in outputs
+        for step in self.steps:
+            if step.type == "execute" and step.name in self.outputs:
+                raise ValueError(
+                    f"Step '{step.name}' has type='execute' but is listed in outputs. "
+                    "Execute-only steps don't produce tables and cannot be outputs."
+                )
 
         # Validate that all dependencies exist
         for step in self.steps:
@@ -161,6 +178,7 @@ class DataSourceSpec:
                     name=step_data["name"],
                     depends_on=step_data["depends_on"],
                     sql=step_data["sql"],
+                    type=step_data.get("type", "table"),  # Default to 'table'
                 )
             )
 
@@ -247,6 +265,7 @@ class DataSourceSpec:
                     name=step_data["name"],
                     depends_on=step_data["depends_on"],
                     sql=step_data["sql"],
+                    type=step_data.get("type", "table"),  # Default to 'table'
                 )
             )
 
@@ -463,6 +482,9 @@ class DataSourceSpec:
                 lines.append("")  # Blank line between steps
 
             lines.append(f"  - name: {step.name}")
+
+            # type field
+            lines.append(f"    type: {step.type}")
 
             # depends_on list
             lines.append("    depends_on:")
@@ -772,11 +794,20 @@ class DataSourceSpec:
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["name", "depends_on", "sql"],
+                        "required": ["name", "depends_on", "sql", "type"],
                         "properties": {
                             "name": {
                                 "type": "string",
                                 "description": ("Unique name for this processing step"),
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["table", "view", "execute"],
+                                "description": (
+                                    "Step type: 'table' for final output tables "
+                                    "(SELECT), 'view' for intermediate results "
+                                    "(SELECT), 'execute' for DDL/DML (DROP, etc.)"
+                                ),
                             },
                             "depends_on": {
                                 "type": "array",

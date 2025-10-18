@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,19 +20,6 @@ class DataProcessorGeneratorError(Exception):
 
 class DataProcessorGeneratorAgent:
     """Agent for generating data processing YAML from natural language."""
-
-    # System message for data processing generation
-    SYSTEM_MESSAGE = (
-        "You are an expert SQL data engineer specializing in feature engineering "
-        "and data transformation pipelines. Generate COMPLETE, PRODUCTION-READY "
-        "JSON configurations for data processing pipelines with concrete SQL queries. "
-        "Your generated configuration must be comprehensive and require no further "
-        "modifications or enhancements. Follow the exact JSON schema provided in the "
-        "prompt. Write specific, concrete SQL without variables or placeholders. "
-        "Include all necessary data cleaning, validation, and transformation steps. "
-        "Do not include any explanations or markdown formatting - return only the "
-        "complete JSON object."
-    )
 
     def __init__(
         self,
@@ -58,20 +44,22 @@ class DataProcessorGeneratorAgent:
 
     async def generate_data_processing_yaml(
         self,
-        context: str,
-        target_tables: list[str] | None = None,
-        target_db: str = "user",
+        instruction: str,
+        source_tables: list[str] | None = None,
+        database: str = "user",
         existing_yaml: str | None = None,
-        editing_instructions: str | None = None,
     ) -> tuple[DataSourceSpec, str]:
-        """Generate data processing YAML from natural language description.
+        """Generate or edit data processing YAML from instruction.
 
         Args:
-            context: Natural language description of data processing requirements
-            target_tables: List of tables to analyze (optional)
-            target_db: Target database for schema discovery
-            existing_yaml: Existing YAML content to edit (optional)
-            editing_instructions: Instructions for editing existing YAML (optional)
+            instruction: Detailed instruction for data processing.
+                For generation: shaped by main agent or from ML plan.
+                For editing: user feedback on what to change.
+            source_tables: List of source tables to read from (optional)
+            database: Database to use for schema discovery
+            existing_yaml: Existing YAML content to edit (optional).
+                If provided, switches to editing mode where instruction
+                describes the changes to make.
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string)
@@ -81,35 +69,36 @@ class DataProcessorGeneratorAgent:
         """
         try:
             # Get schema information for available tables
-            schema_info = await self._get_schema_context(target_tables, target_db)
+            schema_info = await self._get_schema_context(source_tables, database)
 
             # Render prompt and build messages
-            user_prompt = await self._render_prompt(
-                context, schema_info, target_tables, existing_yaml, editing_instructions
+            # Mode determined by presence of existing_yaml
+            system_prompt = await self._render_system_prompt(
+                instruction,
+                schema_info,
+                source_tables,
+                existing_yaml,
             )
             messages = [
-                {"role": "system", "content": self.SYSTEM_MESSAGE},
-                {"role": "user", "content": user_prompt},
+                {"role": "system", "content": system_prompt},
             ]
 
-            # Generate JSON using LLM
-            json_content = await self._generate_json_with_llm(messages)
+            # Generate YAML using LLM
+            yaml_content = await self._generate_yaml_with_llm(messages)
 
-            # Parse JSON and create DataSourceSpec
+            # Parse YAML and create DataSourceSpec
             try:
-                data = json.loads(json_content)
-                spec = DataSourceSpec.from_dict(data)
-                yaml_content = spec.to_yaml()
+                spec = DataSourceSpec.from_yaml(yaml_content)
                 return spec, yaml_content
-            except (json.JSONDecodeError, ValueError) as e:
+            except ValueError as e:
                 # Try to retry with error feedback
                 retry_result = await self._retry_generation_with_feedback(
-                    messages, json_content, str(e)
+                    messages, yaml_content, str(e)
                 )
                 if retry_result:
                     return retry_result
                 raise DataProcessorGeneratorError(
-                    f"Generated invalid JSON configuration: {e}"
+                    f"Generated invalid YAML configuration: {e}"
                 ) from e
 
         except Exception as e:
@@ -120,93 +109,117 @@ class DataProcessorGeneratorAgent:
             ) from e
 
     async def _get_schema_context(
-        self, target_tables: list[str] | None, target_db: str
+        self, source_tables: list[str] | None, database: str
     ) -> dict:
-        """Get schema information for context.
+        """Get schema information with statistics for context.
 
         Args:
-            target_tables: Specific tables to analyze
-            target_db: Target database
+            source_tables: Specific source tables to analyze
+            database: Database to use
 
         Returns:
-            Dictionary with schema information
+            Dictionary with schema information and table statistics
         """
         try:
             schema_service = self.services.schema
-            schema_info = schema_service.get_schema_info(target_db)
+            schema_info = schema_service.get_schema_info(database)
 
             context = {
-                "database": target_db,
+                "database": database,
                 "tables": [],
                 "total_tables": len(schema_info.tables),
             }
 
-            # If specific tables requested, get detailed info for those
-            if target_tables:
-                for table_name in target_tables:
+            # If specific tables requested, get detailed info with statistics
+            if source_tables:
+                for table_name in source_tables:
                     if schema_info.table_exists(table_name):
+                        # Get schema columns
                         columns = schema_info.get_columns_for_table(table_name)
-                        context["tables"].append(
-                            {
-                                "name": table_name,
-                                "columns": [
-                                    {
-                                        "name": col.column_name,
-                                        "type": col.data_type,
-                                        "nullable": col.is_nullable,
-                                    }
-                                    for col in columns
-                                ],
-                            }
-                        )
-            else:
-                # Get basic info for all tables
-                for table in schema_info.tables[:10]:  # Limit to first 10 tables
-                    columns = schema_info.get_columns_for_table(table.name)
-                    context["tables"].append(
-                        {
-                            "name": table.name,
+
+                        # Get table statistics using ml_data service
+                        table_info = {
+                            "name": table_name,
                             "columns": [
                                 {
                                     "name": col.column_name,
                                     "type": col.data_type,
                                     "nullable": col.is_nullable,
                                 }
-                                for col in columns[:5]  # Limit to first 5 columns
+                                for col in columns
                             ],
                         }
-                    )
+
+                        # Try to get dataset info for row counts
+                        try:
+                            dataset_info = self.services.ml_data.get_dataset_info(
+                                table_name
+                            )
+                            if dataset_info:
+                                table_info["row_count"] = dataset_info.row_count
+                        except Exception:
+                            # If statistics fail, continue without them
+                            pass
+
+                        context["tables"].append(table_info)
+            else:
+                # Get basic info for all tables (limit to 10)
+                for table in schema_info.tables[:10]:
+                    columns = schema_info.get_columns_for_table(table.name)
+
+                    table_info = {
+                        "name": table.name,
+                        "columns": [
+                            {
+                                "name": col.column_name,
+                                "type": col.data_type,
+                                "nullable": col.is_nullable,
+                            }
+                            for col in columns[:5]  # Limit to 5 columns
+                        ],
+                    }
+
+                    # Try to get row count for each table
+                    try:
+                        dataset_info = self.services.ml_data.get_dataset_info(
+                            table.name
+                        )
+                        if dataset_info:
+                            table_info["row_count"] = dataset_info.row_count
+                    except Exception:
+                        # If statistics fail, continue without them
+                        pass
+
+                    context["tables"].append(table_info)
 
             return context
 
         except Exception as e:
             # Return empty context if schema discovery fails
             return {
-                "database": target_db,
+                "database": database,
                 "tables": [],
                 "total_tables": 0,
                 "error": str(e),
             }
 
-    async def _render_prompt(
+    async def _render_system_prompt(
         self,
-        context: str,
+        instruction: str,
         schema_info: dict,
-        target_tables: list[str] | None,
+        source_tables: list[str] | None,
         existing_yaml: str | None = None,
-        editing_instructions: str | None = None,
     ) -> str:
-        """Render the prompt template with context.
+        """Render the system prompt template with instruction.
 
         Args:
-            context: User's natural language description
+            instruction: Detailed instruction (for generation or editing)
             schema_info: Database schema information
-            target_tables: Target tables list
+            source_tables: Source tables list
             existing_yaml: Existing YAML content to edit (optional)
-            editing_instructions: Instructions for editing (optional)
 
         Returns:
-            Rendered prompt string for user message
+            Rendered prompt string for system message
 
         Raises:
             DataProcessorGeneratorError: If template cannot be loaded or rendered
@@ -225,11 +238,10 @@ class DataProcessorGeneratorAgent:
             # Load and render template
             template = env.get_template("prompt.j2")
             prompt = template.render(
-                user_context=context,
+                user_instruction=instruction,
                 schema_info=schema_info,
-                target_tables=target_tables or [],
+                source_tables=source_tables or [],
                 existing_yaml=existing_yaml,
-                editing_instructions=editing_instructions,
             )
 
             return prompt
@@ -249,14 +261,14 @@ class DataProcessorGeneratorAgent:
                 f"Unexpected error loading prompt template: {e}"
             ) from e
 
-    async def _generate_json_with_llm(self, messages: list[dict[str, str]]) -> str:
-        """Generate JSON content using LLM.
+    async def _generate_yaml_with_llm(self, messages: list[dict[str, str]]) -> str:
+        """Generate YAML content using LLM.
 
         Args:
             messages: List of message dictionaries for LLM chat
 
         Returns:
-            Generated JSON content
+            Generated YAML content
 
         Raises:
             DataProcessorGeneratorError: If LLM generation fails
@@ -267,19 +279,19 @@ class DataProcessorGeneratorAgent:
             if not response.content:
                 raise DataProcessorGeneratorError("LLM returned empty response")
 
-            # Extract JSON from response (handle cases where LLM adds markdown)
-            json_content = response.content.strip()
+            # Extract YAML from response (handle cases where LLM adds markdown)
+            yaml_content = response.content.strip()
 
             # Remove markdown code blocks if present
-            if json_content.startswith("```json"):
-                json_content = json_content[7:]
-            elif json_content.startswith("```"):
-                json_content = json_content[3:]
+            if yaml_content.startswith("```yaml"):
+                yaml_content = yaml_content[7:]
+            elif yaml_content.startswith("```"):
+                yaml_content = yaml_content[3:]
 
-            if json_content.endswith("```"):
-                json_content = json_content[:-3]
+            if yaml_content.endswith("```"):
+                yaml_content = yaml_content[:-3]
 
-            return json_content.strip()
+            return yaml_content.strip()
 
         except Exception as e:
             raise DataProcessorGeneratorError(f"LLM generation failed: {e}") from e
@@ -287,14 +299,14 @@ class DataProcessorGeneratorAgent:
     async def _retry_generation_with_feedback(
         self,
         original_messages: list[dict[str, str]],
-        failed_json: str,
+        failed_yaml: str,
         error_message: str,
     ) -> tuple[DataSourceSpec, str] | None:
         """Retry generation with feedback about the error.
 
         Args:
             original_messages: The original messages that were sent
-            failed_json: The JSON that failed to parse
+            failed_yaml: The YAML that failed to parse
             error_message: The error message from parsing failure
 
         Returns:
@@ -303,21 +315,19 @@ class DataProcessorGeneratorAgent:
         try:
             # Add error feedback to the conversation
             retry_messages = original_messages + [
-                {"role": "assistant", "content": failed_json},
+                {"role": "assistant", "content": failed_yaml},
                 {
                     "role": "user",
                     "content": (
                         f"Your previous response failed to parse with this error: "
-                        f"{error_message}\n\nPlease fix the JSON and try again. "
-                        f"Ensure it's valid JSON that matches the schema exactly."
+                        f"{error_message}\n\nPlease fix the YAML and try again. "
+                        f"Ensure it's valid YAML that matches the schema exactly."
                     ),
                 },
             ]
 
-            json_content = await self._generate_json_with_llm(retry_messages)
-            data = json.loads(json_content)
-            spec = DataSourceSpec.from_dict(data)
-            yaml_content = spec.to_yaml()
+            yaml_content = await self._generate_yaml_with_llm(retry_messages)
+            spec = DataSourceSpec.from_yaml(yaml_content)
             return spec, yaml_content
 
         except Exception:
