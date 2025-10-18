@@ -576,8 +576,9 @@ class ArcAgent:
     async def _execute_tool(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call using the tool registry.
 
-        Handles special preprocessing for tools that need agent context
-        (ml_plan, ml_model).
+        Handles special preprocessing for tools that need agent context:
+        - ml_plan: Injects conversation_history and previous_plan
+        - ml_model, ml_train, ml_evaluate, data_process: Inject current_ml_plan
         """
         # Special handling for ml_plan: inject conversation history and current plan
         if tool_call.name == "ml_plan":
@@ -616,6 +617,51 @@ class ArcAgent:
             except Exception as e:
                 return ToolResult.error_result(
                     f"Error preparing ml_model context: {str(e)}"
+                )
+
+        # Special handling for ml_train: inject current plan
+        if tool_call.name == "ml_train":
+            try:
+                args = json.loads(tool_call.arguments)
+                args["ml_plan"] = self.current_ml_plan
+                tool_call = ArcToolCall(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=json.dumps(args),
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Error preparing ml_train context: {str(e)}"
+                )
+
+        # Special handling for ml_evaluate: inject current plan
+        if tool_call.name == "ml_evaluate":
+            try:
+                args = json.loads(tool_call.arguments)
+                args["ml_plan"] = self.current_ml_plan
+                tool_call = ArcToolCall(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=json.dumps(args),
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Error preparing ml_evaluate context: {str(e)}"
+                )
+
+        # Special handling for data_process: inject current plan
+        if tool_call.name == "data_process":
+            try:
+                args = json.loads(tool_call.arguments)
+                args["ml_plan"] = self.current_ml_plan
+                tool_call = ArcToolCall(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=json.dumps(args),
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Error preparing data_process context: {str(e)}"
                 )
 
         # Use tool registry for execution

@@ -254,9 +254,9 @@ tools:
         name:
           type: string
           description: Model name to include in the specification
-        context:
+        instruction:
           type: string
-          description: Description of the intended model behavior
+          description: Description of the intended model behavior and requirements
         data_table:
           type: string
           description: Database table to profile for generation
@@ -265,7 +265,7 @@ tools:
           description: Optional file path to save the generated model YAML
       required:
         - name
-        - context
+        - instruction
         - data_table
 
   - name: ml_train
@@ -283,7 +283,7 @@ tools:
         name:
           type: string
           description: Trainer name for the specification
-        context:
+        instruction:
           type: string
           description: |
             Training goals, constraints, and requirements. Include all training configuration
@@ -297,7 +297,7 @@ tools:
           description: Training data table name
       required:
         - name
-        - context
+        - instruction
         - model_id
         - train_table
 
@@ -317,7 +317,7 @@ tools:
         name:
           type: string
           description: Evaluator name for the specification
-        context:
+        instruction:
           type: string
           description: |
             Evaluation goals, constraints, and requirements. Specify which metrics
@@ -341,7 +341,7 @@ tools:
           description: Optional specific trainer version to evaluate (default latest version)
       required:
         - name
-        - context
+        - instruction
         - trainer_id
         - test_table
         - target_column
@@ -369,7 +369,7 @@ tools:
         name:
           type: string
           description: Name for the data processor (will be registered in database)
-        context:
+        instruction:
           type: string
           description: Natural language description of data processing requirements (required for 'generate' action)
         target_tables:
@@ -391,4 +391,4 @@ tools:
           description: Raw YAML content for validation (alternative to output_path)
       required:
         - name
-        - context
+        - instruction
