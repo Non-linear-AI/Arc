@@ -42,6 +42,21 @@ The trainer will optimize this model:
 - **Recommended Batch Size**: {{ model_profile.recommended_batch_size }}
 {% endif %}
 
+{% if ml_plan_training_config -%}
+## ML Plan Training Guidance
+The ML Plan provides the following training configuration guidance:
+
+{{ ml_plan_training_config }}
+
+**IMPORTANT**: Use this guidance to inform your trainer specification. Extract relevant recommendations for:
+- Optimizer type and learning rate
+- Batch size and number of epochs
+- Validation strategy
+- Early stopping patience
+- Any regularization techniques mentioned
+
+{% endif %}
+
 ## IMPORTANT: Trainer-Only Configuration
 Generate ONLY the trainer configuration (optimizer + hyperparameters).
 **DO NOT include loss function** - it's already defined in the model spec above.

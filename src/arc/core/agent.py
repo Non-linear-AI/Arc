@@ -631,11 +631,218 @@ class ArcAgent:
             self.current_ml_plan = result.metadata["ml_plan"]
             self.last_ml_plan_timestamp = datetime.now()
 
+        # Check if tool provided plan feedback (for ml_model, ml_train, ml_evaluate)
+        if (
+            result.success
+            and result.metadata
+            and "plan_feedback" in result.metadata
+            and self.current_ml_plan is not None
+        ):
+            # Handle plan feedback asynchronously (adds message to conversation)
+            await self._handle_plan_feedback(
+                tool_name=tool_call.name,
+                feedback=result.metadata["plan_feedback"],
+                current_plan=self.current_ml_plan,
+            )
+
         return result
 
     async def _execute_tool_call(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call (alias for _execute_tool)."""
         return await self._execute_tool(tool_call)
+
+    async def _handle_plan_feedback(
+        self,
+        tool_name: str,
+        feedback: dict,
+        current_plan: dict,
+    ) -> None:
+        """Handle plan feedback from tools.
+
+        Analyzes feedback from ML tools and adds a message to the conversation
+        suggesting plan revision if changes/issues are detected.
+
+        Args:
+            tool_name: Name of tool that provided feedback (ml_model, ml_train, ml_evaluate)
+            feedback: Feedback dictionary from tool
+            current_plan: Current ML plan
+        """
+        # Determine if feedback warrants a plan revision suggestion
+        needs_revision = False
+        suggestion_message = ""
+
+        if tool_name == "ml_model":
+            # Handle architecture change feedback
+            if feedback.get("architecture_changed", False):
+                needs_revision = True
+                change_summary = feedback.get("change_summary", "Architecture differs from plan")
+                confidence = feedback.get("change_confidence", 0.0)
+
+                suggestion_message = (
+                    f"📋 **ML Plan Update Suggested**\n\n"
+                    f"The generated model architecture differs from the ML plan:\n"
+                    f"- {change_summary}\n"
+                    f"- Confidence: {confidence:.0%}\n\n"
+                    f"Would you like me to update the ML plan's `model_architecture_and_loss` "
+                    f"section to reflect the actual implementation?\n\n"
+                    f"I can update the plan using the section update feature, or you can "
+                    f"continue with the current plan."
+                )
+
+        elif tool_name == "ml_train":
+            # Handle training issues feedback (Phase 3 - not yet implemented)
+            if feedback.get("needs_revision", False):
+                needs_revision = True
+                issues = feedback.get("issues_detected", [])
+                suggestions = feedback.get("suggestions", [])
+
+                suggestion_message = (
+                    f"📋 **ML Plan Update Suggested**\n\n"
+                    f"Training completed but detected issues:\n"
+                )
+                for issue in issues:
+                    suggestion_message += f"- {issue}\n"
+                suggestion_message += "\nSuggestions:\n"
+                for sug in suggestions:
+                    suggestion_message += f"- {sug}\n"
+                suggestion_message += (
+                    "\nWould you like me to revise the ML plan's `training_configuration` "
+                    "section based on these results?"
+                )
+
+        elif tool_name == "ml_evaluate":
+            # Handle evaluation issues feedback (Phase 4 - not yet implemented)
+            if feedback.get("needs_revision", False):
+                needs_revision = True
+                issues = feedback.get("performance_issues", [])
+                root_causes = feedback.get("root_causes", [])
+
+                suggestion_message = (
+                    f"📋 **ML Plan Update Suggested**\n\n"
+                    f"Evaluation revealed performance issues:\n"
+                )
+                for issue in issues:
+                    suggestion_message += f"- {issue}\n"
+                suggestion_message += "\nPossible root causes:\n"
+                for cause in root_causes:
+                    suggestion_message += f"- {cause}\n"
+                suggestion_message += (
+                    "\nWould you like me to analyze and revise the ML plan based on "
+                    "these evaluation results?"
+                )
+
+        # If revision is warranted, add suggestion to conversation
+        if needs_revision and suggestion_message:
+            # Add assistant message to conversation
+            self.messages.append({
+                "role": "assistant",
+                "content": suggestion_message,
+            })
+
+            # Add to chat history
+            suggestion_entry = ChatEntry(
+                type="assistant",
+                content=suggestion_message,
+            )
+            self.chat_history.append(suggestion_entry)
+
+    def _format_plan_feedback_for_update(
+        self,
+        tool_name: str,
+        feedback: dict,
+    ) -> str:
+        """Format structured feedback into natural language for ML Plan tool.
+
+        Converts the feedback dictionary from tools into a narrative that the
+        ML Plan tool can use to update the relevant section.
+
+        Args:
+            tool_name: Name of tool that provided feedback
+            feedback: Feedback dictionary from tool
+
+        Returns:
+            Formatted feedback string for ML Plan tool
+        """
+        if tool_name == "ml_model":
+            # Format architecture change feedback
+            final_yaml = feedback.get("final_architecture_yaml", "")
+            missing_terms = feedback.get("missing_terms", [])
+            added_terms = feedback.get("added_in_yaml", [])
+
+            feedback_parts = []
+            feedback_parts.append(
+                "The actual model implementation differs from the plan:"
+            )
+
+            if missing_terms:
+                feedback_parts.append(
+                    f"- Components in plan but not in implementation: {', '.join(missing_terms)}"
+                )
+
+            if added_terms:
+                feedback_parts.append(
+                    f"- Components added in implementation: {', '.join(added_terms)}"
+                )
+
+            feedback_parts.append(
+                f"\nActual model YAML:\n```yaml\n{final_yaml}\n```"
+            )
+
+            return "\n".join(feedback_parts)
+
+        elif tool_name == "ml_train":
+            # Format training issues feedback (Phase 3)
+            issues = feedback.get("issues_detected", [])
+            suggestions = feedback.get("suggestions", [])
+            metrics = feedback.get("final_metrics", {})
+
+            feedback_parts = []
+            feedback_parts.append("Training completed with the following observations:")
+
+            if issues:
+                feedback_parts.append("\nIssues detected:")
+                for issue in issues:
+                    feedback_parts.append(f"- {issue}")
+
+            if suggestions:
+                feedback_parts.append("\nSuggestions for improvement:")
+                for sug in suggestions:
+                    feedback_parts.append(f"- {sug}")
+
+            if metrics:
+                feedback_parts.append("\nFinal training metrics:")
+                for metric, value in metrics.items():
+                    feedback_parts.append(f"- {metric}: {value}")
+
+            return "\n".join(feedback_parts)
+
+        elif tool_name == "ml_evaluate":
+            # Format evaluation issues feedback (Phase 4)
+            issues = feedback.get("performance_issues", [])
+            root_causes = feedback.get("root_causes", [])
+            metrics = feedback.get("actual_metrics", {})
+
+            feedback_parts = []
+            feedback_parts.append("Evaluation completed with the following results:")
+
+            if issues:
+                feedback_parts.append("\nPerformance issues:")
+                for issue in issues:
+                    feedback_parts.append(f"- {issue}")
+
+            if root_causes:
+                feedback_parts.append("\nPossible root causes:")
+                for cause in root_causes:
+                    feedback_parts.append(f"- {cause}")
+
+            if metrics:
+                feedback_parts.append("\nActual evaluation metrics:")
+                for metric, value in metrics.items():
+                    feedback_parts.append(f"- {metric}: {value}")
+
+            return "\n".join(feedback_parts)
+
+        return "Feedback from tool execution."
 
     def _prepare_conversation_for_ml_plan(
         self, from_timestamp: datetime | None = None

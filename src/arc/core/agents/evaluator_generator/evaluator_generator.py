@@ -79,6 +79,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
         target_column_exists: bool = True,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
+        ml_plan_evaluation: str | None = None,
     ) -> tuple[EvaluatorSpec, str]:
         """Generate Arc evaluator specification based on trainer and context.
 
@@ -92,6 +93,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             target_column_exists: Whether target column exists in dataset
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
+            ml_plan_evaluation: Optional evaluation guidance from ML plan
 
         Returns:
             Tuple of (parsed EvaluatorSpec, raw YAML string)
@@ -115,6 +117,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             "is_editing": existing_yaml is not None,
             "existing_yaml": existing_yaml,
             "editing_instructions": editing_instructions,
+            "ml_plan_evaluation": ml_plan_evaluation,
         }
 
         # Generate evaluator specification with single attempt

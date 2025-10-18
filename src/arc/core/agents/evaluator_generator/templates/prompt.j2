@@ -64,6 +64,20 @@ The model has a single output (no need to specify output_name).
 - **Suggested Metrics**: {{ trainer_profile.suggested_metrics | join(", ") }}
 {% endif %}
 
+{% if ml_plan_evaluation -%}
+## ML Plan Evaluation Guidance
+The ML Plan provides the following evaluation guidance:
+
+{{ ml_plan_evaluation }}
+
+**IMPORTANT**: Use this guidance to inform your evaluator specification. Extract relevant recommendations for:
+- Expected metrics to compute
+- Performance expectations (accuracy thresholds, etc.)
+- Specific evaluation considerations
+- Any domain-specific evaluation requirements
+
+{% endif %}
+
 ## Arc-Graph Evaluator Schema Validation
 
 ### **JSON Schema**

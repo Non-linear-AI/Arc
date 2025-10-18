@@ -295,6 +295,7 @@ class EvaluatorService(BaseService):
                 trainer_version=int(row["trainer_version"]),
                 spec=str(row["spec"]),
                 description=str(row["description"]),
+                plan_id=str(row["plan_id"]) if row.get("plan_id") else None,
                 created_at=created_at,
                 updated_at=updated_at,
             )
@@ -335,9 +336,11 @@ class EvaluatorService(BaseService):
             created_at_str = evaluator.created_at.isoformat()
             updated_at_str = evaluator.updated_at.isoformat()
 
+            plan_id_value = f"'{self._escape_string(evaluator.plan_id)}'" if evaluator.plan_id else "NULL"
+
             sql = f"""INSERT INTO evaluators (
                 id, name, version, trainer_id, trainer_version,
-                spec, description, created_at, updated_at
+                spec, description, plan_id, created_at, updated_at
             ) VALUES (
                 '{self._escape_string(evaluator.id)}',
                 '{self._escape_string(evaluator.name)}',
@@ -346,6 +349,7 @@ class EvaluatorService(BaseService):
                 {evaluator.trainer_version},
                 '{self._escape_string(evaluator.spec)}',
                 '{self._escape_string(evaluator.description)}',
+                {plan_id_value},
                 '{created_at_str}',
                 '{updated_at_str}'
             )"""
@@ -369,6 +373,7 @@ class EvaluatorService(BaseService):
         try:
             # Format timestamps for SQL
             updated_at_str = evaluator.updated_at.isoformat()
+            plan_id_value = f"'{self._escape_string(evaluator.plan_id)}'" if evaluator.plan_id else "NULL"
 
             sql = f"""UPDATE evaluators SET
                 name = '{self._escape_string(evaluator.name)}',
@@ -377,6 +382,7 @@ class EvaluatorService(BaseService):
                 trainer_version = {evaluator.trainer_version},
                 spec = '{self._escape_string(evaluator.spec)}',
                 description = '{self._escape_string(evaluator.description)}',
+                plan_id = {plan_id_value},
                 updated_at = '{updated_at_str}'
             WHERE id = '{self._escape_string(evaluator.id)}'"""
 

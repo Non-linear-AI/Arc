@@ -59,6 +59,7 @@ class TrainerGeneratorAgent(BaseAgent):
         model_spec_yaml: str,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
+        ml_plan_training_config: str | None = None,
     ) -> tuple[TrainerSpec, str]:
         """Generate Arc trainer specification based on model and context.
 
@@ -69,6 +70,7 @@ class TrainerGeneratorAgent(BaseAgent):
             model_spec_yaml: Model specification YAML content
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
+            ml_plan_training_config: Optional training configuration from ML plan
 
         Returns:
             Tuple of (parsed TrainerSpec, raw YAML string)
@@ -88,6 +90,7 @@ class TrainerGeneratorAgent(BaseAgent):
             "is_editing": existing_yaml is not None,
             "existing_yaml": existing_yaml,
             "editing_instructions": editing_instructions,
+            "ml_plan_training_config": ml_plan_training_config,
         }
 
         # Generate trainer specification with single attempt

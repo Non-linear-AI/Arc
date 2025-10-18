@@ -227,28 +227,12 @@ class MLModelTool(BaseTool):
             finally:
                 workflow.cleanup()
 
-        # Feedback loop: Update ML plan if architecture changed
-        updated_ml_plan = None
-        if (
-            ml_plan
-            and ml_plan_architecture
-            and self._detect_architecture_changes(ml_plan_architecture, model_yaml)
-        ):
-            if self.ui:
-                self.ui.show_info(
-                    "🔄 Detected architecture changes from ML plan. "
-                    "Updating plan to reflect actual implementation..."
-                )
-
-            # Update ML plan with actual implementation
-            updated_ml_plan = await self._update_ml_plan_with_changes(
-                ml_plan, model_yaml
+        # Detect architecture changes (if using ML plan)
+        change_info = None
+        if ml_plan and ml_plan_architecture:
+            change_info = self._detect_architecture_changes(
+                ml_plan_architecture, model_yaml
             )
-
-            if self.ui and updated_ml_plan != ml_plan:
-                self.ui.show_success(
-                    "✓ ML plan updated to reflect model architecture changes."
-                )
 
         # Save model to DB with plan_id if using ML plan
         try:
@@ -288,14 +272,17 @@ class MLModelTool(BaseTool):
             "from_ml_plan": ml_plan is not None,
         }
 
-        # Include updated ML plan if changes were detected
-        if updated_ml_plan is not None:
-            result_metadata["ml_plan"] = updated_ml_plan
-            result_metadata["ml_plan_updated"] = True
-        elif ml_plan is not None:
-            # No changes, but still include original plan
-            result_metadata["ml_plan"] = ml_plan
-            result_metadata["ml_plan_updated"] = False
+        # Include plan feedback if using ML plan
+        if change_info is not None:
+            result_metadata["plan_feedback"] = {
+                "architecture_changed": change_info["changed"],
+                "change_confidence": change_info["confidence"],
+                "change_summary": change_info["summary"],
+                "original_architecture": ml_plan_architecture,
+                "final_architecture_yaml": model_yaml,
+                "missing_terms": change_info["missing_from_yaml"],
+                "added_terms": change_info["added_in_yaml"],
+            }
 
         return ToolResult(
             success=True,
@@ -367,7 +354,7 @@ class MLModelTool(BaseTool):
 
     def _detect_architecture_changes(
         self, ml_plan_architecture: str, final_yaml: str
-    ) -> bool:
+    ) -> dict:
         """Detect if final YAML differs significantly from ML plan architecture.
 
         Args:
@@ -375,20 +362,18 @@ class MLModelTool(BaseTool):
             final_yaml: Final generated/edited YAML content
 
         Returns:
-            True if significant changes detected, False otherwise
+            Dictionary with change detection details:
+                - changed: bool - True if significant changes detected
+                - confidence: float - Confidence level (0.0 to 1.0)
+                - missing_from_yaml: list[str] - Terms in plan but not in YAML
+                - added_in_yaml: list[str] - Terms in YAML but not in plan
+                - summary: str - Human-readable summary of changes
         """
-        # Simple heuristic: check if ML plan mentions specific components
-        # and whether those appear in final YAML
-        # More sophisticated: use LLM to compare semantically
-
-        # For now, simple check: if plan is short or YAML is long enough
-        # to have diverged, consider it changed
         plan_lower = ml_plan_architecture.lower()
         yaml_lower = final_yaml.lower()
 
         # Extract key architectural terms from plan
-        key_terms = []
-        for term in [
+        all_architectural_terms = [
             "linear",
             "relu",
             "dropout",
@@ -400,87 +385,64 @@ class MLModelTool(BaseTool):
             "binary_cross_entropy",
             "mse_loss",
             "cross_entropy",
-        ]:
-            if term in plan_lower:
-                key_terms.append(term)
+            "sigmoid",
+            "tanh",
+            "conv",
+            "lstm",
+            "gru",
+        ]
 
-        # If plan mentioned specific terms but they're not in YAML, flag it
-        missing_terms = [term for term in key_terms if term not in yaml_lower]
+        # Terms mentioned in plan
+        plan_terms = [term for term in all_architectural_terms if term in plan_lower]
 
-        # If >30% of key architectural terms are missing, consider it changed
-        return key_terms and len(missing_terms) / len(key_terms) > 0.3
+        # Terms mentioned in YAML
+        yaml_terms = [term for term in all_architectural_terms if term in yaml_lower]
 
-    async def _update_ml_plan_with_changes(
-        self, ml_plan: dict, final_yaml: str
-    ) -> dict:
-        """Update ML plan based on actual implemented architecture.
+        # Compute differences
+        missing_from_yaml = [term for term in plan_terms if term not in yaml_lower]
+        added_in_yaml = [term for term in yaml_terms if term not in plan_lower]
 
-        Uses LLM to analyze differences between plan and implementation,
-        then updates relevant sections of the plan.
+        # Determine if changed
+        if not plan_terms:
+            # No architectural terms in plan, cannot detect changes
+            return {
+                "changed": False,
+                "confidence": 0.0,
+                "missing_from_yaml": [],
+                "added_in_yaml": added_in_yaml,
+                "summary": "No architectural terms detected in plan for comparison.",
+            }
 
-        Args:
-            ml_plan: Original ML plan dictionary
-            final_yaml: Final generated/edited YAML content
+        # Calculate change metrics
+        missing_ratio = len(missing_from_yaml) / len(plan_terms)
+        added_ratio = len(added_in_yaml) / max(len(yaml_terms), 1)
 
-        Returns:
-            Updated ML plan dictionary with revised architecture section
-        """
+        # Changed if >30% of terms are missing OR significant terms were added
+        changed = missing_ratio > 0.3 or (added_in_yaml and added_ratio > 0.3)
 
-        from jinja2 import Environment, FileSystemLoader
+        # Confidence based on how many terms we found
+        confidence = min(len(plan_terms) / 5.0, 1.0)  # Max confidence at 5+ terms
 
-        from arc.core.ml_plan import MLPlan
+        # Build summary
+        if changed:
+            summary_parts = []
+            if missing_from_yaml:
+                summary_parts.append(
+                    f"Missing from YAML: {', '.join(missing_from_yaml)}"
+                )
+            if added_in_yaml:
+                summary_parts.append(f"Added to YAML: {', '.join(added_in_yaml)}")
+            summary = "; ".join(summary_parts)
+        else:
+            summary = "Architecture matches ML plan guidance."
 
-        plan = MLPlan.from_dict(ml_plan)
-
-        # Load Jinja2 template
-        template_dir = (
-            Path(__file__).parent.parent / "core" / "agents" / "ml_plan" / "templates"
-        )
-        env = Environment(loader=FileSystemLoader(str(template_dir)))
-        template = env.get_template("update_plan.j2")
-
-        # Render prompt from template
-        prompt = template.render(
-            original_architecture=plan.model_architecture_and_loss,
-            final_yaml=final_yaml,
-        )
-
-        try:
-            response = await self._call_llm(prompt)
-            updated_architecture = response.strip()
-
-            # Update the plan
-            updated_plan_dict = ml_plan.copy()
-            updated_plan_dict["model_architecture_and_loss"] = updated_architecture
-
-            return updated_plan_dict
-
-        except Exception as e:
-            # If LLM call fails, return original plan
-            if self.ui:
-                self.ui.show_warning(f"⚠ Could not update ML plan automatically: {e}")
-            return ml_plan
-
-    async def _call_llm(self, prompt: str) -> str:
-        """Call LLM with a prompt and return response.
-
-        Args:
-            prompt: Prompt to send to LLM
-
-        Returns:
-            LLM response text
-        """
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=self.api_key, base_url=self.base_url)
-
-        message = client.messages.create(
-            model=self.model or "claude-sonnet-4-20250514",
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        return message.content[0].text
+        return {
+            "changed": changed,
+            "confidence": confidence,
+            "missing_from_yaml": missing_from_yaml,
+            "added_in_yaml": added_in_yaml,
+            "summary": summary,
+        }
 
     def _save_model_to_db(
         self,
@@ -585,6 +547,7 @@ class MLTrainTool(BaseTool):
         model_id: str | None = None,
         train_table: str | None = None,
         auto_confirm: bool = False,
+        ml_plan: dict | None = None,
     ) -> ToolResult:
         """Generate trainer spec, register it, and launch training with confirmation.
 
@@ -594,6 +557,7 @@ class MLTrainTool(BaseTool):
             model_id: Model ID (with version, e.g., 'my_model-v1')
             train_table: Training data table
             auto_confirm: Skip confirmation workflows (for testing only)
+            ml_plan: Optional ML plan dict containing training_configuration guidance
 
         Note:
             All training configuration (epochs, batch_size, learning_rate, validation,
@@ -646,6 +610,13 @@ class MLTrainTool(BaseTool):
                 "[dim]Generating Arc-Graph trainer specification...[/dim]"
             )
 
+        # Extract training configuration from ML plan if provided (Phase 6)
+        ml_plan_training_config = None
+        if ml_plan:
+            from arc.core.ml_plan import MLPlan
+            plan = MLPlan.from_dict(ml_plan)
+            ml_plan_training_config = plan.training_configuration
+
         # Generate trainer spec via LLM
         agent = TrainerGeneratorAgent(
             self.services,
@@ -660,6 +631,7 @@ class MLTrainTool(BaseTool):
                 user_context=str(context),
                 model_id=model_record.id,
                 model_spec_yaml=model_record.spec,
+                ml_plan_training_config=ml_plan_training_config,
             )
         except Exception as exc:
             from arc.core.agents.trainer_generator import TrainerGeneratorError
@@ -836,6 +808,57 @@ class MLTrainTool(BaseTool):
                             job_id, ml_trainer_section_printer
                         )
 
+                # Wait for training completion and analyze results (Phase 3)
+                training_feedback = None
+                if job_id and ml_plan:
+                    # Get training service from runtime to wait for job completion
+                    if hasattr(self.runtime, 'training_service'):
+                        training_service = self.runtime.training_service
+
+                        if ml_trainer_section_printer:
+                            ml_trainer_section_printer.print("")
+                            ml_trainer_section_printer.print(
+                                "[dim]→ Waiting for training to complete (max 60s)...[/dim]"
+                            )
+
+                        # Wait for job completion with 60 second timeout
+                        training_result = await asyncio.to_thread(
+                            training_service.wait_for_job,
+                            job_id,
+                            timeout=60.0
+                        )
+
+                        if training_result and training_result.success:
+                            # Training completed within timeout - analyze results
+                            training_feedback = self._analyze_training_results(
+                                training_result, ml_plan
+                            )
+
+                            if training_feedback.get("needs_revision"):
+                                if ml_trainer_section_printer:
+                                    issues = ", ".join(training_feedback["issues_detected"])
+                                    ml_trainer_section_printer.print(
+                                        f"[yellow]⚠  Training issues detected: {issues}[/yellow]"
+                                    )
+                            else:
+                                if ml_trainer_section_printer:
+                                    ml_trainer_section_printer.print(
+                                        "[green]✓ Training completed successfully[/green]"
+                                    )
+                        elif training_result and not training_result.success:
+                            # Training completed but failed
+                            if ml_trainer_section_printer:
+                                error_msg = training_result.error_message or "Unknown error"
+                                ml_trainer_section_printer.print(
+                                    f"[red]✗ Training failed: {error_msg}[/red]"
+                                )
+                        else:
+                            # Timeout - training still running
+                            if ml_trainer_section_printer:
+                                ml_trainer_section_printer.print(
+                                    "[dim]⏱  Training still running (timeout reached)[/dim]"
+                                )
+
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
                 # Return success with warning since trainer is usable
@@ -886,10 +909,15 @@ class MLTrainTool(BaseTool):
             "model_id": model_record.id,
             "yaml_content": trainer_yaml,
             "training_launched": job_id is not None,
+            "from_ml_plan": ml_plan is not None,
         }
 
         if job_id:
             result_metadata["job_id"] = job_id
+
+        # Include plan feedback if training completed and was analyzed
+        if training_feedback is not None:
+            result_metadata["plan_feedback"] = training_feedback
 
         # Close the ML Trainer section
         if self.ui and hasattr(self, "_ml_trainer_section"):
@@ -1072,6 +1100,117 @@ class MLTrainTool(BaseTool):
                 f"  • TensorBoard: tensorboard --logdir {logdir}"
             )
 
+    def _analyze_training_results(
+        self, training_result, ml_plan: dict | None = None
+    ) -> dict:
+        """Analyze training results for potential issues and plan feedback.
+
+        Args:
+            training_result: TrainingResult object from completed training
+            ml_plan: Optional ML plan dict containing training_configuration
+
+        Returns:
+            Dictionary with training feedback:
+                - needs_revision: bool - True if issues detected
+                - issues_detected: list[str] - List of detected issues
+                - suggestions: list[str] - Suggestions for improvement
+                - final_metrics: dict - Final training metrics
+                - original_training_config: str - Training config from plan (if provided)
+        """
+        issues_detected = []
+        suggestions = []
+
+        # Extract final metrics
+        final_metrics = {}
+        if training_result.train_losses:
+            final_metrics["final_train_loss"] = training_result.train_losses[-1]
+        if training_result.val_losses:
+            final_metrics["final_val_loss"] = training_result.val_losses[-1]
+
+        # Add other metrics from metrics_history
+        if training_result.metrics_history:
+            # Get last epoch metrics
+            for metric_name, values in training_result.metrics_history.items():
+                if values:
+                    final_metrics[metric_name] = values[-1]
+
+        # 1. Check for overfitting
+        if training_result.train_losses and training_result.val_losses:
+            final_train_loss = training_result.train_losses[-1]
+            final_val_loss = training_result.val_losses[-1]
+
+            # Overfitting: validation loss much higher than training loss
+            if final_val_loss > final_train_loss * 1.5:
+                issues_detected.append("overfitting")
+                suggestions.append(
+                    "Consider adding dropout or regularization to reduce overfitting"
+                )
+                suggestions.append(
+                    "Try reducing model capacity or using early stopping"
+                )
+
+        # 2. Check for underfitting (high training loss)
+        if training_result.train_losses:
+            final_train_loss = training_result.train_losses[-1]
+            # If final training loss is still high, might be underfitting
+            # This is a heuristic - we consider > 0.5 as potentially high
+            if final_train_loss > 0.5:
+                issues_detected.append("potentially_underfitting")
+                suggestions.append(
+                    "Training loss is still relatively high - consider increasing model capacity"
+                )
+                suggestions.append(
+                    "Try training for more epochs or adjusting learning rate"
+                )
+
+        # 3. Check for convergence issues (loss not decreasing)
+        if training_result.train_losses and len(training_result.train_losses) >= 5:
+            # Check if loss plateaued early
+            recent_losses = training_result.train_losses[-5:]
+            loss_variance = max(recent_losses) - min(recent_losses)
+
+            # If loss barely changed in last 5 epochs
+            if loss_variance < 0.001:
+                issues_detected.append("early_plateau")
+                suggestions.append(
+                    "Loss plateaued early - consider adjusting learning rate"
+                )
+
+        # 4. Check for training instability (loss increasing)
+        if training_result.train_losses and len(training_result.train_losses) >= 3:
+            # Check if loss increased significantly in later epochs
+            mid_loss = training_result.train_losses[len(training_result.train_losses) // 2]
+            final_loss = training_result.train_losses[-1]
+
+            if final_loss > mid_loss * 1.2:
+                issues_detected.append("training_instability")
+                suggestions.append(
+                    "Training loss increased - learning rate may be too high"
+                )
+                suggestions.append(
+                    "Consider reducing learning rate or using learning rate scheduler"
+                )
+
+        # Extract original training config from ML plan if provided
+        original_training_config = None
+        if ml_plan:
+            training_config = ml_plan.get("training_configuration", "")
+            if training_config:
+                original_training_config = training_config
+
+        # Determine if revision is needed
+        needs_revision = len(issues_detected) > 0
+
+        return {
+            "needs_revision": needs_revision,
+            "issues_detected": issues_detected,
+            "suggestions": suggestions,
+            "final_metrics": final_metrics,
+            "original_training_config": original_training_config,
+            "total_epochs": training_result.total_epochs,
+            "training_time": training_result.training_time,
+        }
+
     def _create_validator(self):
         """Create validator function for the workflow."""
 
@@ -1186,6 +1325,7 @@ class MLEvaluateTool(BaseTool):
         trainer_id: str | None = None,
         data_table: str | None = None,
         auto_confirm: bool = False,
+        ml_plan: dict | None = None,
     ) -> ToolResult:
         """Generate evaluator spec, register it, and run evaluation.
 
@@ -1195,6 +1335,7 @@ class MLEvaluateTool(BaseTool):
             trainer_id: Trainer ID to evaluate (references the trained model)
             data_table: Test dataset table name
             auto_confirm: Skip confirmation workflows (for testing only)
+            ml_plan: Optional ML plan dict containing evaluation expectations
 
         Returns:
             ToolResult with evaluation metrics
@@ -1276,6 +1417,14 @@ class MLEvaluateTool(BaseTool):
                 "[dim]Generating Arc-Graph evaluator specification...[/dim]"
             )
 
+        # Extract evaluation guidance from ML plan if provided (Phase 6)
+        ml_plan_evaluation = None
+        if ml_plan:
+            from arc.core.ml_plan import MLPlan
+
+            plan = MLPlan.from_dict(ml_plan)
+            ml_plan_evaluation = plan.evaluation
+
         # Generate evaluator spec via LLM
         from arc.core.agents.evaluator_generator import EvaluatorGeneratorAgent
 
@@ -1295,6 +1444,7 @@ class MLEvaluateTool(BaseTool):
                 dataset=str(data_table),
                 target_column=str(target_column),
                 target_column_exists=target_column_exists,
+                ml_plan_evaluation=ml_plan_evaluation,
             )
         except Exception as exc:
             from arc.core.agents.evaluator_generator import EvaluatorGeneratorError
@@ -1524,6 +1674,27 @@ class MLEvaluateTool(BaseTool):
 
             metrics_dict = result.metrics
 
+            # Analyze evaluation results for plan feedback (Phase 4)
+            evaluation_feedback = None
+            if ml_plan:
+                evaluation_feedback = self._analyze_evaluation_results(
+                    result, metrics_dict, ml_plan
+                )
+
+                if evaluation_feedback.get("needs_revision"):
+                    if ml_evaluator_section_printer:
+                        issues = ", ".join(evaluation_feedback["performance_issues"])
+                        ml_evaluator_section_printer.print("")
+                        ml_evaluator_section_printer.print(
+                            f"[yellow]⚠  Performance issues detected: {issues}[/yellow]"
+                        )
+                else:
+                    if ml_evaluator_section_printer:
+                        ml_evaluator_section_printer.print("")
+                        ml_evaluator_section_printer.print(
+                            "[green]✓ Evaluation results meet expectations[/green]"
+                        )
+
             # Update run with results
             tracking_service.update_run_result(
                 eval_run.run_id,
@@ -1640,16 +1811,127 @@ class MLEvaluateTool(BaseTool):
             "trainer_id": trainer_record.id,
             "yaml_content": evaluator_yaml,
             "evaluation_ran": True,
+            "from_ml_plan": ml_plan is not None,
         }
 
         if metrics_dict:
             result_metadata["metrics"] = metrics_dict
+
+        # Include plan feedback if evaluation was analyzed
+        if evaluation_feedback is not None:
+            result_metadata["plan_feedback"] = evaluation_feedback
 
         return ToolResult(
             success=True,
             output="\n".join(lines),
             metadata=result_metadata,
         )
+
+    def _analyze_evaluation_results(
+        self, evaluation_result, metrics_dict: dict, ml_plan: dict | None = None
+    ) -> dict:
+        """Analyze evaluation results for potential issues and plan feedback.
+
+        Args:
+            evaluation_result: EvaluationResult object from completed evaluation
+            metrics_dict: Dictionary of evaluation metrics
+            ml_plan: Optional ML plan dict containing evaluation expectations
+
+        Returns:
+            Dictionary with evaluation feedback:
+                - needs_revision: bool - True if issues detected
+                - performance_issues: list[str] - List of detected issues
+                - root_causes: list[str] - Potential root causes
+                - suggestions: list[str] - Suggestions for improvement
+                - actual_metrics: dict - Actual evaluation metrics
+                - expected_metrics: str - Expected metrics from plan (if provided)
+        """
+        performance_issues = []
+        root_causes = []
+        suggestions = []
+
+        # Extract metrics for analysis
+        accuracy = metrics_dict.get("accuracy")
+        auc = metrics_dict.get("auc") or metrics_dict.get("roc_auc")
+        precision = metrics_dict.get("precision")
+        recall = metrics_dict.get("recall")
+        f1_score = metrics_dict.get("f1") or metrics_dict.get("f1_score")
+
+        # 1. Check for low accuracy
+        if accuracy is not None and accuracy < 0.7:
+            performance_issues.append("low_accuracy")
+            if accuracy < 0.5:
+                root_causes.append("model_barely_better_than_random")
+                suggestions.append(
+                    "Accuracy is very low - consider reviewing data quality and feature engineering"
+                )
+            else:
+                root_causes.append("underfitting_or_insufficient_features")
+                suggestions.append(
+                    "Accuracy is below target - consider adding more features or increasing model capacity"
+                )
+
+        # 2. Check for low AUC (for classification)
+        if auc is not None and auc < 0.75:
+            performance_issues.append("poor_discrimination")
+            root_causes.append("weak_separation_between_classes")
+            suggestions.append(
+                "AUC is low - model struggles to distinguish between classes. Consider feature engineering or different architecture"
+            )
+
+        # 3. Check for precision-recall imbalance
+        if precision is not None and recall is not None:
+            if precision > 0.8 and recall < 0.5:
+                performance_issues.append("low_recall")
+                root_causes.append("model_too_conservative")
+                suggestions.append(
+                    "High precision but low recall - model is too conservative. Consider adjusting decision threshold or class weights"
+                )
+            elif recall > 0.8 and precision < 0.5:
+                performance_issues.append("low_precision")
+                root_causes.append("model_too_aggressive")
+                suggestions.append(
+                    "High recall but low precision - model predicts positive too often. Consider adjusting decision threshold"
+                )
+
+        # 4. Check for poor F1 score
+        if f1_score is not None and f1_score < 0.6:
+            performance_issues.append("poor_f1_score")
+            root_causes.append("overall_weak_performance")
+            suggestions.append(
+                "F1 score is low - indicates poor overall performance. Consider data augmentation or model redesign"
+            )
+
+        # 5. Check for class imbalance issues (if we have precision and recall)
+        if precision is not None and recall is not None:
+            precision_recall_gap = abs(precision - recall)
+            if precision_recall_gap > 0.3:
+                performance_issues.append("class_imbalance_likely")
+                root_causes.append("imbalanced_training_data")
+                suggestions.append(
+                    "Large gap between precision and recall suggests class imbalance. Consider SMOTE, class weights, or threshold tuning"
+                )
+
+        # Extract expected metrics from ML plan if provided
+        expected_metrics = None
+        if ml_plan:
+            evaluation_section = ml_plan.get("evaluation", "")
+            if evaluation_section:
+                expected_metrics = evaluation_section
+
+        # Determine if revision is needed
+        needs_revision = len(performance_issues) > 0
+
+        return {
+            "needs_revision": needs_revision,
+            "performance_issues": performance_issues,
+            "root_causes": root_causes,
+            "suggestions": suggestions,
+            "actual_metrics": metrics_dict,
+            "expected_metrics": expected_metrics,
+            "num_samples": evaluation_result.num_samples,
+            "evaluation_time": evaluation_result.evaluation_time,
+        }
 
     def _create_validator(self):
         """Create validator function for the workflow."""
@@ -2220,6 +2502,7 @@ class MLPlanTool(BaseTool):
         conversation_history: list[dict] | None = None,
         feedback: str | None = None,
         previous_plan: dict | None = None,
+        section_to_update: str | None = None,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -2238,11 +2521,82 @@ class MLPlanTool(BaseTool):
                 "are required for ML planning."
             )
 
+        # Handle section update mode (different workflow)
+        if section_to_update:
+            # Section update mode requires previous_plan and feedback
+            if not previous_plan:
+                return ToolResult.error_result(
+                    "Parameter 'previous_plan' is required when updating a section."
+                )
+            if not feedback:
+                return ToolResult.error_result(
+                    "Parameter 'feedback' is required when updating a section."
+                )
+
+            # Extract the original section content
+            section_content = previous_plan.get(section_to_update)
+            if section_content is None:
+                return ToolResult.error_result(
+                    f"Section '{section_to_update}' not found in previous plan."
+                )
+
+            # Create agent and update section
+            agent = MLPlanAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
+            )
+
+            try:
+                updated_section = await agent.update_section(
+                    section_name=section_to_update,
+                    original_section=str(section_content),
+                    feedback_content=str(feedback),
+                )
+
+                # Update the plan with new section
+                updated_plan = previous_plan.copy()
+                updated_plan[section_to_update] = updated_section
+
+                return ToolResult(
+                    success=True,
+                    output=f"Section '{section_to_update}' updated successfully.",
+                    metadata={
+                        "ml_plan": updated_plan,
+                        "section_updated": section_to_update,
+                        "is_revision": True,
+                    },
+                )
+
+            except Exception as exc:
+                from arc.core.ml_plan import MLPlanError
+
+                if isinstance(exc, MLPlanError):
+                    return ToolResult.error_result(str(exc))
+                return ToolResult.error_result(
+                    f"Unexpected error updating section: {exc}"
+                )
+
+        # Full plan generation mode (requires conversation_history)
         if conversation_history is None:
             return ToolResult.error_result(
                 "Parameter 'conversation_history' is required for comprehensive "
                 "ML planning. The full conversation history enables context-aware "
                 "planning."
+            )
+
+        # Show section title before generation starts
+        # Keep the section printer reference to use later for messages
+        ml_plan_section_printer = None
+        if self.ui:
+            self._ml_plan_section = self.ui._printer.section(
+                color="cyan", add_dot=True
+            )
+            ml_plan_section_printer = self._ml_plan_section.__enter__()
+            ml_plan_section_printer.print("ML Plan")
+            ml_plan_section_printer.print(
+                "[dim]Analyzing problem and creating comprehensive plan...[/dim]"
             )
 
         agent = MLPlanAgent(
@@ -2276,6 +2630,12 @@ class MLPlanTool(BaseTool):
 
             while True:
                 try:
+                    # Show progress message
+                    if ml_plan_section_printer:
+                        ml_plan_section_printer.print(
+                            "[dim]• Analyzing data profiles and patterns...[/dim]"
+                        )
+
                     # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
                         user_context=str(user_context),
@@ -2284,6 +2644,12 @@ class MLPlanTool(BaseTool):
                         feedback=current_feedback,
                         stream=False,
                     )
+
+                    # Show completion message
+                    if ml_plan_section_printer:
+                        ml_plan_section_printer.print(
+                            "[dim]• Plan generation complete[/dim]"
+                        )
 
                     # Determine stage
                     if previous_plan:
@@ -2354,6 +2720,13 @@ class MLPlanTool(BaseTool):
                         # Continue loop to generate revised plan
                         continue
                     elif choice == "cancel":
+                        # Show cancellation message in the ML Plan section
+                        if ml_plan_section_printer:
+                            ml_plan_section_printer.print("")
+                            ml_plan_section_printer.print("✗ ML plan cancelled by user")
+                        # Close the section before returning
+                        if hasattr(self, "_ml_plan_section"):
+                            self._ml_plan_section.__exit__(None, None, None)
                         # Return to main agent with prompt
                         return ToolResult(
                             success=True,
@@ -2410,12 +2783,25 @@ class MLPlanTool(BaseTool):
                 # Add plan_id to metadata for linking
                 plan_dict["plan_id"] = plan_id
 
+                # Display registration confirmation in the ML Plan section
+                if ml_plan_section_printer:
+                    ml_plan_section_printer.print("")  # Empty line before confirmation
+                    table_count = len(source_tables.split(","))
+                    ml_plan_section_printer.print(
+                        f"[dim]✓ Plan '{plan_id}' saved to database "
+                        f"(v{version} • {stage} • {table_count} tables)[/dim]"
+                    )
+
             except Exception as e:
                 # Log error but don't fail - plan still in memory
                 if self.ui:
                     self.ui.show_warning(
                         f"⚠ Plan saved to session but not database: {e}"
                     )
+
+            # Close the ML Plan section
+            if self.ui and hasattr(self, "_ml_plan_section"):
+                self._ml_plan_section.__exit__(None, None, None)
 
             return ToolResult(
                 success=True,
@@ -2427,7 +2813,11 @@ class MLPlanTool(BaseTool):
             )
 
         except Exception as exc:
-            from arc.core.agents.ml_plan import MLPlanError
+            from arc.core.ml_plan import MLPlanError
+
+            # Close the ML Plan section before returning error
+            if self.ui and hasattr(self, "_ml_plan_section"):
+                self._ml_plan_section.__exit__(None, None, None)
 
             if isinstance(exc, MLPlanError):
                 return ToolResult.error_result(str(exc))
