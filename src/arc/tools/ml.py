@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.ml_model import MLModelAgent
-from arc.core.agents.ml_trainer import (
-    MLTrainerAgent,
+from arc.core.agents.ml_train import (
+    MLTrainAgent,
 )
 from arc.graph.model import ModelValidationError, validate_model_dict
 from arc.graph.trainer import TrainerValidationError, validate_trainer_dict
@@ -618,7 +618,7 @@ class MLTrainTool(BaseTool):
             ml_plan_training_config = plan.training_configuration
 
         # Generate trainer spec via LLM
-        agent = MLTrainerAgent(
+        agent = MLTrainAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -634,9 +634,9 @@ class MLTrainTool(BaseTool):
                 ml_plan_training_config=ml_plan_training_config,
             )
         except Exception as exc:
-            from arc.core.agents.ml_trainer import MLTrainerError
+            from arc.core.agents.ml_train import MLTrainError
 
-            if isinstance(exc, MLTrainerError):
+            if isinstance(exc, MLTrainError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during trainer generation: {exc}"
@@ -1234,7 +1234,7 @@ class MLTrainTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            agent = MLTrainerAgent(
+            agent = MLTrainAgent(
                 self.services,
                 self.api_key,
                 self.base_url,
@@ -1426,9 +1426,9 @@ class MLEvaluateTool(BaseTool):
             ml_plan_evaluation = plan.evaluation
 
         # Generate evaluator spec via LLM
-        from arc.core.agents.ml_evaluator import MLEvaluatorAgent
+        from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
-        agent = MLEvaluatorAgent(
+        agent = MLEvaluateAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -1447,9 +1447,9 @@ class MLEvaluateTool(BaseTool):
                 ml_plan_evaluation=ml_plan_evaluation,
             )
         except Exception as exc:
-            from arc.core.agents.ml_evaluator import MLEvaluatorError
+            from arc.core.agents.ml_evaluate import MLEvaluateError
 
-            if isinstance(exc, MLEvaluatorError):
+            if isinstance(exc, MLEvaluateError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during evaluator generation: {exc}"
@@ -1967,9 +1967,9 @@ class MLEvaluateTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            from arc.core.agents.ml_evaluator import MLEvaluatorAgent
+            from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
-            agent = MLEvaluatorAgent(
+            agent = MLEvaluateAgent(
                 self.services,
                 self.api_key,
                 self.base_url,
@@ -2270,9 +2270,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
             self.ui.show_info(f"ℹ Using registered trainer: {trainer_record.id}")
             self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
 
-        from arc.core.agents.ml_evaluator import MLEvaluatorAgent
+        from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
-        agent = MLEvaluatorAgent(
+        agent = MLEvaluateAgent(
             self.services,
             self.api_key,
             self.base_url,
@@ -2291,9 +2291,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
             )
         except Exception as exc:
             # Import here to avoid circular imports
-            from arc.core.agents.ml_evaluator import MLEvaluatorError
+            from arc.core.agents.ml_evaluate import MLEvaluateError
 
-            if isinstance(exc, MLEvaluatorError):
+            if isinstance(exc, MLEvaluateError):
                 return ToolResult.error_result(str(exc))
             return ToolResult.error_result(
                 f"Unexpected error during evaluator generation: {exc}"
@@ -2446,9 +2446,9 @@ class MLEvaluatorGeneratorTool(BaseTool):
         async def edit(
             yaml_content: str, feedback: str, context: dict[str, Any]
         ) -> str | None:
-            from arc.core.agents.ml_evaluator import MLEvaluatorAgent
+            from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
-            agent = MLEvaluatorAgent(
+            agent = MLEvaluateAgent(
                 self.services,
                 self.api_key,
                 self.base_url,

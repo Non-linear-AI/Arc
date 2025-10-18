@@ -1,4 +1,4 @@
-"""Arc ML trainer agent."""
+"""Arc ML train agent."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ from arc.graph.trainer import (
 )
 
 
-class MLTrainerError(AgentError):
+class MLTrainError(AgentError):
     """Raised when trainer generation fails."""
 
 
-class MLTrainerAgent(BaseAgent):
+class MLTrainAgent(BaseAgent):
     """Specialized agent for generating Arc trainer specifications using LLM."""
 
     def __init__(
@@ -102,7 +102,7 @@ class MLTrainerAgent(BaseAgent):
             return trainer_spec, trainer_yaml
 
         except AgentError as e:
-            raise MLTrainerError(str(e)) from e
+            raise MLTrainError(str(e)) from e
 
     def _validate_trainer_comprehensive(
         self, trainer_yaml: str, context: dict[str, Any]
