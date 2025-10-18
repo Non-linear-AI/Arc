@@ -1012,16 +1012,13 @@ async def _ml_data_processing(
     if not name:
         raise CommandError("/ml data-processing requires --name")
 
+    if not instruction:
+        raise CommandError("/ml data-processing requires --instruction")
+
     if not data_tables_str:
         raise CommandError(
             "/ml data-processing requires --data-tables to narrow the scope of "
             "data exploration"
-        )
-
-    # instruction is optional when using a plan
-    if not plan_id and not instruction:
-        raise CommandError(
-            "/ml data-processing requires --instruction when not using --plan-id"
         )
 
     # Validate database
