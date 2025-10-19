@@ -67,6 +67,36 @@ Apply the requested changes while preserving production-ready quality and overal
 - `view`: SELECT query → intermediate result (NOT in outputs array)
 - `execute`: DDL/DML with no result set (DROP, INSERT, etc.)
 
+# SQL DIALECT
+
+**CRITICAL**: All SQL must be valid **DuckDB SQL**, not BigQuery, PostgreSQL, or other dialects.
+
+**DuckDB-Specific Notes:**
+- String casting: Use `CAST(value AS VARCHAR)` NOT `CAST(value AS STRING)`
+- Random hashing: Use `hash(value)` or `md5(value)` NOT `FARM_FINGERPRINT(value)`
+- Random sampling: Use `random()` or `USING SAMPLE` clause
+- Date functions: Use DuckDB functions like `CURRENT_DATE`, `date_trunc()`, etc.
+- String concatenation: Use `||` operator or `concat()` function
+
+**Example - DuckDB Random Split:**
+```sql
+-- ✓ DuckDB way (use hash function for deterministic splits)
+SELECT *,
+  CASE
+    WHEN ABS(hash(CAST(id AS VARCHAR)) % 100) < 80 THEN 'training'
+    ELSE 'validation'
+  END as dataset_split
+FROM table_name
+
+-- ✗ BigQuery way (FARM_FINGERPRINT not available in DuckDB)
+SELECT *,
+  CASE
+    WHEN ABS(MOD(FARM_FINGERPRINT(CAST(id AS STRING)), 100)) < 80 THEN 'training'
+    ELSE 'validation'
+  END as dataset_split
+FROM table_name
+```
+
 # PRODUCTION REQUIREMENTS
 
 ## 1. SQL Quality - Write Defensive, Concrete SQL
