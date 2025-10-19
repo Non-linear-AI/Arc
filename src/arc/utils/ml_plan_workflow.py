@@ -6,9 +6,11 @@ including markdown rendering and user options for approval, feedback, or questio
 
 from __future__ import annotations
 
+import termios
 from typing import TYPE_CHECKING
 
 from rich.markdown import Markdown
+from rich.padding import Padding
 from rich.panel import Panel
 
 if TYPE_CHECKING:
@@ -102,7 +104,16 @@ class MLPlanConfirmationWorkflow:
         # Use Rich's Markdown renderer with left alignment inside a panel
         md = Markdown(markdown_text, justify="left")
         panel = Panel(md, border_style="color(245)", expand=False)
-        self.ui._printer.console.print(panel)
+        # Add 2-space left padding to match section indentation
+        padded_panel = Padding(panel, (0, 0, 0, 2))
+        self.ui._printer.console.print(padded_panel)
         self.ui._printer.console.print()  # Add blank line
-        # Flush console output to ensure it's rendered before prompt_toolkit takes over
+
+        # Synchronize terminal output to prevent race condition with prompt_toolkit
         self.ui._printer.console.file.flush()
+        try:
+            if hasattr(self.ui._printer.console.file, "fileno"):
+                termios.tcdrain(self.ui._printer.console.file.fileno())
+        except (OSError, AttributeError):
+            # Graceful fallback for non-TTY environments
+            pass
