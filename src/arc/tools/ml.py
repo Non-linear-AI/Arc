@@ -556,10 +556,20 @@ class MLTrainTool(BaseTool):
         except Exception as exc:
             from arc.core.agents.ml_train import MLTrainError
 
+            # Print error within the ML Trainer section
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")
+                ml_trainer_section_printer.print(f"✗ {str(exc)}")
+            # Close the section before returning
+            if self.ui and hasattr(self, "_ml_trainer_section"):
+                self._ml_trainer_section.__exit__(None, None, None)
+
             if isinstance(exc, MLTrainError):
-                return ToolResult.error_result(str(exc))
-            return ToolResult.error_result(
-                f"Unexpected error during trainer generation: {exc}"
+                return ToolResult(success=False, output="", metadata={"error_shown": True})
+            return ToolResult(
+                success=False,
+                output="",
+                metadata={"error_shown": True}
             )
 
         # Validate the generated trainer
@@ -567,14 +577,28 @@ class MLTrainTool(BaseTool):
             trainer_dict = yaml.safe_load(trainer_yaml)
             validate_trainer_dict(trainer_dict)
         except (yaml.YAMLError, TrainerValidationError) as exc:
-            return ToolResult.error_result(f"Trainer validation failed: {exc}")
+            # Print error within the ML Trainer section
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")
+                ml_trainer_section_printer.print(f"✗ Trainer validation failed: {exc}")
+            # Close the section before returning
+            if self.ui and hasattr(self, "_ml_trainer_section"):
+                self._ml_trainer_section.__exit__(None, None, None)
+            return ToolResult(success=False, output="", metadata={"error_shown": True})
         except Exception as exc:
             import logging
 
             logging.exception("Unexpected error during trainer validation")
-            return ToolResult.error_result(
-                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
-            )
+            # Print error within the ML Trainer section
+            if ml_trainer_section_printer:
+                ml_trainer_section_printer.print("")
+                ml_trainer_section_printer.print(
+                    f"✗ Unexpected validation error: {exc.__class__.__name__}: {exc}"
+                )
+            # Close the section before returning
+            if self.ui and hasattr(self, "_ml_trainer_section"):
+                self._ml_trainer_section.__exit__(None, None, None)
+            return ToolResult(success=False, output="", metadata={"error_shown": True})
 
         # Interactive confirmation workflow (unless auto_confirm is True)
         if not auto_confirm:

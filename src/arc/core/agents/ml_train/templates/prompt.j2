@@ -212,13 +212,13 @@ model_ref: {{ model_id }}      # REQUIRED: Reference to model ID
 
 optimizer:
   type: torch.optim.Adam        # Use exact PyTorch names
-  lr: 0.001                     # Learning rate
+  lr: 0.001                     # Learning rate (MUST be a number, e.g., 0.001)
 
 config:
-  epochs: 100                   # Training epochs
-  batch_size: 32               # Training batch size
-  learning_rate: 0.001         # Can override optimizer.lr
-  validation_split: 0.2        # Validation fraction
+  epochs: 100                   # Training epochs (MUST be an integer, e.g., 100)
+  batch_size: 32               # Training batch size (MUST be an integer, e.g., 32)
+  learning_rate: 0.001         # Can override optimizer.lr (MUST be a number)
+  validation_split: 0.2        # Validation fraction (MUST be 0.0-1.0, e.g., 0.2 = 20%)
   shuffle: true                # Shuffle data
   device: auto                 # Device: auto|cpu|cuda|mps
   early_stopping_patience: 10  # Early stopping patience (optional)
@@ -227,6 +227,8 @@ config:
   log_every: 10                # Logging frequency (optional)
   verbose: true                # Verbose output (optional)
 ```
+
+**WARNING**: Do NOT use column names, table names, or any identifiers from the data schema as configuration values. All numeric fields require actual numbers!
 
 ## Available Components
 - **Optimizers**: {{ available_components.optimizers | join(", ") }}
@@ -253,11 +255,18 @@ config:
 ## Validation Rules
 - `model_ref`: Must be a non-empty string matching the model ID
 - `optimizer.type`: Must match pattern `torch.optim.[A-Z][a-zA-Z0-9]*`
-- `optimizer.lr`: Must be a positive float
-- `config.epochs`: Must be a positive integer (if provided)
-- `config.batch_size`: Must be a positive integer (if provided)
-- `config.validation_split`: Must be between 0.0 and 1.0 (exclusive) if provided
+- `optimizer.lr`: Must be a positive float (e.g., 0.001, 0.01, 0.1)
+- `config.epochs`: Must be a positive integer (e.g., 10, 50, 100)
+- `config.batch_size`: Must be a positive integer (e.g., 16, 32, 64, 128)
+- `config.validation_split`: **MUST be a decimal number between 0.0 and 1.0** (e.g., 0.2 for 20%, 0.15 for 15%)
+  - ✓ CORRECT: `validation_split: 0.2` (reserves 20% of data for validation)
+  - ✓ CORRECT: `validation_split: 0.15` (reserves 15% of data for validation)
+  - ✗ WRONG: `validation_split: pidd_val` (this is a column name, not a number!)
+  - ✗ WRONG: `validation_split: 20` (use 0.2, not 20)
+  - ✗ WRONG: `validation_split: "0.2"` (use number, not string)
 - `config.device`: Must be one of: auto, cpu, cuda, mps (if provided)
+
+**CRITICAL**: All numeric configuration values (lr, epochs, batch_size, validation_split) MUST be actual numbers, NOT column names, table names, or string identifiers from the data!
 
 ## Output Format
 {% if existing_yaml -%}
