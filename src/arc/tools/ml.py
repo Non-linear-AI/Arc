@@ -565,12 +565,10 @@ class MLTrainTool(BaseTool):
                 self._ml_trainer_section.__exit__(None, None, None)
 
             if isinstance(exc, MLTrainError):
-                return ToolResult(success=False, output="", metadata={"error_shown": True})
-            return ToolResult(
-                success=False,
-                output="",
-                metadata={"error_shown": True}
-            )
+                return ToolResult(
+                    success=False, output="", metadata={"error_shown": True}
+                )
+            return ToolResult(success=False, output="", metadata={"error_shown": True})
 
         # Validate the generated trainer
         try:
@@ -697,8 +695,12 @@ class MLTrainTool(BaseTool):
                 # Show training success message in section
                 if ml_trainer_section_printer:
                     ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print("[dim]✓ Training job submitted successfully.[/dim]")
-                    ml_trainer_section_printer.print(f"[dim]Training table: {train_table}[/dim]")
+                    ml_trainer_section_printer.print(
+                        "[dim]✓ Training job submitted successfully.[/dim]"
+                    )
+                    ml_trainer_section_printer.print(
+                        f"[dim]Training table: {train_table}[/dim]"
+                    )
                     ml_trainer_section_printer.print(f"[dim]Job ID: {job_id}[/dim]")
 
                 # Show job monitoring instructions in section
@@ -1123,7 +1125,7 @@ class MLEvaluateTool(BaseTool):
         Args:
             name: Evaluator name
             instruction: User's instruction for evaluation setup (PRIMARY driver)
-            trainer_id: Trainer ID to evaluate (references the trained model)
+            trainer_id: Trainer ID with version (e.g., 'my-trainer-v1')
             evaluate_table: Test dataset table name
             auto_confirm: Skip confirmation workflows (for testing only)
             ml_plan: Optional ML plan dict containing evaluation expectations

@@ -732,7 +732,8 @@ class Printer:
                 p.print(yaml_content)
         finally:
             # Flush console output to ensure it's rendered before prompt_toolkit
-            # This prevents race condition when get_choice_async is called immediately after
+            # This prevents race condition when get_choice_async is called
+            # immediately after
             self.console.file.flush()
 
     def _display_yaml_diff(

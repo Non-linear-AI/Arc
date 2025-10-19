@@ -263,8 +263,8 @@ class BaseAgent(abc.ABC):
                     else:
                         # Log the error and inform that we're retrying
                         logger.warning(
-                            f"Validation failed on attempt {attempt + 1}/{max_iterations}: "
-                            f"{last_error}. Retrying..."
+                            f"Validation failed on attempt "
+                            f"{attempt + 1}/{max_iterations}: {last_error}. Retrying..."
                         )
 
             except Exception as e:

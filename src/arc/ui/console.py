@@ -225,12 +225,13 @@ class InteractiveInterface:
                     "(--context optional with --plan-id)",
                 ),
                 (
-                    "/ml train --name NAME --model-id ID --data TABLE --instruction DESC",
+                    "/ml train --name NAME --model-id ID --data TABLE "
+                    "--instruction DESC",
                     "Generate trainer specification and launch training",
                 ),
                 (
-                    "/ml evaluate --name NAME --instruction DESC --trainer-id TRAINER_ID "
-                    "--data-table TABLE",
+                    "/ml evaluate --name NAME --instruction DESC "
+                    "--trainer-id TRAINER_ID --data-table TABLE",
                     "Generate evaluator and run model evaluation",
                 ),
                 (
@@ -319,10 +320,10 @@ class InteractiveInterface:
         # These tools print their output progressively within their own sections
         # and don't need console.py to create a duplicate section
         TOOLS_WITH_OWN_SECTIONS = {
-            "ml_train",      # MLTrainTool shows output in "ML Train" section
-            "ml_model",      # MLModelTool shows output in "ML Model" section
-            "ml_evaluate",   # MLEvaluateTool shows output in "ML Evaluator" section
-            "ml_plan",       # MLPlanTool shows output in "ML Plan" section
+            "ml_train",  # MLTrainTool shows output in "ML Train" section
+            "ml_model",  # MLModelTool shows output in "ML Model" section
+            "ml_evaluate",  # MLEvaluateTool shows output in "ML Evaluator" section
+            "ml_plan",  # MLPlanTool shows output in "ML Plan" section
             "data_process",  # MLDataProcessTool shows output in "ML Data" section
         }
 

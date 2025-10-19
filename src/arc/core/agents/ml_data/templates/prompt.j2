@@ -74,6 +74,16 @@ Apply the requested changes while preserving production-ready quality and overal
 **Why Standard SQL?**
 The user database could be PostgreSQL, MySQL, SQLite, DuckDB, or any SQL database. Write portable SQL that works across engines.
 
+**CRITICAL - Always Quote Table and Column Names:**
+- **ALWAYS use double quotes for ALL table names, view names, and column names**
+- This prevents syntax errors with names containing hyphens, spaces, or special characters
+- Examples:
+  - ✓ `DROP TABLE IF EXISTS "user_features"`
+  - ✓ `SELECT "user_id", "total_spent" FROM "transactions"`
+  - ✓ `CREATE TABLE "my_output_table" AS ...`
+  - ✗ `DROP TABLE user_features` (unquoted - can fail with special characters)
+  - ✗ `SELECT user_id FROM transactions` (unquoted - risky)
+
 **Standard SQL Guidelines:**
 - String casting: Use `CAST(value AS VARCHAR)` (standard) or `CAST(value AS TEXT)` (widely supported)
 - String concatenation: Use `||` operator (standard) or `CONCAT()` function
@@ -121,48 +131,48 @@ FROM table_name
 
 **Be Concrete - Use Actual Values:**
 ```sql
-✓ WHERE transaction_date >= '2023-01-01' AND amount > 0
+✓ WHERE "transaction_date" >= '2023-01-01' AND "amount" > 0
 ✗ WHERE transaction_date >= 'YYYY-MM-DD' AND amount > your_threshold
 ```
 
 **Handle NULLs Explicitly:**
 ```sql
-✓ COALESCE(zip_code, 'UNKNOWN') as zip_code
-✓ WHERE user_id IS NOT NULL
+✓ COALESCE("zip_code", 'UNKNOWN') as "zip_code"
+✓ WHERE "user_id" IS NOT NULL
 ✗ WHERE user_id != NULL  -- This is wrong!
 ```
 
 **Prevent Division by Zero:**
 ```sql
-✓ CASE WHEN total_orders > 0 THEN revenue / total_orders ELSE 0 END
+✓ CASE WHEN "total_orders" > 0 THEN "revenue" / "total_orders" ELSE 0 END
 ✗ revenue / total_orders  -- Crashes if total_orders = 0
 ```
 
 **Type Casting:**
 ```sql
-✓ CAST(amount AS DECIMAL(10,2))
-✓ WHERE created_at::DATE >= '2023-01-01'
+✓ CAST("amount" AS DECIMAL(10,2))
+✓ WHERE "created_at"::DATE >= '2023-01-01'
 ```
 
 **Filter Early:**
 ```sql
-✓ SELECT ... FROM (SELECT * FROM big_table WHERE date >= '2023-01-01')
+✓ SELECT ... FROM (SELECT * FROM "big_table" WHERE "date" >= '2023-01-01')
 ✗ SELECT ... FROM big_table WHERE ... -- filtering after join
 ```
 
 ## 2. Idempotency - Make Pipelines Re-runnable
 
-Always use `DROP TABLE IF EXISTS` before creating tables:
+Always use `DROP TABLE IF EXISTS` before creating tables (remember to quote table names):
 ```yaml
 - name: drop_old_results
   type: execute
   depends_on: []
-  sql: DROP TABLE IF EXISTS user_features
+  sql: DROP TABLE IF EXISTS "user_features"
 
 - name: user_features
   type: table
   depends_on: [drop_old_results, users, transactions]
-  sql: SELECT ...
+  sql: SELECT "user_id", "feature_value" FROM "users" ...
 ```
 
 ## 3. Dependencies - Declare Everything
@@ -206,37 +216,37 @@ steps:
 **Window Functions (for ranking, running totals):**
 ```sql
 SELECT
-  user_id,
-  transaction_date,
-  amount,
-  ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY transaction_date DESC) as recency_rank,
-  SUM(amount) OVER (PARTITION BY user_id ORDER BY transaction_date) as running_total
-FROM transactions
+  "user_id",
+  "transaction_date",
+  "amount",
+  ROW_NUMBER() OVER (PARTITION BY "user_id" ORDER BY "transaction_date" DESC) as "recency_rank",
+  SUM("amount") OVER (PARTITION BY "user_id" ORDER BY "transaction_date") as "running_total"
+FROM "transactions"
 ```
 
 **Aggregations (for features):**
 ```sql
 SELECT
-  user_id,
-  COUNT(*) as transaction_count,
-  SUM(amount) as total_spent,
-  AVG(amount) as avg_transaction,
-  MAX(transaction_date) as last_transaction_date
-FROM transactions
-GROUP BY user_id
+  "user_id",
+  COUNT(*) as "transaction_count",
+  SUM("amount") as "total_spent",
+  AVG("amount") as "avg_transaction",
+  MAX("transaction_date") as "last_transaction_date"
+FROM "transactions"
+GROUP BY "user_id"
 HAVING COUNT(*) >= 5  -- Filter groups
 ```
 
 **Joins (combine data sources):**
 ```sql
 SELECT
-  u.user_id,
-  u.signup_date,
-  t.transaction_count,
-  t.total_spent
-FROM users u
-LEFT JOIN user_transaction_stats t ON u.user_id = t.user_id
-WHERE u.signup_date >= '2023-01-01'
+  u."user_id",
+  u."signup_date",
+  t."transaction_count",
+  t."total_spent"
+FROM "users" u
+LEFT JOIN "user_transaction_stats" t ON u."user_id" = t."user_id"
+WHERE u."signup_date" >= '2023-01-01'
 ```
 
 ## 6. Anti-Patterns - What NOT to Do
@@ -244,13 +254,21 @@ WHERE u.signup_date >= '2023-01-01'
 ❌ **Don't use SELECT \***
 ```sql
 ✗ SELECT * FROM transactions
-✓ SELECT user_id, amount, transaction_date FROM transactions
+✓ SELECT "user_id", "amount", "transaction_date" FROM "transactions"
+```
+
+❌ **Don't forget to quote identifiers**
+```sql
+✗ DROP TABLE my_eval_v25_predictions  -- Fails with hyphens/special chars
+✓ DROP TABLE "my_eval_v25_predictions"  -- Always works
+✗ SELECT user_id FROM transactions
+✓ SELECT "user_id" FROM "transactions"
 ```
 
 ❌ **Don't leave placeholders**
 ```sql
-✗ WHERE amount > ${THRESHOLD}  -- unless using vars feature
-✓ WHERE amount > 100
+✗ WHERE "amount" > ${THRESHOLD}  -- unless using vars feature
+✓ WHERE "amount" > 100
 ```
 
 ❌ **Don't create circular dependencies**
@@ -281,12 +299,12 @@ steps:
   - name: drop_old_transaction_features
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS user_transaction_features
+    sql: DROP TABLE IF EXISTS "user_transaction_features"
 
   - name: drop_old_session_features
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS user_session_features
+    sql: DROP TABLE IF EXISTS "user_session_features"
 
   # Clean and filter source data
   - name: clean_transactions
@@ -294,27 +312,27 @@ steps:
     depends_on: [transactions]
     sql: |
       SELECT
-        user_id,
-        CAST(amount AS DECIMAL(10,2)) as amount,
-        transaction_date,
-        COALESCE(category, 'UNKNOWN') as category
-      FROM transactions
-      WHERE transaction_date >= '${min_date}'
-        AND amount > 0
-        AND user_id IS NOT NULL
+        "user_id",
+        CAST("amount" AS DECIMAL(10,2)) as "amount",
+        "transaction_date",
+        COALESCE("category", 'UNKNOWN') as "category"
+      FROM "transactions"
+      WHERE "transaction_date" >= '${min_date}'
+        AND "amount" > 0
+        AND "user_id" IS NOT NULL
 
   - name: clean_sessions
     type: view
     depends_on: [sessions]
     sql: |
       SELECT
-        user_id,
-        session_date,
-        duration_seconds
-      FROM sessions
-      WHERE session_date >= '${min_date}'
-        AND user_id IS NOT NULL
-        AND duration_seconds > 0
+        "user_id",
+        "session_date",
+        "duration_seconds"
+      FROM "sessions"
+      WHERE "session_date" >= '${min_date}'
+        AND "user_id" IS NOT NULL
+        AND "duration_seconds" > 0
 
   # Aggregate transaction features with window functions
   - name: user_transaction_features
@@ -322,16 +340,16 @@ steps:
     depends_on: [drop_old_transaction_features, clean_transactions]
     sql: |
       SELECT
-        user_id,
-        COUNT(*) as transaction_count,
-        SUM(amount) as total_spent,
-        AVG(amount) as avg_transaction_amount,
-        MAX(transaction_date) as last_transaction_date,
-        MIN(transaction_date) as first_transaction_date,
-        COUNT(DISTINCT category) as unique_categories,
-        MAX(CASE WHEN category = 'ELECTRONICS' THEN 1 ELSE 0 END) as has_electronics_purchase
-      FROM clean_transactions
-      GROUP BY user_id
+        "user_id",
+        COUNT(*) as "transaction_count",
+        SUM("amount") as "total_spent",
+        AVG("amount") as "avg_transaction_amount",
+        MAX("transaction_date") as "last_transaction_date",
+        MIN("transaction_date") as "first_transaction_date",
+        COUNT(DISTINCT "category") as "unique_categories",
+        MAX(CASE WHEN "category" = 'ELECTRONICS' THEN 1 ELSE 0 END) as "has_electronics_purchase"
+      FROM "clean_transactions"
+      GROUP BY "user_id"
       HAVING COUNT(*) >= 3
 
   # Aggregate session features with recency ranking
@@ -341,20 +359,20 @@ steps:
     sql: |
       WITH ranked_sessions AS (
         SELECT
-          user_id,
-          session_date,
-          duration_seconds,
-          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY session_date DESC) as recency_rank
-        FROM clean_sessions
+          "user_id",
+          "session_date",
+          "duration_seconds",
+          ROW_NUMBER() OVER (PARTITION BY "user_id" ORDER BY "session_date" DESC) as "recency_rank"
+        FROM "clean_sessions"
       )
       SELECT
-        user_id,
-        COUNT(*) as session_count,
-        AVG(duration_seconds) as avg_session_duration,
-        MAX(CASE WHEN recency_rank = 1 THEN session_date END) as last_session_date,
-        SUM(CASE WHEN recency_rank <= 7 THEN 1 ELSE 0 END) as sessions_last_week
-      FROM ranked_sessions
-      GROUP BY user_id
+        "user_id",
+        COUNT(*) as "session_count",
+        AVG("duration_seconds") as "avg_session_duration",
+        MAX(CASE WHEN "recency_rank" = 1 THEN "session_date" END) as "last_session_date",
+        SUM(CASE WHEN "recency_rank" <= 7 THEN 1 ELSE 0 END) as "sessions_last_week"
+      FROM "ranked_sessions"
+      GROUP BY "user_id"
 
 outputs: [user_transaction_features, user_session_features]
 ```

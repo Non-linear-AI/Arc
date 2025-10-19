@@ -336,27 +336,20 @@ tools:
             to compute and any evaluation-specific notes.
         trainer_id:
           type: string
-          description: Trainer ID (without version, e.g., 'my_trainer')
+          description: Trainer ID with version (e.g., 'my-trainer-v1')
         evaluate_table:
           type: string
           description: Test dataset table name for evaluation
-        target_column:
-          type: string
-          description: Target column name for evaluation
         metrics:
           type: array
           items:
             type: string
           description: Optional list of specific metrics to compute (e.g., ['accuracy', 'precision', 'recall', 'f1_score'])
-        version:
-          type: integer
-          description: Optional specific trainer version to evaluate (default latest version)
       required:
         - name
         - instruction
         - trainer_id
         - evaluate_table
-        - target_column
 
   - name: data_process
     description: |

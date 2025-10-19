@@ -127,8 +127,10 @@ class ToolRegistry:
             # Treat timeouts as cancellations - don't retry, ask user instead
             return ToolResult(
                 success=False,
-                error=f"Tool '{tool_call.name}' execution timed out after {timeout_value}s. "
-                      "This operation took longer than expected.",
+                error=(
+                    f"Tool '{tool_call.name}' execution timed out after "
+                    f"{timeout_value}s. This operation took longer than expected."
+                ),
                 metadata={"cancelled": True, "reason": "timeout"},
             )
         except TypeError as e:
