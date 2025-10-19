@@ -514,7 +514,7 @@ async def _ml_train(
                     f"{db_plan.plan_yaml}"
                 )
 
-            ui.show_info(f"▌Using ML plan: {plan_id}")
+            ui.show_info(f"Using ML plan: {plan_id}")
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
@@ -806,7 +806,7 @@ async def _ml_model(
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id  # Ensure plan_id is in the dict
 
-            ui.show_info(f"▌Using ML plan: {plan_id}")
+            ui.show_info(f"Using ML plan: {plan_id}")
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
@@ -989,7 +989,7 @@ async def _ml_data_processing(
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id
 
-            ui.show_info(f"▌Using ML plan: {plan_id}")
+            ui.show_info(f"Using ML plan: {plan_id}")
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
