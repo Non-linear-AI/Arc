@@ -777,7 +777,7 @@ async def _ml_model(
         args,
         {
             "name": True,
-            "context": True,
+            "instruction": True,
             "data-table": True,
             "target-column": True,  # Target column for task-aware generation
             "plan-id": True,  # ML plan ID to use for guidance
@@ -786,7 +786,7 @@ async def _ml_model(
     )
 
     name = options.get("name")
-    context = options.get("context")
+    instruction = options.get("instruction")
     data_table = options.get("data-table")
     target_column = options.get("target-column")
     plan_id = options.get("plan-id")
@@ -817,9 +817,9 @@ async def _ml_model(
     if not data_table:
         raise CommandError("/ml model requires --data-table")
 
-    # context is optional when using a plan
-    if not ml_plan and not context:
-        raise CommandError("/ml model requires --context when not using --plan-id")
+    # instruction is optional when using a plan
+    if not ml_plan and not instruction:
+        raise CommandError("/ml model requires --instruction when not using --plan-id")
 
     try:
         # Use the MLModelTool which includes confirmation workflow
@@ -834,7 +834,7 @@ async def _ml_model(
         # Execute the tool with confirmation workflow
         result = await tool.execute(
             name=name,
-            instruction=context,
+            instruction=instruction,
             data_table=data_table,
             target_column=target_column,
             ml_plan=ml_plan,  # Pass ML plan if available
