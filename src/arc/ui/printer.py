@@ -686,6 +686,7 @@ class Printer:
         """
         from pathlib import Path
 
+        from rich.padding import Padding
         from rich.panel import Panel
         from rich.syntax import Syntax
 
@@ -719,18 +720,20 @@ class Printer:
                 word_wrap=False,
             )
 
-            # Print panel directly (no section wrapper needed)
-            self.console.print(Panel(syntax, border_style="color(240)"))
+            # Print panel with left padding to match section indentation
+            panel = Panel(syntax, border_style="color(240)")
+            padded_panel = Padding(panel, (0, 0, 0, 2))  # (top, right, bottom, left)
+            self.console.print(padded_panel)
             self.console.print("")  # Add blank separator
 
         except ImportError:
             # Fallback to plain text if Rich is not available
-            self.console.print(yaml_content)
+            self.console.print("  " + yaml_content.replace("\n", "\n  "))
             self.console.print("")  # Add blank separator
         except Exception as e:
             # Fallback on any error
-            self.console.print(f"Error displaying YAML: {e}")
-            self.console.print(yaml_content)
+            self.console.print(f"  Error displaying YAML: {e}")
+            self.console.print("  " + yaml_content.replace("\n", "\n  "))
             self.console.print("")  # Add blank separator
         finally:
             # Synchronize terminal output to prevent race condition with prompt_toolkit
@@ -756,6 +759,7 @@ class Printer:
             import difflib
             from pathlib import Path
 
+            from rich.padding import Padding
             from rich.panel import Panel
             from rich.syntax import Syntax
 
@@ -784,39 +788,41 @@ class Printer:
                     word_wrap=False,
                 )
 
-                with self.section(add_dot=False) as p:
-                    p.print_panel(
-                        Panel(
-                            diff_syntax,
-                            title=f"📝 Changes to {Path(file_path).name}",
-                            border_style="yellow",
-                        )
-                    )
+                # Print diff panel with left padding to match section indentation
+                panel = Panel(
+                    diff_syntax,
+                    title=f"📝 Changes to {Path(file_path).name}",
+                    border_style="yellow",
+                )
+                # Add 2-space left padding to match section indentation
+                padded_panel = Padding(panel, (0, 0, 0, 2))
+                self.console.print(padded_panel)
+                self.console.print("")  # Add blank separator
             else:
                 # No differences found
-                with self.section(add_dot=False) as p:
-                    p.print(f"✓ No changes detected in {Path(file_path).name}")
+                self.console.print(f"  ✓ No changes detected in {Path(file_path).name}")
+                self.console.print("")  # Add blank separator
 
         except Exception:
             # Fallback to simple diff display
-            with self.section(add_dot=False) as p:
-                p.print(f"📝 File diff for: {file_path}")
-                p.print("Lines being changed:")
+            self.console.print(f"  📝 File diff for: {file_path}")
+            self.console.print("  Lines being changed:")
 
-                # Simple line-by-line comparison
-                old_lines = old_content.splitlines()
-                new_lines = new_content.splitlines()
+            # Simple line-by-line comparison
+            old_lines = old_content.splitlines()
+            new_lines = new_content.splitlines()
 
-                max_lines = max(len(old_lines), len(new_lines))
-                for i in range(max_lines):
-                    old_line = old_lines[i] if i < len(old_lines) else ""
-                    new_line = new_lines[i] if i < len(new_lines) else ""
+            max_lines = max(len(old_lines), len(new_lines))
+            for i in range(max_lines):
+                old_line = old_lines[i] if i < len(old_lines) else ""
+                new_line = new_lines[i] if i < len(new_lines) else ""
 
-                    if old_line != new_line:
-                        if old_line:
-                            p.print(f"[red]-{old_line}[/red]")
-                        if new_line:
-                            p.print(f"[green]+{new_line}[/green]")
+                if old_line != new_line:
+                    if old_line:
+                        self.console.print(f"  [red]-{old_line}[/red]")
+                    if new_line:
+                        self.console.print(f"  [green]+{new_line}[/green]")
+            self.console.print("")  # Add blank separator
         finally:
             # Synchronize terminal output (early return path)
             self.console.file.flush()
