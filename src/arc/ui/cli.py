@@ -938,7 +938,7 @@ async def _ml_data_processing(
         {
             "name": True,
             "instruction": True,
-            "data-tables": True,
+            "source-tables": True,
             "plan-id": True,
             "target-db": True,
         },
@@ -947,7 +947,7 @@ async def _ml_data_processing(
 
     name = options.get("name")
     instruction = options.get("instruction")
-    data_tables_str = options.get("data-tables")
+    data_tables_str = options.get("source-tables")
     plan_id = options.get("plan-id")
     database = options.get("target-db", "user")  # Keep CLI option as --target-db
 
@@ -960,7 +960,7 @@ async def _ml_data_processing(
 
     if not data_tables_str:
         raise CommandError(
-            "/ml data requires --data-tables to narrow the scope of data exploration"
+            "/ml data requires --source-tables to narrow the scope of data exploration"
         )
 
     # Validate database
