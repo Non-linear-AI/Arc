@@ -552,7 +552,7 @@ class DataSourceSpec:
         # Substitute variables
         result = sql
         for var_name, var_value in self.vars.items():
-            result = result.replace(f"${{{var_name}}}", var_value)
+            result = result.replace(f"${{{var_name}}}", str(var_value))
 
         return result
 

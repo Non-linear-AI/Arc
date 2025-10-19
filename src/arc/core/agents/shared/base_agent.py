@@ -8,6 +8,7 @@ on an external ArcAgent to pass prompts as user messages.
 from __future__ import annotations
 
 import abc
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ import yaml
 
 from arc.core.client import ArcClient
 from arc.database.services import ServiceContainer
+
+logger = logging.getLogger(__name__)
 
 
 class AgentError(Exception):
@@ -257,10 +260,22 @@ class BaseAgent(abc.ABC):
                             f"Failed to generate valid content after "
                             f"{max_iterations} attempts. Final error: {last_error}"
                         )
+                    else:
+                        # Log the error and inform that we're retrying
+                        logger.warning(
+                            f"Validation failed on attempt {attempt + 1}/{max_iterations}: "
+                            f"{last_error}. Retrying..."
+                        )
 
             except Exception as e:
                 last_error = f"Generation error: {str(e)}"
                 if attempt == max_iterations - 1:
                     raise AgentError(f"Content generation failed: {e}") from e
+                else:
+                    # Log the error and inform that we're retrying
+                    logger.warning(
+                        f"Generation failed on attempt {attempt + 1}/{max_iterations}: "
+                        f"{last_error}. Retrying..."
+                    )
 
         raise AgentError(f"Content generation failed after {max_iterations} attempts")
