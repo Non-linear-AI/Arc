@@ -384,11 +384,11 @@ tools:
         instruction:
           type: string
           description: Natural language description of data processing requirements (required for 'generate' action)
-        target_tables:
+        source_tables:
           type: array
           items:
             type: string
-          description: List of database tables to analyze for generation (optional)
+          description: List of source database tables to analyze for generation (optional)
         target_db:
           type: string
           enum:

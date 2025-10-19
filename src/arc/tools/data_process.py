@@ -164,7 +164,7 @@ class MLDataProcessTool(BaseTool):
                 color="magenta", add_dot=True
             )
             ml_data_process_section_printer = self._ml_data_process_section.__enter__()
-            ml_data_process_section_printer.print("Data Processor")
+            ml_data_process_section_printer.print("ML Data")
 
             # Show ML plan feature engineering guidance if provided
             if ml_plan_feature_engineering:
