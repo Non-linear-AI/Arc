@@ -576,8 +576,9 @@ class ArcAgent:
     async def _execute_tool(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call using the tool registry.
 
-        Handles special preprocessing for tools that need agent context
-        (ml_plan, ml_model).
+        Handles special preprocessing for tools that need agent context:
+        - ml_plan: Injects conversation_history and previous_plan
+        - ml_model, ml_train, ml_evaluate, data_process: Inject current_ml_plan
         """
         # Special handling for ml_plan: inject conversation history and current plan
         if tool_call.name == "ml_plan":
@@ -607,6 +608,19 @@ class ArcAgent:
         if tool_call.name == "ml_model":
             try:
                 args = json.loads(tool_call.arguments)
+                # Only inject ml_plan if it exists and is valid
+                if self.current_ml_plan is not None:
+                    # Validate ml_plan structure before injecting
+                    if not isinstance(self.current_ml_plan, dict):
+                        return ToolResult.error_result(
+                            "Internal error: ml_plan is not a dictionary. "
+                            "Cannot inject invalid plan into ml_model."
+                        )
+                    # Basic validation: check for required fields
+                    if "model_architecture_and_loss" not in self.current_ml_plan:
+                        self.logger.warning(
+                            "ml_plan missing 'model_architecture_and_loss' section"
+                        )
                 args["ml_plan"] = self.current_ml_plan
                 tool_call = ArcToolCall(
                     id=tool_call.id,
@@ -616,6 +630,88 @@ class ArcAgent:
             except Exception as e:
                 return ToolResult.error_result(
                     f"Error preparing ml_model context: {str(e)}"
+                )
+
+        # Special handling for ml_train: inject current plan
+        if tool_call.name == "ml_train":
+            try:
+                args = json.loads(tool_call.arguments)
+                # Only inject ml_plan if it exists and is valid
+                if self.current_ml_plan is not None:
+                    # Validate ml_plan structure before injecting
+                    if not isinstance(self.current_ml_plan, dict):
+                        return ToolResult.error_result(
+                            "Internal error: ml_plan is not a dictionary. "
+                            "Cannot inject invalid plan into ml_train."
+                        )
+                    # Basic validation: check for required fields
+                    if "training_configuration" not in self.current_ml_plan:
+                        self.logger.warning(
+                            "ml_plan missing 'training_configuration' section"
+                        )
+                args["ml_plan"] = self.current_ml_plan
+                tool_call = ArcToolCall(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=json.dumps(args),
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Error preparing ml_train context: {str(e)}"
+                )
+
+        # Special handling for ml_evaluate: inject current plan
+        if tool_call.name == "ml_evaluate":
+            try:
+                args = json.loads(tool_call.arguments)
+                # Only inject ml_plan if it exists and is valid
+                if self.current_ml_plan is not None:
+                    # Validate ml_plan structure before injecting
+                    if not isinstance(self.current_ml_plan, dict):
+                        return ToolResult.error_result(
+                            "Internal error: ml_plan is not a dictionary. "
+                            "Cannot inject invalid plan into ml_evaluate."
+                        )
+                    # Basic validation: check for required fields
+                    if "evaluation" not in self.current_ml_plan:
+                        self.logger.warning("ml_plan missing 'evaluation' section")
+                args["ml_plan"] = self.current_ml_plan
+                tool_call = ArcToolCall(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=json.dumps(args),
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Error preparing ml_evaluate context: {str(e)}"
+                )
+
+        # Special handling for data_process: inject current plan
+        if tool_call.name == "data_process":
+            try:
+                args = json.loads(tool_call.arguments)
+                # Only inject ml_plan if it exists and is valid
+                if self.current_ml_plan is not None:
+                    # Validate ml_plan structure before injecting
+                    if not isinstance(self.current_ml_plan, dict):
+                        return ToolResult.error_result(
+                            "Internal error: ml_plan is not a dictionary. "
+                            "Cannot inject invalid plan into data_process."
+                        )
+                    # Basic validation: check for required fields
+                    if "feature_engineering" not in self.current_ml_plan:
+                        self.logger.warning(
+                            "ml_plan missing 'feature_engineering' section"
+                        )
+                args["ml_plan"] = self.current_ml_plan
+                tool_call = ArcToolCall(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=json.dumps(args),
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Error preparing data_process context: {str(e)}"
                 )
 
         # Use tool registry for execution
@@ -628,8 +724,41 @@ class ArcAgent:
             and result.metadata
             and "ml_plan" in result.metadata
         ):
-            self.current_ml_plan = result.metadata["ml_plan"]
+            # Validate ml_plan before storing
+            plan_data = result.metadata["ml_plan"]
+            if not isinstance(plan_data, dict):
+                self.logger.error(
+                    f"ml_plan tool returned invalid plan: not a dictionary "
+                    f"(type: {type(plan_data).__name__})"
+                )
+                # Don't store invalid plan
+                return ToolResult.error_result(
+                    "Internal error: ml_plan tool returned invalid plan data. "
+                    "Expected dictionary, got {type(plan_data).__name__}."
+                )
+
+            # Validate required fields
+            required_fields = [
+                "summary",
+                "feature_engineering",
+                "model_architecture_and_loss",
+                "training_configuration",
+                "evaluation",
+            ]
+            missing_fields = [f for f in required_fields if f not in plan_data]
+            if missing_fields:
+                self.logger.warning(
+                    f"ml_plan missing required fields: {', '.join(missing_fields)}"
+                )
+                # Store anyway but log warning (plan might be partial/revision)
+
+            self.current_ml_plan = plan_data
             self.last_ml_plan_timestamp = datetime.now()
+
+        # Tools now return factual data in metadata
+        # (plan_comparison, plan_training_config, plan_evaluation)
+        # The agent's reasoning will analyze this data and decide if plan
+        # revision is warranted
 
         return result
 

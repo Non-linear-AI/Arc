@@ -233,8 +233,7 @@ async def handle_ml_command(
 
     if len(tokens) < 2:
         ui.show_system_error(
-            "Usage: /ml <plan|revise-plan|train|predict|jobs|"
-            "model|evaluate|data-processing> ..."
+            "Usage: /ml <plan|revise-plan|train|predict|jobs|model|evaluate|data> ..."
         )
         return
 
@@ -260,7 +259,7 @@ async def handle_ml_command(
             await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "evaluate":
             await _ml_evaluate(args, ui, runtime)
-        elif subcommand == "data-processing":
+        elif subcommand == "data":
             await _ml_data_processing(args, ui, runtime)
         else:
             raise CommandError(f"Unknown ML command: {subcommand}")
@@ -304,7 +303,7 @@ async def _ml_plan(
 
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
-        user_context=str(user_context),
+        instruction=str(user_context),
         source_tables=str(source_tables),
         conversation_history=conversation_history,
         feedback=None,
@@ -374,7 +373,7 @@ async def _ml_revise_plan(
 
     # Execute ML plan tool with feedback
     result = await agent.ml_plan_tool.execute(
-        user_context=user_context,
+        instruction=user_context,
         data_table=data_table,
         target_column=target_column,
         conversation_history=conversation_history,
@@ -449,7 +448,7 @@ async def _ml_train(
             "name": True,
             "model-id": True,
             "data": True,
-            "context": True,
+            "instruction": True,
             "plan-id": True,
         },
         command_name="/ml train",
@@ -458,7 +457,7 @@ async def _ml_train(
     name = options.get("name")
     model_id = options.get("model-id")
     train_table = options.get("data")
-    context = options.get("context")
+    instruction = options.get("instruction")
     plan_id = options.get("plan-id")
 
     # Validate required parameters
@@ -471,17 +470,17 @@ async def _ml_train(
     if not train_table:
         raise CommandError("/ml train requires --data")
 
-    # Must provide either context or plan-id (mutually exclusive)
-    if not context and not plan_id:
-        raise CommandError("/ml train requires either --context or --plan-id")
+    # Must provide either instruction or plan-id (mutually exclusive)
+    if not instruction and not plan_id:
+        raise CommandError("/ml train requires either --instruction or --plan-id")
 
-    if context and plan_id:
+    if instruction and plan_id:
         raise CommandError(
-            "/ml train cannot use both --context and --plan-id (choose one)"
+            "/ml train cannot use both --instruction and --plan-id (choose one)"
         )
 
-    # If using plan, extract training instructions and embed into context
-    training_context = context
+    # If using plan, extract training instructions and embed into instruction
+    training_instruction = instruction
     if plan_id:
         try:
             # Get the plan from database
@@ -509,10 +508,10 @@ async def _ml_train(
                 training_instructions.append(plan_data["rationale"])
 
             if training_instructions:
-                training_context = "\n".join(training_instructions)
+                training_instruction = "\n".join(training_instructions)
             else:
-                # Fallback: use entire plan as context
-                training_context = (
+                # Fallback: use entire plan as instruction
+                training_instruction = (
                     f"Follow the training strategy from plan '{plan_id}':\n"
                     f"{db_plan.plan_yaml}"
                 )
@@ -547,7 +546,7 @@ async def _ml_train(
         # This will generate trainer, confirm, register, and launch training
         result = await tool.execute(
             name=name,
-            context=training_context,
+            instruction=training_instruction,
             model_id=model_id,
             train_table=train_table,
         )
@@ -837,7 +836,7 @@ async def _ml_model(
         # Execute the tool with confirmation workflow
         result = await tool.execute(
             name=name,
-            context=context,
+            instruction=context,
             data_table=data_table,
             target_column=target_column,
             ml_plan=ml_plan,  # Pass ML plan if available
@@ -913,20 +912,21 @@ async def _ml_evaluate(
         args,
         {
             "name": True,
-            "context": True,
+            "instruction": True,
             "trainer-id": True,
             "data-table": True,
         },
     )
 
     name = options.get("name")
-    context = options.get("context")
+    instruction = options.get("instruction")
     trainer_id = options.get("trainer-id")
     data_table = options.get("data-table")
 
-    if not name or not context or not trainer_id or not data_table:
+    if not name or not instruction or not trainer_id or not data_table:
         raise CommandError(
-            "/ml evaluate requires --name, --context, --trainer-id, and --data-table"
+            "/ml evaluate requires --name, --instruction, --trainer-id, "
+            "and --data-table"
         )
 
     tensorboard_manager = None
@@ -954,9 +954,9 @@ async def _ml_evaluate(
         # Execute the tool: generate spec, register, and run evaluation
         result = await tool.execute(
             name=name,
-            context=context,
+            instruction=instruction,
             trainer_id=trainer_id,
-            data_table=data_table,
+            evaluate_table=data_table,
         )
 
         if not result.success:
@@ -999,7 +999,7 @@ async def _ml_data_processing(
             "plan-id": True,
             "target-db": True,
         },
-        command_name="/ml data-processing",
+        command_name="/ml data",
     )
 
     name = options.get("name")
@@ -1010,15 +1010,14 @@ async def _ml_data_processing(
 
     # Validate required parameters
     if not name:
-        raise CommandError("/ml data-processing requires --name")
+        raise CommandError("/ml data requires --name")
 
     if not instruction:
-        raise CommandError("/ml data-processing requires --instruction")
+        raise CommandError("/ml data requires --instruction")
 
     if not data_tables_str:
         raise CommandError(
-            "/ml data-processing requires --data-tables to narrow the scope of "
-            "data exploration"
+            "/ml data requires --data-tables to narrow the scope of data exploration"
         )
 
     # Validate database

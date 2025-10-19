@@ -25,9 +25,9 @@ sys.path.insert(0, str(project_root / "src"))
 
 
 def load_actual_components():
-    """Load available components using exact ModelGeneratorAgent logic."""
+    """Load available components using exact MLModelAgent logic."""
     try:
-        # Import and use exact same logic as ModelGeneratorAgent._get_model_components()
+        # Import and use exact same logic as MLModelAgent._get_model_components()
         from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS
 
         # Combine both CORE_LAYERS (nn.Module) and TORCH_FUNCTIONS (functional)
@@ -66,7 +66,7 @@ def load_architecture_content(architecture_types):
             / "arc"
             / "core"
             / "agents"
-            / "model_generator"
+            / "ml_model"
             / "templates"
             / "architectures"
             / f"{arch_type}.md"
@@ -90,7 +90,7 @@ def load_examples_content(architecture_type, complexity="simple"):
         / "arc"
         / "core"
         / "agents"
-        / "model_generator"
+        / "ml_model"
         / "templates"
         / "examples"
         / f"{architecture_type}_{complexity}.md"
@@ -179,13 +179,7 @@ def main():
 
     # Get template directory and set up Jinja2
     template_dir = (
-        project_root
-        / "src"
-        / "arc"
-        / "core"
-        / "agents"
-        / "model_generator"
-        / "templates"
+        project_root / "src" / "arc" / "core" / "agents" / "ml_model" / "templates"
     )
     env = Environment(loader=FileSystemLoader(template_dir))
 

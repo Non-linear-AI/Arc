@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
@@ -12,20 +11,20 @@ from arc.utils import ConfirmationService
 from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 if TYPE_CHECKING:
-    from arc.core.agents.data_process.data_process import (
-        DataProcessorGeneratorAgent,
+    from arc.core.agents.ml_data.ml_data import (
+        MLDataAgent,
     )
     from arc.database.services.container import ServiceContainer
 else:
     # Avoid circular imports at runtime
     try:
-        from arc.core.agents.data_process.data_process import (
-            DataProcessorGeneratorAgent,
-            DataProcessorGeneratorError,
+        from arc.core.agents.ml_data.ml_data import (
+            MLDataAgent,
+            MLDataError,
         )
     except ImportError:
-        DataProcessorGeneratorAgent = None
-        DataProcessorGeneratorError = Exception
+        MLDataAgent = None
+        MLDataError = Exception
 
 
 class MLDataProcessTool(BaseTool):
@@ -33,7 +32,7 @@ class MLDataProcessTool(BaseTool):
 
     This tool has a single purpose: convert natural language descriptions into
     structured SQL data processing pipelines using LLM generation.
-    It requires an API key and uses the DataProcessorGeneratorAgent.
+    It requires an API key and uses the MLDataAgent.
     """
 
     def __init__(
@@ -55,7 +54,7 @@ class MLDataProcessTool(BaseTool):
 
         Raises:
             ValueError: If API key is not provided
-            RuntimeError: If DataProcessorGeneratorAgent cannot be initialized
+            RuntimeError: If MLDataAgent cannot be initialized
         """
         if not api_key:
             raise ValueError(
@@ -64,9 +63,9 @@ class MLDataProcessTool(BaseTool):
                 "without an API key."
             )
 
-        if DataProcessorGeneratorAgent is None:
+        if MLDataAgent is None:
             raise RuntimeError(
-                "DataProcessorGeneratorAgent is not available. "
+                "MLDataAgent is not available. "
                 "This is likely due to missing dependencies or circular imports."
             )
 
@@ -78,12 +77,12 @@ class MLDataProcessTool(BaseTool):
 
         # Initialize the generator agent (required)
         try:
-            self.generator_agent = DataProcessorGeneratorAgent(
+            self.generator_agent = MLDataAgent(
                 services=services, api_key=api_key, base_url=base_url, model=model
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize DataProcessorGeneratorAgent: {str(e)}. "
+                f"Failed to initialize MLDataAgent: {str(e)}. "
                 "This tool requires a working LLM connection for data processing "
                 "generation."
             ) from e
@@ -93,7 +92,6 @@ class MLDataProcessTool(BaseTool):
         name: str,
         source_tables: list[str],
         instruction: str | None = None,
-        output_path: str | None = None,
         database: str = "user",
         auto_confirm: bool = False,
         ml_plan: dict | None = None,
@@ -104,12 +102,23 @@ class MLDataProcessTool(BaseTool):
             name: Name for the data processor (will be registered in database)
             source_tables: List of source tables to read from (required to narrow
                 scope of data exploration)
-            instruction: Detailed instruction for data processing (shaped by main agent
-                or from ML plan)
-            output_path: Path to save generated YAML file (optional, for backup)
+            instruction: Detailed instruction for data processing (PRIMARY driver,
+                shaped by main agent or provided directly)
             database: Database to use - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
             ml_plan: Optional ML plan dict containing feature engineering guidance
+                (SECONDARY baseline, automatically injected by the main agent)
+
+        Note on instruction vs ml_plan precedence:
+            - instruction: PRIMARY driver - user's immediate, specific data
+              processing request
+            - ml_plan: SECONDARY baseline - background feature engineering guidance
+            - When there's a conflict, instruction takes precedence
+            - Example: If instruction says "create interaction features" but plan says
+              "use raw features only", the processor should create interaction features
+              (instruction wins)
+            - The LLM agent should use ml_plan as baseline feature engineering guidance
+              and augment/override it with specifics from instruction
 
         Returns:
             ToolResult with operation result
@@ -236,7 +245,9 @@ class MLDataProcessTool(BaseTool):
 
                 try:
                     proceed, final_yaml = await workflow.run_workflow(
-                        yaml_content, context_dict, output_path
+                        yaml_content,
+                        context_dict,
+                        None,  # No output path - saved to DB only
                     )
                     if not proceed:
                         # Show cancellation message in the Data Processor section
@@ -280,12 +291,6 @@ class MLDataProcessTool(BaseTool):
                 return ToolResult.error_result(
                     f"Failed to register data processor: {str(e)}"
                 )
-
-            # Save YAML to file for backup (optional)
-            if output_path:
-                output_file = Path(output_path)
-                output_file.parent.mkdir(parents=True, exist_ok=True)
-                output_file.write_text(yaml_content)
 
             # Execute the pipeline automatically after confirmation
             from arc.ml.data_source_executor import (
@@ -339,10 +344,6 @@ class MLDataProcessTool(BaseTool):
                         "[dim]You can review and fix the SQL queries, then re-run "
                         "the processor.[/dim]"
                     )
-                    if output_path:
-                        ml_data_process_section_printer.print(
-                            f"[dim]YAML saved to: {output_path}[/dim]"
-                        )
                 # Close the section before returning
                 if self.ui and hasattr(self, "_ml_data_process_section"):
                     self._ml_data_process_section.__exit__(None, None, None)

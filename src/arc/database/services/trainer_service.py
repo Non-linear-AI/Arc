@@ -287,6 +287,7 @@ class TrainerService(BaseService):
                 model_version=int(row["model_version"]),
                 spec=str(row["spec"]),
                 description=str(row["description"]),
+                plan_id=str(row["plan_id"]) if row.get("plan_id") else None,
                 created_at=created_at,
                 updated_at=updated_at,
             )
@@ -327,9 +328,15 @@ class TrainerService(BaseService):
             created_at_str = trainer.created_at.isoformat()
             updated_at_str = trainer.updated_at.isoformat()
 
+            plan_id_value = (
+                f"'{self._escape_string(trainer.plan_id)}'"
+                if trainer.plan_id
+                else "NULL"
+            )
+
             sql = f"""INSERT INTO trainers (
                 id, name, version, model_id, model_version,
-                spec, description, created_at, updated_at
+                spec, description, plan_id, created_at, updated_at
             ) VALUES (
                 '{self._escape_string(trainer.id)}',
                 '{self._escape_string(trainer.name)}',
@@ -338,6 +345,7 @@ class TrainerService(BaseService):
                 {trainer.model_version},
                 '{self._escape_string(trainer.spec)}',
                 '{self._escape_string(trainer.description)}',
+                {plan_id_value},
                 '{created_at_str}',
                 '{updated_at_str}'
             )"""
@@ -361,6 +369,11 @@ class TrainerService(BaseService):
         try:
             # Format timestamps for SQL
             updated_at_str = trainer.updated_at.isoformat()
+            plan_id_value = (
+                f"'{self._escape_string(trainer.plan_id)}'"
+                if trainer.plan_id
+                else "NULL"
+            )
 
             sql = f"""UPDATE trainers SET
                 name = '{self._escape_string(trainer.name)}',
@@ -369,6 +382,7 @@ class TrainerService(BaseService):
                 model_version = {trainer.model_version},
                 spec = '{self._escape_string(trainer.spec)}',
                 description = '{self._escape_string(trainer.description)}',
+                plan_id = {plan_id_value},
                 updated_at = '{updated_at_str}'
             WHERE id = '{self._escape_string(trainer.id)}'"""
 

@@ -1,10 +1,9 @@
 You are an expert machine learning engineer specializing in Arc trainer configuration generation.
 
 ## TASK
-{% if is_editing -%}
-Edit the existing Arc-Graph trainer specification based on the following instructions:
-
-**Editing Instructions**: {{ editing_instructions }}
+{% if existing_yaml -%}
+**Mode**: Edit existing Arc-Graph trainer specification
+**User Changes Requested**: {{ instruction }}
 
 **Current YAML Specification**:
 ```yaml
@@ -13,12 +12,12 @@ Edit the existing Arc-Graph trainer specification based on the following instruc
 
 **Additional Context**:
 - **Trainer Name**: {{ trainer_name }}
-- **User Intent**: {{ user_intent }}
 - **Model ID**: {{ model_id }}
 {% else -%}
-Generate a trainer specification YAML for:
+**Mode**: Generate new Arc-Graph trainer specification
+**Requirements**: {{ instruction }}
+
 - **Trainer Name**: {{ trainer_name }}
-- **User Intent**: {{ user_intent }}
 - **Model ID**: {{ model_id }}
 {% endif %}
 
@@ -40,6 +39,23 @@ The trainer will optimize this model:
 {% endif -%}
 {% if model_profile.recommended_batch_size -%}
 - **Recommended Batch Size**: {{ model_profile.recommended_batch_size }}
+{% endif %}
+
+{% if ml_plan_training_config -%}
+## ML Plan Training Guidance
+The ML Plan provides the following training configuration guidance (use as baseline):
+
+{{ ml_plan_training_config }}
+
+**IMPORTANT**: Use this ML plan guidance to inform your trainer specification. Extract relevant recommendations for:
+- Optimizer type and learning rate
+- Batch size and number of epochs
+- Validation strategy
+- Early stopping patience
+- Any regularization techniques mentioned
+
+The user instruction above may build upon this plan or request modifications.
+
 {% endif %}
 
 ## IMPORTANT: Trainer-Only Configuration
@@ -244,7 +260,8 @@ config:
 - `config.device`: Must be one of: auto, cpu, cuda, mps (if provided)
 
 ## Output Format
-{% if is_editing -%}
+{% if existing_yaml -%}
+Apply the requested changes and return the complete updated YAML configuration.
 - YAML only, no markdown blocks or explanations
 - Make the requested changes while maintaining the overall structure
 - Ensure schema compliance after edits
@@ -252,6 +269,7 @@ config:
 
 Generate the updated trainer specification:
 {% else -%}
+Generate the complete YAML configuration.
 - YAML only, no markdown blocks or explanations
 - Start with `model_ref: {{ model_id }}`
 - Then `optimizer:` section with `type` and `lr`

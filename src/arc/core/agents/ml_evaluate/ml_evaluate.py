@@ -1,4 +1,4 @@
-"""Arc evaluator specification generation agent."""
+"""Arc ML evaluate agent."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from arc.graph.evaluator import (
 logger = logging.getLogger(__name__)
 
 
-class EvaluatorGeneratorError(AgentError):
+class MLEvaluateError(AgentError):
     """Raised when evaluator generation fails."""
 
 
-class EvaluatorGeneratorAgent(BaseAgent):
+class MLEvaluateAgent(BaseAgent):
     """Specialized agent for generating Arc evaluator specifications using LLM."""
 
     AVAILABLE_METRICS = {
@@ -71,27 +71,29 @@ class EvaluatorGeneratorAgent(BaseAgent):
     async def generate_evaluator(
         self,
         name: str,
-        user_context: str,
+        instruction: str,
         trainer_ref: str,
         trainer_spec_yaml: str,
         dataset: str,
         target_column: str,
         target_column_exists: bool = True,
         existing_yaml: str | None = None,
-        editing_instructions: str | None = None,
+        ml_plan_evaluation: str | None = None,
     ) -> tuple[EvaluatorSpec, str]:
-        """Generate Arc evaluator specification based on trainer and context.
+        """Generate Arc evaluator specification based on trainer and instruction.
 
         Args:
             name: Evaluator name for the specification
-            user_context: User description of desired evaluation setup
+            instruction: User's instruction for evaluation setup.
+                For generation: requirements for evaluation configuration.
+                For editing: changes to make to existing YAML.
             trainer_ref: Reference to the trainer (e.g., "diabetes_trainer")
             trainer_spec_yaml: Trainer specification YAML content
             dataset: Test dataset table name
             target_column: Target column name in the dataset
             target_column_exists: Whether target column exists in dataset
-            existing_yaml: Optional existing YAML to edit
-            editing_instructions: Optional instructions for editing existing YAML
+            existing_yaml: Optional existing YAML to edit (switches to editing mode)
+            ml_plan_evaluation: Optional evaluation guidance from ML plan
 
         Returns:
             Tuple of (parsed EvaluatorSpec, raw YAML string)
@@ -102,7 +104,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
         # Build context for LLM
         context = {
             "evaluator_name": name,
-            "user_intent": user_context,
+            "instruction": instruction,
             "trainer_ref": trainer_ref,
             "trainer_spec": trainer_spec_yaml,
             "dataset": dataset,
@@ -111,10 +113,9 @@ class EvaluatorGeneratorAgent(BaseAgent):
             "trainer_profile": self._extract_trainer_profile(trainer_spec_yaml),
             "model_outputs": self._extract_model_outputs(trainer_spec_yaml),
             "available_metrics": self._get_available_metrics(),
-            "examples": self._get_evaluator_examples(user_context),
-            "is_editing": existing_yaml is not None,
+            "examples": self._get_evaluator_examples(instruction),
             "existing_yaml": existing_yaml,
-            "editing_instructions": editing_instructions,
+            "ml_plan_evaluation": ml_plan_evaluation,
         }
 
         # Generate evaluator specification with single attempt
@@ -126,7 +127,7 @@ class EvaluatorGeneratorAgent(BaseAgent):
             return evaluator_spec, evaluator_yaml
 
         except AgentError as e:
-            raise EvaluatorGeneratorError(str(e)) from e
+            raise MLEvaluateError(str(e)) from e
 
     def _validate_evaluator_comprehensive(
         self, evaluator_yaml: str, context: dict[str, Any]

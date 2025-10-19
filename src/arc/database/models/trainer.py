@@ -13,5 +13,6 @@ class Trainer:
     model_version: int
     spec: str
     description: str
+    plan_id: str | None
     created_at: datetime
     updated_at: datetime

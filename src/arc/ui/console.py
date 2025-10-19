@@ -234,8 +234,8 @@ class InteractiveInterface:
                     "Generate evaluator and run model evaluation",
                 ),
                 (
-                    "/ml data-processing --yaml PATH",
-                    "Process data based on the Arc-formatYAML specification",
+                    "/ml data --name NAME --instruction INST --data-tables TABLES",
+                    "Generate data processing pipeline from natural language",
                 ),
                 ("/ml train --model NAME --data TABLE", "Launch a training job"),
                 (

@@ -525,7 +525,7 @@ async def test_train_submits_job(tmp_path):
 
         await handle_ml_command(
             "/ml train --name test_trainer --model-id my_model-v1 "
-            "--context 'Train for 3 epochs' --data train_table",
+            "--instruction 'Train for 3 epochs' --data train_table",
             ui,
             runtime,
         )
@@ -611,7 +611,7 @@ async def test_train_missing_model_shows_error(tmp_path):
     ui = StubUI()
     await handle_ml_command(
         "/ml train --name test_trainer --model-id unknown_model-v1 "
-        "--context 'test' --data table",
+        "--instruction 'test' --data table",
         ui,
         runtime,
     )

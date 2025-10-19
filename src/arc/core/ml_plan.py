@@ -99,7 +99,6 @@ class MLPlan:
         """
         return {
             "summary": self.summary,
-            "selected_components": self.selected_components,
             "feature_engineering": self.feature_engineering,
             "model_architecture_and_loss": self.model_architecture_and_loss,
             "training_configuration": self.training_configuration,

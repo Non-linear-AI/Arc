@@ -155,6 +155,7 @@ class DuckDBDatabase(Database):
                     model_version INTEGER NOT NULL,
                     spec TEXT NOT NULL,
                     description TEXT,
+                    plan_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE (name, version)
@@ -185,6 +186,7 @@ class DuckDBDatabase(Database):
                     trainer_version INTEGER NOT NULL,
                     spec TEXT NOT NULL,
                     description TEXT,
+                    plan_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE (name, version)
@@ -205,6 +207,34 @@ class DuckDBDatabase(Database):
                 CREATE INDEX IF NOT EXISTS idx_evaluators_name_version
                 ON evaluators(name, version);
             """)
+
+            # Migrate trainers and evaluators tables to add plan_id column (Phase 7)
+            # This ensures backward compatibility with existing databases
+            from contextlib import suppress
+
+            with suppress(Exception):
+                # Check if trainers table needs migration
+                check_result = self.query("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'trainers' AND column_name = 'plan_id'
+                """)
+
+                if not check_result.rows:
+                    # plan_id column doesn't exist, add it
+                    self.execute("ALTER TABLE trainers ADD COLUMN plan_id TEXT")
+
+            with suppress(Exception):
+                # Check if evaluators table needs migration
+                check_result = self.query("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'evaluators' AND column_name = 'plan_id'
+                """)
+
+                if not check_result.rows:
+                    # plan_id column doesn't exist, add it
+                    self.execute("ALTER TABLE evaluators ADD COLUMN plan_id TEXT")
 
             # Tracks long-running processes like training
             self.execute("""

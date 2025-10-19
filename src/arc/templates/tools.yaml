@@ -233,7 +233,7 @@ tools:
     parameters:
       type: object
       properties:
-        user_context:
+        instruction:
           type: string
           description: Description of the ML problem, goals, and requirements
         source_tables:
@@ -243,7 +243,7 @@ tools:
           type: string
           description: Optional feedback to revise an existing plan
       required:
-        - user_context
+        - instruction
         - source_tables
 
   - name: ml_model
@@ -254,19 +254,20 @@ tools:
         name:
           type: string
           description: Model name to include in the specification
-        context:
+        instruction:
           type: string
-          description: Description of the intended model behavior
+          description: Description of the intended model behavior and requirements
         data_table:
           type: string
           description: Database table to profile for generation
-        output_path:
+        target_column:
           type: string
-          description: Optional file path to save the generated model YAML
+          description: Target column for prediction
       required:
         - name
-        - context
+        - instruction
         - data_table
+        - target_column
 
   - name: ml_train
     description: |
@@ -283,7 +284,7 @@ tools:
         name:
           type: string
           description: Trainer name for the specification
-        context:
+        instruction:
           type: string
           description: |
             Training goals, constraints, and requirements. Include all training configuration
@@ -297,27 +298,29 @@ tools:
           description: Training data table name
       required:
         - name
-        - context
+        - instruction
         - model_id
         - train_table
 
   - name: ml_evaluate
     description: |
-      Generate Arc-Graph evaluator specification and run evaluation on test data.
+      Generate Arc-Graph evaluator specification and launch evaluation job on test data.
       This unified tool:
       1) Generates evaluator spec via LLM based on evaluation goals,
       2) Presents interactive confirmation workflow,
       3) Auto-registers evaluator to database after approval,
-      4) Runs evaluation and logs metrics to TensorBoard after user confirmation.
-      Supports classification metrics (accuracy, precision, recall, F1, confusion matrix,
-      PR curves, ROC curves) and regression metrics (MSE, MAE, R², scatter plots).
+      4) Launches evaluation job and returns immediately with job_id.
+      Evaluation runs asynchronously in the background. Monitor progress via /ml jobs status
+      and view metrics in TensorBoard. Supports classification metrics (accuracy, precision,
+      recall, F1, confusion matrix, PR curves, ROC curves) and regression metrics (MSE, MAE,
+      R², scatter plots).
     parameters:
       type: object
       properties:
         name:
           type: string
           description: Evaluator name for the specification
-        context:
+        instruction:
           type: string
           description: |
             Evaluation goals, constraints, and requirements. Specify which metrics
@@ -325,9 +328,9 @@ tools:
         trainer_id:
           type: string
           description: Trainer ID (without version, e.g., 'my_trainer')
-        test_table:
+        evaluate_table:
           type: string
-          description: Test dataset table name
+          description: Test dataset table name for evaluation
         target_column:
           type: string
           description: Target column name for evaluation
@@ -341,9 +344,9 @@ tools:
           description: Optional specific trainer version to evaluate (default latest version)
       required:
         - name
-        - context
+        - instruction
         - trainer_id
-        - test_table
+        - evaluate_table
         - target_column
 
   - name: data_process
@@ -369,7 +372,7 @@ tools:
         name:
           type: string
           description: Name for the data processor (will be registered in database)
-        context:
+        instruction:
           type: string
           description: Natural language description of data processing requirements (required for 'generate' action)
         target_tables:
@@ -377,9 +380,6 @@ tools:
           items:
             type: string
           description: List of database tables to analyze for generation (optional)
-        output_path:
-          type: string
-          description: Path to save generated YAML or validate existing YAML file
         target_db:
           type: string
           enum:
@@ -391,4 +391,4 @@ tools:
           description: Raw YAML content for validation (alternative to output_path)
       required:
         - name
-        - context
+        - instruction

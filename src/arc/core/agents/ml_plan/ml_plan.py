@@ -107,6 +107,58 @@ class MLPlanAgent(BaseAgent):
         except Exception as e:
             raise MLPlanError(f"Failed to analyze problem: {str(e)}") from e
 
+    async def update_section(
+        self,
+        section_name: str,
+        original_section: str,
+        feedback_content: str,
+    ) -> str:
+        """Update a specific section of an ML plan based on feedback.
+
+        Args:
+            section_name: Name of section to update
+                (e.g., "model_architecture_and_loss")
+            original_section: The original section content
+            feedback_content: Feedback or implementation details to incorporate
+
+        Returns:
+            Updated section text (plain text, not YAML-wrapped)
+
+        Raises:
+            MLPlanError: If update fails
+        """
+        # Build update context
+        context = {
+            "mode": "update_section",
+            "section_to_update": section_name,
+            "original_section": original_section,
+            "feedback_content": feedback_content,
+        }
+
+        # Generate updated section using LLM
+        try:
+            prompt = self._render_template(self.get_template_name(), context)
+            messages = [{"role": "user", "content": prompt}]
+            response = await self.arc_client.chat(messages, tools=None)
+
+            # Extract the updated section from response
+            updated_section = response.strip()
+
+            # Remove any markdown code fences if present
+            if updated_section.startswith("```yaml"):
+                updated_section = updated_section[7:]
+            if updated_section.startswith("```"):
+                updated_section = updated_section[3:]
+            if updated_section.endswith("```"):
+                updated_section = updated_section[:-3]
+
+            return updated_section.strip()
+
+        except Exception as e:
+            raise MLPlanError(
+                f"Failed to update section '{section_name}': {str(e)}"
+            ) from e
+
     async def _analyze_problem_stream(self, context):
         """Stream the analysis with final result.
 
@@ -218,13 +270,17 @@ class MLPlanAgent(BaseAgent):
             return result
 
         except yaml.YAMLError as e:
-            # Truncate response for error message to avoid token waste
-            response_preview = (
-                response[:200] + "..." if len(response) > 200 else response
-            )
+            # Show first and last 250 chars for better debugging context
+            if len(response) > 500:
+                response_preview = (
+                    f"{response[:250]}...\n\n[truncated]\n\n...{response[-250:]}"
+                )
+            else:
+                response_preview = response
+
             raise MLPlanError(
                 f"Failed to parse YAML from LLM response: {str(e)}\n"
-                f"Response preview: {response_preview}\n"
+                f"Response preview:\n{response_preview}\n"
                 f"Ensure the LLM returns valid YAML without markdown code fences."
             ) from e
         except ValueError as e:
@@ -277,20 +333,75 @@ class MLPlanAgent(BaseAgent):
             # Get all columns from the table
             all_columns = dataset_info.columns
 
-            # Count feature types
+            # Count feature types and gather detailed statistics
             feature_types = {}
+            column_details = []
+
             for col in all_columns:
                 col_type = col.get("type", "unknown")
                 feature_types[col_type] = feature_types.get(col_type, 0) + 1
 
-            # Base profile structure
+                # Build detailed column info
+                col_detail = {
+                    "name": col.get("name"),
+                    "type": col_type,
+                }
+
+                # Add null percentage if available
+                if "null_count" in col and "total_count" in col:
+                    null_pct = (col["null_count"] / col["total_count"]) * 100
+                    col_detail["null_pct"] = f"{null_pct:.1f}%"
+                elif "null_pct" in col:
+                    col_detail["null_pct"] = f"{col['null_pct']:.1f}%"
+
+                # Add cardinality for categorical/string columns
+                if "unique_count" in col:
+                    col_detail["cardinality"] = col["unique_count"]
+
+                # Add min/max for numerical columns
+                if col_type in ("INTEGER", "DOUBLE", "FLOAT", "BIGINT"):
+                    if "min" in col:
+                        col_detail["min"] = col["min"]
+                    if "max" in col:
+                        col_detail["max"] = col["max"]
+                    if "mean" in col:
+                        col_detail["mean"] = f"{col['mean']:.2f}"
+
+                # Add sample values if available
+                if "sample_values" in col and col["sample_values"]:
+                    # Limit to first 3 sample values
+                    samples = col["sample_values"][:3]
+                    col_detail["samples"] = samples
+
+                column_details.append(col_detail)
+
+            # Build enhanced summary with statistics
+            total_cols = len(all_columns)
+            numeric_cols = sum(
+                count
+                for dtype, count in feature_types.items()
+                if dtype in ("INTEGER", "DOUBLE", "FLOAT", "BIGINT")
+            )
+            categorical_cols = sum(
+                count
+                for dtype, count in feature_types.items()
+                if dtype in ("VARCHAR", "STRING", "TEXT")
+            )
+
+            summary_parts = [
+                f"Table '{table_name}' with {total_cols} columns",
+                f"({numeric_cols} numerical, {categorical_cols} categorical)",
+            ]
+
+            # Base profile structure with enhanced information
             profile = {
                 "table_name": dataset_info.name,
                 "feature_columns": all_columns,
-                "total_columns": len(all_columns),
-                "feature_count": len(all_columns),
+                "column_details": column_details,
+                "total_columns": total_cols,
+                "feature_count": total_cols,
                 "feature_types": feature_types,
-                "summary": f"Table '{table_name}' with {len(all_columns)} columns",
+                "summary": " ".join(summary_parts),
             }
 
             return profile

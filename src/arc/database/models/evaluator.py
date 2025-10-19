@@ -13,5 +13,6 @@ class Evaluator:
     trainer_version: int
     spec: str
     description: str
-    created_at: datetime
-    updated_at: datetime
+    plan_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
