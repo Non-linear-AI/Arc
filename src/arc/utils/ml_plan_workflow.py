@@ -104,3 +104,5 @@ class MLPlanConfirmationWorkflow:
         panel = Panel(md, border_style="color(245)", expand=False)
         self.ui._printer.console.print(panel)
         self.ui._printer.console.print()  # Add blank line
+        # Flush console output to ensure it's rendered before prompt_toolkit takes over
+        self.ui._printer.console.file.flush()

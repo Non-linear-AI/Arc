@@ -737,6 +737,10 @@ class Printer:
             with self.section(add_dot=False) as p:
                 p.print(f"Error displaying YAML: {e}")
                 p.print(yaml_content)
+        finally:
+            # Flush console output to ensure it's rendered before prompt_toolkit
+            # This prevents race condition when get_choice_async is called immediately after
+            self.console.file.flush()
 
     def _display_yaml_diff(
         self, old_content: str, new_content: str, file_path: str
@@ -807,3 +811,6 @@ class Printer:
                             p.print(f"[red]-{old_line}[/red]")
                         if new_line:
                             p.print(f"[green]+{new_line}[/green]")
+        finally:
+            # Flush console output (called from display_yaml_with_diff's early return)
+            self.console.file.flush()
