@@ -328,7 +328,11 @@ class TrainerService(BaseService):
             created_at_str = trainer.created_at.isoformat()
             updated_at_str = trainer.updated_at.isoformat()
 
-            plan_id_value = f"'{self._escape_string(trainer.plan_id)}'" if trainer.plan_id else "NULL"
+            plan_id_value = (
+                f"'{self._escape_string(trainer.plan_id)}'"
+                if trainer.plan_id
+                else "NULL"
+            )
 
             sql = f"""INSERT INTO trainers (
                 id, name, version, model_id, model_version,
@@ -365,7 +369,11 @@ class TrainerService(BaseService):
         try:
             # Format timestamps for SQL
             updated_at_str = trainer.updated_at.isoformat()
-            plan_id_value = f"'{self._escape_string(trainer.plan_id)}'" if trainer.plan_id else "NULL"
+            plan_id_value = (
+                f"'{self._escape_string(trainer.plan_id)}'"
+                if trainer.plan_id
+                else "NULL"
+            )
 
             sql = f"""UPDATE trainers SET
                 name = '{self._escape_string(trainer.name)}',

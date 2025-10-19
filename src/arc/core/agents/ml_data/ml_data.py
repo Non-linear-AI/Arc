@@ -97,9 +97,7 @@ class MLDataAgent:
                 )
                 if retry_result:
                     return retry_result
-                raise MLDataError(
-                    f"Generated invalid YAML configuration: {e}"
-                ) from e
+                raise MLDataError(f"Generated invalid YAML configuration: {e}") from e
 
         except Exception as e:
             if isinstance(e, MLDataError):
@@ -257,9 +255,7 @@ class MLDataAgent:
                 "Check the template syntax in {template_path}."
             ) from e
         except Exception as e:
-            raise MLDataError(
-                f"Unexpected error loading prompt template: {e}"
-            ) from e
+            raise MLDataError(f"Unexpected error loading prompt template: {e}") from e
 
     async def _generate_yaml_with_llm(self, messages: list[dict[str, str]]) -> str:
         """Generate YAML content using LLM.

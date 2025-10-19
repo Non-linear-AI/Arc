@@ -116,7 +116,8 @@ class MLPlanAgent(BaseAgent):
         """Update a specific section of an ML plan based on feedback.
 
         Args:
-            section_name: Name of section to update (e.g., "model_architecture_and_loss")
+            section_name: Name of section to update
+                (e.g., "model_architecture_and_loss")
             original_section: The original section content
             feedback_content: Feedback or implementation details to incorporate
 
@@ -154,7 +155,9 @@ class MLPlanAgent(BaseAgent):
             return updated_section.strip()
 
         except Exception as e:
-            raise MLPlanError(f"Failed to update section '{section_name}': {str(e)}") from e
+            raise MLPlanError(
+                f"Failed to update section '{section_name}': {str(e)}"
+            ) from e
 
     async def _analyze_problem_stream(self, context):
         """Stream the analysis with final result.
@@ -375,11 +378,13 @@ class MLPlanAgent(BaseAgent):
             # Build enhanced summary with statistics
             total_cols = len(all_columns)
             numeric_cols = sum(
-                count for dtype, count in feature_types.items()
+                count
+                for dtype, count in feature_types.items()
                 if dtype in ("INTEGER", "DOUBLE", "FLOAT", "BIGINT")
             )
             categorical_cols = sum(
-                count for dtype, count in feature_types.items()
+                count
+                for dtype, count in feature_types.items()
                 if dtype in ("VARCHAR", "STRING", "TEXT")
             )
 

@@ -233,8 +233,7 @@ async def handle_ml_command(
 
     if len(tokens) < 2:
         ui.show_system_error(
-            "Usage: /ml <plan|revise-plan|train|predict|jobs|"
-            "model|evaluate|data> ..."
+            "Usage: /ml <plan|revise-plan|train|predict|jobs|model|evaluate|data> ..."
         )
         return
 
@@ -304,7 +303,7 @@ async def _ml_plan(
 
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
-        user_context=str(user_context),
+        instruction=str(user_context),
         source_tables=str(source_tables),
         conversation_history=conversation_history,
         feedback=None,
@@ -374,7 +373,7 @@ async def _ml_revise_plan(
 
     # Execute ML plan tool with feedback
     result = await agent.ml_plan_tool.execute(
-        user_context=user_context,
+        instruction=user_context,
         data_table=data_table,
         target_column=target_column,
         conversation_history=conversation_history,
@@ -837,7 +836,7 @@ async def _ml_model(
         # Execute the tool with confirmation workflow
         result = await tool.execute(
             name=name,
-            context=context,
+            instruction=context,
             data_table=data_table,
             target_column=target_column,
             ml_plan=ml_plan,  # Pass ML plan if available
@@ -926,7 +925,8 @@ async def _ml_evaluate(
 
     if not name or not instruction or not trainer_id or not data_table:
         raise CommandError(
-            "/ml evaluate requires --name, --instruction, --trainer-id, and --data-table"
+            "/ml evaluate requires --name, --instruction, --trainer-id, "
+            "and --data-table"
         )
 
     tensorboard_manager = None
@@ -956,7 +956,7 @@ async def _ml_evaluate(
             name=name,
             instruction=instruction,
             trainer_id=trainer_id,
-            data_table=data_table,
+            evaluate_table=data_table,
         )
 
         if not result.success:
@@ -1017,8 +1017,7 @@ async def _ml_data_processing(
 
     if not data_tables_str:
         raise CommandError(
-            "/ml data requires --data-tables to narrow the scope of "
-            "data exploration"
+            "/ml data requires --data-tables to narrow the scope of data exploration"
         )
 
     # Validate database

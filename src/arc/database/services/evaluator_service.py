@@ -336,7 +336,11 @@ class EvaluatorService(BaseService):
             created_at_str = evaluator.created_at.isoformat()
             updated_at_str = evaluator.updated_at.isoformat()
 
-            plan_id_value = f"'{self._escape_string(evaluator.plan_id)}'" if evaluator.plan_id else "NULL"
+            plan_id_value = (
+                f"'{self._escape_string(evaluator.plan_id)}'"
+                if evaluator.plan_id
+                else "NULL"
+            )
 
             sql = f"""INSERT INTO evaluators (
                 id, name, version, trainer_id, trainer_version,
@@ -373,7 +377,11 @@ class EvaluatorService(BaseService):
         try:
             # Format timestamps for SQL
             updated_at_str = evaluator.updated_at.isoformat()
-            plan_id_value = f"'{self._escape_string(evaluator.plan_id)}'" if evaluator.plan_id else "NULL"
+            plan_id_value = (
+                f"'{self._escape_string(evaluator.plan_id)}'"
+                if evaluator.plan_id
+                else "NULL"
+            )
 
             sql = f"""UPDATE evaluators SET
                 name = '{self._escape_string(evaluator.name)}',

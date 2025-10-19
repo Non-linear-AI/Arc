@@ -12,8 +12,8 @@ import yaml
 if TYPE_CHECKING:
     from arc.database.models.model import Model
 
-from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.ml_model import MLModelAgent
+from arc.core.agents.ml_plan import MLPlanAgent
 from arc.core.agents.ml_train import (
     MLTrainAgent,
 )
@@ -79,13 +79,39 @@ class MLModelTool(BaseTool):
         self,
         *,
         name: str | None = None,
-        context: str | None = None,
+        instruction: str | None = None,
         data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
         category: str | None = None,
         ml_plan: dict | None = None,
     ) -> ToolResult:
+        """Generate Arc-Graph model specification via LLM.
+
+        Args:
+            name: Model name
+            instruction: User's instruction for model architecture (PRIMARY driver)
+            data_table: Database table to profile for generation
+            target_column: Target column for prediction
+            auto_confirm: Skip confirmation workflows (for testing only)
+            category: Model category (classification, regression, etc.)
+            ml_plan: Optional ML plan dict containing model_architecture_and_loss
+                guidance (SECONDARY baseline, automatically injected by the main agent)
+
+        Note on instruction vs ml_plan precedence:
+            - instruction: PRIMARY driver - user's immediate, specific
+              architecture request
+            - ml_plan: SECONDARY baseline - background architectural guidance
+            - When there's a conflict, instruction takes precedence
+            - Example: If instruction says "use 3 hidden layers" but plan says
+              "use 2 layers", the model spec should use 3 hidden layers
+              (instruction wins)
+            - The LLM agent should use ml_plan as baseline architectural guidance
+              and augment/override it with specifics from instruction
+
+        Returns:
+            ToolResult with model registration details
+        """
         if not self.api_key:
             return ToolResult.error_result(
                 "API key required for model generation. "
@@ -98,10 +124,10 @@ class MLModelTool(BaseTool):
                 "Database services not initialized."
             )
 
-        # Validate: either ml_plan or context must be provided
-        if not ml_plan and not context:
+        # Validate: either ml_plan or instruction must be provided
+        if not ml_plan and not instruction:
             return ToolResult.error_result(
-                "Either 'ml_plan' or 'context' must be provided. "
+                "Either 'ml_plan' or 'instruction' must be provided. "
                 "ML plan is recommended for full ML workflows."
             )
 
@@ -113,8 +139,8 @@ class MLModelTool(BaseTool):
             plan = MLPlan.from_dict(ml_plan)
 
             # Use plan data if parameters not explicitly provided
-            if not context:
-                context = plan.summary
+            if not instruction:
+                instruction = plan.summary
             if not data_table:
                 data_table = ml_plan.get("data_table")
             if not target_column:
@@ -124,9 +150,9 @@ class MLModelTool(BaseTool):
             ml_plan_architecture = plan.model_architecture_and_loss
 
         # Validate required parameters
-        if not name or not data_table:
+        if not name or not data_table or not target_column:
             return ToolResult.error_result(
-                "Parameters 'name' and 'data_table' are required "
+                "Parameters 'name', 'data_table', and 'target_column' are required "
                 "to generate a model specification."
             )
 
@@ -154,7 +180,7 @@ class MLModelTool(BaseTool):
         try:
             model_spec, model_yaml = await agent.generate_model(
                 name=str(name),
-                user_context=context,  # Use context as user_context
+                user_context=instruction,  # Use instruction as user_context
                 table_name=str(data_table),
                 target_column=target_column,
                 category=category,
@@ -189,7 +215,7 @@ class MLModelTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(context, category),
+                editor_func=self._create_editor(instruction, category),
                 ui_interface=self.ui,
                 yaml_type_name="model",
                 yaml_suffix=".arc-model.yaml",
@@ -220,19 +246,14 @@ class MLModelTool(BaseTool):
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_model_section"):
                         self._ml_model_section.__exit__(None, None, None)
-                    return ToolResult.success_result(
-                        "✗ Model generation cancelled by user."
+                    return ToolResult(
+                        success=True,
+                        output="✗ Model generation cancelled by user.",
+                        metadata={"cancelled": True},
                     )
                 model_yaml = final_yaml
             finally:
                 workflow.cleanup()
-
-        # Detect architecture changes (if using ML plan)
-        change_info = None
-        if ml_plan and ml_plan_architecture:
-            change_info = self._detect_architecture_changes(
-                ml_plan_architecture, model_yaml
-            )
 
         # Save model to DB with plan_id if using ML plan
         try:
@@ -240,7 +261,7 @@ class MLModelTool(BaseTool):
             model = self._save_model_to_db(
                 name=str(name),
                 yaml_content=model_yaml,
-                description=context[:200] if context else "Generated model",
+                description=instruction[:200] if instruction else "Generated model",
                 plan_id=plan_id,
             )
             model_id = model.id
@@ -264,24 +285,13 @@ class MLModelTool(BaseTool):
         # Build simple output for ToolResult (detailed output already shown in UI)
         lines = [f"Model '{name}' registered successfully as {model_id}"]
 
-        # Build metadata
+        # Build simplified metadata
         result_metadata = {
             "model_id": model_id,
             "model_name": name,
             "yaml_content": model_yaml,
             "from_ml_plan": ml_plan is not None,
         }
-
-        # Include plan architecture comparison if using ML plan
-        if change_info is not None:
-            result_metadata["plan_comparison"] = {
-                "plan_architecture": ml_plan_architecture,
-                "final_yaml": model_yaml,
-                "plan_terms": change_info["plan_terms"],
-                "yaml_terms": change_info["yaml_terms"],
-                "missing_from_yaml": change_info["missing_from_yaml"],
-                "added_in_yaml": change_info["added_in_yaml"],
-            }
 
         return ToolResult(
             success=True,
@@ -350,62 +360,6 @@ class MLModelTool(BaseTool):
                 return None
 
         return edit
-
-    def _detect_architecture_changes(
-        self, ml_plan_architecture: str, final_yaml: str
-    ) -> dict:
-        """Compare final YAML with ML plan architecture (factual comparison only).
-
-        Args:
-            ml_plan_architecture: Original architecture guidance from ML plan
-            final_yaml: Final generated/edited YAML content
-
-        Returns:
-            Dictionary with factual comparison details:
-                - plan_terms: list[str] - Architectural terms mentioned in plan
-                - yaml_terms: list[str] - Architectural terms found in YAML
-                - missing_from_yaml: list[str] - Terms in plan but not in YAML
-                - added_in_yaml: list[str] - Terms in YAML but not in plan
-        """
-        plan_lower = ml_plan_architecture.lower()
-        yaml_lower = final_yaml.lower()
-
-        # Extract key architectural terms
-        all_architectural_terms = [
-            "linear",
-            "relu",
-            "dropout",
-            "batchnorm",
-            "attention",
-            "transformer",
-            "embedding",
-            "cross",
-            "binary_cross_entropy",
-            "mse_loss",
-            "cross_entropy",
-            "sigmoid",
-            "tanh",
-            "conv",
-            "lstm",
-            "gru",
-        ]
-
-        # Terms mentioned in plan
-        plan_terms = [term for term in all_architectural_terms if term in plan_lower]
-
-        # Terms mentioned in YAML
-        yaml_terms = [term for term in all_architectural_terms if term in yaml_lower]
-
-        # Compute differences (factual only)
-        missing_from_yaml = [term for term in plan_terms if term not in yaml_lower]
-        added_in_yaml = [term for term in yaml_terms if term not in plan_lower]
-
-        return {
-            "plan_terms": plan_terms,
-            "yaml_terms": yaml_terms,
-            "missing_from_yaml": missing_from_yaml,
-            "added_in_yaml": added_in_yaml,
-        }
 
     def _save_model_to_db(
         self,
@@ -516,13 +470,23 @@ class MLTrainTool(BaseTool):
 
         Args:
             name: Trainer name
-            instruction: User's instruction for training configuration
+            instruction: User's instruction for training configuration (PRIMARY driver)
             model_id: Model ID (with version, e.g., 'my_model-v1')
             train_table: Training data table
             auto_confirm: Skip confirmation workflows (for testing only)
             ml_plan: Optional ML plan dict containing training_configuration guidance
+                (SECONDARY baseline, automatically injected by the main agent)
 
-        Note:
+        Note on instruction vs ml_plan precedence:
+            - instruction: PRIMARY driver - user's immediate, specific request
+            - ml_plan: SECONDARY baseline - background guidance and context
+            - When there's a conflict, instruction takes precedence
+            - Example: If instruction says "use 10 epochs" but plan says "use 5 epochs",
+              the trainer spec should use 10 epochs (instruction wins)
+            - The LLM agent should use ml_plan as baseline context and augment/override
+              it with specifics from instruction
+
+        Note on training configuration:
             All training configuration (epochs, batch_size, learning_rate, validation,
             etc.) must be specified in the trainer YAML generated by the LLM.
             No runtime overrides are supported.
@@ -577,6 +541,7 @@ class MLTrainTool(BaseTool):
         ml_plan_training_config = None
         if ml_plan:
             from arc.core.ml_plan import MLPlan
+
             plan = MLPlan.from_dict(ml_plan)
             ml_plan_training_config = plan.training_configuration
 
@@ -654,7 +619,11 @@ class MLTrainTool(BaseTool):
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_trainer_section"):
                         self._ml_trainer_section.__exit__(None, None, None)
-                    return ToolResult.success_result("✗ Trainer generation cancelled.")
+                    return ToolResult(
+                        success=True,
+                        output="✗ Trainer generation cancelled.",
+                        metadata={"cancelled": True},
+                    )
                 trainer_yaml = final_yaml
             finally:
                 workflow.cleanup()
@@ -771,8 +740,9 @@ class MLTrainTool(BaseTool):
                             job_id, ml_trainer_section_printer
                         )
 
-                # Training job launched successfully - job status can be checked separately
-                # The agent will monitor job status and analyze results when training completes
+                # Training job launched successfully - job status can be
+                # checked separately. The agent will monitor job status and
+                # analyze results when training completes
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
@@ -829,10 +799,6 @@ class MLTrainTool(BaseTool):
 
         if job_id:
             result_metadata["job_id"] = job_id
-
-        # Include original plan training config for reference (if using ML plan)
-        if ml_plan and ml_plan_training_config:
-            result_metadata["plan_training_config"] = ml_plan_training_config
 
         # Close the ML Trainer section
         if self.ui and hasattr(self, "_ml_trainer_section"):
@@ -931,7 +897,6 @@ class MLTrainTool(BaseTool):
             job_id: Training job identifier
             section_printer: Section printer for indented output
         """
-        from pathlib import Path
 
         from arc.core.config import SettingsManager
 
@@ -1032,7 +997,7 @@ class MLTrainTool(BaseTool):
 
         return validate
 
-    def _create_editor(self, user_instruction: str, model_record):
+    def _create_editor(self, _user_instruction: str, model_record):
         """Create editor function for AI-assisted editing."""
 
         async def edit(
@@ -1063,15 +1028,19 @@ class MLTrainTool(BaseTool):
 
 
 class MLEvaluateTool(BaseTool):
-    """Unified tool for generating evaluator specs and running evaluation.
+    """Unified tool for generating evaluator specs and launching evaluation.
 
     This tool combines evaluator generation with evaluation execution in a single
     workflow, similar to the MLTrainTool pattern. It provides:
     1. Evaluator spec generation via LLM
     2. Interactive confirmation workflow for evaluator spec
     3. Auto-registration to database
-    4. Interactive confirmation workflow for evaluation launch
-    5. Evaluation execution with metrics display
+    4. Async evaluation launch (returns immediately with job_id)
+
+    The evaluation runs in the background and results can be monitored via:
+    - /ml jobs status {job_id}
+    - /ml jobs logs {job_id}
+    - TensorBoard for metrics visualization
 
     This replaces the separate generate-evaluator command with a unified workflow.
     """
@@ -1126,22 +1095,38 @@ class MLEvaluateTool(BaseTool):
         name: str | None = None,
         instruction: str | None = None,
         trainer_id: str | None = None,
-        data_table: str | None = None,
+        evaluate_table: str | None = None,
         auto_confirm: bool = False,
         ml_plan: dict | None = None,
     ) -> ToolResult:
-        """Generate evaluator spec, register it, and run evaluation.
+        """Generate evaluator spec, register it, and launch evaluation.
 
         Args:
             name: Evaluator name
-            instruction: User's instruction for evaluation setup
+            instruction: User's instruction for evaluation setup (PRIMARY driver)
             trainer_id: Trainer ID to evaluate (references the trained model)
-            data_table: Test dataset table name
+            evaluate_table: Test dataset table name
             auto_confirm: Skip confirmation workflows (for testing only)
             ml_plan: Optional ML plan dict containing evaluation expectations
+                (SECONDARY baseline, automatically injected by the main agent)
+
+        Note on instruction vs ml_plan precedence:
+            - instruction: PRIMARY driver - user's immediate, specific request
+            - ml_plan: SECONDARY baseline - background guidance and context
+            - When there's a conflict, instruction takes precedence
+            - Example: If instruction says "compute F1 score" but plan says
+              "compute accuracy only", the evaluator should compute F1 score
+              (instruction wins)
+            - The LLM agent should use ml_plan as baseline context and augment/override
+              it with specifics from instruction
+
+        Note on async execution:
+            This tool returns immediately after launching the evaluation job.
+            The evaluation runs in the background and results can be monitored via
+            job status, logs, and TensorBoard.
 
         Returns:
-            ToolResult with evaluation metrics
+            ToolResult with job_id for monitoring async evaluation
         """
         # Validate API key
         if not self.api_key:
@@ -1157,9 +1142,9 @@ class MLEvaluateTool(BaseTool):
             )
 
         # Validate required parameters
-        if not name or not instruction or not trainer_id or not data_table:
+        if not name or not instruction or not trainer_id or not evaluate_table:
             return ToolResult.error_result(
-                "Parameters 'name', 'instruction', 'trainer_id', and 'data_table' "
+                "Parameters 'name', 'instruction', 'trainer_id', and 'evaluate_table' "
                 "are required."
             )
 
@@ -1197,11 +1182,11 @@ class MLEvaluateTool(BaseTool):
                 f"Failed to retrieve model for trainer: {exc}"
             )
 
-        # Check if target column exists in data table
+        # Check if target column exists in evaluate table
         target_column_exists = False
         try:
             schema_info = self.services.schema.get_schema_info(target_db="user")
-            columns = schema_info.get_column_names(str(data_table))
+            columns = schema_info.get_column_names(str(evaluate_table))
             target_column_exists = str(target_column) in columns
         except Exception:
             # If schema check fails, default to assuming target exists
@@ -1244,7 +1229,7 @@ class MLEvaluateTool(BaseTool):
                 instruction=str(instruction),
                 trainer_ref=str(trainer_id),
                 trainer_spec_yaml=trainer_record.spec,
-                dataset=str(data_table),
+                dataset=str(evaluate_table),
                 target_column=str(target_column),
                 target_column_exists=target_column_exists,
                 ml_plan_evaluation=ml_plan_evaluation,
@@ -1302,7 +1287,7 @@ class MLEvaluateTool(BaseTool):
                 "trainer_id": str(trainer_id),
                 "trainer_ref": str(trainer_id),
                 "trainer_spec_yaml": trainer_record.spec,
-                "dataset": str(data_table),
+                "dataset": str(evaluate_table),
                 "target_column": str(target_column),
                 "target_column_exists": target_column_exists,
             }
@@ -1325,7 +1310,11 @@ class MLEvaluateTool(BaseTool):
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_evaluator_section"):
                         self._ml_evaluator_section.__exit__(None, None, None)
-                    return ToolResult.success_result("✗ Evaluator cancelled.")
+                    return ToolResult(
+                        success=True,
+                        output="✗ Evaluator cancelled.",
+                        metadata={"cancelled": True},
+                    )
                 evaluator_yaml = final_yaml
             finally:
                 workflow.cleanup()
@@ -1408,11 +1397,12 @@ class MLEvaluateTool(BaseTool):
         # Build simple output for ToolResult (detailed output already shown in UI)
         lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
 
-        # Run evaluation automatically after registration
-        metrics_dict = None
+        # Launch evaluation as background job (async pattern)
         if ml_evaluator_section_printer:
             ml_evaluator_section_printer.print("")
-            ml_evaluator_section_printer.print(f"→ Running evaluation with '{name}'...")
+            ml_evaluator_section_printer.print(
+                f"→ Launching evaluation with '{name}'..."
+            )
 
         # Create job record for this evaluation
         from arc.jobs.models import Job, JobType
@@ -1420,7 +1410,7 @@ class MLEvaluateTool(BaseTool):
         job = Job.create(
             job_type=JobType.EVALUATE_MODEL,
             model_id=None,  # Not using legacy model_id
-            message=f"Evaluating {evaluator_record.id} on {data_table}",
+            message=f"Evaluating {evaluator_record.id} on {evaluate_table}",
         )
         self.services.jobs.create_job(job)
 
@@ -1434,7 +1424,7 @@ class MLEvaluateTool(BaseTool):
             eval_run = tracking_service.create_run(
                 evaluator_id=evaluator_record.id,
                 trainer_id=trainer_record.id,
-                dataset=str(data_table),
+                dataset=str(evaluate_table),
                 target_column=str(target_column),
                 job_id=job.job_id,
             )
@@ -1467,55 +1457,81 @@ class MLEvaluateTool(BaseTool):
 
             tensorboard_log_dir = Path(f"tensorboard/run_{job.job_id}")
 
-            # Run evaluation with TensorBoard logging
-            result = await asyncio.to_thread(
-                evaluator.evaluate,
-                self.services.ml_data,
-                output_table,
-                tensorboard_log_dir,
-            )
+            # Launch evaluation in background and return immediately
+            async def run_evaluation_background():
+                """Background task to run evaluation without blocking."""
+                try:
+                    result = await asyncio.to_thread(
+                        evaluator.evaluate,
+                        self.services.ml_data,
+                        output_table,
+                        tensorboard_log_dir,
+                    )
 
-            metrics_dict = result.metrics
+                    # Update run with results
+                    tracking_service.update_run_result(
+                        eval_run.run_id,
+                        metrics_result=result.metrics,
+                        prediction_table=output_table,
+                    )
 
-            # Evaluation completed - metrics will be analyzed by the agent
+                    # Mark as completed
+                    tracking_service.update_run_status(
+                        eval_run.run_id,
+                        EvaluationStatus.COMPLETED,
+                        timestamp_field="completed_at",
+                    )
 
-            # Update run with results
-            tracking_service.update_run_result(
-                eval_run.run_id,
-                metrics_result=metrics_dict,
-                prediction_table=output_table,
-            )
+                    # Update job status
+                    metrics_summary = ", ".join(
+                        f"{k}={v:.4f}" for k, v in list(result.metrics.items())[:3]
+                    )
+                    job.complete(f"Evaluation completed: {metrics_summary}")
+                    self.services.jobs.update_job(job)
 
-            # Mark as completed
-            tracking_service.update_run_status(
-                eval_run.run_id,
-                EvaluationStatus.COMPLETED,
-                timestamp_field="completed_at",
-            )
+                except Exception as exc:
+                    # Update run with error
+                    try:
+                        tracking_service.update_run_error(eval_run.run_id, str(exc))
+                        tracking_service.update_run_status(
+                            eval_run.run_id,
+                            EvaluationStatus.FAILED,
+                        )
+                    except Exception:  # noqa: S110
+                        pass
 
-            # Update job status
-            metrics_summary = ", ".join(
-                f"{k}={v:.4f}" for k, v in list(metrics_dict.items())[:3]
-            )
-            job.complete(f"Evaluation completed: {metrics_summary}")
-            self.services.jobs.update_job(job)
+                    # Update job with error
+                    try:
+                        job.fail(f"Evaluation failed: {str(exc)[:200]}")
+                        self.services.jobs.update_job(job)
+                    except Exception:  # noqa: S110
+                        pass
 
-            # Display metrics
+            # Launch background task (fire-and-forget)
+            asyncio.create_task(run_evaluation_background())
+
+            # Return immediately with job info
             lines.append("")
-            lines.append("✓ Evaluation completed successfully.")
+            lines.append("✓ Evaluation job submitted successfully.")
+            lines.append(f"  Evaluator: {evaluator_record.id}")
+            lines.append(f"  Dataset: {evaluate_table}")
             lines.append(f"  Job ID: {job.job_id}")
             lines.append(f"  Run ID: {eval_run.run_id}")
-            lines.append("")
-            lines.append("Metrics:")
-            for metric_name, metric_value in metrics_dict.items():
-                lines.append(f"  {metric_name}: {metric_value:.4f}")
-            lines.append("")
-            lines.append(f"Samples evaluated: {result.num_samples}")
-            lines.append(f"Evaluation time: {result.evaluation_time:.2f}s")
-            lines.append("")
-            lines.append(f"Predictions saved to table: {output_table}")
 
-            # Handle TensorBoard launch with permission dialog
+            # Show job monitoring instructions in section
+            if ml_evaluator_section_printer:
+                ml_evaluator_section_printer.print("")
+                ml_evaluator_section_printer.print(
+                    "[dim][cyan]ℹ Monitor evaluation progress:[/cyan][/dim]"
+                )
+                ml_evaluator_section_printer.print(
+                    f"[dim]  • Status: /ml jobs status {job.job_id}[/dim]"
+                )
+                ml_evaluator_section_printer.print(
+                    f"[dim]  • Logs: /ml jobs logs {job.job_id}[/dim]"
+                )
+
+            # Handle TensorBoard launch for monitoring
             if not auto_confirm and self.ui:
                 if self.tensorboard_manager:
                     try:
@@ -1556,32 +1572,33 @@ class MLEvaluateTool(BaseTool):
                         job.job_id, ml_evaluator_section_printer
                     )
 
+            # Evaluation launched successfully - job status can be checked separately
+
         except Exception as exc:
-            from arc.ml.evaluator import EvaluationError
+            # Evaluator was successfully registered but evaluation launch failed
+            lines.append("")
+            lines.append("⚠️  Evaluation launch failed but evaluator is registered.")
+            lines.append(f"Error: {exc}")
+            lines.append("")
+            retry_cmd = f"/ml evaluate --evaluator {name} --data {evaluate_table}"
+            lines.append(f"Retry evaluation with: {retry_cmd}")
 
-            # Update run with error
-            try:
-                tracking_service.update_run_error(eval_run.run_id, str(exc))
-                tracking_service.update_run_status(
-                    eval_run.run_id,
-                    EvaluationStatus.FAILED,
-                )
-            except Exception:  # noqa: S110
-                pass  # Ignore tracking errors
+            # Close the section before returning
+            if self.ui and hasattr(self, "_ml_evaluator_section"):
+                self._ml_evaluator_section.__exit__(None, None, None)
 
-            # Update job with error
-            try:
-                job.fail(f"Evaluation failed: {str(exc)[:200]}")
-                self.services.jobs.update_job(job)
-            except Exception:  # noqa: S110
-                pass  # Ignore job update errors
-
-            if isinstance(exc, EvaluationError):
-                return ToolResult.error_result(
-                    f"Evaluator registered but evaluation failed: {exc}"
-                )
-            return ToolResult.error_result(
-                f"Evaluator registered but unexpected error: {exc}"
+            return ToolResult(
+                success=True,  # Evaluator registration succeeded
+                output="\n".join(lines),
+                metadata={
+                    "evaluator_id": evaluator_record.id,
+                    "evaluator_name": name,
+                    "trainer_id": trainer_record.id,
+                    "yaml_content": evaluator_yaml,
+                    "evaluation_launched": False,
+                    "evaluation_error": str(exc),
+                    "from_ml_plan": ml_plan is not None,
+                },
             )
 
         # Close the ML Evaluator section
@@ -1594,16 +1611,11 @@ class MLEvaluateTool(BaseTool):
             "evaluator_name": name,
             "trainer_id": trainer_record.id,
             "yaml_content": evaluator_yaml,
-            "evaluation_ran": True,
+            "evaluation_launched": True,
+            "job_id": job.job_id,
+            "run_id": eval_run.run_id,
             "from_ml_plan": ml_plan is not None,
         }
-
-        if metrics_dict:
-            result_metadata["metrics"] = metrics_dict
-
-        # Include original plan evaluation section for reference (if using ML plan)
-        if ml_plan and ml_plan_evaluation:
-            result_metadata["plan_evaluation"] = ml_plan_evaluation
 
         return ToolResult(
             success=True,
@@ -1635,7 +1647,7 @@ class MLEvaluateTool(BaseTool):
 
     def _create_editor(
         self,
-        user_instruction: str,
+        _user_instruction: str,
         trainer_id: str,
         trainer_record,
         target_column_exists: bool,
@@ -1759,7 +1771,6 @@ class MLEvaluateTool(BaseTool):
             job_id: Evaluation job identifier
             section_printer: Section printer for indented output
         """
-        from pathlib import Path
 
         from arc.core.config import SettingsManager
 
@@ -2028,8 +2039,10 @@ class MLEvaluatorGeneratorTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
-                    return ToolResult.success_result(
-                        "✗ Evaluator generation cancelled."
+                    return ToolResult(
+                        success=True,
+                        output="✗ Evaluator generation cancelled.",
+                        metadata={"cancelled": True},
                     )
                 evaluator_yaml = final_yaml
             finally:
@@ -2174,7 +2187,7 @@ class MLPlanTool(BaseTool):
     async def execute(
         self,
         *,
-        user_context: str | None = None,
+        instruction: str | None = None,
         source_tables: str | None = None,
         conversation_history: list[dict] | None = None,
         feedback: str | None = None,
@@ -2192,9 +2205,9 @@ class MLPlanTool(BaseTool):
                 "ML planning service unavailable. Database services not initialized."
             )
 
-        if not user_context or not source_tables:
+        if not instruction or not source_tables:
             return ToolResult.error_result(
-                "Parameters 'user_context' and 'source_tables' "
+                "Parameters 'instruction' and 'source_tables' "
                 "are required for ML planning."
             )
 
@@ -2267,9 +2280,7 @@ class MLPlanTool(BaseTool):
         # Keep the section printer reference to use later for messages
         ml_plan_section_printer = None
         if self.ui:
-            self._ml_plan_section = self.ui._printer.section(
-                color="cyan", add_dot=True
-            )
+            self._ml_plan_section = self.ui._printer.section(color="cyan", add_dot=True)
             ml_plan_section_printer = self._ml_plan_section.__enter__()
             ml_plan_section_printer.print("ML Plan")
             ml_plan_section_printer.print(
@@ -2315,7 +2326,7 @@ class MLPlanTool(BaseTool):
 
                     # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
-                        user_context=str(user_context),
+                        user_context=str(instruction),
                         source_tables=str(source_tables),
                         conversation_history=conversation_history,
                         feedback=current_feedback,
@@ -2446,7 +2457,7 @@ class MLPlanTool(BaseTool):
                 db_plan = MLPlanModel(
                     plan_id=plan_id,
                     version=version,
-                    user_context=str(user_context),
+                    user_context=str(instruction),
                     source_tables=str(source_tables),
                     plan_yaml=plan_yaml,  # Store as YAML string
                     status="approved",  # Plan was accepted by user

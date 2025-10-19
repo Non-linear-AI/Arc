@@ -179,13 +179,7 @@ def main():
 
     # Get template directory and set up Jinja2
     template_dir = (
-        project_root
-        / "src"
-        / "arc"
-        / "core"
-        / "agents"
-        / "ml_model"
-        / "templates"
+        project_root / "src" / "arc" / "core" / "agents" / "ml_model" / "templates"
     )
     env = Environment(loader=FileSystemLoader(template_dir))
 
