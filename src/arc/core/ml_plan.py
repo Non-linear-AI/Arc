@@ -115,7 +115,7 @@ class MLPlan:
             Formatted markdown string for display
         """
         # Use bold instead of headers to avoid Rich's center-alignment
-        lines = ["**📊 ML Workflow Plan**"]
+        lines = ["**▌ML Workflow Plan**"]
 
         if show_metadata:
             lines.append(

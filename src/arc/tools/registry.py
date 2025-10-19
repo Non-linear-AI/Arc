@@ -124,8 +124,12 @@ class ToolRegistry:
             )
             return result
         except TimeoutError:
-            return ToolResult.error_result(
-                f"Tool '{tool_call.name}' execution timed out after {timeout_value}s"
+            # Treat timeouts as cancellations - don't retry, ask user instead
+            return ToolResult(
+                success=False,
+                error=f"Tool '{tool_call.name}' execution timed out after {timeout_value}s. "
+                      "This operation took longer than expected.",
+                metadata={"cancelled": True, "reason": "timeout"},
             )
         except TypeError as e:
             # Handle parameter validation errors
