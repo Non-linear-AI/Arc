@@ -8,6 +8,7 @@
   cursor movement, and interruption support.
 """
 
+import termios
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
@@ -718,28 +719,34 @@ class Printer:
                 word_wrap=False,
             )
 
-            with self.section(add_dot=False) as p:
-                p.print_panel(Panel(syntax, border_style="color(240)"))
+            # Print panel directly (no section wrapper needed)
+            self.console.print(Panel(syntax, border_style="color(240)"))
+            self.console.print("")  # Add blank separator
 
         except ImportError:
             # Fallback to plain text if Rich is not available
-            with self.section(add_dot=False) as p:
-                p.print(yaml_content)
+            self.console.print(yaml_content)
+            self.console.print("")  # Add blank separator
         except Exception as e:
             # Fallback on any error
-            with self.section(add_dot=False) as p:
-                p.print(f"Error displaying YAML: {e}")
-                p.print(yaml_content)
+            self.console.print(f"Error displaying YAML: {e}")
+            self.console.print(yaml_content)
+            self.console.print("")  # Add blank separator
         finally:
-            # Flush console output to ensure it's rendered before prompt_toolkit
-            # This prevents race condition when get_choice_async is called
-            # immediately after
-            # TODO: Implement hybrid synchronization for terminal output
-            # See analysis at commit 5a5e9c8:
-            # - Use termios.tcdrain() to wait for OS transmission to PTY
-            # - Add small asyncio.sleep(0.005) to let terminal emulator render
-            # - This will eliminate duplicate prompt rendering race condition
+            # Synchronize terminal output to prevent race condition with prompt_toolkit
+            # This ensures all bytes are transmitted to PTY before prompt_toolkit
+            # starts rendering, preventing duplicate prompt messages
             self.console.file.flush()
+
+            # Wait for OS to transmit all buffered output to PTY
+            # This provides OS-level synchronization that flush() alone doesn't
+            try:
+                if hasattr(self.console.file, "fileno"):
+                    termios.tcdrain(self.console.file.fileno())
+            except (OSError, AttributeError):
+                # If tcdrain fails (non-TTY or other issues), continue gracefully
+                # The flush() above still provides basic synchronization
+                pass
 
     def _display_yaml_diff(
         self, old_content: str, new_content: str, file_path: str
@@ -811,5 +818,10 @@ class Printer:
                         if new_line:
                             p.print(f"[green]+{new_line}[/green]")
         finally:
-            # Flush console output (called from display_yaml_with_diff's early return)
+            # Synchronize terminal output (early return path)
             self.console.file.flush()
+            try:
+                if hasattr(self.console.file, "fileno"):
+                    termios.tcdrain(self.console.file.fileno())
+            except (OSError, AttributeError):
+                pass
