@@ -282,17 +282,17 @@ async def _ml_plan(
     options = _parse_options(
         args,
         {
-            "context": True,
-            "data-source": True,
+            "instruction": True,
+            "source-tables": True,
         },
         command_name="/ml plan",
     )
 
-    user_context = options.get("context")
-    source_tables = options.get("data-source")
+    instruction = options.get("instruction")
+    source_tables = options.get("source-tables")
 
-    if not user_context or not source_tables:
-        raise CommandError("/ml plan requires --context and --data-source")
+    if not instruction or not source_tables:
+        raise CommandError("/ml plan requires --instruction and --source-tables")
 
     ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
 
@@ -301,7 +301,7 @@ async def _ml_plan(
 
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
-        instruction=str(user_context),
+        instruction=str(instruction),
         source_tables=str(source_tables),
         conversation_history=conversation_history,
         feedback=None,
