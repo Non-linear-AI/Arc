@@ -524,7 +524,7 @@ class MLTrainTool(BaseTool):
                 color="magenta", add_dot=True
             )
             ml_trainer_section_printer = self._ml_trainer_section.__enter__()
-            ml_trainer_section_printer.print("ML Trainer")
+            ml_trainer_section_printer.print("ML Train")
             ml_trainer_section_printer.print(
                 "[dim]Generating Arc-Graph trainer specification...[/dim]"
             )
@@ -693,6 +693,13 @@ class MLTrainTool(BaseTool):
                 lines.append("✓ Training job submitted successfully.")
                 lines.append(f"Training table: {train_table}")
                 lines.append(f"Job ID: {job_id}")
+
+                # Show training success message in section
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print("[dim]✓ Training job submitted successfully.[/dim]")
+                    ml_trainer_section_printer.print(f"[dim]Training table: {train_table}[/dim]")
+                    ml_trainer_section_printer.print(f"[dim]Job ID: {job_id}[/dim]")
 
                 # Show job monitoring instructions in section
                 if ml_trainer_section_printer:
