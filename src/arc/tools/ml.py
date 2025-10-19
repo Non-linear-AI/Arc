@@ -235,14 +235,6 @@ class MLModelTool(BaseTool):
                     None,  # No file path
                 )
                 if not proceed:
-                    # Show cancellation message in the ML Model section
-                    if ml_model_section_printer:
-                        ml_model_section_printer.print(
-                            ""
-                        )  # Empty line before cancellation
-                        ml_model_section_printer.print(
-                            "✗ Model generation cancelled by user"
-                        )
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_model_section"):
                         self._ml_model_section.__exit__(None, None, None)
@@ -608,14 +600,6 @@ class MLTrainTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
-                    # Show cancellation message in the ML Trainer section
-                    if ml_trainer_section_printer:
-                        ml_trainer_section_printer.print(
-                            ""
-                        )  # Empty line before cancellation
-                        ml_trainer_section_printer.print(
-                            "✗ Trainer generation cancelled by user"
-                        )
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_trainer_section"):
                         self._ml_trainer_section.__exit__(None, None, None)
@@ -630,11 +614,15 @@ class MLTrainTool(BaseTool):
 
         # Auto-register trainer to database
         try:
+            # Extract plan_id from ml_plan if provided
+            plan_id = ml_plan.get("plan_id") if ml_plan else None
+
             trainer_record = self.runtime.create_trainer(
                 name=str(name),
                 model_id=str(model_id),
                 schema_yaml=trainer_yaml,
                 description=f"Generated trainer for model {model_id}",
+                plan_id=plan_id,
             )
 
             # Display registration confirmation in the ML Trainer section
@@ -1299,14 +1287,6 @@ class MLEvaluateTool(BaseTool):
                     None,  # No output path - we register to DB
                 )
                 if not proceed:
-                    # Show cancellation message in the ML Evaluator section
-                    if ml_evaluator_section_printer:
-                        ml_evaluator_section_printer.print(
-                            ""
-                        )  # Empty line before cancellation
-                        ml_evaluator_section_printer.print(
-                            "✗ Evaluator generation cancelled by user"
-                        )
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_evaluator_section"):
                         self._ml_evaluator_section.__exit__(None, None, None)
@@ -2408,10 +2388,6 @@ class MLPlanTool(BaseTool):
                         # Continue loop to generate revised plan
                         continue
                     elif choice == "cancel":
-                        # Show cancellation message in the ML Plan section
-                        if ml_plan_section_printer:
-                            ml_plan_section_printer.print("")
-                            ml_plan_section_printer.print("✗ ML plan cancelled by user")
                         # Close the section before returning
                         if hasattr(self, "_ml_plan_section"):
                             self._ml_plan_section.__exit__(None, None, None)

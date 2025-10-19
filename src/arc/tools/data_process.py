@@ -250,14 +250,6 @@ class MLDataProcessTool(BaseTool):
                         None,  # No output path - saved to DB only
                     )
                     if not proceed:
-                        # Show cancellation message in the Data Processor section
-                        if ml_data_process_section_printer:
-                            ml_data_process_section_printer.print(
-                                ""
-                            )  # Empty line before cancellation
-                            ml_data_process_section_printer.print(
-                                "✗ Data processor generation cancelled by user"
-                            )
                         # Close the section before returning
                         if self.ui and hasattr(self, "_ml_data_process_section"):
                             self._ml_data_process_section.__exit__(None, None, None)
