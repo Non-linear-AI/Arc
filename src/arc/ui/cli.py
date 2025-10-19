@@ -255,8 +255,6 @@ async def handle_ml_command(
             _ml_jobs(args, ui, runtime)
         elif subcommand == "model":
             await _ml_model(args, ui, runtime, agent)
-        elif subcommand == "generate-trainer":
-            await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "evaluate":
             await _ml_evaluate(args, ui, runtime)
         elif subcommand == "data":
@@ -847,61 +845,6 @@ async def _ml_model(
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during model generation: {exc}") from exc
-
-
-async def _ml_generate_trainer(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    """Handle trainer specification generation command."""
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "context": True,
-            "model": True,
-        },
-    )
-
-    name = options.get("name")
-    context = options.get("context")
-    model_name = options.get("model")
-
-    if not name or not context or not model_name:
-        raise CommandError(
-            "/ml generate-trainer requires --name, --context, and --model"
-        )
-
-    try:
-        # Use the MLTrainerGeneratorTool which includes confirmation workflow
-        from arc.tools.ml import MLTrainerGeneratorTool
-
-        # Get settings for tool initialization
-        api_key, base_url, model = _get_ml_tool_config()
-
-        # Create the tool with proper dependencies
-        tool = MLTrainerGeneratorTool(runtime.services, api_key, base_url, model, ui)
-
-        # Execute the tool with confirmation workflow (auto-registers to DB)
-        result = await tool.execute(
-            name=name,
-            context=context,
-            model_name=model_name,
-        )
-
-        if result.success:
-            # Suggest next steps
-            ui.show_info("\n💡 Trainer registered successfully")
-            ui.show_info(
-                f"   To train: /ml train --name <trainer_name> --model {model_name} "
-                f"--context <description> --data <table_name>"
-            )
-        else:
-            ui.show_system_error(result.message)
-
-    except Exception as exc:
-        raise CommandError(
-            f"Unexpected error during trainer generation: {exc}"
-        ) from exc
 
 
 async def _ml_evaluate(

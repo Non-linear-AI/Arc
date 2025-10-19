@@ -1922,7 +1922,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
             if not trainer_record:
                 return ToolResult.error_result(
                     f"Trainer '{trainer_id}' not found in registry. "
-                    "Please register the trainer first using /ml generate-trainer"
+                    "Please train a model first using /ml train"
                 )
         except Exception as exc:
             return ToolResult.error_result(

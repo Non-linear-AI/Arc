@@ -225,11 +225,11 @@ class InteractiveInterface:
                     "(--context optional with --plan-id)",
                 ),
                 (
-                    "/ml generate-trainer --name NAME --context DESC --model-spec FILE",
-                    "Generate an Arc-Graph trainer specification",
+                    "/ml train --name NAME --model-id ID --data TABLE --instruction DESC",
+                    "Generate trainer specification and launch training",
                 ),
                 (
-                    "/ml evaluate --name NAME --context DESC --trainer-id TRAINER_ID "
+                    "/ml evaluate --name NAME --instruction DESC --trainer-id TRAINER_ID "
                     "--data-table TABLE",
                     "Generate evaluator and run model evaluation",
                 ),

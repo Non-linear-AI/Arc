@@ -44,7 +44,6 @@ class ArcCompleter(Completer):
             "/ml plan",
             "/ml revise-plan",
             "/ml model",
-            "/ml generate-trainer",
             "/ml evaluate",
             "/ml train",
             "/ml predict",
@@ -72,11 +71,6 @@ class ArcCompleter(Completer):
                 ("--data-table", "Database table name for data (required)"),
                 ("--target-column", "Target/prediction column name (optional)"),
                 ("--plan-id", "ML plan ID to use for guidance (e.g., pidd-plan-v1)"),
-            ],
-            "generate-trainer": [
-                ("--name", "Trainer name (required)"),
-                ("--context", "Training context and requirements (required)"),
-                ("--model", "Registered model name (required)"),
             ],
             "evaluate": [
                 ("--name", "Evaluator name (required)"),
@@ -183,9 +177,8 @@ class ArcCompleter(Completer):
                 # Complete ML subcommands
                 ml_subcommands = [
                     ("model", "Generate ML model specification"),
-                    ("generate-trainer", "Generate training configuration"),
                     ("evaluate", "Generate evaluator and run evaluation"),
-                    ("train", "Start training job"),
+                    ("train", "Generate trainer and start training"),
                     ("predict", "Run prediction"),
                     ("jobs", "Manage ML jobs"),
                 ]
