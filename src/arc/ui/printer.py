@@ -734,6 +734,11 @@ class Printer:
             # Flush console output to ensure it's rendered before prompt_toolkit
             # This prevents race condition when get_choice_async is called
             # immediately after
+            # TODO: Implement hybrid synchronization for terminal output
+            # See analysis at commit 5a5e9c8:
+            # - Use termios.tcdrain() to wait for OS transmission to PTY
+            # - Add small asyncio.sleep(0.005) to let terminal emulator render
+            # - This will eliminate duplicate prompt rendering race condition
             self.console.file.flush()
 
     def _display_yaml_diff(
