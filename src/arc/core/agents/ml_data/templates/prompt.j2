@@ -69,33 +69,51 @@ Apply the requested changes while preserving production-ready quality and overal
 
 # SQL DIALECT
 
-**CRITICAL**: All SQL must be valid **DuckDB SQL**, not BigQuery, PostgreSQL, or other dialects.
+**CRITICAL**: All SQL must be **standard ANSI SQL** (SQL-92/SQL:2011) compatible with multiple database engines.
 
-**DuckDB-Specific Notes:**
-- String casting: Use `CAST(value AS VARCHAR)` NOT `CAST(value AS STRING)`
-- Random hashing: Use `hash(value)` or `md5(value)` NOT `FARM_FINGERPRINT(value)`
-- Random sampling: Use `random()` or `USING SAMPLE` clause
-- Date functions: Use DuckDB functions like `CURRENT_DATE`, `date_trunc()`, etc.
-- String concatenation: Use `||` operator or `concat()` function
+**Why Standard SQL?**
+The user database could be PostgreSQL, MySQL, SQLite, DuckDB, or any SQL database. Write portable SQL that works across engines.
 
-**Example - DuckDB Random Split:**
+**Standard SQL Guidelines:**
+- String casting: Use `CAST(value AS VARCHAR)` (standard) or `CAST(value AS TEXT)` (widely supported)
+- String concatenation: Use `||` operator (standard) or `CONCAT()` function
+- Avoid database-specific functions:
+  - ❌ `FARM_FINGERPRINT()` (BigQuery only)
+  - ❌ `hash()` (DuckDB/PostgreSQL specific)
+  - ❌ `USING SAMPLE` (DuckDB specific)
+  - ✓ Use standard alternatives shown below
+
+**Example - Standard SQL Random Split:**
 ```sql
--- ✓ DuckDB way (use hash function for deterministic splits)
+-- ✓ Standard SQL way (works on most databases)
+-- Use modulo on numeric ID for deterministic splits
 SELECT *,
   CASE
-    WHEN ABS(hash(CAST(id AS VARCHAR)) % 100) < 80 THEN 'training'
+    WHEN MOD(CAST(id AS INTEGER), 10) < 8 THEN 'training'
     ELSE 'validation'
   END as dataset_split
 FROM table_name
 
--- ✗ BigQuery way (FARM_FINGERPRINT not available in DuckDB)
+-- Alternative: Use ROW_NUMBER() for sequential split (standard SQL)
 SELECT *,
   CASE
-    WHEN ABS(MOD(FARM_FINGERPRINT(CAST(id AS STRING)), 100)) < 80 THEN 'training'
+    WHEN MOD(ROW_NUMBER() OVER (ORDER BY id), 10) < 8 THEN 'training'
     ELSE 'validation'
   END as dataset_split
 FROM table_name
+
+-- ✗ Database-specific approaches (avoid these)
+-- BigQuery: FARM_FINGERPRINT (not portable)
+-- DuckDB: hash() function (not portable)
 ```
+
+**Standard SQL Functions to Use:**
+- Aggregations: `COUNT()`, `SUM()`, `AVG()`, `MIN()`, `MAX()`, `STDDEV()`, `VARIANCE()`
+- Window functions: `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `LAG()`, `LEAD()`
+- String functions: `UPPER()`, `LOWER()`, `SUBSTRING()`, `LENGTH()`, `TRIM()`
+- Date functions: `CURRENT_DATE`, `CURRENT_TIMESTAMP`, `EXTRACT()`, `DATE_TRUNC()` (widely supported)
+- Math functions: `ABS()`, `ROUND()`, `FLOOR()`, `CEIL()`, `MOD()`
+- Conditionals: `CASE WHEN ... THEN ... END`, `COALESCE()`, `NULLIF()`
 
 # PRODUCTION REQUIREMENTS
 
