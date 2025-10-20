@@ -512,6 +512,16 @@ class Printer:
 
         key_bindings = KeyBindings()
 
+        # TODO: Investigate duplicate message display issue
+        # The message "Use arrows/enter to select" appears twice in the output.
+        # This is NOT a race condition with Rich (that was fixed with flush+tcdrain).
+        # This appears to be ChoiceInput rendering its Label message twice internally.
+        # Potential causes:
+        # 1. Bug in prompt_toolkit 3.0.52's ChoiceInput/Label rendering
+        # 2. Initial render + redraw cycle causing double display
+        # 3. HSplit container rendering the Label twice somehow
+        # Investigate: Try older/newer prompt_toolkit versions, or use custom layout
+
         try:
             self._input_active = True
             choice = ChoiceInput(
