@@ -2237,6 +2237,7 @@ class MLPlanTool(BaseTool):
         source_tables: str | None = None,
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
+        conversation_history: str | None = None,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(

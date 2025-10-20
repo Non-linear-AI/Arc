@@ -39,6 +39,11 @@ Your analysis should provide a complete blueprint for training a model from scra
 {% if instruction %}
 **Instruction**: {{ instruction }}
 {% endif %}
+{% if conversation_history %}
+
+**Recent Conversation** (for additional context):
+{{ conversation_history }}
+{% endif %}
 {% if previous_error %}
 **IMPORTANT - Previous Attempt Failed**:
 Your previous response had the following error:
@@ -307,4 +312,5 @@ evaluation: >-
 - Output the updated "{{ section_to_update }}" section text only (no headers, just YAML field content)
 {% else %}
 - Provide your complete ML analysis in the YAML format shown above
+{% endif %}
 {% endif %}

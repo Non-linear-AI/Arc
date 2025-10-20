@@ -760,20 +760,22 @@ class ArcAgent:
         return await self._execute_tool(tool_call)
 
     def _prepare_conversation_for_ml_plan(
-        self, from_timestamp: datetime | None = None
-    ) -> list[dict]:
+        self, from_timestamp: datetime | None = None, max_turns: int = 10
+    ) -> str:
         """Prepare conversation history for ML plan tool.
 
         Converts chat history to a simplified format suitable for ML planning.
-        For revisions, only includes messages after the last ML plan timestamp
-        to avoid context pollution. For initial plans, includes all history.
+        Returns recent conversation turns to provide context without overwhelming
+        the LLM with too much history.
 
         Args:
             from_timestamp: Timestamp to filter messages from (for revisions).
-                           If None, includes all conversation history (initial plan).
+                           If None, includes all conversation history.
+            max_turns: Maximum number of conversation turns (user+assistant pairs)
+                      to include. Default is 10 turns (20 messages).
 
         Returns:
-            List of conversation messages
+            Formatted conversation history string
         """
         conversation = []
 
@@ -787,7 +789,21 @@ class ArcAgent:
             elif entry.type == "assistant" and entry.content:
                 conversation.append({"role": "assistant", "content": entry.content})
 
-        return conversation
+        # Limit to recent turns (user + assistant = 1 turn, so max_turns * 2 messages)
+        if max_turns and len(conversation) > max_turns * 2:
+            conversation = conversation[-(max_turns * 2):]
+
+        # Format as readable conversation
+        if not conversation:
+            return ""
+
+        formatted = []
+        for msg in conversation:
+            role = msg["role"].capitalize()
+            content = msg["content"]
+            formatted.append(f"{role}: {content}")
+
+        return "\n\n".join(formatted)
 
     def get_chat_history(self) -> list[ChatEntry]:
         """Get the complete chat history."""
