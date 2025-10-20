@@ -231,26 +231,24 @@ tools:
       engineering, model architecture, training strategy, and evaluation metrics.
 
       Use for:
-      - Initial plan creation: Provide instruction and source_tables
-      - Plan revision: Provide instruction, source_tables, AND feedback parameter
+      - Initial plan creation: Provide instruction describing the ML problem
+      - Plan revision: Provide instruction describing the requested changes
 
+      The instruction parameter is used for both initial creation and revisions.
       ALWAYS use this FIRST before building ML models.
     parameters:
       type: object
       properties:
         instruction:
           type: string
-          description: Description of the ML problem, goals, and requirements
+          description: |
+            Description of the ML problem, goals, and requirements (for initial creation).
+            For revisions: Description of the changes to make to the existing plan
+            (e.g., "change the model architecture to use 4 layers", "use different features",
+            "adjust training strategy to use 100 epochs").
         source_tables:
           type: string
           description: Comma-separated list of database tables to analyze (e.g., 'users,transactions' or 'pidd')
-        feedback:
-          type: string
-          description: |
-            Optional feedback to revise an existing plan. When provided, the tool will
-            update the current ML plan based on your revision request. Use this when the
-            user requests changes to the plan (e.g., "change the model architecture",
-            "use different features", "adjust training strategy").
       required:
         - instruction
         - source_tables

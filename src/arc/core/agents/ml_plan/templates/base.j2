@@ -36,8 +36,8 @@ Your analysis should provide a complete blueprint for training a model from scra
 ## User Request
 **Context**: {{ user_context }}
 **Source Tables**: {{ source_tables }}
-{% if feedback %}
-**User Feedback**: {{ feedback }}
+{% if instruction %}
+**Instruction**: {{ instruction }}
 {% endif %}
 {% if previous_error %}
 **IMPORTANT - Previous Attempt Failed**:
@@ -80,26 +80,6 @@ Please fix this error in your response. Make sure to:
 {% endif %}
 
 {% endfor %}
-
-{% if conversation_history and conversation_history|length > 0 %}
-## Conversation History
-The following is the full conversation history between the user and assistant. Analyze this to understand:
-- How the user's requirements evolved over time
-- Any constraints or preferences mentioned
-- Feedback patterns and adjustments requested
-- Domain-specific context and terminology
-
-{% for message in conversation_history %}
-**{{ message.role|capitalize }}**: {{ message.content }}
-
-{% endfor %}
-
-Please distill key insights from this conversation including:
-- User intent and how it evolved
-- Any constraints discovered (performance, interpretability, compute, etc.)
-- Domain-specific requirements
-- Feedback patterns that inform the solution
-{% endif %}
 {% endif %}
 
 ## Architecture Patterns Cookbook
@@ -195,35 +175,9 @@ Please distill key insights from this conversation including:
 ❌ **Too Small Batch Size**: Batch < 16 can cause noisy gradients
 ❌ **Too Large Learning Rate**: Start with 1e-3 or 1e-4, not 1e-1
 
-## Analysis Framework
-Consider these factors for architecture design:
-
-### 1. Task Type Analysis
-- **Classification/Regression**: Determine primary task complexity and output structure
-- **Sequential Patterns**: Identify time-series, sequences, or temporal dependencies
-- **Feature Interactions**: Assess the need for cross-feature learning and embeddings
-- **Multi-task Requirements**: Identify multiple objectives or outputs
-
-### 2. Architecture Design Considerations
-- **Layer Types**: Choose appropriate layer types (Dense, LSTM, Conv, Attention, etc.)
-- **Network Depth**: Determine number of layers based on problem complexity
-- **Layer Dimensions**: Size hidden layers appropriately for the dataset
-- **Activation Functions**: Select activations (ReLU, tanh, sigmoid, etc.) for each layer type
-- **Specialized Modules**: Consider feature crossing, attention mechanisms, or expert networks
-
-### 3. Data-Driven Decisions
-- **Tabular Data**: Multi-layer perceptrons with batch normalization and dropout
-- **Sequential Data**: Recurrent layers (LSTM/GRU) or Transformers with positional encoding
-- **Categorical Features**: Embeddings for high-cardinality, one-hot for low-cardinality
-- **Feature Interactions**: Cross-product layers or interaction modules
-
-### 4. Constraint Considerations
-- **Interpretability**: Simpler architectures with fewer layers, avoid deep ensembles
-- **Computational Budget**: Layer count and dimension trade-offs
-- **Real-time Inference**: Lightweight architectures, avoid heavy attention mechanisms
-- **Training Time**: Balance between model capacity and convergence speed
-
 ## REQUIREMENTS for Production-Quality ML Plans
+
+**Guidelines:** Be data-driven, comprehensive, specific, practical, confident, and end-to-end. Consider task type, architecture design, data characteristics, and constraints in your recommendations.
 
 ### 1. Technical Depth and Specificity
 - ✅ **DO**: Specify exact layer dimensions, not ranges (e.g., "128" not "64-128")
@@ -323,65 +277,34 @@ evaluation: >-
 
 ```yaml
 summary: >-
-  Binary classification task predicting diabetes risk from 8 tabular features
-  using a 3-layer MLP architecture with BCEWithLogitsLoss for numerical stability.
+  Binary classification predicting diabetes from 8 tabular features using 3-layer
+  MLP with BCEWithLogitsLoss.
 
 feature_engineering: >-
-  Apply StandardScaler to all 8 numerical features (pregnancies, glucose, blood
-  pressure, skin thickness, insulin, BMI, diabetes pedigree, age) to normalize
-  to zero mean and unit variance. Handle missing values using median imputation
-  for robustness to outliers. No categorical encoding needed as all features are
-  numerical. Create validation split (20% stratified) before scaling to prevent
-  data leakage. Fit scaler on training set only, then transform both train and
-  validation sets.
+  StandardScaler for all 8 numerical features. Median imputation for missing values.
+  20% stratified validation split. Fit scaler on train only, transform train+val
+  to prevent data leakage.
 
 model_architecture_and_loss: >-
-  3-layer MLP architecture: [Linear(8, 64), BatchNorm1d(64), ReLU, Dropout(0.3),
-  Linear(64, 32), BatchNorm1d(32), ReLU, Dropout(0.3), Linear(32, 1)]. Final
-  layer outputs logits (no activation) for numerical stability. Use
-  BCEWithLogitsLoss which combines sigmoid activation with binary cross-entropy
-  in a single numerically stable operation, avoiding gradient saturation issues
-  that occur with separate sigmoid + BCE.
+  [Linear(8,64), BatchNorm1d(64), ReLU, Dropout(0.3), Linear(64,32), BatchNorm1d(32),
+  ReLU, Dropout(0.3), Linear(32,1)]. BCEWithLogitsLoss combines sigmoid+BCE for
+  numerical stability.
 
 training_configuration: >-
-  Adam optimizer with learning rate 0.001, betas=(0.9, 0.999), weight_decay=1e-5
-  for L2 regularization. CosineAnnealingLR scheduler with T_max=50 to smoothly
-  decay learning rate over training. Batch size of 32 (balances gradient noise
-  and memory). Train for 100 epochs with early stopping patience of 15 epochs
-  monitoring validation loss. Dropout rate 0.3 between hidden layers. Gradient
-  clipping at norm 1.0 to prevent instability. Use 20% stratified validation
-  split to maintain class distribution.
+  Adam(lr=0.001, betas=(0.9,0.999), weight_decay=1e-5). CosineAnnealingLR(T_max=50).
+  Batch size 32. Train 100 epochs with early stopping patience 15 on validation loss.
+  Gradient clipping norm 1.0.
 
 evaluation: >-
-  Primary metric: torchmetrics.AUROC (area under ROC curve) for threshold-independent
-  evaluation, critical for imbalanced medical datasets. Secondary metrics:
-  torchmetrics.F1Score with threshold=0.5 for precision-recall balance,
-  torchmetrics.Accuracy for interpretability, and separate Precision/Recall metrics
-  to monitor false positive vs false negative trade-offs. Consider torchmetrics.CalibrationError
-  (ECE) to assess probability calibration quality, essential for clinical decision
-  support where probability estimates matter.
+  Primary: torchmetrics.AUROC for threshold-independent evaluation on imbalanced data.
+  Secondary: torchmetrics.F1Score(threshold=0.5), torchmetrics.Accuracy, Precision/Recall.
 ```
-{% endif %}
 
-{% if mode != "update_section" %}
-## Important Guidelines
-- Be **data-driven**: Base all recommendations on actual data characteristics and problem requirements
-- Be **comprehensive**: Provide complete guidance covering architecture, features, training, metrics, and optimization
-- Be **specific**: Explain exactly why each component, loss function, metric, and hyperparameter was chosen
-- Be **practical**: Consider constraints like compute resources, interpretability, and deployment requirements
-- Be **confident**: Provide clear recommendations with specific values and reasoning
-- Be **end-to-end**: Think about the complete ML workflow from raw features to trained model, not just architecture
-- **Return only valid YAML**: No additional text, explanations, or formatting markers outside the YAML structure
-
-## Output Format
-Your response must be valid YAML starting directly with the first field name.
-Do NOT include:
-- Markdown code fences (```yaml or ```)
-- The word "yaml" before the output
-- Any explanatory text before or after the YAML
-- Any formatting or comments outside the YAML structure
-
-Now analyze the problem and provide your analysis in YAML format.
+**Output Instructions:**
+- Return ONLY valid YAML starting directly with the first field name
+- NO markdown code fences (```yaml or ```), explanatory text, or formatting markers
+{% if mode == "update_section" %}
+- Output the updated "{{ section_to_update }}" section text only (no headers, just YAML field content)
 {% else %}
-Now update the "{{ section_to_update }}" section based on the feedback provided above.
+- Provide your complete ML analysis in the YAML format shown above
 {% endif %}

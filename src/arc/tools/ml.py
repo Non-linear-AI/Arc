@@ -2235,8 +2235,6 @@ class MLPlanTool(BaseTool):
         *,
         instruction: str | None = None,
         source_tables: str | None = None,
-        conversation_history: list[dict] | None = None,
-        feedback: str | None = None,
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
     ) -> ToolResult:
@@ -2259,14 +2257,14 @@ class MLPlanTool(BaseTool):
 
         # Handle section update mode (different workflow)
         if section_to_update:
-            # Section update mode requires previous_plan and feedback
+            # Section update mode requires previous_plan and instruction
             if not previous_plan:
                 return ToolResult.error_result(
                     "Parameter 'previous_plan' is required when updating a section."
                 )
-            if not feedback:
+            if not instruction:
                 return ToolResult.error_result(
-                    "Parameter 'feedback' is required when updating a section."
+                    "Parameter 'instruction' is required when updating a section."
                 )
 
             # Extract the original section content
@@ -2288,7 +2286,7 @@ class MLPlanTool(BaseTool):
                 updated_section = await agent.update_section(
                     section_name=section_to_update,
                     original_section=str(section_content),
-                    feedback_content=str(feedback),
+                    feedback_content=str(instruction),
                 )
 
                 # Update the plan with new section
@@ -2314,14 +2312,7 @@ class MLPlanTool(BaseTool):
                     f"Unexpected error updating section: {exc}"
                 )
 
-        # Full plan generation mode (requires conversation_history)
-        if conversation_history is None:
-            return ToolResult.error_result(
-                "Parameter 'conversation_history' is required for comprehensive "
-                "ML planning. The full conversation history enables context-aware "
-                "planning."
-            )
-
+        # Full plan generation mode
         # Show section title before generation starts
         # Keep the section printer reference to use later for messages
         ml_plan_section_printer = None
@@ -2355,12 +2346,8 @@ class MLPlanTool(BaseTool):
                 # Auto-accept mode - skip workflow
                 pass  # Continue to generate plan but skip confirmation
 
-            # Note: conversation_history is already filtered by the agent using
-            # timestamps. For revisions, only messages after the last plan are included.
-            # For initial plans, all conversation history is included.
-
-            # Internal loop for handling feedback (option C)
-            current_feedback = feedback
+            # Internal loop for handling user instruction and revision feedback
+            current_instruction = instruction
 
             # Get version from database to avoid conflicts
             latest_plan = self.services.ml_plans.get_latest_plan_for_tables(
@@ -2378,10 +2365,9 @@ class MLPlanTool(BaseTool):
 
                     # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
-                        user_context=str(instruction),
+                        user_context=str(current_instruction),
                         source_tables=str(source_tables),
-                        conversation_history=conversation_history,
-                        feedback=current_feedback,
+                        instruction=current_instruction if current_instruction != instruction else None,
                         stream=False,
                     )
 
@@ -2394,14 +2380,14 @@ class MLPlanTool(BaseTool):
                     # Determine stage
                     if previous_plan:
                         stage = previous_plan.get("stage", "initial")
-                        feedback_lower = str(current_feedback).lower()
-                        if current_feedback and "training" in feedback_lower:
+                        instruction_lower = str(current_instruction).lower()
+                        if current_instruction != instruction and "training" in instruction_lower:
                             stage = "post_training"
-                        elif current_feedback and "evaluation" in feedback_lower:
+                        elif current_instruction != instruction and "evaluation" in instruction_lower:
                             stage = "post_evaluation"
                         reason = (
-                            f"Revised based on feedback: {current_feedback[:100]}..."
-                            if current_feedback
+                            f"Revised based on instruction: {current_instruction[:100]}..."
+                            if current_instruction != instruction
                             else "Plan revision"
                         )
                     else:
@@ -2462,8 +2448,8 @@ class MLPlanTool(BaseTool):
                         )
                         break
                     elif choice == "feedback":
-                        # Get feedback and loop to revise
-                        current_feedback = result.get("feedback", "")
+                        # Get instruction and loop to revise
+                        current_instruction = result.get("feedback", "")
                         version += 1
                         # Continue loop to generate revised plan
                         continue
