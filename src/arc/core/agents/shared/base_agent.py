@@ -110,7 +110,7 @@ class BaseAgent(abc.ABC):
         self,
         context: dict[str, Any],
         max_retries: int = 3,
-        timeout: float = 30.0,
+        timeout: float = 90.0,
         progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         """Generate content using LLM with error handling and retries.
@@ -118,7 +118,7 @@ class BaseAgent(abc.ABC):
         Args:
             context: Context for generation
             max_retries: Maximum number of retry attempts
-            timeout: Timeout in seconds for LLM calls
+            timeout: Timeout in seconds for LLM calls (default: 90 seconds)
             progress_callback: Optional callback to report progress/errors
                 during retries
 
