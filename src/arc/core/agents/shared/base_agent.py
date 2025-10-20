@@ -107,7 +107,11 @@ class BaseAgent(abc.ABC):
             raise AgentError(f"Failed to render template {template_name}: {e}") from e
 
     async def _generate_with_llm(
-        self, context: dict[str, Any], max_retries: int = 3, timeout: float = 30.0
+        self,
+        context: dict[str, Any],
+        max_retries: int = 3,
+        timeout: float = 30.0,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         """Generate content using LLM with error handling and retries.
 
@@ -115,6 +119,8 @@ class BaseAgent(abc.ABC):
             context: Context for generation
             max_retries: Maximum number of retry attempts
             timeout: Timeout in seconds for LLM calls
+            progress_callback: Optional callback to report progress/errors
+                during retries
 
         Returns:
             Generated content string
@@ -146,11 +152,25 @@ class BaseAgent(abc.ABC):
             except TimeoutError:
                 last_error = f"LLM request timed out after {timeout} seconds"
                 if attempt < max_retries:
+                    # Report retry to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Attempt {attempt + 1}/{max_retries + 1} "
+                            f"failed: {last_error}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
                     continue
 
             except Exception as e:
                 last_error = f"LLM generation failed: {str(e)}"
                 if attempt < max_retries:
+                    # Report retry to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Attempt {attempt + 1}/{max_retries + 1} "
+                            f"failed: {last_error}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
                     continue
 
         raise AgentError(

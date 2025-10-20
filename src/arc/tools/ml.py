@@ -2333,11 +2333,17 @@ class MLPlanTool(BaseTool):
                 "[dim]Analyzing problem and creating comprehensive plan...[/dim]"
             )
 
+        # Helper to print progress messages within the section
+        def _progress_callback(message: str):
+            if ml_plan_section_printer:
+                ml_plan_section_printer.print(message)
+
         agent = MLPlanAgent(
             self.services,
             self.api_key,
             self.base_url,
             self.model,
+            progress_callback=_progress_callback if ml_plan_section_printer else None,
         )
 
         try:
@@ -2409,9 +2415,17 @@ class MLPlanTool(BaseTool):
                 except Exception as e:
                     # Handle errors during plan generation
                     error_msg = f"Failed to generate ML plan: {str(e)}"
-                    if self.ui:
-                        self.ui._printer.console.print(f"[red]❌ {error_msg}[/red]")
-                    return ToolResult.error_result(error_msg)
+                    if ml_plan_section_printer:
+                        ml_plan_section_printer.print("")
+                        ml_plan_section_printer.print(f"✗ {error_msg}")
+                    # Close the section
+                    if self.ui and hasattr(self, "_ml_plan_section"):
+                        self._ml_plan_section.__exit__(None, None, None)
+                    return ToolResult(
+                        success=False,
+                        output="",
+                        metadata={"error_shown": True},
+                    )
 
                 # If auto-accept is enabled, skip workflow
                 if self.agent and self.agent.ml_plan_auto_accept:
