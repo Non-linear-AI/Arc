@@ -8,6 +8,7 @@ on an external ArcAgent to pass prompts as user messages.
 from __future__ import annotations
 
 import abc
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ import yaml
 
 from arc.core.client import ArcClient
 from arc.database.services import ServiceContainer
+
+logger = logging.getLogger(__name__)
 
 
 class AgentError(Exception):
@@ -104,14 +107,20 @@ class BaseAgent(abc.ABC):
             raise AgentError(f"Failed to render template {template_name}: {e}") from e
 
     async def _generate_with_llm(
-        self, context: dict[str, Any], max_retries: int = 3, timeout: float = 30.0
+        self,
+        context: dict[str, Any],
+        max_retries: int = 3,
+        timeout: float = 90.0,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         """Generate content using LLM with error handling and retries.
 
         Args:
             context: Context for generation
             max_retries: Maximum number of retry attempts
-            timeout: Timeout in seconds for LLM calls
+            timeout: Timeout in seconds for LLM calls (default: 90 seconds)
+            progress_callback: Optional callback to report progress/errors
+                during retries
 
         Returns:
             Generated content string
@@ -143,11 +152,25 @@ class BaseAgent(abc.ABC):
             except TimeoutError:
                 last_error = f"LLM request timed out after {timeout} seconds"
                 if attempt < max_retries:
+                    # Report retry to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Attempt {attempt + 1}/{max_retries + 1} "
+                            f"failed: {last_error}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
                     continue
 
             except Exception as e:
                 last_error = f"LLM generation failed: {str(e)}"
                 if attempt < max_retries:
+                    # Report retry to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Attempt {attempt + 1}/{max_retries + 1} "
+                            f"failed: {last_error}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
                     continue
 
         raise AgentError(
@@ -257,10 +280,22 @@ class BaseAgent(abc.ABC):
                             f"Failed to generate valid content after "
                             f"{max_iterations} attempts. Final error: {last_error}"
                         )
+                    else:
+                        # Log the error and inform that we're retrying
+                        logger.warning(
+                            f"Validation failed on attempt "
+                            f"{attempt + 1}/{max_iterations}: {last_error}. Retrying..."
+                        )
 
             except Exception as e:
                 last_error = f"Generation error: {str(e)}"
                 if attempt == max_iterations - 1:
                     raise AgentError(f"Content generation failed: {e}") from e
+                else:
+                    # Log the error and inform that we're retrying
+                    logger.warning(
+                        f"Generation failed on attempt {attempt + 1}/{max_iterations}: "
+                        f"{last_error}. Retrying..."
+                    )
 
         raise AgentError(f"Content generation failed after {max_iterations} attempts")

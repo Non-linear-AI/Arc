@@ -22,6 +22,7 @@ class MLPlanAgent(BaseAgent):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        progress_callback: Any | None = None,
     ):
         """Initialize ML plan agent.
 
@@ -30,8 +31,10 @@ class MLPlanAgent(BaseAgent):
             api_key: API key for LLM interactions
             base_url: Optional base URL
             model: Optional model name
+            progress_callback: Optional callback for reporting progress/errors
         """
         super().__init__(services, api_key, base_url, model)
+        self.progress_callback = progress_callback
 
     def get_template_directory(self) -> Path:
         """Get the template directory for ML planning.
@@ -180,23 +183,66 @@ class MLPlanAgent(BaseAgent):
             yield {"type": "analysis_complete", "analysis": analysis_result}
 
     async def _generate_analysis_with_validation(
-        self, context: dict[str, Any]
+        self, context: dict[str, Any], max_iterations: int = 3
     ) -> dict[str, Any]:
-        """Generate analysis with validation.
+        """Generate analysis with validation and retry on invalid YAML.
 
         Args:
             context: Analysis context
+            max_iterations: Maximum number of validation attempts
 
         Returns:
             Validated analysis result dictionary
         """
-        # Call LLM with context (it will render template internally)
-        response = await self._generate_with_llm(context)
+        last_error = None
 
-        # Parse and validate response
-        analysis_result = self._parse_analysis_response(response)
+        for attempt in range(max_iterations):
+            try:
+                # Add previous error to context for fixing
+                if last_error and attempt > 0:
+                    context["previous_error"] = last_error
+                    context["attempt_number"] = attempt + 1
+                    if self.progress_callback:
+                        msg = (
+                            f"[dim]⚠ Validation failed on attempt "
+                            f"{attempt}/{max_iterations}. "
+                            f"Retrying with error feedback...[/dim]"
+                        )
+                        self.progress_callback(msg)
 
-        return analysis_result
+                # Call LLM with context (it will render template internally)
+                # Pass progress callback if available
+                response = await self._generate_with_llm(
+                    context, progress_callback=self.progress_callback
+                )
+
+                # Parse and validate response
+                analysis_result = self._parse_analysis_response(response)
+
+                # Success - return the result
+                return analysis_result
+
+            except MLPlanError as e:
+                # Validation failed - capture error and retry
+                last_error = str(e)
+                if attempt == max_iterations - 1:
+                    # Final attempt failed
+                    raise MLPlanError(
+                        f"Failed to generate valid ML plan after "
+                        f"{max_iterations} attempts. "
+                        f"Final error: {last_error}"
+                    ) from e
+
+            except Exception as e:
+                # Unexpected error - don't retry
+                raise MLPlanError(
+                    f"Unexpected error during plan generation: {e}"
+                ) from e
+
+        # Should not reach here, but just in case
+        raise MLPlanError(
+            f"Failed to generate valid ML plan after {max_iterations} attempts"
+        )
 
     async def _generate_analysis_with_streaming(self, context: dict[str, Any]):
         """Generate analysis with streaming output.

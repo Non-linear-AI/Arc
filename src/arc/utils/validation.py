@@ -289,6 +289,34 @@ def validate_model_id(model_id: str) -> None:
         )
 
 
+def _detect_unquoted_identifier_issues(sql: str, error_msg: str) -> str | None:
+    """Detect if SQL error is due to unquoted identifiers with special characters.
+
+    Args:
+        sql: The SQL query that failed
+        error_msg: The error message from DuckDB
+
+    Returns:
+        Helpful message if unquoted identifier issue detected, None otherwise
+    """
+    # Check if error mentions "-" or other special chars in context of parsing
+    if "syntax error at or near" in error_msg and '"-"' in error_msg:
+        # Find identifiers with hyphens that aren't quoted
+        unquoted_pattern = r"\b([a-zA-Z_][a-zA-Z0-9_]*-[a-zA-Z0-9_-]*)\b"
+        unquoted_matches = re.findall(unquoted_pattern, sql)
+
+        if unquoted_matches:
+            examples = unquoted_matches[:3]  # Show first 3 examples
+            return (
+                f"SQL syntax error: {error_msg}\n"
+                f"    → Identifiers with hyphens must be quoted with double quotes.\n"
+                f"    → Found unquoted: {', '.join(examples)}\n"
+                f'    → Fix: Use double quotes like "table_name" for all identifiers'
+            )
+
+    return None
+
+
 def validate_sql_syntax(sql: str, connection=None) -> list[str]:
     """Validate SQL syntax using DuckDB's EXPLAIN.
 
@@ -331,7 +359,12 @@ def validate_sql_syntax(sql: str, connection=None) -> list[str]:
         # Only report syntax/parser errors, not catalog errors
         # Catalog errors (table/column not found) are expected during validation
         if "Parser Error" in error_msg or "syntax error" in error_msg.lower():
-            errors.append(f"SQL syntax error: {error_msg}")
+            # Check if this is an unquoted identifier issue and provide helpful message
+            helpful_msg = _detect_unquoted_identifier_issues(sql, error_msg)
+            if helpful_msg:
+                errors.append(helpful_msg)
+            else:
+                errors.append(f"SQL syntax error: {error_msg}")
         # Ignore catalog errors like "Table does not exist" during validation
         # These are expected when validating SQL without the actual data
     finally:

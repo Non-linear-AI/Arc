@@ -67,6 +67,65 @@ Apply the requested changes while preserving production-ready quality and overal
 - `view`: SELECT query → intermediate result (NOT in outputs array)
 - `execute`: DDL/DML with no result set (DROP, INSERT, etc.)
 
+# SQL DIALECT
+
+**CRITICAL**: All SQL must be **standard ANSI SQL** (SQL-92/SQL:2011) compatible with multiple database engines.
+
+**Why Standard SQL?**
+The user database could be PostgreSQL, MySQL, SQLite, DuckDB, or any SQL database. Write portable SQL that works across engines.
+
+**CRITICAL - Quote Table/View Names Only:**
+- **ALWAYS use double quotes for table names and view names**
+- **DO NOT quote column names** (standard SQL practice)
+- This prevents syntax errors with table names containing hyphens, spaces, or special characters
+- Examples:
+  - ✓ `DROP TABLE IF EXISTS "user_features"`
+  - ✓ `SELECT user_id, total_spent FROM "transactions"`
+  - ✓ `CREATE TABLE "my_output_table" AS ...`
+  - ✗ `DROP TABLE user_features` (unquoted table - can fail with special characters)
+  - ✗ `SELECT "user_id", "total_spent" FROM transactions` (quoted columns - unnecessary)
+
+**Standard SQL Guidelines:**
+- String casting: Use `CAST(value AS VARCHAR)` (standard) or `CAST(value AS TEXT)` (widely supported)
+- String concatenation: Use `||` operator (standard) or `CONCAT()` function
+- Avoid database-specific functions:
+  - ❌ `FARM_FINGERPRINT()` (BigQuery only)
+  - ❌ `hash()` (DuckDB/PostgreSQL specific)
+  - ❌ `USING SAMPLE` (DuckDB specific)
+  - ✓ Use standard alternatives shown below
+
+**Example - Standard SQL Random Split:**
+```sql
+-- ✓ Standard SQL way (works on most databases)
+-- Use modulo on numeric ID for deterministic splits
+SELECT *,
+  CASE
+    WHEN MOD(CAST(id AS INTEGER), 10) < 8 THEN 'training'
+    ELSE 'validation'
+  END as dataset_split
+FROM "table_name"
+
+-- Alternative: Use ROW_NUMBER() for sequential split (standard SQL)
+SELECT *,
+  CASE
+    WHEN MOD(ROW_NUMBER() OVER (ORDER BY id), 10) < 8 THEN 'training'
+    ELSE 'validation'
+  END as dataset_split
+FROM "table_name"
+
+-- ✗ Database-specific approaches (avoid these)
+-- BigQuery: FARM_FINGERPRINT (not portable)
+-- DuckDB: hash() function (not portable)
+```
+
+**Standard SQL Functions to Use:**
+- Aggregations: `COUNT()`, `SUM()`, `AVG()`, `MIN()`, `MAX()`, `STDDEV()`, `VARIANCE()`
+- Window functions: `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `LAG()`, `LEAD()`
+- String functions: `UPPER()`, `LOWER()`, `SUBSTRING()`, `LENGTH()`, `TRIM()`
+- Date functions: `CURRENT_DATE`, `CURRENT_TIMESTAMP`, `EXTRACT()`, `DATE_TRUNC()` (widely supported)
+- Math functions: `ABS()`, `ROUND()`, `FLOOR()`, `CEIL()`, `MOD()`
+- Conditionals: `CASE WHEN ... THEN ... END`, `COALESCE()`, `NULLIF()`
+
 # PRODUCTION REQUIREMENTS
 
 ## 1. SQL Quality - Write Defensive, Concrete SQL
@@ -98,23 +157,23 @@ Apply the requested changes while preserving production-ready quality and overal
 
 **Filter Early:**
 ```sql
-✓ SELECT ... FROM (SELECT * FROM big_table WHERE date >= '2023-01-01')
-✗ SELECT ... FROM big_table WHERE ... -- filtering after join
+✓ SELECT ... FROM (SELECT * FROM "big_table" WHERE date >= '2023-01-01')
+✗ SELECT ... FROM "big_table" WHERE ... -- filtering after join
 ```
 
 ## 2. Idempotency - Make Pipelines Re-runnable
 
-Always use `DROP TABLE IF EXISTS` before creating tables:
+Always use `DROP TABLE IF EXISTS` before creating tables (remember to quote table names):
 ```yaml
 - name: drop_old_results
   type: execute
   depends_on: []
-  sql: DROP TABLE IF EXISTS user_features
+  sql: DROP TABLE IF EXISTS "user_features"
 
 - name: user_features
   type: table
   depends_on: [drop_old_results, users, transactions]
-  sql: SELECT ...
+  sql: SELECT user_id, feature_value FROM "users" ...
 ```
 
 ## 3. Dependencies - Declare Everything
@@ -163,7 +222,7 @@ SELECT
   amount,
   ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY transaction_date DESC) as recency_rank,
   SUM(amount) OVER (PARTITION BY user_id ORDER BY transaction_date) as running_total
-FROM transactions
+FROM "transactions"
 ```
 
 **Aggregations (for features):**
@@ -174,7 +233,7 @@ SELECT
   SUM(amount) as total_spent,
   AVG(amount) as avg_transaction,
   MAX(transaction_date) as last_transaction_date
-FROM transactions
+FROM "transactions"
 GROUP BY user_id
 HAVING COUNT(*) >= 5  -- Filter groups
 ```
@@ -186,8 +245,8 @@ SELECT
   u.signup_date,
   t.transaction_count,
   t.total_spent
-FROM users u
-LEFT JOIN user_transaction_stats t ON u.user_id = t.user_id
+FROM "users" u
+LEFT JOIN "user_transaction_stats" t ON u.user_id = t.user_id
 WHERE u.signup_date >= '2023-01-01'
 ```
 
@@ -195,8 +254,16 @@ WHERE u.signup_date >= '2023-01-01'
 
 ❌ **Don't use SELECT \***
 ```sql
-✗ SELECT * FROM transactions
-✓ SELECT user_id, amount, transaction_date FROM transactions
+✗ SELECT * FROM "transactions"
+✓ SELECT user_id, amount, transaction_date FROM "transactions"
+```
+
+❌ **Don't forget to quote table names**
+```sql
+✗ DROP TABLE my_eval_v25_predictions  -- Fails with hyphens/special chars
+✓ DROP TABLE "my_eval_v25_predictions"  -- Always works
+✗ SELECT user_id FROM transactions  -- Unquoted table name
+✓ SELECT user_id FROM "transactions"  -- Quoted table name
 ```
 
 ❌ **Don't leave placeholders**
@@ -233,12 +300,12 @@ steps:
   - name: drop_old_transaction_features
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS user_transaction_features
+    sql: DROP TABLE IF EXISTS "user_transaction_features"
 
   - name: drop_old_session_features
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS user_session_features
+    sql: DROP TABLE IF EXISTS "user_session_features"
 
   # Clean and filter source data
   - name: clean_transactions
@@ -250,7 +317,7 @@ steps:
         CAST(amount AS DECIMAL(10,2)) as amount,
         transaction_date,
         COALESCE(category, 'UNKNOWN') as category
-      FROM transactions
+      FROM "transactions"
       WHERE transaction_date >= '${min_date}'
         AND amount > 0
         AND user_id IS NOT NULL
@@ -263,7 +330,7 @@ steps:
         user_id,
         session_date,
         duration_seconds
-      FROM sessions
+      FROM "sessions"
       WHERE session_date >= '${min_date}'
         AND user_id IS NOT NULL
         AND duration_seconds > 0
@@ -282,7 +349,7 @@ steps:
         MIN(transaction_date) as first_transaction_date,
         COUNT(DISTINCT category) as unique_categories,
         MAX(CASE WHEN category = 'ELECTRONICS' THEN 1 ELSE 0 END) as has_electronics_purchase
-      FROM clean_transactions
+      FROM "clean_transactions"
       GROUP BY user_id
       HAVING COUNT(*) >= 3
 
@@ -297,7 +364,7 @@ steps:
           session_date,
           duration_seconds,
           ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY session_date DESC) as recency_rank
-        FROM clean_sessions
+        FROM "clean_sessions"
       )
       SELECT
         user_id,
@@ -305,7 +372,7 @@ steps:
         AVG(duration_seconds) as avg_session_duration,
         MAX(CASE WHEN recency_rank = 1 THEN session_date END) as last_session_date,
         SUM(CASE WHEN recency_rank <= 7 THEN 1 ELSE 0 END) as sessions_last_week
-      FROM ranked_sessions
+      FROM "ranked_sessions"
       GROUP BY user_id
 
 outputs: [user_transaction_features, user_session_features]

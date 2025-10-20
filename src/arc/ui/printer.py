@@ -8,6 +8,7 @@
   cursor movement, and interruption support.
 """
 
+import termios
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
@@ -44,7 +45,6 @@ class ArcCompleter(Completer):
             "/ml plan",
             "/ml revise-plan",
             "/ml model",
-            "/ml generate-trainer",
             "/ml evaluate",
             "/ml train",
             "/ml predict",
@@ -72,11 +72,6 @@ class ArcCompleter(Completer):
                 ("--data-table", "Database table name for data (required)"),
                 ("--target-column", "Target/prediction column name (optional)"),
                 ("--plan-id", "ML plan ID to use for guidance (e.g., pidd-plan-v1)"),
-            ],
-            "generate-trainer": [
-                ("--name", "Trainer name (required)"),
-                ("--context", "Training context and requirements (required)"),
-                ("--model", "Registered model name (required)"),
             ],
             "evaluate": [
                 ("--name", "Evaluator name (required)"),
@@ -183,9 +178,8 @@ class ArcCompleter(Completer):
                 # Complete ML subcommands
                 ml_subcommands = [
                     ("model", "Generate ML model specification"),
-                    ("generate-trainer", "Generate training configuration"),
                     ("evaluate", "Generate evaluator and run evaluation"),
-                    ("train", "Start training job"),
+                    ("train", "Generate trainer and start training"),
                     ("predict", "Run prediction"),
                     ("jobs", "Manage ML jobs"),
                 ]
@@ -518,6 +512,16 @@ class Printer:
 
         key_bindings = KeyBindings()
 
+        # TODO: Investigate duplicate message display issue
+        # The message "Use arrows/enter to select" appears twice in the output.
+        # This is NOT a race condition with Rich (that was fixed with flush+tcdrain).
+        # This appears to be ChoiceInput rendering its Label message twice internally.
+        # Potential causes:
+        # 1. Bug in prompt_toolkit 3.0.52's ChoiceInput/Label rendering
+        # 2. Initial render + redraw cycle causing double display
+        # 3. HSplit container rendering the Label twice somehow
+        # Investigate: Try older/newer prompt_toolkit versions, or use custom layout
+
         try:
             self._input_active = True
             choice = ChoiceInput(
@@ -692,6 +696,7 @@ class Printer:
         """
         from pathlib import Path
 
+        from rich.padding import Padding
         from rich.panel import Panel
         from rich.syntax import Syntax
 
@@ -725,18 +730,36 @@ class Printer:
                 word_wrap=False,
             )
 
-            with self.section(add_dot=False) as p:
-                p.print_panel(Panel(syntax, border_style="color(240)"))
+            # Print panel with left padding to match section indentation
+            panel = Panel(syntax, border_style="color(240)")
+            padded_panel = Padding(panel, (0, 0, 0, 2))  # (top, right, bottom, left)
+            self.console.print(padded_panel)
+            self.console.print("")  # Add blank separator
 
         except ImportError:
             # Fallback to plain text if Rich is not available
-            with self.section(add_dot=False) as p:
-                p.print(yaml_content)
+            self.console.print("  " + yaml_content.replace("\n", "\n  "))
+            self.console.print("")  # Add blank separator
         except Exception as e:
             # Fallback on any error
-            with self.section(add_dot=False) as p:
-                p.print(f"Error displaying YAML: {e}")
-                p.print(yaml_content)
+            self.console.print(f"  Error displaying YAML: {e}")
+            self.console.print("  " + yaml_content.replace("\n", "\n  "))
+            self.console.print("")  # Add blank separator
+        finally:
+            # Synchronize terminal output to prevent race condition with prompt_toolkit
+            # This ensures all bytes are transmitted to PTY before prompt_toolkit
+            # starts rendering, preventing duplicate prompt messages
+            self.console.file.flush()
+
+            # Wait for OS to transmit all buffered output to PTY
+            # This provides OS-level synchronization that flush() alone doesn't
+            try:
+                if hasattr(self.console.file, "fileno"):
+                    termios.tcdrain(self.console.file.fileno())
+            except (OSError, AttributeError):
+                # If tcdrain fails (non-TTY or other issues), continue gracefully
+                # The flush() above still provides basic synchronization
+                pass
 
     def _display_yaml_diff(
         self, old_content: str, new_content: str, file_path: str
@@ -746,6 +769,7 @@ class Printer:
             import difflib
             from pathlib import Path
 
+            from rich.padding import Padding
             from rich.panel import Panel
             from rich.syntax import Syntax
 
@@ -774,36 +798,46 @@ class Printer:
                     word_wrap=False,
                 )
 
-                with self.section(add_dot=False) as p:
-                    p.print_panel(
-                        Panel(
-                            diff_syntax,
-                            title=f"📝 Changes to {Path(file_path).name}",
-                            border_style="yellow",
-                        )
-                    )
+                # Print diff panel with left padding to match section indentation
+                panel = Panel(
+                    diff_syntax,
+                    title=f"📝 Changes to {Path(file_path).name}",
+                    border_style="yellow",
+                )
+                # Add 2-space left padding to match section indentation
+                padded_panel = Padding(panel, (0, 0, 0, 2))
+                self.console.print(padded_panel)
+                self.console.print("")  # Add blank separator
             else:
                 # No differences found
-                with self.section(add_dot=False) as p:
-                    p.print(f"✓ No changes detected in {Path(file_path).name}")
+                self.console.print(f"  ✓ No changes detected in {Path(file_path).name}")
+                self.console.print("")  # Add blank separator
 
         except Exception:
             # Fallback to simple diff display
-            with self.section(add_dot=False) as p:
-                p.print(f"📝 File diff for: {file_path}")
-                p.print("Lines being changed:")
+            self.console.print(f"  📝 File diff for: {file_path}")
+            self.console.print("  Lines being changed:")
 
-                # Simple line-by-line comparison
-                old_lines = old_content.splitlines()
-                new_lines = new_content.splitlines()
+            # Simple line-by-line comparison
+            old_lines = old_content.splitlines()
+            new_lines = new_content.splitlines()
 
-                max_lines = max(len(old_lines), len(new_lines))
-                for i in range(max_lines):
-                    old_line = old_lines[i] if i < len(old_lines) else ""
-                    new_line = new_lines[i] if i < len(new_lines) else ""
+            max_lines = max(len(old_lines), len(new_lines))
+            for i in range(max_lines):
+                old_line = old_lines[i] if i < len(old_lines) else ""
+                new_line = new_lines[i] if i < len(new_lines) else ""
 
-                    if old_line != new_line:
-                        if old_line:
-                            p.print(f"[red]-{old_line}[/red]")
-                        if new_line:
-                            p.print(f"[green]+{new_line}[/green]")
+                if old_line != new_line:
+                    if old_line:
+                        self.console.print(f"  [red]-{old_line}[/red]")
+                    if new_line:
+                        self.console.print(f"  [green]+{new_line}[/green]")
+            self.console.print("")  # Add blank separator
+        finally:
+            # Synchronize terminal output (early return path)
+            self.console.file.flush()
+            try:
+                if hasattr(self.console.file, "fileno"):
+                    termios.tcdrain(self.console.file.fileno())
+            except (OSError, AttributeError):
+                pass

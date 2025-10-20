@@ -348,8 +348,20 @@ class AUC(Metric):
         """
         # Convert to probabilities if needed
         if predictions.dim() > 1:
-            probs = F.softmax(predictions, dim=1)[:, 1]  # Probability of positive class
+            if predictions.shape[-1] == 2:
+                # Two-class softmax output
+                probs = F.softmax(predictions, dim=1)[:, 1]
+            elif predictions.shape[-1] == 1:
+                # Single sigmoid output
+                probs = predictions.squeeze(-1)
+                probs = torch.sigmoid(probs)
+            else:
+                raise ValueError(
+                    f"Expected 1 or 2 output columns for binary classification, "
+                    f"got {predictions.shape[-1]}"
+                )
         else:
+            # Already 1D predictions
             probs = torch.sigmoid(predictions)
 
         # Sort by probability

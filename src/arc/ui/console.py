@@ -225,12 +225,13 @@ class InteractiveInterface:
                     "(--context optional with --plan-id)",
                 ),
                 (
-                    "/ml generate-trainer --name NAME --context DESC --model-spec FILE",
-                    "Generate an Arc-Graph trainer specification",
+                    "/ml train --name NAME --model-id ID --data TABLE "
+                    "--instruction DESC",
+                    "Generate trainer specification and launch training",
                 ),
                 (
-                    "/ml evaluate --name NAME --context DESC --trainer-id TRAINER_ID "
-                    "--data-table TABLE",
+                    "/ml evaluate --name NAME --instruction DESC "
+                    "--trainer-id TRAINER_ID --data-table TABLE",
                     "Generate evaluator and run model evaluation",
                 ),
                 (
@@ -315,6 +316,21 @@ class InteractiveInterface:
 
     def show_tool_result(self, tool_name: str, result, _execution_time: float):
         """Print one tool result as a single output section."""
+        # Tools that manage their own output sections
+        # These tools print their output progressively within their own sections
+        # and don't need console.py to create a duplicate section
+        TOOLS_WITH_OWN_SECTIONS = {
+            "ml_train",  # MLTrainTool shows output in "ML Train" section
+            "ml_model",  # MLModelTool shows output in "ML Model" section
+            "ml_evaluate",  # MLEvaluateTool shows output in "ML Evaluator" section
+            "ml_plan",  # MLPlanTool shows output in "ML Plan" section
+            "data_process",  # MLDataProcessTool shows output in "ML Data" section
+        }
+
+        # Skip display if tool already showed its own section
+        if tool_name in TOOLS_WITH_OWN_SECTIONS:
+            return
+
         label = self._action_label(tool_name)
 
         if self._working_active:

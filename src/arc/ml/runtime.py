@@ -120,6 +120,7 @@ class MLRuntime:
         schema_path: Path | None = None,
         schema_yaml: str | None = None,
         description: str | None = None,
+        plan_id: str | None = None,
     ):
         """Register a new Arc-Graph trainer specification.
 
@@ -129,6 +130,7 @@ class MLRuntime:
             schema_path: Path to trainer YAML (optional if schema_yaml provided)
             schema_yaml: Trainer YAML as string (optional if schema_yaml provided)
             description: Optional description
+            plan_id: Optional ML plan ID that guided this trainer generation
 
         Returns:
             Trainer object
@@ -195,6 +197,7 @@ class MLRuntime:
             model_version=model_record.version,
             spec=schema_text,
             description=description or "",
+            plan_id=plan_id,
             created_at=now,
             updated_at=now,
         )

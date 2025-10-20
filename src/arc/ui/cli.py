@@ -255,8 +255,6 @@ async def handle_ml_command(
             _ml_jobs(args, ui, runtime)
         elif subcommand == "model":
             await _ml_model(args, ui, runtime, agent)
-        elif subcommand == "generate-trainer":
-            await _ml_generate_trainer(args, ui, runtime)
         elif subcommand == "evaluate":
             await _ml_evaluate(args, ui, runtime)
         elif subcommand == "data":
@@ -284,17 +282,17 @@ async def _ml_plan(
     options = _parse_options(
         args,
         {
-            "context": True,
-            "data-source": True,
+            "instruction": True,
+            "source-tables": True,
         },
         command_name="/ml plan",
     )
 
-    user_context = options.get("context")
-    source_tables = options.get("data-source")
+    instruction = options.get("instruction")
+    source_tables = options.get("source-tables")
 
-    if not user_context or not source_tables:
-        raise CommandError("/ml plan requires --context and --data-source")
+    if not instruction or not source_tables:
+        raise CommandError("/ml plan requires --instruction and --source-tables")
 
     ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
 
@@ -303,7 +301,7 @@ async def _ml_plan(
 
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
-        instruction=str(user_context),
+        instruction=str(instruction),
         source_tables=str(source_tables),
         conversation_history=conversation_history,
         feedback=None,
@@ -516,7 +514,7 @@ async def _ml_train(
                     f"{db_plan.plan_yaml}"
                 )
 
-            ui.show_info(f"📊 Using ML plan: {plan_id}")
+            ui.show_info(f"Using ML plan: {plan_id}")
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
@@ -779,7 +777,7 @@ async def _ml_model(
         args,
         {
             "name": True,
-            "context": True,
+            "instruction": True,
             "data-table": True,
             "target-column": True,  # Target column for task-aware generation
             "plan-id": True,  # ML plan ID to use for guidance
@@ -788,7 +786,7 @@ async def _ml_model(
     )
 
     name = options.get("name")
-    context = options.get("context")
+    instruction = options.get("instruction")
     data_table = options.get("data-table")
     target_column = options.get("target-column")
     plan_id = options.get("plan-id")
@@ -808,7 +806,7 @@ async def _ml_model(
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id  # Ensure plan_id is in the dict
 
-            ui.show_info(f"📊 Using ML plan: {plan_id}")
+            ui.show_info(f"Using ML plan: {plan_id}")
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
@@ -819,9 +817,9 @@ async def _ml_model(
     if not data_table:
         raise CommandError("/ml model requires --data-table")
 
-    # context is optional when using a plan
-    if not ml_plan and not context:
-        raise CommandError("/ml model requires --context when not using --plan-id")
+    # instruction is optional when using a plan
+    if not ml_plan and not instruction:
+        raise CommandError("/ml model requires --instruction when not using --plan-id")
 
     try:
         # Use the MLModelTool which includes confirmation workflow
@@ -836,7 +834,7 @@ async def _ml_model(
         # Execute the tool with confirmation workflow
         result = await tool.execute(
             name=name,
-            instruction=context,
+            instruction=instruction,
             data_table=data_table,
             target_column=target_column,
             ml_plan=ml_plan,  # Pass ML plan if available
@@ -847,61 +845,6 @@ async def _ml_model(
 
     except Exception as exc:
         raise CommandError(f"Unexpected error during model generation: {exc}") from exc
-
-
-async def _ml_generate_trainer(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    """Handle trainer specification generation command."""
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "context": True,
-            "model": True,
-        },
-    )
-
-    name = options.get("name")
-    context = options.get("context")
-    model_name = options.get("model")
-
-    if not name or not context or not model_name:
-        raise CommandError(
-            "/ml generate-trainer requires --name, --context, and --model"
-        )
-
-    try:
-        # Use the MLTrainerGeneratorTool which includes confirmation workflow
-        from arc.tools.ml import MLTrainerGeneratorTool
-
-        # Get settings for tool initialization
-        api_key, base_url, model = _get_ml_tool_config()
-
-        # Create the tool with proper dependencies
-        tool = MLTrainerGeneratorTool(runtime.services, api_key, base_url, model, ui)
-
-        # Execute the tool with confirmation workflow (auto-registers to DB)
-        result = await tool.execute(
-            name=name,
-            context=context,
-            model_name=model_name,
-        )
-
-        if result.success:
-            # Suggest next steps
-            ui.show_info("\n💡 Trainer registered successfully")
-            ui.show_info(
-                f"   To train: /ml train --name <trainer_name> --model {model_name} "
-                f"--context <description> --data <table_name>"
-            )
-        else:
-            ui.show_system_error(result.message)
-
-    except Exception as exc:
-        raise CommandError(
-            f"Unexpected error during trainer generation: {exc}"
-        ) from exc
 
 
 async def _ml_evaluate(
@@ -995,7 +938,7 @@ async def _ml_data_processing(
         {
             "name": True,
             "instruction": True,
-            "data-tables": True,
+            "source-tables": True,
             "plan-id": True,
             "target-db": True,
         },
@@ -1004,7 +947,7 @@ async def _ml_data_processing(
 
     name = options.get("name")
     instruction = options.get("instruction")
-    data_tables_str = options.get("data-tables")
+    data_tables_str = options.get("source-tables")
     plan_id = options.get("plan-id")
     database = options.get("target-db", "user")  # Keep CLI option as --target-db
 
@@ -1017,7 +960,7 @@ async def _ml_data_processing(
 
     if not data_tables_str:
         raise CommandError(
-            "/ml data requires --data-tables to narrow the scope of data exploration"
+            "/ml data requires --source-tables to narrow the scope of data exploration"
         )
 
     # Validate database
@@ -1046,7 +989,7 @@ async def _ml_data_processing(
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id
 
-            ui.show_info(f"📊 Using ML plan: {plan_id}")
+            ui.show_info(f"Using ML plan: {plan_id}")
         except Exception as e:
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 

@@ -39,6 +39,16 @@ Your analysis should provide a complete blueprint for training a model from scra
 {% if feedback %}
 **User Feedback**: {{ feedback }}
 {% endif %}
+{% if previous_error %}
+**IMPORTANT - Previous Attempt Failed**:
+Your previous response had the following error:
+{{ previous_error }}
+
+Please fix this error in your response. Make sure to:
+1. Return ONLY valid YAML (no markdown code fences like ```yaml)
+2. Include ALL required sections: summary, feature_engineering, model_architecture_and_loss, training_configuration, evaluation
+3. Ensure the YAML is properly formatted with correct indentation
+{% endif %}
 {% endif %}
 
 {% if mode != "update_section" %}

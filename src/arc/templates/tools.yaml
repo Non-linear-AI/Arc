@@ -226,10 +226,15 @@ tools:
 
   - name: ml_plan
     description: |
-      Create comprehensive ML workflow plan for a modeling task. This tool analyzes data,
-      user requirements, and creates a detailed plan covering feature engineering, model
-      architecture, training strategy, and evaluation metrics. ALWAYS use this FIRST
-      before building ML models.
+      Create or revise comprehensive ML workflow plan for a modeling task. This tool
+      analyzes data, user requirements, and creates a detailed plan covering feature
+      engineering, model architecture, training strategy, and evaluation metrics.
+
+      Use for:
+      - Initial plan creation: Provide instruction and source_tables
+      - Plan revision: Provide instruction, source_tables, AND feedback parameter
+
+      ALWAYS use this FIRST before building ML models.
     parameters:
       type: object
       properties:
@@ -241,7 +246,11 @@ tools:
           description: Comma-separated list of database tables to analyze (e.g., 'users,transactions' or 'pidd')
         feedback:
           type: string
-          description: Optional feedback to revise an existing plan
+          description: |
+            Optional feedback to revise an existing plan. When provided, the tool will
+            update the current ML plan based on your revision request. Use this when the
+            user requests changes to the plan (e.g., "change the model architecture",
+            "use different features", "adjust training strategy").
       required:
         - instruction
         - source_tables
@@ -327,27 +336,20 @@ tools:
             to compute and any evaluation-specific notes.
         trainer_id:
           type: string
-          description: Trainer ID (without version, e.g., 'my_trainer')
+          description: Trainer ID with version (e.g., 'my-trainer-v1')
         evaluate_table:
           type: string
           description: Test dataset table name for evaluation
-        target_column:
-          type: string
-          description: Target column name for evaluation
         metrics:
           type: array
           items:
             type: string
           description: Optional list of specific metrics to compute (e.g., ['accuracy', 'precision', 'recall', 'f1_score'])
-        version:
-          type: integer
-          description: Optional specific trainer version to evaluate (default latest version)
       required:
         - name
         - instruction
         - trainer_id
         - evaluate_table
-        - target_column
 
   - name: data_process
     description: |
@@ -375,11 +377,11 @@ tools:
         instruction:
           type: string
           description: Natural language description of data processing requirements (required for 'generate' action)
-        target_tables:
+        source_tables:
           type: array
           items:
             type: string
-          description: List of database tables to analyze for generation (optional)
+          description: List of source database tables to analyze for generation (optional)
         target_db:
           type: string
           enum:
