@@ -210,14 +210,13 @@ def _get_ml_tool_config() -> tuple[str, str, str | None]:
     base_url = settings.get_base_url()
     model = settings.get_current_model()
 
-    # Require at least one of API key or custom base URL
-    # Empty API key is allowed if using a custom base URL (enterprise gateway)
-    default_base_url = "https://api.openai.com/v1"
-    if not api_key and base_url == default_base_url:
+    # Require at least one of API key or base URL to be configured
+    # Empty API key is allowed if base URL is set (enterprise gateway mode)
+    if not api_key and not base_url:
         raise CommandError(
             "API configuration required. Either:\n"
             "  1. Set API key (ARC_API_KEY environment variable or /config)\n"
-            "  2. Configure custom base URL for enterprise gateway (use /config)"
+            "  2. Configure base URL for enterprise gateway (use /config)"
         )
 
     return api_key, base_url, model
@@ -1076,11 +1075,10 @@ async def run_interactive_mode(
                     model = new_model.strip()
                     ui.show_system_success("Model saved to ~/.arc/user-settings.json")
 
-        # Initialize agent if API key is available OR custom base URL is configured
+        # Initialize agent if API key or base URL is configured
         # (for enterprise gateway mode where only base_url is needed)
         agent: ArcAgent | None = None
-        default_base_url = "https://api.openai.com/v1"
-        if api_key or base_url != default_base_url:
+        if api_key or base_url:
             # Pass empty string for api_key if None (gateway mode)
             agent = ArcAgent(
                 api_key or "", services, base_url, model, max_tool_rounds, ui
