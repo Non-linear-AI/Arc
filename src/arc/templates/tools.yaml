@@ -338,11 +338,6 @@ tools:
         evaluate_table:
           type: string
           description: Test dataset table name for evaluation
-        metrics:
-          type: array
-          items:
-            type: string
-          description: Optional list of specific metrics to compute (e.g., ['accuracy', 'precision', 'recall', 'f1_score'])
       required:
         - name
         - instruction
@@ -363,32 +358,24 @@ tools:
     parameters:
       type: object
       properties:
-        action:
-          type: string
-          enum:
-            - generate
-            - validate
-          description: "Action to perform: 'generate' creates YAML from natural language (default), 'validate' checks existing YAML configuration"
         name:
           type: string
           description: Name for the data processor (will be registered in database)
         instruction:
           type: string
-          description: Natural language description of data processing requirements (required for 'generate' action)
+          description: Natural language description of data processing requirements
         source_tables:
           type: array
           items:
             type: string
-          description: List of source database tables to analyze for generation (optional)
-        target_db:
+          description: List of source database tables to analyze for generation (required to narrow scope)
+        database:
           type: string
           enum:
             - system
             - user
-          description: "Target database for schema discovery: 'system' for Arc metadata, 'user' for training data (default: user)"
-        yaml_content:
-          type: string
-          description: Raw YAML content for validation (alternative to output_path)
+          description: "Target database: 'system' for Arc metadata, 'user' for training data (default: user)"
       required:
         - name
         - instruction
+        - source_tables

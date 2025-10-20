@@ -294,17 +294,10 @@ async def _ml_plan(
     if not instruction or not source_tables:
         raise CommandError("/ml plan requires --instruction and --source-tables")
 
-    ui.show_info("🤖 Analyzing problem and creating ML workflow plan...")
-
-    # Prepare conversation history
-    conversation_history = agent._prepare_conversation_for_ml_plan()
-
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
         instruction=str(instruction),
         source_tables=str(source_tables),
-        conversation_history=conversation_history,
-        feedback=None,
         previous_plan=agent.current_ml_plan,
     )
 
@@ -323,7 +316,7 @@ async def _ml_plan(
 async def _ml_revise_plan(
     args: list[str], ui: InteractiveInterface, agent: "ArcAgent | None"
 ) -> None:
-    """Revise the current ML workflow plan based on feedback."""
+    """Revise the current ML workflow plan based on instruction."""
     if not agent:
         raise CommandError("Agent not available for ML planning")
 
@@ -340,42 +333,31 @@ async def _ml_revise_plan(
     options = _parse_options(
         args,
         {
-            "feedback": True,
+            "instruction": True,
+            "source-tables": True,
         },
+        command_name="/ml revise-plan",
     )
 
-    feedback = options.get("feedback")
+    instruction = options.get("instruction")
+    source_tables = options.get("source-tables")
 
-    if not feedback:
-        raise CommandError("/ml revise-plan requires --feedback")
+    if not instruction:
+        raise CommandError("/ml revise-plan requires --instruction")
 
-    ui.show_info("🤖 Revising ML plan based on feedback...")
+    # Use source_tables from current plan if not provided
+    if not source_tables:
+        source_tables = agent.current_ml_plan.get("source_tables")
+        if not source_tables:
+            raise CommandError(
+                "/ml revise-plan requires --source-tables "
+                "(not found in current plan)"
+            )
 
-    # Get context from current plan
-    from arc.core.ml_plan import MLPlan
-
-    current_plan_obj = MLPlan.from_dict(agent.current_ml_plan)
-    user_context = current_plan_obj.summary
-    data_table = agent.current_ml_plan.get("data_table", "")
-    target_column = agent.current_ml_plan.get("target_column", "")
-
-    # If data_table/target_column not in plan, we need to ask for them
-    if not data_table or not target_column:
-        raise CommandError(
-            "Current plan missing data table or target column information. "
-            "Please create a new plan with /ml plan"
-        )
-
-    # Prepare conversation history
-    conversation_history = agent._prepare_conversation_for_ml_plan()
-
-    # Execute ML plan tool with feedback
+    # Execute ML plan tool with revision instruction
     result = await agent.ml_plan_tool.execute(
-        instruction=user_context,
-        data_table=data_table,
-        target_column=target_column,
-        conversation_history=conversation_history,
-        feedback=str(feedback),
+        instruction=str(instruction),
+        source_tables=str(source_tables),
         previous_plan=agent.current_ml_plan,
     )
 

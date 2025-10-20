@@ -48,6 +48,7 @@ class ArcCompleter(Completer):
             "/ml evaluate",
             "/ml train",
             "/ml predict",
+            "/ml data",
             "/ml jobs",
         ]
 
@@ -57,17 +58,18 @@ class ArcCompleter(Completer):
         # Command-specific parameters with descriptions
         self.ml_command_params = {
             "plan": [
-                ("--context", "ML task description and requirements (required)"),
-                ("--data-source", "Comma-separated source table names (required)"),
+                ("--instruction", "ML task description and requirements (required)"),
+                ("--source-tables", "Comma-separated source table names (required)"),
             ],
             "revise-plan": [
-                ("--feedback", "Feedback to revise the current ML plan (required)"),
+                ("--instruction", "Instruction to revise the current ML plan (required)"),
+                ("--source-tables", "Comma-separated source table names (optional)"),
             ],
             "model": [
                 ("--name", "Model name (required)"),
                 (
-                    "--context",
-                    "Model description and context (optional with --plan-id)",
+                    "--instruction",
+                    "Model description and requirements (optional with --plan-id)",
                 ),
                 ("--data-table", "Database table name for data (required)"),
                 ("--target-column", "Target/prediction column name (optional)"),
@@ -75,7 +77,7 @@ class ArcCompleter(Completer):
             ],
             "evaluate": [
                 ("--name", "Evaluator name (required)"),
-                ("--context", "Evaluation goals and context (required)"),
+                ("--instruction", "Evaluation goals and requirements (required)"),
                 ("--trainer-id", "Trainer ID to evaluate (required)"),
                 ("--data-table", "Test dataset table name (required)"),
             ],
@@ -93,6 +95,13 @@ class ArcCompleter(Completer):
                 ("--model", "Model name (required)"),
                 ("--data", "Input data table name (required)"),
                 ("--output", "Output table name (required)"),
+            ],
+            "data": [
+                ("--name", "Data processor name (required)"),
+                ("--instruction", "Data processing requirements (required)"),
+                ("--source-tables", "Comma-separated source tables (required)"),
+                ("--target-db", "Target database (system or user, default: user)"),
+                ("--plan-id", "ML plan ID to use for guidance (optional)"),
             ],
         }
 
