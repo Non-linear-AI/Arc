@@ -812,14 +812,23 @@ class MLTrainTool(BaseTool):
                 retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
                 lines.append(f"Retry: {retry_cmd}")
 
+                # Extract validation report if available for agent debugging
+                validation_report = getattr(exc, "validation_report", None)
+
+                metadata = {
+                    **result_metadata,
+                    "training_launch_failed": True,
+                    "training_error": str(exc),
+                }
+
+                # Include detailed validation report for agent debugging
+                if validation_report:
+                    metadata["validation_report"] = validation_report
+
                 return ToolResult(
                     success=True,  # Trainer registration succeeded
                     output="\n".join(lines),
-                    metadata={
-                        **result_metadata,
-                        "training_launch_failed": True,
-                        "training_error": str(exc),
-                    },
+                    metadata=metadata,
                 )
             except Exception as exc:
                 # Log unexpected errors with full traceback
@@ -851,14 +860,22 @@ class MLTrainTool(BaseTool):
                 retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
                 lines.append(f"Retry: {retry_cmd}")
 
+                # Extract validation report if available (might not be present)
+                validation_report = getattr(exc, "validation_report", None)
+
+                metadata = {
+                    **result_metadata,
+                    "training_launch_failed": True,
+                    "training_error": f"{exc.__class__.__name__}: {exc}",
+                }
+
+                if validation_report:
+                    metadata["validation_report"] = validation_report
+
                 return ToolResult(
                     success=True,  # Trainer registration succeeded
                     output="\n".join(lines),
-                    metadata={
-                        **result_metadata,
-                        "training_launch_failed": True,
-                        "training_error": f"{exc.__class__.__name__}: {exc}",
-                    },
+                    metadata=metadata,
                 )
 
         # Build result metadata

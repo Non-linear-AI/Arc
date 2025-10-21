@@ -28,6 +28,7 @@ from arc.ml.artifacts import (
 from arc.ml.builder import ArcModel, ModelBuilder
 from arc.ml.callbacks import TensorBoardLogger
 from arc.ml.data import DataProcessor
+from arc.ml.dry_run_validator import DryRunValidator, ValidationError, ValidationReport
 from arc.ml.trainer import ArcTrainer, ProgressCallback, TrainingResult
 
 logger = logging.getLogger(__name__)
@@ -530,8 +531,8 @@ class TrainingService:
         train_loader: Any,
         training_config: Any,
         model_loss: Any,
-    ) -> None:
-        """Validate training setup by running a dry-run forward pass.
+    ) -> ValidationReport:
+        """Validate training setup by running incremental dry-run validation.
 
         This catches common issues before starting the expensive training loop:
         - Non-numeric columns in features
@@ -545,134 +546,80 @@ class TrainingService:
             training_config: Training configuration
             model_loss: Loss function specification
 
+        Returns:
+            ValidationReport with success status and detailed diagnostics
+
         Raises:
             ValueError: If validation fails with details about what went wrong
         """
-        import torch
+        logger.info("Running dry-run validation...")
 
-        logger.info("Running dry-run validation before training...")
+        # Create validator and run validation
+        validator = DryRunValidator(
+            model=model,
+            train_loader=train_loader,
+            training_config=training_config,
+            model_loss=model_loss,
+        )
 
-        try:
-            # Get a single batch for validation
-            sample_batch = next(iter(train_loader))
+        report = validator.validate()
 
-            # Unpack batch (features, targets)
-            if isinstance(sample_batch, (tuple, list)) and len(sample_batch) == 2:
-                features, targets = sample_batch
-            else:
-                features = sample_batch
-                targets = None
+        # If validation failed, raise ValidationError with detailed message and report
+        if not report.success:
+            error_msg = self._format_validation_error(report)
+            raise ValidationError(error_msg, report)
 
-            # Validate features are tensors
-            if not isinstance(features, torch.Tensor):
-                raise ValueError(
-                    f"Expected features to be torch.Tensor, got "
-                    f"{type(features).__name__}. This usually means data "
-                    f"loading failed - check your feature columns."
-                )
+        return report
 
-            # Validate targets if present
-            if targets is not None and not isinstance(targets, torch.Tensor):
-                raise ValueError(
-                    f"Expected targets to be torch.Tensor, got "
-                    f"{type(targets).__name__}. This usually means target "
-                    f"column has non-numeric data."
-                )
+    def _format_validation_error(self, report: ValidationReport) -> str:
+        """Format validation error for ValueError message.
 
-            logger.info(f"  ✓ Data loading successful - batch shape: {features.shape}")
+        Args:
+            report: Validation report with error details
 
-            # Try forward pass
-            model.eval()  # Set to eval mode for validation
-            with torch.no_grad():
-                outputs = model(features)
+        Returns:
+            Formatted error message string
+        """
+        lines = []
 
-            logger.info(
-                f"  ✓ Forward pass successful - output type: {type(outputs).__name__}"
+        # Error header
+        if report.error:
+            lines.append(
+                f"Dry-run validation failed at step {report.failed_at_step} "
+                f"({report.step_name}):"
             )
+            lines.append("")
+            lines.append(f"{report.error['type']}: {report.error['message']}")
+        else:
+            lines.append("Dry-run validation failed")
 
-            # Try loss computation if targets are available
-            if targets is not None:
-                # Get loss function
-                from arc.graph.model.components import get_component_class_or_function
+        # Add root cause if available
+        if report.root_cause_analysis:
+            lines.append("")
+            lines.append("Analysis:")
+            for analysis in report.root_cause_analysis:
+                lines.append(f"  • {analysis}")
 
-                loss_fn_class = get_component_class_or_function(model_loss.type)
-                loss_params = model_loss.params or {}
+        # Add suggestions if available
+        if report.suggested_fixes:
+            lines.append("")
+            lines.append("Suggested fixes:")
+            # Sort by priority
+            sorted_fixes = sorted(
+                report.suggested_fixes, key=lambda x: x.get("priority", 99)
+            )
+            for fix in sorted_fixes:
+                lines.append(f"  {fix['priority']}. {fix['description']}")
+                if fix.get("details"):
+                    lines.append(f"     {fix['details']}")
 
-                # Handle both functional and class-based losses
-                if hasattr(loss_fn_class, "__self__"):  # It's a function
-                    loss_fn = loss_fn_class
-                else:  # It's a class
-                    loss_fn = loss_fn_class(**loss_params)
+        lines.append("")
+        lines.append(
+            "Training setup has an issue that needs to be fixed "
+            "before training can start."
+        )
 
-                # Get model output for loss (usually 'logits' or first output)
-                if isinstance(outputs, dict):
-                    # Use target_output_key if specified, otherwise try common keys
-                    output_key = getattr(training_config, "target_output_key", "logits")
-                    if output_key in outputs:
-                        model_output = outputs[output_key]
-                    elif "logits" in outputs:
-                        model_output = outputs["logits"]
-                    else:
-                        # Use first output
-                        model_output = next(iter(outputs.values()))
-                else:
-                    model_output = outputs
-
-                # Reshape targets if needed for binary classification
-                if getattr(training_config, "reshape_targets", False):
-                    if targets.dim() == 1:
-                        targets = targets.unsqueeze(1).float()
-                    elif targets.dim() == 2 and targets.shape[1] != 1:
-                        pass  # Already correct shape
-                    else:
-                        targets = targets.float()
-
-                # Compute loss
-                if hasattr(loss_fn, "__self__"):  # Functional loss
-                    loss = loss_fn(model_output, targets, **loss_params)
-                else:  # Class-based loss
-                    loss = loss_fn(model_output, targets)
-
-                logger.info(
-                    f"  ✓ Loss computation successful - loss value: {loss.item():.4f}"
-                )
-            else:
-                logger.info("  ⚠ No targets available - skipping loss validation")
-
-            logger.info("✓ Dry-run validation passed - training setup is valid")
-
-        except Exception as e:
-            # Provide helpful error message
-            error_msg = str(e)
-
-            # Enhance error messages for common issues
-            if "can't convert np.ndarray of type numpy.object_" in error_msg:
-                raise ValueError(
-                    "Data loading failed: Found non-numeric columns in "
-                    "features.\n\n"
-                    "This usually means:\n"
-                    "  1. Your model input includes string/text columns "
-                    "(like 'dataset_split')\n"
-                    "  2. These columns need to be removed from the model spec\n"
-                    "  3. OR they need preprocessing/embedding layers for "
-                    "text encoding\n\n"
-                    f"Original error: {error_msg}"
-                ) from e
-            elif "shape" in error_msg.lower() or "size" in error_msg.lower():
-                raise ValueError(
-                    f"Shape mismatch during dry-run validation:\n{error_msg}\n"
-                    "\n"
-                    "Check that:\n"
-                    "  1. Model input shape matches number of feature columns\n"
-                    "  2. Loss function expects the correct output shape\n"
-                    "  3. Target column has compatible dimensions"
-                ) from e
-            else:
-                raise ValueError(
-                    f"Dry-run validation failed:\n{error_msg}\n\n"
-                    "Training setup has an issue that needs to be fixed "
-                    "before training can start."
-                ) from e
+        return "\n".join(lines)
 
     def validate_job_config(self, config: TrainingJobConfig) -> None:
         """Validate training job configuration by running a dry-run setup.

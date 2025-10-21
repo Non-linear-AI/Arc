@@ -26,6 +26,16 @@ if TYPE_CHECKING:  # pragma: no cover - import heavy modules only for typing
 class MLRuntimeError(Exception):
     """Raised when ML runtime operations fail."""
 
+    def __init__(self, message: str, validation_report: dict | None = None):
+        """Initialize MLRuntimeError.
+
+        Args:
+            message: Error message
+            validation_report: Optional validation report dict for agent debugging
+        """
+        super().__init__(message)
+        self.validation_report = validation_report
+
 
 @dataclass
 class PredictionSummary:
@@ -487,8 +497,17 @@ class MLRuntime:
         try:
             self.training_service.validate_job_config(job_config)
         except ValueError as validation_error:
-            # Convert validation errors to MLRuntimeError for consistent error handling
-            raise MLRuntimeError(str(validation_error)) from validation_error
+            # Extract validation report if available
+            from arc.ml.dry_run_validator import ValidationError
+
+            validation_report = None
+            if isinstance(validation_error, ValidationError):
+                validation_report = validation_error.validation_report.to_dict()
+
+            # Convert validation errors to MLRuntimeError with report attached
+            raise MLRuntimeError(
+                str(validation_error), validation_report=validation_report
+            ) from validation_error
 
         job_id = self.training_service.submit_training_job(job_config)
         return job_id
@@ -705,8 +724,17 @@ class MLRuntime:
         try:
             self.training_service.validate_job_config(job_config)
         except ValueError as validation_error:
-            # Convert validation errors to MLRuntimeError for consistent error handling
-            raise MLRuntimeError(str(validation_error)) from validation_error
+            # Extract validation report if available
+            from arc.ml.dry_run_validator import ValidationError
+
+            validation_report = None
+            if isinstance(validation_error, ValidationError):
+                validation_report = validation_error.validation_report.to_dict()
+
+            # Convert validation errors to MLRuntimeError with report attached
+            raise MLRuntimeError(
+                str(validation_error), validation_report=validation_report
+            ) from validation_error
 
         job_id = self.training_service.submit_training_job(job_config)
         return job_id
