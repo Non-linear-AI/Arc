@@ -1077,8 +1077,8 @@ async def run_interactive_mode(
         with suppress(Exception):
             ConfirmationService.get_instance().set_ui(ui)
 
-        # Database context for SQL commands - defaults to system database
-        current_database = "system"
+        # Database context for SQL commands - defaults to user database
+        current_database = "user"
 
         # Show enhanced welcome screen
         # Provide welcome even if agent is not yet initialized
