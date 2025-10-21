@@ -577,21 +577,14 @@ class ArcAgent:
         """Execute a tool call using the tool registry.
 
         Handles special preprocessing for tools that need agent context:
-        - ml_plan: Injects conversation_history and previous_plan
+        - ml_plan: Injects previous_plan for revisions
         - ml_model, ml_train, ml_evaluate, data_process: Inject current_ml_plan
         """
-        # Special handling for ml_plan: inject conversation history and current plan
+        # Special handling for ml_plan: inject previous plan for revisions
         if tool_call.name == "ml_plan":
             try:
                 args = json.loads(tool_call.arguments)
-                # Prepare conversation history for the planner
-                conversation_history = self._prepare_conversation_for_ml_plan(
-                    from_timestamp=self.last_ml_plan_timestamp
-                    if self.current_ml_plan
-                    else None
-                )
-                # Inject conversation history and previous plan
-                args["conversation_history"] = conversation_history
+                # Inject previous plan if it exists (for revisions)
                 args["previous_plan"] = self.current_ml_plan
                 # Recreate tool call with modified arguments
                 tool_call = ArcToolCall(
@@ -767,20 +760,22 @@ class ArcAgent:
         return await self._execute_tool(tool_call)
 
     def _prepare_conversation_for_ml_plan(
-        self, from_timestamp: datetime | None = None
-    ) -> list[dict]:
+        self, from_timestamp: datetime | None = None, max_turns: int = 10
+    ) -> str:
         """Prepare conversation history for ML plan tool.
 
         Converts chat history to a simplified format suitable for ML planning.
-        For revisions, only includes messages after the last ML plan timestamp
-        to avoid context pollution. For initial plans, includes all history.
+        Returns recent conversation turns to provide context without overwhelming
+        the LLM with too much history.
 
         Args:
             from_timestamp: Timestamp to filter messages from (for revisions).
-                           If None, includes all conversation history (initial plan).
+                           If None, includes all conversation history.
+            max_turns: Maximum number of conversation turns (user+assistant pairs)
+                      to include. Default is 10 turns (20 messages).
 
         Returns:
-            List of conversation messages
+            Formatted conversation history string
         """
         conversation = []
 
@@ -794,7 +789,21 @@ class ArcAgent:
             elif entry.type == "assistant" and entry.content:
                 conversation.append({"role": "assistant", "content": entry.content})
 
-        return conversation
+        # Limit to recent turns (user + assistant = 1 turn, so max_turns * 2 messages)
+        if max_turns and len(conversation) > max_turns * 2:
+            conversation = conversation[-(max_turns * 2) :]
+
+        # Format as readable conversation
+        if not conversation:
+            return ""
+
+        formatted = []
+        for msg in conversation:
+            role = msg["role"].capitalize()
+            content = msg["content"]
+            formatted.append(f"{role}: {content}")
+
+        return "\n\n".join(formatted)
 
     def get_chat_history(self) -> list[ChatEntry]:
         """Get the complete chat history."""

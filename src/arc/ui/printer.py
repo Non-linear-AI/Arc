@@ -48,6 +48,7 @@ class ArcCompleter(Completer):
             "/ml evaluate",
             "/ml train",
             "/ml predict",
+            "/ml data",
             "/ml jobs",
         ]
 
@@ -57,17 +58,21 @@ class ArcCompleter(Completer):
         # Command-specific parameters with descriptions
         self.ml_command_params = {
             "plan": [
-                ("--context", "ML task description and requirements (required)"),
-                ("--data-source", "Comma-separated source table names (required)"),
+                ("--instruction", "ML task description and requirements (required)"),
+                ("--source-tables", "Comma-separated source table names (required)"),
             ],
             "revise-plan": [
-                ("--feedback", "Feedback to revise the current ML plan (required)"),
+                (
+                    "--instruction",
+                    "Instruction to revise the current ML plan (required)",
+                ),
+                ("--source-tables", "Comma-separated source table names (optional)"),
             ],
             "model": [
                 ("--name", "Model name (required)"),
                 (
-                    "--context",
-                    "Model description and context (optional with --plan-id)",
+                    "--instruction",
+                    "Model description and requirements (optional with --plan-id)",
                 ),
                 ("--data-table", "Database table name for data (required)"),
                 ("--target-column", "Target/prediction column name (optional)"),
@@ -75,7 +80,7 @@ class ArcCompleter(Completer):
             ],
             "evaluate": [
                 ("--name", "Evaluator name (required)"),
-                ("--context", "Evaluation goals and context (required)"),
+                ("--instruction", "Evaluation goals and requirements (required)"),
                 ("--trainer-id", "Trainer ID to evaluate (required)"),
                 ("--data-table", "Test dataset table name (required)"),
             ],
@@ -93,6 +98,13 @@ class ArcCompleter(Completer):
                 ("--model", "Model name (required)"),
                 ("--data", "Input data table name (required)"),
                 ("--output", "Output table name (required)"),
+            ],
+            "data": [
+                ("--name", "Data processor name (required)"),
+                ("--instruction", "Data processing requirements (required)"),
+                ("--source-tables", "Comma-separated source tables (required)"),
+                ("--target-db", "Target database (system or user, default: user)"),
+                ("--plan-id", "ML plan ID to use for guidance (optional)"),
             ],
         }
 
@@ -250,6 +262,26 @@ class Printer:
 
         # Set up history file path
         self._history_file = Path.home() / ".arc_history"
+
+        # Escape watcher callbacks for terminal state management
+        # These allow automatic suspension during choice dialogs
+        self._suspend_escape_callback = None
+        self._resume_escape_callback = None
+
+    def set_escape_handlers(self, suspend_callback, resume_callback=None):
+        """Set callbacks for escape watcher management during choice dialogs.
+
+        This enables automatic terminal state management when showing choice
+        dialogs with get_choice_async(). The escape watcher is automatically
+        suspended to prevent terminal state conflicts.
+
+        Args:
+            suspend_callback: Function to call to suspend the escape watcher
+            resume_callback: Optional function to resume (typically None as
+                watcher auto-recreates on next agent loop iteration)
+        """
+        self._suspend_escape_callback = suspend_callback
+        self._resume_escape_callback = resume_callback
 
     @contextmanager
     def output_section(self, separator_style: str = "blank"):
@@ -499,28 +531,29 @@ class Printer:
         options: list[tuple[str, str]],
         default: str | None = None,
     ) -> str:
-        """Show a simple choice selector using prompt_toolkit.
+        """Show a choice selector using prompt_toolkit.
+
+        Automatically suspends the escape watcher to prevent terminal state
+        conflicts with ChoiceInput. This ensures:
+        - Arrow keys work correctly for navigation
+        - No duplicate rendering from terminal mode issues
+        - Clean terminal state after selection
 
         Args:
             options: list of (value, label) tuples
             default: default value key
-            on_escape: optional callback when Esc is pressed
-        Returns the selected value, or "__esc__" if escaped.
+
+        Returns:
+            The selected value, or "__esc__" if escaped
         """
         # Add ESC handling - always allow ESC to cancel with __esc__ result
         from prompt_toolkit.key_binding import KeyBindings
 
         key_bindings = KeyBindings()
 
-        # TODO: Investigate duplicate message display issue
-        # The message "Use arrows/enter to select" appears twice in the output.
-        # This is NOT a race condition with Rich (that was fixed with flush+tcdrain).
-        # This appears to be ChoiceInput rendering its Label message twice internally.
-        # Potential causes:
-        # 1. Bug in prompt_toolkit 3.0.52's ChoiceInput/Label rendering
-        # 2. Initial render + redraw cycle causing double display
-        # 3. HSplit container rendering the Label twice somehow
-        # Investigate: Try older/newer prompt_toolkit versions, or use custom layout
+        # Automatically suspend escape watcher to prevent terminal state conflicts
+        if self._suspend_escape_callback:
+            self._suspend_escape_callback()
 
         try:
             self._input_active = True
@@ -535,6 +568,8 @@ class Printer:
             return result
         finally:
             self._input_active = False
+            # Auto-cleanup: reset prompt session to ensure clean state
+            self.reset_prompt_session()
 
     def reset_prompt_session(self) -> None:
         """Reset the prompt session to ensure a clean state after nested prompts."""
@@ -727,7 +762,7 @@ class Printer:
                 "yaml",
                 theme="github-dark",
                 line_numbers=True,
-                word_wrap=False,
+                word_wrap=True,
             )
 
             # Print panel with left padding to match section indentation

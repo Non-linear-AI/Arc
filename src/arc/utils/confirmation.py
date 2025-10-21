@@ -91,11 +91,8 @@ class ConfirmationService:
             ("no", "No"),
         ]
 
-        # Suspend ESC watcher to prevent race condition during choice dialog
-        ui.suspend_escape()
-
         try:
-            # Pass global escape trigger so ESC terminates the entire task
+            # Escape watcher suspension happens automatically in get_choice_async()
             selection = await ui._printer.get_choice_async(options, default="yes")
         finally:
             # Always reset state regardless of outcome

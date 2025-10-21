@@ -790,22 +790,45 @@ class MLTrainTool(BaseTool):
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
-                # Return success with warning since trainer is usable
+                # Display error in section and return success with warning since
+                # trainer is usable
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("⚠ Training Validation Failed")
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(f"[red]{exc}[/red]")
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                    )
+                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                    ml_trainer_section_printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
+
                 lines.append("")
-                lines.append("⚠️  Training launch failed but trainer is registered.")
-                lines.append(f"Error: {exc}")
+                lines.append("⚠ Training Validation Failed")
                 lines.append("")
+                lines.append(f"{exc}")
+                lines.append("")
+                lines.append(f"Note: Trainer '{name}' was registered successfully")
                 retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                lines.append(f"Retry training with: {retry_cmd}")
+                lines.append(f"Retry: {retry_cmd}")
+
+                # Extract validation report if available for agent debugging
+                validation_report = getattr(exc, "validation_report", None)
+
+                metadata = {
+                    **result_metadata,
+                    "training_launch_failed": True,
+                    "training_error": str(exc),
+                }
+
+                # Include detailed validation report for agent debugging
+                if validation_report:
+                    metadata["validation_report"] = validation_report
 
                 return ToolResult(
                     success=True,  # Trainer registration succeeded
                     output="\n".join(lines),
-                    metadata={
-                        **result_metadata,
-                        "training_launch_failed": True,
-                        "training_error": str(exc),
-                    },
+                    metadata=metadata,
                 )
             except Exception as exc:
                 # Log unexpected errors with full traceback
@@ -814,21 +837,45 @@ class MLTrainTool(BaseTool):
                 logging.exception("Unexpected error during training launch")
 
                 # Trainer was successfully registered but training launch failed
+                # Display error in section
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("⚠ Training Validation Failed")
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        f"[red]{exc.__class__.__name__}: {exc}[/red]"
+                    )
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                    )
+                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                    ml_trainer_section_printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
+
                 lines.append("")
-                lines.append("⚠️  Training launch failed but trainer is registered.")
-                lines.append(f"Error: {exc.__class__.__name__}: {exc}")
+                lines.append("⚠ Training Validation Failed")
                 lines.append("")
+                lines.append(f"{exc.__class__.__name__}: {exc}")
+                lines.append("")
+                lines.append(f"Note: Trainer '{name}' was registered successfully")
                 retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                lines.append(f"Retry training with: {retry_cmd}")
+                lines.append(f"Retry: {retry_cmd}")
+
+                # Extract validation report if available (might not be present)
+                validation_report = getattr(exc, "validation_report", None)
+
+                metadata = {
+                    **result_metadata,
+                    "training_launch_failed": True,
+                    "training_error": f"{exc.__class__.__name__}: {exc}",
+                }
+
+                if validation_report:
+                    metadata["validation_report"] = validation_report
 
                 return ToolResult(
                     success=True,  # Trainer registration succeeded
                     output="\n".join(lines),
-                    metadata={
-                        **result_metadata,
-                        "training_launch_failed": True,
-                        "training_error": f"{exc.__class__.__name__}: {exc}",
-                    },
+                    metadata=metadata,
                 )
 
         # Build result metadata
@@ -2235,10 +2282,9 @@ class MLPlanTool(BaseTool):
         *,
         instruction: str | None = None,
         source_tables: str | None = None,
-        conversation_history: list[dict] | None = None,
-        feedback: str | None = None,
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
+        conversation_history: str | None = None,  # noqa: ARG002
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -2259,14 +2305,14 @@ class MLPlanTool(BaseTool):
 
         # Handle section update mode (different workflow)
         if section_to_update:
-            # Section update mode requires previous_plan and feedback
+            # Section update mode requires previous_plan and instruction
             if not previous_plan:
                 return ToolResult.error_result(
                     "Parameter 'previous_plan' is required when updating a section."
                 )
-            if not feedback:
+            if not instruction:
                 return ToolResult.error_result(
-                    "Parameter 'feedback' is required when updating a section."
+                    "Parameter 'instruction' is required when updating a section."
                 )
 
             # Extract the original section content
@@ -2288,7 +2334,7 @@ class MLPlanTool(BaseTool):
                 updated_section = await agent.update_section(
                     section_name=section_to_update,
                     original_section=str(section_content),
-                    feedback_content=str(feedback),
+                    feedback_content=str(instruction),
                 )
 
                 # Update the plan with new section
@@ -2314,14 +2360,7 @@ class MLPlanTool(BaseTool):
                     f"Unexpected error updating section: {exc}"
                 )
 
-        # Full plan generation mode (requires conversation_history)
-        if conversation_history is None:
-            return ToolResult.error_result(
-                "Parameter 'conversation_history' is required for comprehensive "
-                "ML planning. The full conversation history enables context-aware "
-                "planning."
-            )
-
+        # Full plan generation mode
         # Show section title before generation starts
         # Keep the section printer reference to use later for messages
         ml_plan_section_printer = None
@@ -2355,12 +2394,8 @@ class MLPlanTool(BaseTool):
                 # Auto-accept mode - skip workflow
                 pass  # Continue to generate plan but skip confirmation
 
-            # Note: conversation_history is already filtered by the agent using
-            # timestamps. For revisions, only messages after the last plan are included.
-            # For initial plans, all conversation history is included.
-
-            # Internal loop for handling feedback (option C)
-            current_feedback = feedback
+            # Internal loop for handling user instruction and revision feedback
+            current_instruction = instruction
 
             # Get version from database to avoid conflicts
             latest_plan = self.services.ml_plans.get_latest_plan_for_tables(
@@ -2378,10 +2413,11 @@ class MLPlanTool(BaseTool):
 
                     # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
-                        user_context=str(instruction),
+                        user_context=str(current_instruction),
                         source_tables=str(source_tables),
-                        conversation_history=conversation_history,
-                        feedback=current_feedback,
+                        instruction=current_instruction
+                        if current_instruction != instruction
+                        else None,
                         stream=False,
                     )
 
@@ -2394,14 +2430,21 @@ class MLPlanTool(BaseTool):
                     # Determine stage
                     if previous_plan:
                         stage = previous_plan.get("stage", "initial")
-                        feedback_lower = str(current_feedback).lower()
-                        if current_feedback and "training" in feedback_lower:
+                        instruction_lower = str(current_instruction).lower()
+                        if (
+                            current_instruction != instruction
+                            and "training" in instruction_lower
+                        ):
                             stage = "post_training"
-                        elif current_feedback and "evaluation" in feedback_lower:
+                        elif (
+                            current_instruction != instruction
+                            and "evaluation" in instruction_lower
+                        ):
                             stage = "post_evaluation"
                         reason = (
-                            f"Revised based on feedback: {current_feedback[:100]}..."
-                            if current_feedback
+                            f"Revised based on instruction: "
+                            f"{current_instruction[:100]}..."
+                            if current_instruction != instruction
                             else "Plan revision"
                         )
                     else:
@@ -2462,8 +2505,8 @@ class MLPlanTool(BaseTool):
                         )
                         break
                     elif choice == "feedback":
-                        # Get feedback and loop to revise
-                        current_feedback = result.get("feedback", "")
+                        # Get instruction and loop to revise
+                        current_instruction = result.get("feedback", "")
                         version += 1
                         # Continue loop to generate revised plan
                         continue

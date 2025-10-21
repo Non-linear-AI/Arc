@@ -141,35 +141,26 @@ class ArcTrainer:
         return optimizer_class(model.parameters(), **params)
 
     def _setup_loss_function(self):
-        """Setup functional loss function."""
-        import torch.nn.functional as F
+        """Setup loss function using component registry.
+
+        Supports both functional losses (torch.nn.functional.*) and
+        class-based losses (torch.nn.*).
+        """
+        from arc.graph.model.components import get_component_class_or_function
 
         loss_name = self.config.loss_function
+        loss_params = self.config.loss_params or {}
 
-        # Map functional loss names to functions (using F alias for readability)
-        # All functions are torch.nn.functional.* as specified in loss_name keys
-        functional_losses = {
-            "torch.nn.functional.binary_cross_entropy": F.binary_cross_entropy,
-            "torch.nn.functional.binary_cross_entropy_with_logits": (
-                F.binary_cross_entropy_with_logits
-            ),
-            "torch.nn.functional.cross_entropy": F.cross_entropy,
-            "torch.nn.functional.mse_loss": F.mse_loss,
-            "torch.nn.functional.l1_loss": F.l1_loss,
-            "torch.nn.functional.smooth_l1_loss": F.smooth_l1_loss,
-            "torch.nn.functional.huber_loss": F.huber_loss,
-            "torch.nn.functional.nll_loss": F.nll_loss,
-            "torch.nn.functional.kl_div": F.kl_div,
-            "torch.nn.functional.poisson_nll_loss": F.poisson_nll_loss,
-        }
+        # Get loss function or class from component registry
+        loss_fn_class, component_kind = get_component_class_or_function(loss_name)
 
-        if loss_name not in functional_losses:
-            available = list(functional_losses.keys())
-            raise ValueError(
-                f"Unsupported loss function: {loss_name}. Available: {available}"
-            )
-
-        return functional_losses[loss_name]
+        # Handle functional vs class-based losses
+        if component_kind == "function":
+            # Functional loss - use directly (params passed at call time)
+            return loss_fn_class
+        else:
+            # Class-based loss - instantiate with params
+            return loss_fn_class(**loss_params)
 
     def train(
         self,

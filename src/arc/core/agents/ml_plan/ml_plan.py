@@ -56,8 +56,7 @@ class MLPlanAgent(BaseAgent):
         self,
         user_context: str,
         source_tables: str,
-        conversation_history: list[dict] | None = None,
-        feedback: str | None = None,
+        instruction: str | None = None,
         stream: bool = False,
     ):
         """Analyze ML problem and provide comprehensive plan.
@@ -65,9 +64,7 @@ class MLPlanAgent(BaseAgent):
         Args:
             user_context: User description of the problem
             source_tables: Comma-separated source table names for data exploration
-            conversation_history: Full conversation history for LLM to analyze
-                (required)
-            feedback: Optional user feedback for refining analysis
+            instruction: Optional instruction for initial generation or refinement
             stream: Whether to stream the output (default: False)
 
         Returns:
@@ -75,26 +72,19 @@ class MLPlanAgent(BaseAgent):
             If stream=True: Async generator yielding chunks
 
         Raises:
-            MLPlanError: If analysis fails or conversation_history is missing
+            MLPlanError: If analysis fails
         """
-        # Require conversation_history for comprehensive analysis
-        if conversation_history is None:
-            raise MLPlanError(
-                "conversation_history is required for ML planning. "
-                "Pass the full conversation history to enable context-aware planning."
-            )
 
         # Get data profiles for all source tables
         table_list = [t.strip() for t in source_tables.split(",")]
         data_profiles = await self._get_multiple_data_profiles(table_list)
 
-        # Build analysis context with full conversation history
+        # Build analysis context
         context = {
             "user_context": user_context,
             "data_profiles": data_profiles,
             "source_tables": source_tables,
-            "conversation_history": conversation_history,
-            "feedback": feedback,
+            "instruction": instruction,
         }
 
         # Generate analysis using LLM

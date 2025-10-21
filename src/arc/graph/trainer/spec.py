@@ -14,6 +14,52 @@ except ImportError as e:
     ) from e
 
 
+def _convert_numeric_strings(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Convert numeric strings to appropriate numeric types.
+
+    YAML 1.1 parses scientific notation without decimal point (e.g., '1e-5')
+    as strings. This function converts such strings to floats.
+
+    Args:
+        params: Dictionary of parameters that may contain numeric strings
+
+    Returns:
+        Dictionary with numeric strings converted to numbers, or None if input is None
+    """
+    if params is None:
+        return None
+
+    converted = {}
+    for key, value in params.items():
+        if isinstance(value, str):
+            # Try to convert string to float
+            try:
+                # Check if it looks like a number (including scientific notation)
+                converted[key] = float(value)
+            except (ValueError, TypeError):
+                # Not a numeric string, keep as is
+                converted[key] = value
+        elif isinstance(value, (list, tuple)):
+            # Recursively convert lists/tuples
+            converted[key] = [
+                float(v) if isinstance(v, str) and _is_numeric_string(v) else v
+                for v in value
+            ]
+        else:
+            converted[key] = value
+
+    return converted
+
+
+def _is_numeric_string(s: str) -> bool:
+    """Check if a string represents a number."""
+    try:
+        float(s)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 @dataclass
 class OptimizerConfig:
     """Configuration for optimizer."""
@@ -115,10 +161,12 @@ class TrainerSpec:
 
         # Parse optimizer
         optimizer_data = data["optimizer"]
+        # Convert numeric strings in params (YAML 1.1 parses '1e-5' as string)
+        params = _convert_numeric_strings(optimizer_data.get("params"))
         optimizer = OptimizerConfig(
             type=optimizer_data["type"],
             lr=optimizer_data.get("lr", 0.001),
-            params=optimizer_data.get("params"),
+            params=params,
         )
 
         # Parse config if present

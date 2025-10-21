@@ -28,6 +28,7 @@ from arc.ml.artifacts import (
 from arc.ml.builder import ArcModel, ModelBuilder
 from arc.ml.callbacks import TensorBoardLogger
 from arc.ml.data import DataProcessor
+from arc.ml.dry_run_validator import DryRunValidator, ValidationError, ValidationReport
 from arc.ml.trainer import ArcTrainer, ProgressCallback, TrainingResult
 
 logger = logging.getLogger(__name__)
@@ -524,6 +525,224 @@ class TrainingService:
             if job_id in self.active_jobs:
                 del self.active_jobs[job_id]
 
+    def _validate_training_setup(
+        self,
+        model: ArcModel,
+        train_loader: Any,
+        training_config: Any,
+        model_loss: Any,
+    ) -> ValidationReport:
+        """Validate training setup by running incremental dry-run validation.
+
+        This catches common issues before starting the expensive training loop:
+        - Non-numeric columns in features
+        - Shape mismatches
+        - Loss function incompatibilities
+        - Model forward pass errors
+
+        Args:
+            model: Built model to validate
+            train_loader: Training data loader
+            training_config: Training configuration
+            model_loss: Loss function specification
+
+        Returns:
+            ValidationReport with success status and detailed diagnostics
+
+        Raises:
+            ValueError: If validation fails with details about what went wrong
+        """
+        logger.info("Running dry-run validation...")
+
+        # Create validator and run validation
+        validator = DryRunValidator(
+            model=model,
+            train_loader=train_loader,
+            training_config=training_config,
+            model_loss=model_loss,
+        )
+
+        report = validator.validate()
+
+        # If validation failed, raise ValidationError with detailed message and report
+        if not report.success:
+            error_msg = self._format_validation_error(report)
+            raise ValidationError(error_msg, report)
+
+        return report
+
+    def _format_validation_error(self, report: ValidationReport) -> str:
+        """Format validation error for ValueError message.
+
+        Args:
+            report: Validation report with error details
+
+        Returns:
+            Formatted error message string
+        """
+        lines = []
+
+        # Error header
+        if report.error:
+            lines.append(
+                f"Dry-run validation failed at step {report.failed_at_step} "
+                f"({report.step_name}):"
+            )
+            lines.append("")
+            lines.append(f"{report.error['type']}: {report.error['message']}")
+        else:
+            lines.append("Dry-run validation failed")
+
+        # Add root cause if available
+        if report.root_cause_analysis:
+            lines.append("")
+            lines.append("Analysis:")
+            for analysis in report.root_cause_analysis:
+                lines.append(f"  • {analysis}")
+
+        # Add suggestions if available
+        if report.suggested_fixes:
+            lines.append("")
+            lines.append("Suggested fixes:")
+            # Sort by priority
+            sorted_fixes = sorted(
+                report.suggested_fixes, key=lambda x: x.get("priority", 99)
+            )
+            for fix in sorted_fixes:
+                lines.append(f"  {fix['priority']}. {fix['description']}")
+                if fix.get("details"):
+                    lines.append(f"     {fix['details']}")
+
+        lines.append("")
+        lines.append(
+            "Training setup has an issue that needs to be fixed "
+            "before training can start."
+        )
+
+        return "\n".join(lines)
+
+    def validate_job_config(self, config: TrainingJobConfig) -> None:
+        """Validate training job configuration by running a dry-run setup.
+
+        This method builds the model, creates the data loader, and validates
+        that training can actually run without errors. It's designed to be called
+        synchronously BEFORE submitting a job to catch errors early.
+
+        Args:
+            config: Training job configuration to validate
+
+        Raises:
+            ValueError: If validation fails with details about what went wrong
+        """
+        logger.info("Validating training job configuration...")
+
+        # Setup training configuration - extract from TrainerSpec
+        if not config.trainer_spec:
+            raise ValueError("Training job config must have trainer_spec")
+
+        trainer_spec = config.trainer_spec
+
+        # Extract loss from model spec (loss is in model, not trainer)
+        if not config.model_spec or not config.model_spec.loss:
+            raise ValueError("Model spec must define a loss function")
+
+        model_loss = config.model_spec.loss
+
+        # Create training config
+        base_training_config = trainer_spec.get_training_config()
+        from types import SimpleNamespace
+
+        training_config = SimpleNamespace(
+            # Basic training parameters
+            epochs=trainer_spec.epochs,
+            batch_size=trainer_spec.batch_size,
+            learning_rate=trainer_spec.learning_rate,
+            validation_split=trainer_spec.validation_split,
+            device=trainer_spec.device,
+            early_stopping_patience=trainer_spec.early_stopping_patience,
+            # Training config parameters
+            shuffle=base_training_config.shuffle,
+            num_workers=base_training_config.num_workers,
+            pin_memory=base_training_config.pin_memory,
+            checkpoint_every=base_training_config.checkpoint_every,
+            save_best_only=base_training_config.save_best_only,
+            save_dir=base_training_config.save_dir,
+            early_stopping_min_delta=base_training_config.early_stopping_min_delta,
+            early_stopping_monitor=base_training_config.early_stopping_monitor,
+            early_stopping_mode=base_training_config.early_stopping_mode,
+            log_every=base_training_config.log_every,
+            verbose=base_training_config.verbose,
+            gradient_clip_val=base_training_config.gradient_clip_val,
+            gradient_clip_norm=base_training_config.gradient_clip_norm,
+            accumulate_grad_batches=base_training_config.accumulate_grad_batches,
+            seed=base_training_config.seed,
+            # Optimizer config from trainer
+            optimizer=trainer_spec.optimizer.type,
+            optimizer_params=trainer_spec.optimizer.params or {},
+            # Loss config from model spec
+            loss_function=model_loss.type,
+            loss_params=model_loss.params or {},
+            # Additional trainer-specific fields (with defaults)
+            reshape_targets=True,  # Default for binary classification
+            target_output_key="logits",  # Use logits for BCEWithLogitsLoss
+        )
+
+        # Create data processor with ML data service
+        ml_data_service = MLDataService(self.job_service.db_manager)
+        data_processor = DataProcessor(ml_data_service=ml_data_service)
+
+        # Run inspection processors to get vars for model building
+        features_dict = {
+            "feature_columns": config.feature_columns,
+            "target_columns": [config.target_column],
+        }
+        inspection_context = data_processor.run_feature_pipeline(
+            table_name=config.train_table,
+            features_spec=features_dict,
+            training=True,
+        )[0]  # Get context only, ignore features and targets
+
+        # Build model from Arc Graph with vars context
+        logger.info("Building model for validation...")
+        builder = ModelBuilder()
+        # Pass vars to builder for variable resolution
+        if "vars" in inspection_context:
+            for var_name, var_value in inspection_context["vars"].items():
+                builder.set_variable(f"vars.{var_name}", var_value)
+        model = builder.build_model(config.model_spec)
+
+        # Create data loader
+        logger.info("Creating data loader for validation...")
+        try:
+            # First try as a registered dataset
+            train_loader = data_processor.create_dataloader_from_dataset(
+                dataset_name=config.train_table,
+                feature_columns=config.feature_columns,
+                target_columns=[config.target_column],
+                batch_size=training_config.batch_size,
+                shuffle=training_config.shuffle,
+            )
+        except ValueError:
+            # Fallback to direct table access
+            train_loader = data_processor.create_dataloader_from_table(
+                ml_data_service=ml_data_service,
+                table_name=config.train_table,
+                feature_columns=config.feature_columns,
+                target_columns=[config.target_column],
+                batch_size=training_config.batch_size,
+                shuffle=training_config.shuffle,
+            )
+
+        # Run validation
+        self._validate_training_setup(
+            model=model,
+            train_loader=train_loader,
+            training_config=training_config,
+            model_loss=model_loss,
+        )
+
+        logger.info("✓ Training job configuration is valid")
+
     def _run_training(
         self,
         job_id: str,
@@ -722,6 +941,30 @@ class TrainingService:
                     f"Validation data loader created from table "
                     f"'{config.validation_table}' for job {job_id}"
                 )
+
+        # Run dry-run validation before starting training
+        logger.info(f"Running dry-run validation for job {job_id}")
+        try:
+            self._validate_training_setup(
+                model=model,
+                train_loader=train_loader,
+                training_config=training_config,
+                model_loss=model_loss,
+            )
+        except ValueError as validation_error:
+            # Validation failed - update job status and raise
+            error_msg = str(validation_error)
+            logger.error(f"Training validation failed for job {job_id}: {error_msg}")
+            try:
+                self.job_service.update_job_status(
+                    job_id, JobStatus.FAILED, f"Validation failed: {error_msg}"
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update job status after validation error for "
+                    f"{job_id}: {update_error}"
+                )
+            raise
 
         # Setup checkpoint directory
         try:

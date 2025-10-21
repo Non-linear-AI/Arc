@@ -89,7 +89,6 @@ class MLPlanConfirmationWorkflow:
 
         finally:
             # Reset prompt state
-            self.ui._printer.add_separator("space")
             self.ui._printer.reset_prompt_session()
 
     def _show_markdown(self, markdown_text: str):

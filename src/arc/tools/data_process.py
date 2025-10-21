@@ -253,8 +253,10 @@ class MLDataProcessTool(BaseTool):
                         # Close the section before returning
                         if self.ui and hasattr(self, "_ml_data_process_section"):
                             self._ml_data_process_section.__exit__(None, None, None)
-                        return ToolResult.success_result(
-                            "✗ Data processor generation cancelled by user."
+                        return ToolResult(
+                            success=True,
+                            output="✗ Data processor generation cancelled by user.",
+                            metadata={"cancelled": True},
                         )
                     yaml_content = final_yaml
                     # Re-parse spec from edited YAML
