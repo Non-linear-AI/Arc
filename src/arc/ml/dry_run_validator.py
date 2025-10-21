@@ -92,15 +92,19 @@ class DryRunValidator:
             if not self._validate_config():
                 return self.report
 
-            # Step 2: Data loading
+            # Step 2: Optimizer setup validation
+            if not self._validate_optimizer():
+                return self.report
+
+            # Step 3: Data loading
             if not self._validate_data_loading():
                 return self.report
 
-            # Step 3: Model forward pass
+            # Step 4: Model forward pass
             if not self._validate_forward_pass():
                 return self.report
 
-            # Step 4: Loss calculation
+            # Step 5: Loss calculation
             if not self._validate_loss():
                 return self.report
 
@@ -116,7 +120,7 @@ class DryRunValidator:
 
     def _validate_config(self) -> bool:
         """Validate configuration."""
-        step_num = "1/4"
+        step_num = "1/5"
         step_name = "Configuration Validation"
         start_time = time.time()
 
@@ -149,11 +153,76 @@ class DryRunValidator:
             self._record_failure(step_num, step_name, duration_ms, e)
             return False
 
+    def _validate_optimizer(self) -> bool:
+        """Validate optimizer setup."""
+        step_num = "2/5"
+        step_name = "Optimizer Setup"
+        start_time = time.time()
+
+        try:
+            # Get optimizer configuration
+            optimizer_name = self.training_config.optimizer
+            optimizer_params = dict(self.training_config.optimizer_params or {})
+
+            # Convert learning_rate to lr if present
+            if "learning_rate" in optimizer_params:
+                optimizer_params["lr"] = optimizer_params.pop("learning_rate")
+            else:
+                optimizer_params["lr"] = self.training_config.learning_rate
+
+            # Store config in report for diagnostics
+            self.report.context["optimizer_name"] = optimizer_name
+            self.report.context["optimizer_params"] = optimizer_params
+
+            # Get optimizer class from plugin system
+            from arc.plugins import get_plugin_manager
+
+            pm = get_plugin_manager()
+            optimizer_class = pm.get_optimizer(optimizer_name)
+
+            if optimizer_class is None:
+                optimizers = pm.get_optimizers()
+                raise ValueError(
+                    f"Unsupported optimizer: {optimizer_name}. "
+                    f"Available: {list(optimizers.keys())}"
+                )
+
+            # Try to instantiate the optimizer
+            # This will catch parameter type errors (e.g., string instead of float)
+            _optimizer = optimizer_class(self.model.parameters(), **optimizer_params)
+
+            # Record success
+            duration_ms = int((time.time() - start_time) * 1000)
+            self.report.validation_history.append(
+                {
+                    "step": step_num,
+                    "name": step_name,
+                    "status": "passed",
+                    "duration_ms": duration_ms,
+                    "details": {
+                        "optimizer_class": optimizer_class.__name__,
+                        "optimizer_params": optimizer_params,
+                    },
+                }
+            )
+
+            logger.info(f"✓ Optimizer setup successful ({optimizer_class.__name__})")
+            return True
+
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._record_failure(step_num, step_name, duration_ms, e)
+
+            # Analyze optimizer error
+            self._analyze_optimizer_error(e)
+
+            return False
+
     def _validate_data_loading(self) -> bool:
         """Validate data loading."""
         import torch
 
-        step_num = "2/4"
+        step_num = "3/5"
         step_name = "Data Loading"
         start_time = time.time()
 
@@ -241,7 +310,7 @@ class DryRunValidator:
         """Validate model forward pass."""
         import torch
 
-        step_num = "3/4"
+        step_num = "4/5"
         step_name = "Forward Pass"
         start_time = time.time()
 
@@ -297,7 +366,7 @@ class DryRunValidator:
     def _validate_loss(self) -> bool:
         """Validate loss calculation."""
 
-        step_num = "4/4"
+        step_num = "5/5"
         step_name = "Loss Calculation"
         start_time = time.time()
 
@@ -522,6 +591,91 @@ class DryRunValidator:
                         "Features include string/text columns that need "
                         "preprocessing. Update model spec to exclude these "
                         "columns or add preprocessing."
+                    ),
+                }
+            )
+
+    def _analyze_optimizer_error(self, error: Exception):
+        """Analyze optimizer setup error and suggest fixes."""
+        error_msg = str(error)
+
+        # Type comparison errors (string vs float)
+        if (
+            "'<=' not supported between instances of" in error_msg
+            or "'float' and 'str'" in error_msg
+        ):
+            self.report.root_cause_analysis.append(
+                "Optimizer parameter has incorrect type (string instead of "
+                "numeric). This is likely due to YAML parsing scientific "
+                "notation (e.g., '1e-5') as string."
+            )
+
+            # Check which parameter caused the issue
+            param_info = []
+            optimizer_params = self.report.context.get("optimizer_params", {})
+            for key, value in optimizer_params.items():
+                if isinstance(value, str):
+                    param_info.append(
+                        f"  - {key}: '{value}' (string, should be numeric)"
+                    )
+
+            if param_info:
+                self.report.root_cause_analysis.append(
+                    "Parameters with incorrect types:\n" + "\n".join(param_info)
+                )
+
+            self.report.suggested_fixes.append(
+                {
+                    "priority": 1,
+                    "description": "Use decimal point in scientific notation",
+                    "details": (
+                        "YAML 1.1 parses '1e-5' as string. Use '1.0e-5' or "
+                        "'0.00001' instead. Update the trainer spec YAML to "
+                        "use proper numeric format."
+                    ),
+                    "yaml_change": (
+                        "optimizer:\n"
+                        "  type: torch.optim.Adam\n"
+                        "  lr: 0.001\n"
+                        "  params:\n"
+                        "    weight_decay: 1.0e-5  # or 0.00001\n"
+                        "    # NOT: weight_decay: 1e-5 (parsed as string)"
+                    ),
+                }
+            )
+
+        # Missing or invalid parameters
+        elif "missing" in error_msg.lower() or "required" in error_msg.lower():
+            optimizer_name = self.report.context.get("optimizer_name")
+            self.report.root_cause_analysis.append(
+                f"Optimizer {optimizer_name} is missing required parameters"
+            )
+
+            self.report.suggested_fixes.append(
+                {
+                    "priority": 1,
+                    "description": "Add required optimizer parameters",
+                    "details": (
+                        "Check PyTorch documentation for required parameters. "
+                        "Add them to the trainer spec under optimizer.params."
+                    ),
+                }
+            )
+
+        # Invalid parameter values
+        elif "invalid" in error_msg.lower() or "out of range" in error_msg.lower():
+            self.report.root_cause_analysis.append(
+                "Optimizer parameter has invalid value (out of acceptable range)"
+            )
+
+            self.report.suggested_fixes.append(
+                {
+                    "priority": 1,
+                    "description": "Fix parameter value ranges",
+                    "details": (
+                        "Check PyTorch optimizer documentation for valid "
+                        "parameter ranges. For example, learning rate should "
+                        "be positive, weight_decay should be >= 0."
                     ),
                 }
             )

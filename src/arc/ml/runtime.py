@@ -433,7 +433,7 @@ class MLRuntime:
         if missing:
             # Get actual columns in the table for comparison
             dataset_info = self.ml_data_service.get_dataset_info(train_table)
-            actual_columns = list(dataset_info.columns.keys()) if dataset_info else []
+            actual_columns = dataset_info.column_names if dataset_info else []
 
             # Format missing columns for display
             missing_list = ", ".join(missing)
@@ -646,7 +646,7 @@ class MLRuntime:
         if missing:
             # Get actual columns in the table for comparison
             dataset_info = self.ml_data_service.get_dataset_info(train_table)
-            actual_columns = list(dataset_info.columns.keys()) if dataset_info else []
+            actual_columns = dataset_info.column_names if dataset_info else []
 
             # Format missing columns for display
             missing_list = ", ".join(missing)
