@@ -318,18 +318,21 @@ class DryRunValidator:
             # Get loss function
             from arc.graph.model.components import get_component_class_or_function
 
-            loss_fn_class = get_component_class_or_function(self.model_loss.type)
+            loss_fn_class, component_kind = get_component_class_or_function(
+                self.model_loss.type
+            )
             loss_params = self.model_loss.params or {}
 
             # Capture loss function type for diagnostics
             self.report.context["loss_fn_class"] = str(loss_fn_class)
             self.report.context["loss_params"] = loss_params
+            self.report.context["component_kind"] = component_kind
 
             # Handle both functional and class-based losses
-            if hasattr(loss_fn_class, "__self__"):  # It's a function
+            if component_kind == "function":
                 loss_fn = loss_fn_class
                 self.report.context["loss_fn_type"] = "functional"
-            else:  # It's a class
+            else:  # It's a class (module)
                 loss_fn = loss_fn_class(**loss_params)
                 self.report.context["loss_fn_type"] = "class-based"
 
@@ -368,7 +371,7 @@ class DryRunValidator:
                 self.report.context["target_shape_after_reshape"] = list(targets.shape)
 
             # Compute loss
-            if hasattr(loss_fn, "__self__"):  # Functional loss
+            if component_kind == "function":  # Functional loss
                 loss = loss_fn(model_output, targets, **loss_params)
             else:  # Class-based loss
                 loss = loss_fn(model_output, targets)
