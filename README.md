@@ -148,7 +148,7 @@ uv run arc chat
 ```
 
 ```text
-/sql CREATE TABLE taxi AS SELECT * FROM 's3://nyc-tlc/trip data/yellow_tripdata_2023-01.parquet'
+/sql CREATE TABLE taxi AS SELECT * FROM read_csv_auto('s3://datasets-documentation/nyc-taxi/trips_0.gz', delim = '\t', header = True, ignore_errors=true)
 ```
 
 **IAM roles (EC2, ECS, Lambda) work automatically** - no configuration needed!
