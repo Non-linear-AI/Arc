@@ -23,6 +23,13 @@ class InteractiveInterface:
     def __init__(self):
         self._printer = Printer()
 
+        # Register escape watcher callbacks for automatic terminal state management
+        # The watcher auto-recreates on next agent loop iteration, so no resume needed
+        self._printer.set_escape_handlers(
+            suspend_callback=self.suspend_escape,
+            resume_callback=None,  # Watcher auto-recreates on next agent loop
+        )
+
     def show_welcome(self, _model: str, _directory: str):
         """Display a centered ASCII banner in an 80-char panel."""
         banner = (
