@@ -524,6 +524,271 @@ class TrainingService:
             if job_id in self.active_jobs:
                 del self.active_jobs[job_id]
 
+    def _validate_training_setup(
+        self,
+        model: ArcModel,
+        train_loader: Any,
+        training_config: Any,
+        model_loss: Any,
+    ) -> None:
+        """Validate training setup by running a dry-run forward pass.
+
+        This catches common issues before starting the expensive training loop:
+        - Non-numeric columns in features
+        - Shape mismatches
+        - Loss function incompatibilities
+        - Model forward pass errors
+
+        Args:
+            model: Built model to validate
+            train_loader: Training data loader
+            training_config: Training configuration
+            model_loss: Loss function specification
+
+        Raises:
+            ValueError: If validation fails with details about what went wrong
+        """
+        import torch
+
+        logger.info("Running dry-run validation before training...")
+
+        try:
+            # Get a single batch for validation
+            sample_batch = next(iter(train_loader))
+
+            # Unpack batch (features, targets)
+            if isinstance(sample_batch, (tuple, list)) and len(sample_batch) == 2:
+                features, targets = sample_batch
+            else:
+                features = sample_batch
+                targets = None
+
+            # Validate features are tensors
+            if not isinstance(features, torch.Tensor):
+                raise ValueError(
+                    f"Expected features to be torch.Tensor, got {type(features).__name__}. "
+                    "This usually means data loading failed - check your feature columns."
+                )
+
+            # Validate targets if present
+            if targets is not None and not isinstance(targets, torch.Tensor):
+                raise ValueError(
+                    f"Expected targets to be torch.Tensor, got {type(targets).__name__}. "
+                    "This usually means target column has non-numeric data."
+                )
+
+            logger.info(f"  ✓ Data loading successful - batch shape: {features.shape}")
+
+            # Try forward pass
+            model.eval()  # Set to eval mode for validation
+            with torch.no_grad():
+                outputs = model(features)
+
+            logger.info(f"  ✓ Forward pass successful - output type: {type(outputs).__name__}")
+
+            # Try loss computation if targets are available
+            if targets is not None:
+                # Get loss function
+                from arc.graph.model.components import get_component_class_or_function
+
+                loss_fn_class = get_component_class_or_function(model_loss.type)
+                loss_params = model_loss.params or {}
+
+                # Handle both functional and class-based losses
+                if hasattr(loss_fn_class, '__self__'):  # It's a function
+                    loss_fn = loss_fn_class
+                else:  # It's a class
+                    loss_fn = loss_fn_class(**loss_params)
+
+                # Get model output for loss (usually 'logits' or first output)
+                if isinstance(outputs, dict):
+                    # Use target_output_key if specified, otherwise try common keys
+                    output_key = getattr(training_config, 'target_output_key', 'logits')
+                    if output_key in outputs:
+                        model_output = outputs[output_key]
+                    elif 'logits' in outputs:
+                        model_output = outputs['logits']
+                    else:
+                        # Use first output
+                        model_output = next(iter(outputs.values()))
+                else:
+                    model_output = outputs
+
+                # Reshape targets if needed for binary classification
+                if getattr(training_config, 'reshape_targets', False):
+                    if targets.dim() == 1:
+                        targets = targets.unsqueeze(1).float()
+                    elif targets.dim() == 2 and targets.shape[1] != 1:
+                        pass  # Already correct shape
+                    else:
+                        targets = targets.float()
+
+                # Compute loss
+                if hasattr(loss_fn, '__self__'):  # Functional loss
+                    loss = loss_fn(model_output, targets, **loss_params)
+                else:  # Class-based loss
+                    loss = loss_fn(model_output, targets)
+
+                logger.info(f"  ✓ Loss computation successful - loss value: {loss.item():.4f}")
+            else:
+                logger.info("  ⚠ No targets available - skipping loss validation")
+
+            logger.info("✓ Dry-run validation passed - training setup is valid")
+
+        except Exception as e:
+            # Provide helpful error message
+            error_msg = str(e)
+
+            # Enhance error messages for common issues
+            if "can't convert np.ndarray of type numpy.object_" in error_msg:
+                raise ValueError(
+                    "Data loading failed: Found non-numeric columns in features.\n"
+                    "\n"
+                    "This usually means:\n"
+                    "  1. Your model input includes string/text columns (like 'dataset_split')\n"
+                    "  2. These columns need to be removed from the model spec\n"
+                    "  3. OR they need preprocessing/embedding layers for text encoding\n"
+                    "\n"
+                    f"Original error: {error_msg}"
+                ) from e
+            elif "shape" in error_msg.lower() or "size" in error_msg.lower():
+                raise ValueError(
+                    f"Shape mismatch during dry-run validation:\n{error_msg}\n"
+                    "\n"
+                    "Check that:\n"
+                    "  1. Model input shape matches number of feature columns\n"
+                    "  2. Loss function expects the correct output shape\n"
+                    "  3. Target column has compatible dimensions"
+                ) from e
+            else:
+                raise ValueError(
+                    f"Dry-run validation failed:\n{error_msg}\n"
+                    "\n"
+                    "Training setup has an issue that needs to be fixed before training can start."
+                ) from e
+
+    def validate_job_config(self, config: TrainingJobConfig) -> None:
+        """Validate training job configuration by running a dry-run setup.
+
+        This method builds the model, creates the data loader, and validates
+        that training can actually run without errors. It's designed to be called
+        synchronously BEFORE submitting a job to catch errors early.
+
+        Args:
+            config: Training job configuration to validate
+
+        Raises:
+            ValueError: If validation fails with details about what went wrong
+        """
+        logger.info("Validating training job configuration...")
+
+        # Setup training configuration - extract from TrainerSpec
+        if not config.trainer_spec:
+            raise ValueError("Training job config must have trainer_spec")
+
+        trainer_spec = config.trainer_spec
+
+        # Extract loss from model spec (loss is in model, not trainer)
+        if not config.model_spec or not config.model_spec.loss:
+            raise ValueError("Model spec must define a loss function")
+
+        model_loss = config.model_spec.loss
+
+        # Create training config
+        base_training_config = trainer_spec.get_training_config()
+        from types import SimpleNamespace
+
+        training_config = SimpleNamespace(
+            # Basic training parameters
+            epochs=trainer_spec.epochs,
+            batch_size=trainer_spec.batch_size,
+            learning_rate=trainer_spec.learning_rate,
+            validation_split=trainer_spec.validation_split,
+            device=trainer_spec.device,
+            early_stopping_patience=trainer_spec.early_stopping_patience,
+            # Training config parameters
+            shuffle=base_training_config.shuffle,
+            num_workers=base_training_config.num_workers,
+            pin_memory=base_training_config.pin_memory,
+            checkpoint_every=base_training_config.checkpoint_every,
+            save_best_only=base_training_config.save_best_only,
+            save_dir=base_training_config.save_dir,
+            early_stopping_min_delta=base_training_config.early_stopping_min_delta,
+            early_stopping_monitor=base_training_config.early_stopping_monitor,
+            early_stopping_mode=base_training_config.early_stopping_mode,
+            log_every=base_training_config.log_every,
+            verbose=base_training_config.verbose,
+            gradient_clip_val=base_training_config.gradient_clip_val,
+            gradient_clip_norm=base_training_config.gradient_clip_norm,
+            accumulate_grad_batches=base_training_config.accumulate_grad_batches,
+            seed=base_training_config.seed,
+            # Optimizer config from trainer
+            optimizer=trainer_spec.optimizer.type,
+            optimizer_params=trainer_spec.optimizer.params or {},
+            # Loss config from model spec
+            loss_function=model_loss.type,
+            loss_params=model_loss.params or {},
+            # Additional trainer-specific fields (with defaults)
+            reshape_targets=True,  # Default for binary classification
+            target_output_key="logits",  # Use logits for BCEWithLogitsLoss
+        )
+
+        # Create data processor with ML data service
+        ml_data_service = MLDataService(self.job_service.db_manager)
+        data_processor = DataProcessor(ml_data_service=ml_data_service)
+
+        # Run inspection processors to get vars for model building
+        features_dict = {
+            "feature_columns": config.feature_columns,
+            "target_columns": [config.target_column],
+        }
+        inspection_context = data_processor.run_feature_pipeline(
+            table_name=config.train_table,
+            features_spec=features_dict,
+            training=True,
+        )[0]  # Get context only, ignore features and targets
+
+        # Build model from Arc Graph with vars context
+        logger.info("Building model for validation...")
+        builder = ModelBuilder()
+        # Pass vars to builder for variable resolution
+        if "vars" in inspection_context:
+            for var_name, var_value in inspection_context["vars"].items():
+                builder.set_variable(f"vars.{var_name}", var_value)
+        model = builder.build_model(config.model_spec)
+
+        # Create data loader
+        logger.info("Creating data loader for validation...")
+        try:
+            # First try as a registered dataset
+            train_loader = data_processor.create_dataloader_from_dataset(
+                dataset_name=config.train_table,
+                feature_columns=config.feature_columns,
+                target_columns=[config.target_column],
+                batch_size=training_config.batch_size,
+                shuffle=training_config.shuffle,
+            )
+        except ValueError:
+            # Fallback to direct table access
+            train_loader = data_processor.create_dataloader_from_table(
+                ml_data_service=ml_data_service,
+                table_name=config.train_table,
+                feature_columns=config.feature_columns,
+                target_columns=[config.target_column],
+                batch_size=training_config.batch_size,
+                shuffle=training_config.shuffle,
+            )
+
+        # Run validation
+        self._validate_training_setup(
+            model=model,
+            train_loader=train_loader,
+            training_config=training_config,
+            model_loss=model_loss,
+        )
+
+        logger.info("✓ Training job configuration is valid")
+
     def _run_training(
         self,
         job_id: str,
@@ -722,6 +987,30 @@ class TrainingService:
                     f"Validation data loader created from table "
                     f"'{config.validation_table}' for job {job_id}"
                 )
+
+        # Run dry-run validation before starting training
+        logger.info(f"Running dry-run validation for job {job_id}")
+        try:
+            self._validate_training_setup(
+                model=model,
+                train_loader=train_loader,
+                training_config=training_config,
+                model_loss=model_loss,
+            )
+        except ValueError as validation_error:
+            # Validation failed - update job status and raise
+            error_msg = str(validation_error)
+            logger.error(f"Training validation failed for job {job_id}: {error_msg}")
+            try:
+                self.job_service.update_job_status(
+                    job_id, JobStatus.FAILED, f"Validation failed: {error_msg}"
+                )
+            except Exception as update_error:
+                logger.error(
+                    f"Failed to update job status after validation error for "
+                    f"{job_id}: {update_error}"
+                )
+            raise
 
         # Setup checkpoint directory
         try:

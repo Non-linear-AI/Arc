@@ -790,7 +790,15 @@ class MLTrainTool(BaseTool):
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
-                # Return success with warning since trainer is usable
+                # Display error in section and return success with warning since trainer is usable
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print("⚠️  Training launch failed but trainer is registered.")
+                    ml_trainer_section_printer.print(f"[red]Error: {exc}[/red]")
+                    ml_trainer_section_printer.print("")
+                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                    ml_trainer_section_printer.print(f"Retry training with: {retry_cmd}")
+
                 lines.append("")
                 lines.append("⚠️  Training launch failed but trainer is registered.")
                 lines.append(f"Error: {exc}")
@@ -814,6 +822,15 @@ class MLTrainTool(BaseTool):
                 logging.exception("Unexpected error during training launch")
 
                 # Trainer was successfully registered but training launch failed
+                # Display error in section
+                if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print("⚠️  Training launch failed but trainer is registered.")
+                    ml_trainer_section_printer.print(f"[red]Error: {exc.__class__.__name__}: {exc}[/red]")
+                    ml_trainer_section_printer.print("")
+                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                    ml_trainer_section_printer.print(f"Retry training with: {retry_cmd}")
+
                 lines.append("")
                 lines.append("⚠️  Training launch failed but trainer is registered.")
                 lines.append(f"Error: {exc.__class__.__name__}: {exc}")

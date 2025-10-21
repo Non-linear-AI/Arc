@@ -466,6 +466,14 @@ class MLRuntime:
             tags=tags,
         )
 
+        # Run validation synchronously BEFORE submitting job to catch errors early
+        # This validates model building, data loading, forward pass, and loss computation
+        try:
+            self.training_service.validate_job_config(job_config)
+        except ValueError as validation_error:
+            # Convert validation errors to MLRuntimeError for consistent error handling
+            raise MLRuntimeError(str(validation_error)) from validation_error
+
         job_id = self.training_service.submit_training_job(job_config)
         return job_id
 
@@ -659,6 +667,14 @@ class MLRuntime:
             or f"Training {model_record.name} with {trainer_record.name}",
             tags=tags,
         )
+
+        # Run validation synchronously BEFORE submitting job to catch errors early
+        # This validates model building, data loading, forward pass, and loss computation
+        try:
+            self.training_service.validate_job_config(job_config)
+        except ValueError as validation_error:
+            # Convert validation errors to MLRuntimeError for consistent error handling
+            raise MLRuntimeError(str(validation_error)) from validation_error
 
         job_id = self.training_service.submit_training_job(job_config)
         return job_id
