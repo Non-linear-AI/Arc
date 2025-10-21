@@ -251,7 +251,8 @@ class YamlConfirmationWorkflow:
 
             if self.ui:
                 try:
-                    # Escape watcher suspension happens automatically in get_choice_async()
+                    # Escape watcher suspension happens automatically in
+                    # get_choice_async()
                     choice = await self.ui._printer.get_choice_async(
                         options, default="save"
                     )

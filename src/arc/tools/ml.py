@@ -790,21 +790,27 @@ class MLTrainTool(BaseTool):
 
             except MLRuntimeError as exc:
                 # Trainer was successfully registered but training launch failed
-                # Display error in section and return success with warning since trainer is usable
+                # Display error in section and return success with warning since
+                # trainer is usable
                 if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("⚠ Training Validation Failed")
                     ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print("⚠️  Training launch failed but trainer is registered.")
-                    ml_trainer_section_printer.print(f"[red]Error: {exc}[/red]")
+                    ml_trainer_section_printer.print(f"[red]{exc}[/red]")
                     ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                    )
                     retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                    ml_trainer_section_printer.print(f"Retry training with: {retry_cmd}")
+                    ml_trainer_section_printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
 
                 lines.append("")
-                lines.append("⚠️  Training launch failed but trainer is registered.")
-                lines.append(f"Error: {exc}")
+                lines.append("⚠ Training Validation Failed")
                 lines.append("")
+                lines.append(f"{exc}")
+                lines.append("")
+                lines.append(f"Note: Trainer '{name}' was registered successfully")
                 retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                lines.append(f"Retry training with: {retry_cmd}")
+                lines.append(f"Retry: {retry_cmd}")
 
                 return ToolResult(
                     success=True,  # Trainer registration succeeded
@@ -824,19 +830,26 @@ class MLTrainTool(BaseTool):
                 # Trainer was successfully registered but training launch failed
                 # Display error in section
                 if ml_trainer_section_printer:
+                    ml_trainer_section_printer.print("⚠ Training Validation Failed")
                     ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print("⚠️  Training launch failed but trainer is registered.")
-                    ml_trainer_section_printer.print(f"[red]Error: {exc.__class__.__name__}: {exc}[/red]")
+                    ml_trainer_section_printer.print(
+                        f"[red]{exc.__class__.__name__}: {exc}[/red]"
+                    )
                     ml_trainer_section_printer.print("")
+                    ml_trainer_section_printer.print(
+                        f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                    )
                     retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                    ml_trainer_section_printer.print(f"Retry training with: {retry_cmd}")
+                    ml_trainer_section_printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
 
                 lines.append("")
-                lines.append("⚠️  Training launch failed but trainer is registered.")
-                lines.append(f"Error: {exc.__class__.__name__}: {exc}")
+                lines.append("⚠ Training Validation Failed")
                 lines.append("")
+                lines.append(f"{exc.__class__.__name__}: {exc}")
+                lines.append("")
+                lines.append(f"Note: Trainer '{name}' was registered successfully")
                 retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                lines.append(f"Retry training with: {retry_cmd}")
+                lines.append(f"Retry: {retry_cmd}")
 
                 return ToolResult(
                     success=True,  # Trainer registration succeeded
@@ -2254,7 +2267,7 @@ class MLPlanTool(BaseTool):
         source_tables: str | None = None,
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
-        conversation_history: str | None = None,
+        conversation_history: str | None = None,  # noqa: ARG002
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -2385,7 +2398,9 @@ class MLPlanTool(BaseTool):
                     analysis = await agent.analyze_problem(
                         user_context=str(current_instruction),
                         source_tables=str(source_tables),
-                        instruction=current_instruction if current_instruction != instruction else None,
+                        instruction=current_instruction
+                        if current_instruction != instruction
+                        else None,
                         stream=False,
                     )
 
@@ -2399,12 +2414,19 @@ class MLPlanTool(BaseTool):
                     if previous_plan:
                         stage = previous_plan.get("stage", "initial")
                         instruction_lower = str(current_instruction).lower()
-                        if current_instruction != instruction and "training" in instruction_lower:
+                        if (
+                            current_instruction != instruction
+                            and "training" in instruction_lower
+                        ):
                             stage = "post_training"
-                        elif current_instruction != instruction and "evaluation" in instruction_lower:
+                        elif (
+                            current_instruction != instruction
+                            and "evaluation" in instruction_lower
+                        ):
                             stage = "post_evaluation"
                         reason = (
-                            f"Revised based on instruction: {current_instruction[:100]}..."
+                            f"Revised based on instruction: "
+                            f"{current_instruction[:100]}..."
                             if current_instruction != instruction
                             else "Plan revision"
                         )

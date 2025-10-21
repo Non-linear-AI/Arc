@@ -791,7 +791,7 @@ class ArcAgent:
 
         # Limit to recent turns (user + assistant = 1 turn, so max_turns * 2 messages)
         if max_turns and len(conversation) > max_turns * 2:
-            conversation = conversation[-(max_turns * 2):]
+            conversation = conversation[-(max_turns * 2) :]
 
         # Format as readable conversation
         if not conversation:

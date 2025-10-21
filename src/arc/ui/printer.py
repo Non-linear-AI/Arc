@@ -62,7 +62,10 @@ class ArcCompleter(Completer):
                 ("--source-tables", "Comma-separated source table names (required)"),
             ],
             "revise-plan": [
-                ("--instruction", "Instruction to revise the current ML plan (required)"),
+                (
+                    "--instruction",
+                    "Instruction to revise the current ML plan (required)",
+                ),
                 ("--source-tables", "Comma-separated source table names (optional)"),
             ],
             "model": [

@@ -350,8 +350,7 @@ async def _ml_revise_plan(
         source_tables = agent.current_ml_plan.get("source_tables")
         if not source_tables:
             raise CommandError(
-                "/ml revise-plan requires --source-tables "
-                "(not found in current plan)"
+                "/ml revise-plan requires --source-tables (not found in current plan)"
             )
 
     # Execute ML plan tool with revision instruction

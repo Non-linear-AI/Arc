@@ -566,15 +566,17 @@ class TrainingService:
             # Validate features are tensors
             if not isinstance(features, torch.Tensor):
                 raise ValueError(
-                    f"Expected features to be torch.Tensor, got {type(features).__name__}. "
-                    "This usually means data loading failed - check your feature columns."
+                    f"Expected features to be torch.Tensor, got "
+                    f"{type(features).__name__}. This usually means data "
+                    f"loading failed - check your feature columns."
                 )
 
             # Validate targets if present
             if targets is not None and not isinstance(targets, torch.Tensor):
                 raise ValueError(
-                    f"Expected targets to be torch.Tensor, got {type(targets).__name__}. "
-                    "This usually means target column has non-numeric data."
+                    f"Expected targets to be torch.Tensor, got "
+                    f"{type(targets).__name__}. This usually means target "
+                    f"column has non-numeric data."
                 )
 
             logger.info(f"  ✓ Data loading successful - batch shape: {features.shape}")
@@ -584,7 +586,9 @@ class TrainingService:
             with torch.no_grad():
                 outputs = model(features)
 
-            logger.info(f"  ✓ Forward pass successful - output type: {type(outputs).__name__}")
+            logger.info(
+                f"  ✓ Forward pass successful - output type: {type(outputs).__name__}"
+            )
 
             # Try loss computation if targets are available
             if targets is not None:
@@ -595,7 +599,7 @@ class TrainingService:
                 loss_params = model_loss.params or {}
 
                 # Handle both functional and class-based losses
-                if hasattr(loss_fn_class, '__self__'):  # It's a function
+                if hasattr(loss_fn_class, "__self__"):  # It's a function
                     loss_fn = loss_fn_class
                 else:  # It's a class
                     loss_fn = loss_fn_class(**loss_params)
@@ -603,11 +607,11 @@ class TrainingService:
                 # Get model output for loss (usually 'logits' or first output)
                 if isinstance(outputs, dict):
                     # Use target_output_key if specified, otherwise try common keys
-                    output_key = getattr(training_config, 'target_output_key', 'logits')
+                    output_key = getattr(training_config, "target_output_key", "logits")
                     if output_key in outputs:
                         model_output = outputs[output_key]
-                    elif 'logits' in outputs:
-                        model_output = outputs['logits']
+                    elif "logits" in outputs:
+                        model_output = outputs["logits"]
                     else:
                         # Use first output
                         model_output = next(iter(outputs.values()))
@@ -615,7 +619,7 @@ class TrainingService:
                     model_output = outputs
 
                 # Reshape targets if needed for binary classification
-                if getattr(training_config, 'reshape_targets', False):
+                if getattr(training_config, "reshape_targets", False):
                     if targets.dim() == 1:
                         targets = targets.unsqueeze(1).float()
                     elif targets.dim() == 2 and targets.shape[1] != 1:
@@ -624,12 +628,14 @@ class TrainingService:
                         targets = targets.float()
 
                 # Compute loss
-                if hasattr(loss_fn, '__self__'):  # Functional loss
+                if hasattr(loss_fn, "__self__"):  # Functional loss
                     loss = loss_fn(model_output, targets, **loss_params)
                 else:  # Class-based loss
                     loss = loss_fn(model_output, targets)
 
-                logger.info(f"  ✓ Loss computation successful - loss value: {loss.item():.4f}")
+                logger.info(
+                    f"  ✓ Loss computation successful - loss value: {loss.item():.4f}"
+                )
             else:
                 logger.info("  ⚠ No targets available - skipping loss validation")
 
@@ -642,13 +648,14 @@ class TrainingService:
             # Enhance error messages for common issues
             if "can't convert np.ndarray of type numpy.object_" in error_msg:
                 raise ValueError(
-                    "Data loading failed: Found non-numeric columns in features.\n"
-                    "\n"
+                    "Data loading failed: Found non-numeric columns in "
+                    "features.\n\n"
                     "This usually means:\n"
-                    "  1. Your model input includes string/text columns (like 'dataset_split')\n"
+                    "  1. Your model input includes string/text columns "
+                    "(like 'dataset_split')\n"
                     "  2. These columns need to be removed from the model spec\n"
-                    "  3. OR they need preprocessing/embedding layers for text encoding\n"
-                    "\n"
+                    "  3. OR they need preprocessing/embedding layers for "
+                    "text encoding\n\n"
                     f"Original error: {error_msg}"
                 ) from e
             elif "shape" in error_msg.lower() or "size" in error_msg.lower():
@@ -662,9 +669,9 @@ class TrainingService:
                 ) from e
             else:
                 raise ValueError(
-                    f"Dry-run validation failed:\n{error_msg}\n"
-                    "\n"
-                    "Training setup has an issue that needs to be fixed before training can start."
+                    f"Dry-run validation failed:\n{error_msg}\n\n"
+                    "Training setup has an issue that needs to be fixed "
+                    "before training can start."
                 ) from e
 
     def validate_job_config(self, config: TrainingJobConfig) -> None:

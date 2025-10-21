@@ -421,9 +421,25 @@ class MLRuntime:
             if not exists
         ]
         if missing:
+            # Get actual columns in the table for comparison
+            dataset_info = self.ml_data_service.get_dataset_info(train_table)
+            actual_columns = list(dataset_info.columns.keys()) if dataset_info else []
+
+            # Format missing columns for display
             missing_list = ", ".join(missing)
+            actual_list = ", ".join(actual_columns[:10])  # Show first 10
+            if len(actual_columns) > 10:
+                actual_list += f", ... ({len(actual_columns) - 10} more)"
+
             raise MLRuntimeError(
-                f"Training table is missing required column(s): {missing_list}"
+                f"Model/data column mismatch for table '{train_table}'.\n\n"
+                f"Model expects these columns (defined in model spec inputs):\n"
+                f"  {missing_list}\n\n"
+                f"Training table actually has:\n"
+                f"  {actual_list}\n\n"
+                f"Fix: Regenerate the model to match actual column names in "
+                f"'{train_table}', or transform your data to include the "
+                f"columns the model expects."
             )
 
         # Use validation table if provided, otherwise use validation_split from trainer
@@ -466,8 +482,8 @@ class MLRuntime:
             tags=tags,
         )
 
-        # Run validation synchronously BEFORE submitting job to catch errors early
-        # This validates model building, data loading, forward pass, and loss computation
+        # Run validation synchronously BEFORE submitting job to catch errors
+        # early. Validates model building, data loading, forward pass, loss.
         try:
             self.training_service.validate_job_config(job_config)
         except ValueError as validation_error:
@@ -609,9 +625,25 @@ class MLRuntime:
             if not exists
         ]
         if missing:
+            # Get actual columns in the table for comparison
+            dataset_info = self.ml_data_service.get_dataset_info(train_table)
+            actual_columns = list(dataset_info.columns.keys()) if dataset_info else []
+
+            # Format missing columns for display
             missing_list = ", ".join(missing)
+            actual_list = ", ".join(actual_columns[:10])  # Show first 10
+            if len(actual_columns) > 10:
+                actual_list += f", ... ({len(actual_columns) - 10} more)"
+
             raise MLRuntimeError(
-                f"Training table is missing required column(s): {missing_list}"
+                f"Model/data column mismatch for table '{train_table}'.\n\n"
+                f"Model expects these columns (defined in model spec inputs):\n"
+                f"  {missing_list}\n\n"
+                f"Training table actually has:\n"
+                f"  {actual_list}\n\n"
+                f"Fix: Regenerate the model to match actual column names in "
+                f"'{train_table}', or transform your data to include the "
+                f"columns the model expects."
             )
 
         # Use validation table if provided
@@ -668,8 +700,8 @@ class MLRuntime:
             tags=tags,
         )
 
-        # Run validation synchronously BEFORE submitting job to catch errors early
-        # This validates model building, data loading, forward pass, and loss computation
+        # Run validation synchronously BEFORE submitting job to catch errors
+        # early. Validates model building, data loading, forward pass, loss.
         try:
             self.training_service.validate_job_config(job_config)
         except ValueError as validation_error:
