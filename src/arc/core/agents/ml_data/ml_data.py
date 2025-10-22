@@ -69,7 +69,11 @@ class MLDataAgent:
         """
         try:
             # Get schema information for available tables
-            schema_info = await self._get_schema_context(source_tables, database)
+            # Skip row counts in edit mode for faster response
+            is_edit_mode = existing_yaml is not None
+            schema_info = await self._get_schema_context(
+                source_tables, database, include_row_counts=not is_edit_mode
+            )
 
             # Render prompt and build messages
             # Mode determined by presence of existing_yaml
@@ -107,13 +111,18 @@ class MLDataAgent:
             ) from e
 
     async def _get_schema_context(
-        self, source_tables: list[str] | None, database: str
+        self,
+        source_tables: list[str] | None,
+        database: str,
+        include_row_counts: bool = True,
     ) -> dict:
         """Get schema information with statistics for context.
 
         Args:
             source_tables: Specific source tables to analyze
             database: Database to use
+            include_row_counts: Whether to fetch row counts (default: True).
+                Set to False to skip potentially slow COUNT(*) queries.
 
         Returns:
             Dictionary with schema information and table statistics
@@ -148,16 +157,17 @@ class MLDataAgent:
                             ],
                         }
 
-                        # Try to get dataset info for row counts
-                        try:
-                            dataset_info = self.services.ml_data.get_dataset_info(
-                                table_name
-                            )
-                            if dataset_info:
-                                table_info["row_count"] = dataset_info.row_count
-                        except Exception:
-                            # If statistics fail, continue without them
-                            pass
+                        # Try to get dataset info for row counts (if enabled)
+                        if include_row_counts:
+                            try:
+                                dataset_info = self.services.ml_data.get_dataset_info(
+                                    table_name, include_row_count=True
+                                )
+                                if dataset_info:
+                                    table_info["row_count"] = dataset_info.row_count
+                            except Exception:
+                                # If statistics fail, continue without them
+                                pass
 
                         context["tables"].append(table_info)
             else:
@@ -177,16 +187,17 @@ class MLDataAgent:
                         ],
                     }
 
-                    # Try to get row count for each table
-                    try:
-                        dataset_info = self.services.ml_data.get_dataset_info(
-                            table.name
-                        )
-                        if dataset_info:
-                            table_info["row_count"] = dataset_info.row_count
-                    except Exception:
-                        # If statistics fail, continue without them
-                        pass
+                    # Try to get row count for each table (if enabled)
+                    if include_row_counts:
+                        try:
+                            dataset_info = self.services.ml_data.get_dataset_info(
+                                table.name, include_row_count=True
+                            )
+                            if dataset_info:
+                                table_info["row_count"] = dataset_info.row_count
+                        except Exception:
+                            # If statistics fail, continue without them
+                            pass
 
                     context["tables"].append(table_info)
 

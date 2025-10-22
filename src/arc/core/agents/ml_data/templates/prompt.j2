@@ -69,314 +69,122 @@ Apply the requested changes while preserving production-ready quality and overal
 
 # SQL DIALECT
 
-**CRITICAL**: All SQL must be **standard ANSI SQL** (SQL-92/SQL:2011) compatible with multiple database engines.
+**CRITICAL**: Use **standard ANSI SQL** only. The database could be PostgreSQL, MySQL, SQLite, or DuckDB.
 
-**Why Standard SQL?**
-The user database could be PostgreSQL, MySQL, SQLite, DuckDB, or any SQL database. Write portable SQL that works across engines.
+**Quoting Rules:**
+- **ALWAYS** quote table/view names: `"table_name"`
+- **NEVER** quote column names: `column_name`
+- Example: `SELECT user_id FROM "transactions"` ✓
 
-**CRITICAL - Quote Table/View Names Only:**
-- **ALWAYS use double quotes for table names and view names**
-- **DO NOT quote column names** (standard SQL practice)
-- This prevents syntax errors with table names containing hyphens, spaces, or special characters
-- Examples:
-  - ✓ `DROP TABLE IF EXISTS "user_features"`
-  - ✓ `SELECT user_id, total_spent FROM "transactions"`
-  - ✓ `CREATE TABLE "my_output_table" AS ...`
-  - ✗ `DROP TABLE user_features` (unquoted table - can fail with special characters)
-  - ✗ `SELECT "user_id", "total_spent" FROM transactions` (quoted columns - unnecessary)
+**Avoid Database-Specific Features:**
+- ❌ `FARM_FINGERPRINT()`, `hash()`, `USING SAMPLE`
+- ✓ Use `MOD()`, `ROW_NUMBER()`, `CASE WHEN`
 
-**Standard SQL Guidelines:**
-- String casting: Use `CAST(value AS VARCHAR)` (standard) or `CAST(value AS TEXT)` (widely supported)
-- String concatenation: Use `||` operator (standard) or `CONCAT()` function
-- Avoid database-specific functions:
-  - ❌ `FARM_FINGERPRINT()` (BigQuery only)
-  - ❌ `hash()` (DuckDB/PostgreSQL specific)
-  - ❌ `USING SAMPLE` (DuckDB specific)
-  - ✓ Use standard alternatives shown below
-
-**Example - Standard SQL Random Split:**
+**Random Split Example:**
 ```sql
--- ✓ Standard SQL way (works on most databases)
--- Use modulo on numeric ID for deterministic splits
-SELECT *,
-  CASE
-    WHEN MOD(CAST(id AS INTEGER), 10) < 8 THEN 'training'
-    ELSE 'validation'
-  END as dataset_split
+SELECT *, CASE WHEN MOD(CAST(id AS INTEGER), 10) < 8
+  THEN 'training' ELSE 'validation' END as split
 FROM "table_name"
-
--- Alternative: Use ROW_NUMBER() for sequential split (standard SQL)
-SELECT *,
-  CASE
-    WHEN MOD(ROW_NUMBER() OVER (ORDER BY id), 10) < 8 THEN 'training'
-    ELSE 'validation'
-  END as dataset_split
-FROM "table_name"
-
--- ✗ Database-specific approaches (avoid these)
--- BigQuery: FARM_FINGERPRINT (not portable)
--- DuckDB: hash() function (not portable)
 ```
 
-**Standard SQL Functions to Use:**
-- Aggregations: `COUNT()`, `SUM()`, `AVG()`, `MIN()`, `MAX()`, `STDDEV()`, `VARIANCE()`
-- Window functions: `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `LAG()`, `LEAD()`
-- String functions: `UPPER()`, `LOWER()`, `SUBSTRING()`, `LENGTH()`, `TRIM()`
-- Date functions: `CURRENT_DATE`, `CURRENT_TIMESTAMP`, `EXTRACT()`, `DATE_TRUNC()` (widely supported)
-- Math functions: `ABS()`, `ROUND()`, `FLOOR()`, `CEIL()`, `MOD()`
-- Conditionals: `CASE WHEN ... THEN ... END`, `COALESCE()`, `NULLIF()`
+**Standard Functions:** `COUNT()`, `SUM()`, `AVG()`, `ROW_NUMBER()`, `RANK()`, `LAG()`, `LEAD()`, `COALESCE()`, `NULLIF()`, `UPPER()`, `LOWER()`, `LENGTH()`, `TRIM()`, `ABS()`, `ROUND()`, `MOD()`, `CASE WHEN`
 
 # PRODUCTION REQUIREMENTS
 
-## 1. SQL Quality - Write Defensive, Concrete SQL
-
-**Be Concrete - Use Actual Values:**
+**Defensive SQL - Use concrete values, handle NULLs, prevent division by zero:**
 ```sql
-✓ WHERE transaction_date >= '2023-01-01' AND amount > 0
-✗ WHERE transaction_date >= 'YYYY-MM-DD' AND amount > your_threshold
+✓ WHERE date >= '2023-01-01' AND COALESCE(amount, 0) > 0
+✓ CASE WHEN total > 0 THEN revenue / total ELSE 0 END
+✗ WHERE user_id != NULL  -- Wrong! Use IS NOT NULL
 ```
 
-**Handle NULLs Explicitly:**
-```sql
-✓ COALESCE(zip_code, 'UNKNOWN') as zip_code
-✓ WHERE user_id IS NOT NULL
-✗ WHERE user_id != NULL  -- This is wrong!
-```
-
-**Prevent Division by Zero:**
-```sql
-✓ CASE WHEN total_orders > 0 THEN revenue / total_orders ELSE 0 END
-✗ revenue / total_orders  -- Crashes if total_orders = 0
-```
-
-**Type Casting:**
-```sql
-✓ CAST(amount AS DECIMAL(10,2))
-✓ WHERE created_at::DATE >= '2023-01-01'
-```
-
-**Filter Early:**
-```sql
-✓ SELECT ... FROM (SELECT * FROM "big_table" WHERE date >= '2023-01-01')
-✗ SELECT ... FROM "big_table" WHERE ... -- filtering after join
-```
-
-## 2. Idempotency - Make Pipelines Re-runnable
-
-Always use `DROP TABLE IF EXISTS` before creating tables (remember to quote table names):
+**Idempotency - Always DROP before CREATE:**
 ```yaml
-- name: drop_old_results
+- name: drop_old
   type: execute
-  depends_on: []
   sql: DROP TABLE IF EXISTS "user_features"
-
 - name: user_features
   type: table
-  depends_on: [drop_old_results, users, transactions]
-  sql: SELECT user_id, feature_value FROM "users" ...
+  depends_on: [drop_old, users]
+  sql: SELECT user_id FROM "users" ...
 ```
 
-## 3. Dependencies - Declare Everything
-
-List ALL dependencies (source tables AND prior steps):
+**Dependencies - List ALL sources (tables + prior steps):**
 ```yaml
-✓ depends_on: [drop_old_table, raw_users, raw_orders]
-✗ depends_on: [raw_users]  -- Missing drop step and raw_orders
+✓ depends_on: [drop_old, users, transactions]
+✗ depends_on: [users]  -- Missing drop_old and transactions
 ```
 
-## 4. Pipeline Structure - Modular and Clear
-
-**Break complex logic into steps:**
+**Pipeline Structure - Break into modular steps with descriptive names:**
 ```yaml
-# Good: Separate cleaning, joining, aggregating
-steps:
-  - name: clean_transactions
-    type: view
-  - name: clean_users
-    type: view
-  - name: join_user_transactions
-    type: view
-  - name: user_aggregates
-    type: table
-
-# Bad: Everything in one massive query
-steps:
-  - name: final_output
-    type: table
-    sql: SELECT ... FROM (SELECT ... FROM (SELECT ...)) -- Hard to debug
+✓ clean_transactions, join_user_data, aggregate_features
+✗ step_1, temp, output
 ```
 
-**Use descriptive names:**
-```yaml
-✓ filter_valid_transactions, aggregate_monthly_revenue
-✗ step_1, temp_table, output
-```
-
-## 5. Common Patterns
-
-**Window Functions (for ranking, running totals):**
+**Common Patterns:**
 ```sql
-SELECT
-  user_id,
-  transaction_date,
-  amount,
-  ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY transaction_date DESC) as recency_rank,
-  SUM(amount) OVER (PARTITION BY user_id ORDER BY transaction_date) as running_total
-FROM "transactions"
+-- Window functions
+ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY date DESC) as rank
+
+-- Aggregations
+SELECT user_id, COUNT(*) as cnt, AVG(amt) as avg FROM "t" GROUP BY user_id
+
+-- Joins
+SELECT u.id, t.total FROM "users" u LEFT JOIN "totals" t ON u.id = t.user_id
 ```
 
-**Aggregations (for features):**
-```sql
-SELECT
-  user_id,
-  COUNT(*) as transaction_count,
-  SUM(amount) as total_spent,
-  AVG(amount) as avg_transaction,
-  MAX(transaction_date) as last_transaction_date
-FROM "transactions"
-GROUP BY user_id
-HAVING COUNT(*) >= 5  -- Filter groups
-```
+**Avoid:**
+- ❌ `SELECT *` → Use explicit columns
+- ❌ Unquoted table names → Always use `"table_name"`
+- ❌ Circular dependencies
+- ❌ `type: table` not in `outputs` array
 
-**Joins (combine data sources):**
-```sql
-SELECT
-  u.user_id,
-  u.signup_date,
-  t.transaction_count,
-  t.total_spent
-FROM "users" u
-LEFT JOIN "user_transaction_stats" t ON u.user_id = t.user_id
-WHERE u.signup_date >= '2023-01-01'
-```
-
-## 6. Anti-Patterns - What NOT to Do
-
-❌ **Don't use SELECT \***
-```sql
-✗ SELECT * FROM "transactions"
-✓ SELECT user_id, amount, transaction_date FROM "transactions"
-```
-
-❌ **Don't forget to quote table names**
-```sql
-✗ DROP TABLE my_eval_v25_predictions  -- Fails with hyphens/special chars
-✓ DROP TABLE "my_eval_v25_predictions"  -- Always works
-✗ SELECT user_id FROM transactions  -- Unquoted table name
-✓ SELECT user_id FROM "transactions"  -- Quoted table name
-```
-
-❌ **Don't leave placeholders**
-```sql
-✗ WHERE amount > ${THRESHOLD}  -- unless using vars feature
-✓ WHERE amount > 100
-```
-
-❌ **Don't create circular dependencies**
-```sql
-✗ step_a depends_on: [step_b]
-  step_b depends_on: [step_a]
-```
-
-❌ **Don't ignore outputs array consistency**
-```sql
-✗ type: table, but name NOT in outputs array
-✗ type: view, but name IS in outputs array
-```
-
+{% if not existing_yaml %}
 # COMPLETE EXAMPLE
 
-This example demonstrates: idempotency, NULL handling, joins, window functions, and multiple outputs.
+Demonstrates: idempotency, NULL handling, window functions, aggregations.
 
 ```yaml
-name: user_behavior_features
-description: Creates user behavioral features from transactions and sessions, with recency and frequency metrics
+name: user_features
+description: User behavioral features from transactions
 
 vars:
   min_date: '2023-01-01'
 
 steps:
-  # Idempotency - drop old tables
-  - name: drop_old_transaction_features
+  - name: drop_old
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS "user_transaction_features"
+    sql: DROP TABLE IF EXISTS "user_features"
 
-  - name: drop_old_session_features
-    type: execute
-    depends_on: []
-    sql: DROP TABLE IF EXISTS "user_session_features"
-
-  # Clean and filter source data
-  - name: clean_transactions
+  - name: clean_data
     type: view
     depends_on: [transactions]
     sql: |
-      SELECT
-        user_id,
-        CAST(amount AS DECIMAL(10,2)) as amount,
-        transaction_date,
-        COALESCE(category, 'UNKNOWN') as category
+      SELECT user_id, CAST(amount AS DECIMAL(10,2)) as amount,
+        transaction_date, COALESCE(category, 'UNKNOWN') as category
       FROM "transactions"
-      WHERE transaction_date >= '${min_date}'
-        AND amount > 0
-        AND user_id IS NOT NULL
+      WHERE transaction_date >= '${min_date}' AND amount > 0 AND user_id IS NOT NULL
 
-  - name: clean_sessions
-    type: view
-    depends_on: [sessions]
-    sql: |
-      SELECT
-        user_id,
-        session_date,
-        duration_seconds
-      FROM "sessions"
-      WHERE session_date >= '${min_date}'
-        AND user_id IS NOT NULL
-        AND duration_seconds > 0
-
-  # Aggregate transaction features with window functions
-  - name: user_transaction_features
+  - name: user_features
     type: table
-    depends_on: [drop_old_transaction_features, clean_transactions]
+    depends_on: [drop_old, clean_data]
     sql: |
-      SELECT
-        user_id,
-        COUNT(*) as transaction_count,
-        SUM(amount) as total_spent,
-        AVG(amount) as avg_transaction_amount,
-        MAX(transaction_date) as last_transaction_date,
-        MIN(transaction_date) as first_transaction_date,
-        COUNT(DISTINCT category) as unique_categories,
-        MAX(CASE WHEN category = 'ELECTRONICS' THEN 1 ELSE 0 END) as has_electronics_purchase
-      FROM "clean_transactions"
+      WITH ranked AS (
+        SELECT user_id, amount, transaction_date,
+          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY transaction_date DESC) as rank
+        FROM "clean_data"
+      )
+      SELECT user_id, COUNT(*) as txn_count, SUM(amount) as total_spent,
+        AVG(amount) as avg_amount, MAX(transaction_date) as last_txn_date,
+        MAX(CASE WHEN rank = 1 THEN amount ELSE 0 END) as most_recent_amount
+      FROM "ranked"
       GROUP BY user_id
       HAVING COUNT(*) >= 3
 
-  # Aggregate session features with recency ranking
-  - name: user_session_features
-    type: table
-    depends_on: [drop_old_session_features, clean_sessions]
-    sql: |
-      WITH ranked_sessions AS (
-        SELECT
-          user_id,
-          session_date,
-          duration_seconds,
-          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY session_date DESC) as recency_rank
-        FROM "clean_sessions"
-      )
-      SELECT
-        user_id,
-        COUNT(*) as session_count,
-        AVG(duration_seconds) as avg_session_duration,
-        MAX(CASE WHEN recency_rank = 1 THEN session_date END) as last_session_date,
-        SUM(CASE WHEN recency_rank <= 7 THEN 1 ELSE 0 END) as sessions_last_week
-      FROM "ranked_sessions"
-      GROUP BY user_id
-
-outputs: [user_transaction_features, user_session_features]
+outputs: [user_features]
 ```
+{% endif %}
 
 # OUTPUT FORMAT
 

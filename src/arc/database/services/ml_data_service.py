@@ -8,6 +8,7 @@ and data validation functionality.
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 import pandas as pd
@@ -62,6 +63,10 @@ class MLDataService(BaseService):
             db_manager: Database manager instance
         """
         super().__init__(db_manager)
+        # Row count cache: {table_name: (row_count, timestamp)}
+        # Cache TTL: 5 minutes (300 seconds)
+        self._row_count_cache: dict[str, tuple[int, float]] = {}
+        self._cache_ttl = 300  # 5 minutes
 
     def list_datasets(self) -> list[str]:
         """Get list of available datasets (tables).
@@ -81,11 +86,15 @@ class MLDataService(BaseService):
         except Exception:
             return []
 
-    def get_dataset_info(self, dataset_name: str) -> DatasetInfo | None:
+    def get_dataset_info(
+        self, dataset_name: str, include_row_count: bool = True
+    ) -> DatasetInfo | None:
         """Get information about a dataset.
 
         Args:
             dataset_name: Name of the dataset
+            include_row_count: Whether to fetch row count (default: True).
+                Set to False to skip potentially slow COUNT(*) queries.
 
         Returns:
             DatasetInfo object or None if dataset doesn't exist
@@ -98,7 +107,10 @@ class MLDataService(BaseService):
             if not schema:
                 return None
 
-            row_count = self._fetch_table_row_count(dataset_name)
+            row_count = 0
+            if include_row_count:
+                row_count = self._fetch_table_row_count(dataset_name)
+
             return DatasetInfo(dataset_name, row_count, schema)
 
         except Exception:
@@ -114,6 +126,17 @@ class MLDataService(BaseService):
             True if dataset exists, False otherwise
         """
         return self.get_dataset_info(dataset_name) is not None
+
+    def invalidate_row_count_cache(self, table_name: str | None = None) -> None:
+        """Invalidate row count cache for a specific table or all tables.
+
+        Args:
+            table_name: Name of the table to invalidate. If None, clears entire cache.
+        """
+        if table_name is None:
+            self._row_count_cache.clear()
+        elif table_name in self._row_count_cache:
+            del self._row_count_cache[table_name]
 
     def get_features_and_targets(
         self,
@@ -461,13 +484,34 @@ class MLDataService(BaseService):
         except Exception:
             return []
 
-    def _fetch_table_row_count(self, table_name: str) -> int:
-        """Fetch the total number of rows for a table."""
+    def _fetch_table_row_count(self, table_name: str, use_cache: bool = True) -> int:
+        """Fetch the total number of rows for a table.
+
+        Args:
+            table_name: Name of the table
+            use_cache: Whether to use cached row counts (default: True)
+
+        Returns:
+            Number of rows in the table
+        """
+        # Check cache if enabled
+        if use_cache and table_name in self._row_count_cache:
+            row_count, timestamp = self._row_count_cache[table_name]
+            # Check if cache is still valid
+            if time.time() - timestamp < self._cache_ttl:
+                return row_count
+            # Cache expired, remove entry
+            del self._row_count_cache[table_name]
+
         try:
             count_sql = f'SELECT COUNT(*) AS row_count FROM "{table_name}"'
             result = self._user_query(count_sql)
             if result.rows:
-                return result.rows[0].get("row_count", 0)
+                row_count = result.rows[0].get("row_count", 0)
+                # Cache the result
+                if use_cache:
+                    self._row_count_cache[table_name] = (row_count, time.time())
+                return row_count
             return 0
         except Exception:
             return 0
