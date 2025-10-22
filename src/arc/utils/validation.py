@@ -196,17 +196,19 @@ def validate_api_key(api_key: str) -> str:
 
     Raises:
         ValidationError: If the API key is invalid
+
+    Note:
+        Empty strings are allowed to support enterprise gateway environments
+        where authentication is handled by the gateway (only base_url needed).
     """
-    if not api_key:
-        raise ValidationError("API key cannot be empty")
-
     # Strip whitespace
-    api_key = api_key.strip()
+    api_key = api_key.strip() if api_key else ""
 
+    # Allow empty API keys for enterprise gateway mode
     if not api_key:
-        raise ValidationError("API key cannot be only whitespace")
+        return api_key
 
-    # Basic length check (most API keys are at least 20 characters)
+    # Basic length check for non-empty keys (most API keys are at least 10 characters)
     if len(api_key) < 10:
         raise ValidationError(
             f"API key too short ({len(api_key)} characters). "

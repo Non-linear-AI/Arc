@@ -47,21 +47,21 @@ class MLDataProcessTool(BaseTool):
 
         Args:
             services: ServiceContainer instance providing database access
-            api_key: API key for LLM calls (required)
+            api_key: API key for LLM calls (can be empty for enterprise gateway)
             base_url: Base URL for LLM calls
             model: Model name for LLM calls
             ui_interface: UI interface for interactive confirmation workflow
 
         Raises:
-            ValueError: If API key is not provided
             RuntimeError: If MLDataAgent cannot be initialized
+
+        Note:
+            Empty API keys are allowed to support enterprise gateway environments
+            where authentication is handled by the gateway (only base_url needed).
+            The validation is handled at the CLI level in _get_ml_tool_config().
         """
-        if not api_key:
-            raise ValueError(
-                "API key is required for MLDataProcessTool. "
-                "This tool uses LLM-powered generation and cannot function "
-                "without an API key."
-            )
+        # Allow empty API key for enterprise gateway mode
+        # The OpenAI SDK will use the provided base_url for authentication
 
         if MLDataAgent is None:
             raise RuntimeError(

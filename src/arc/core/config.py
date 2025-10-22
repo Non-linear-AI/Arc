@@ -44,10 +44,14 @@ class SettingsManager:
 
         Raises:
             ValidationError: If the value is invalid for the given key
+
+        Note:
+            API key can be empty to support enterprise gateway environments.
         """
         # Validate based on key
         if key == "apiKey":
-            value = validate_api_key(value)
+            # Allow empty API keys for enterprise gateway mode
+            value = validate_api_key(value) if value else ""
         elif key == "baseURL":
             value = validate_url(value)
         elif key == "model":

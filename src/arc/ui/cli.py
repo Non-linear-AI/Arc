@@ -194,23 +194,30 @@ def _get_ml_tool_config() -> tuple[str, str, str | None]:
 
     Returns:
         Tuple of (api_key, base_url, model) where:
-        - api_key: API key (required, never None)
+        - api_key: API key (can be empty for enterprise gateway mode)
         - base_url: Base URL for API
         - model: Model name (optional, may be None)
 
     Raises:
-        CommandError: If API key is not configured
+        CommandError: If neither API key nor base URL is configured
+
+    Note:
+        In enterprise gateway environments, only base_url is required.
+        The gateway handles authentication, so api_key can be empty.
     """
     settings = SettingsManager()
-    api_key = settings.get_api_key()
-
-    if not api_key:
-        raise CommandError(
-            "API key required. Set ARC_API_KEY environment variable or run /config"
-        )
-
+    api_key = settings.get_api_key() or ""
     base_url = settings.get_base_url()
     model = settings.get_current_model()
+
+    # Require at least one of API key or base URL to be configured
+    # Empty API key is allowed if base URL is set (enterprise gateway mode)
+    if not api_key and not base_url:
+        raise CommandError(
+            "API configuration required. Either:\n"
+            "  1. Set API key (ARC_API_KEY environment variable or /config)\n"
+            "  2. Configure base URL for enterprise gateway (use /config)"
+        )
 
     return api_key, base_url, model
 
@@ -1049,10 +1056,14 @@ async def run_interactive_mode(
                     model = new_model.strip()
                     ui.show_system_success("Model saved to ~/.arc/user-settings.json")
 
-        # Initialize agent only if API key is available
+        # Initialize agent if API key or base URL is configured
+        # (for enterprise gateway mode where only base_url is needed)
         agent: ArcAgent | None = None
-        if api_key:
-            agent = ArcAgent(api_key, services, base_url, model, max_tool_rounds, ui)
+        if api_key or base_url:
+            # Pass empty string for api_key if None (gateway mode)
+            agent = ArcAgent(
+                api_key or "", services, base_url, model, max_tool_rounds, ui
+            )
         from contextlib import suppress
 
         with suppress(Exception):
