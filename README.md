@@ -136,3 +136,39 @@ Project configuration is managed through `pyproject.toml`. Key sections include:
 - `[tool.uv]` - Development dependencies
 - `[tool.ruff]` - Linting and formatting configuration
 - `[tool.pytest.ini_options]` - Test configuration
+
+### S3 Data Loading
+
+Arc supports loading data from S3 buckets (public and private) for machine learning workflows.
+
+**Public S3 buckets work immediately:**
+
+```bash
+uv run arc chat
+```
+
+```text
+/sql CREATE TABLE taxi AS SELECT * FROM read_csv_auto('s3://datasets-documentation/nyc-taxi/trips_0.gz', delim = '\t', header = True, ignore_errors=true)
+```
+
+**IAM roles (EC2, ECS, Lambda) work automatically** - no configuration needed!
+
+**For private S3 buckets (non-IAM)**, add credentials to `~/.arc/user-settings.json`:
+
+```json
+{
+  "awsAccessKeyId": "AKIAIOSFODNN7EXAMPLE",
+  "awsSecretAccessKey": "wJalrXUtnFEMI/K7MDENG/...",
+  "awsRegion": "us-east-1"
+}
+```
+
+Or use environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_REGION="us-east-1"
+```
+
+Supported formats: **CSV, Parquet, JSON, Apache Iceberg**

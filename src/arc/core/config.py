@@ -201,3 +201,49 @@ class SettingsManager:
         if not (1024 <= port <= 65535):
             raise ValueError(f"Invalid port: {port}. Must be between 1024 and 65535")
         self.update_user_setting("tensorboardPort", port)
+
+    def get_s3_config(self) -> dict[str, str] | None:
+        """Get S3 configuration from environment variables or settings.
+
+        Returns:
+            Dict with S3 credentials (access_key_id, secret_access_key, region,
+                endpoint)
+            or None if no credentials configured.
+
+        Priority:
+            1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.)
+            2. Arc user settings file (~/.arc/user-settings.json)
+        """
+        # Check environment variables first
+        env_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        env_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        env_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+        env_endpoint = os.getenv("AWS_ENDPOINT_URL")
+
+        # Check settings file
+        settings = self.load_user_settings()
+        settings_access_key = settings.get("awsAccessKeyId")
+        settings_secret_key = settings.get("awsSecretAccessKey")
+        settings_region = settings.get("awsRegion")
+        settings_endpoint = settings.get("s3Endpoint")
+
+        # Combine (environment takes precedence)
+        access_key = env_access_key or settings_access_key
+        secret_key = env_secret_key or settings_secret_key
+        region = env_region or settings_region or "us-east-1"  # Default region
+        endpoint = env_endpoint or settings_endpoint
+
+        # Return None if no credentials configured
+        if not access_key or not secret_key:
+            return None
+
+        config = {
+            "access_key_id": access_key,
+            "secret_access_key": secret_key,
+            "region": region,
+        }
+
+        if endpoint:
+            config["endpoint"] = endpoint
+
+        return config

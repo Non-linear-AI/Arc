@@ -27,6 +27,7 @@ class DuckDBDatabase(Database):
         """Establish connection to the database."""
         try:
             self._connection = duckdb.connect(self.db_path)
+            self._setup_s3_extensions()
         except Exception as e:
             raise DatabaseError(
                 f"Failed to connect to DuckDB at {self.db_path}: {e}"
@@ -41,6 +42,117 @@ class DuckDBDatabase(Database):
             raise DatabaseError("Database connection is not available")
 
         return self._connection
+
+    def _setup_s3_extensions(self) -> None:
+        """Setup S3 extensions and configure credentials if available.
+
+        Loads httpfs, aws, and iceberg extensions for S3 support.
+        If S3 credentials are configured, creates a DuckDB secret for authentication.
+        """
+        if self._connection is None:
+            return
+
+        try:
+            # Install and load httpfs extension for S3 access
+            self._connection.execute("INSTALL httpfs")
+            self._connection.execute("LOAD httpfs")
+        except Exception:
+            # Silent failure - httpfs is optional
+            pass
+
+        try:
+            # Install and load aws extension for authentication
+            self._connection.execute("INSTALL aws")
+            self._connection.execute("LOAD aws")
+        except Exception:
+            # Silent failure - aws is optional
+            pass
+
+        try:
+            # Install and load iceberg extension for Iceberg support
+            self._connection.execute("INSTALL iceberg")
+            self._connection.execute("LOAD iceberg")
+        except Exception:
+            # Silent failure - iceberg is optional
+            pass
+
+        # Configure S3 credentials if available
+        self._configure_s3_credentials()
+
+    def _configure_s3_credentials(self) -> None:
+        """Configure S3 credentials using credential chain (IAM roles) or explicit
+        config.
+
+        Uses credential_chain provider by default to enable:
+        - IAM roles (EC2 instance profiles, ECS task roles, Lambda execution roles)
+        - Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        - AWS credential files (~/.aws/credentials)
+
+        Falls back to config provider only for custom S3-compatible endpoints
+        (MinIO, etc.)
+        """
+        if self._connection is None:
+            return
+
+        # Import here to avoid circular dependency
+        from arc.core.config import SettingsManager
+
+        try:
+            settings_manager = SettingsManager()
+            s3_config = settings_manager.get_s3_config()
+
+            # Check if custom endpoint is configured (MinIO, Wasabi, etc.)
+            if s3_config and s3_config.get("endpoint"):
+                # Custom endpoint requires config provider with explicit credentials
+                secret_parts = [
+                    "CREATE OR REPLACE SECRET (",
+                    "TYPE s3,",
+                    "PROVIDER config",
+                ]
+
+                if s3_config.get("access_key_id"):
+                    secret_parts.append(f", KEY_ID '{s3_config['access_key_id']}'")
+
+                if s3_config.get("secret_access_key"):
+                    secret_parts.append(f", SECRET '{s3_config['secret_access_key']}'")
+
+                if s3_config.get("region"):
+                    secret_parts.append(f", REGION '{s3_config['region']}'")
+
+                secret_parts.append(f", ENDPOINT '{s3_config['endpoint']}'")
+                secret_parts.append(")")
+
+                secret_sql = " ".join(secret_parts)
+                self._connection.execute(secret_sql)
+            else:
+                # Use credential_chain for automatic credential discovery
+                # This enables IAM roles, env vars, ~/.aws/credentials, etc.
+                # If credential_chain creation fails (no credentials available),
+                # we don't create any secret - this allows anonymous access to
+                # public S3 buckets
+                try:
+                    self._connection.execute(
+                        "CREATE OR REPLACE SECRET (TYPE s3, PROVIDER credential_chain)"
+                    )
+
+                    # Optionally override region if specified in config
+                    if s3_config and s3_config.get("region"):
+                        region_override = (
+                            "CREATE OR REPLACE SECRET ("
+                            "TYPE s3, "
+                            "PROVIDER credential_chain, "
+                            f"REGION '{s3_config['region']}'"
+                            ")"
+                        )
+                        self._connection.execute(region_override)
+                except Exception:
+                    # credential_chain creation failed - no credentials available
+                    # This is OK: public S3 buckets will use anonymous access
+                    pass
+
+        except Exception:
+            # Silent failure - S3 credentials are optional
+            pass
 
     def query(self, sql: str, params: list | None = None) -> QueryResult:
         """Execute a SELECT query and return results.

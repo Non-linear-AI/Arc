@@ -19,7 +19,6 @@ This example shows how to register and train a simple logistic regression model 
 2. Load the training data into the user database:
 
    ```text
-   /sql use user
    /sql CREATE TABLE iris_raw AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv');
    /sql CREATE TABLE iris AS SELECT column0 AS pregnancies, column1 AS glucose, column2 AS blood_pressure, column3 AS skin_thickness, column4 AS insulin, column5 AS bmi, column6 AS diabetes_pedigree, column7 AS age, column8 AS outcome FROM iris_raw;
    ```
