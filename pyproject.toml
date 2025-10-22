@@ -28,6 +28,7 @@ dependencies = [
     "pluggy>=1.0.0",
     "sqlfluff>=3.0.0",
     "tensorboard>=2.0.0",
+    "adbc-driver-snowflake>=1.0.0",
 ]
 
 [project.scripts]

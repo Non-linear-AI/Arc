@@ -247,3 +247,52 @@ class SettingsManager:
             config["endpoint"] = endpoint
 
         return config
+
+    def get_snowflake_config(self) -> dict[str, str] | None:
+        """Get Snowflake configuration from environment variables or settings.
+
+        Returns:
+            Dict with Snowflake credentials (account, user, password, database,
+                warehouse, schema) or None if incomplete configuration.
+
+        Priority:
+            1. Environment variables (SNOWFLAKE_*)
+            2. Arc user settings file (~/.arc/user-settings.json)
+        """
+        # Check environment variables first
+        env_account = os.getenv("SNOWFLAKE_ACCOUNT")
+        env_user = os.getenv("SNOWFLAKE_USER")
+        env_password = os.getenv("SNOWFLAKE_PASSWORD")
+        env_database = os.getenv("SNOWFLAKE_DATABASE")
+        env_warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
+        env_schema = os.getenv("SNOWFLAKE_SCHEMA")
+
+        # Check settings file
+        settings = self.load_user_settings()
+        settings_account = settings.get("snowflakeAccount")
+        settings_user = settings.get("snowflakeUser")
+        settings_password = settings.get("snowflakePassword")
+        settings_database = settings.get("snowflakeDatabase")
+        settings_warehouse = settings.get("snowflakeWarehouse")
+        settings_schema = settings.get("snowflakeSchema")
+
+        # Combine (environment takes precedence)
+        account = env_account or settings_account
+        user = env_user or settings_user
+        password = env_password or settings_password
+        database = env_database or settings_database
+        warehouse = env_warehouse or settings_warehouse
+        schema = env_schema or settings_schema or "PUBLIC"  # Default schema
+
+        # Return None if required credentials are missing
+        if not all([account, user, password, database, warehouse]):
+            return None
+
+        return {
+            "account": account,
+            "user": user,
+            "password": password,
+            "database": database,
+            "warehouse": warehouse,
+            "schema": schema,
+        }

@@ -28,6 +28,7 @@ class DuckDBDatabase(Database):
         try:
             self._connection = duckdb.connect(self.db_path)
             self._setup_s3_extensions()
+            self._setup_snowflake_extensions()
         except Exception as e:
             raise DatabaseError(
                 f"Failed to connect to DuckDB at {self.db_path}: {e}"
@@ -152,6 +153,84 @@ class DuckDBDatabase(Database):
 
         except Exception:
             # Silent failure - S3 credentials are optional
+            pass
+
+    def _setup_snowflake_extensions(self) -> None:
+        """Setup Snowflake extensions and auto-attach if configured.
+
+        Loads DuckDB Snowflake extension from community repository.
+        If Snowflake credentials are configured, creates a secret and attaches
+        the Snowflake database to make it accessible as a schema in DuckDB.
+        """
+        if self._connection is None:
+            return
+
+        try:
+            # Install and load Snowflake extension from community
+            self._connection.execute("INSTALL snowflake FROM community")
+            self._connection.execute("LOAD snowflake")
+        except Exception:
+            # Silent failure - Snowflake extension is optional
+            pass
+
+        # Configure Snowflake credentials and auto-attach if available
+        self._configure_snowflake_credentials()
+
+    def _configure_snowflake_credentials(self) -> None:
+        """Configure Snowflake credentials and auto-attach database if configured.
+
+        Creates a DuckDB secret for Snowflake authentication and automatically
+        attaches the Snowflake database as a read-only schema in DuckDB.
+
+        The attached schema allows querying Snowflake tables directly:
+        - SELECT * FROM snowflake.public.customers
+        - CREATE TABLE local AS SELECT * FROM snowflake.public.orders
+
+        Snowflake tables appear in INFORMATION_SCHEMA, making them discoverable
+        via schema discovery tools without any code changes.
+        """
+        if self._connection is None:
+            return
+
+        # Import here to avoid circular dependency
+        from arc.core.config import SettingsManager
+
+        try:
+            settings_manager = SettingsManager()
+            snowflake_config = settings_manager.get_snowflake_config()
+
+            # Skip if Snowflake not configured
+            if not snowflake_config:
+                return
+
+            # Create Snowflake secret for authentication
+            secret_sql = f"""
+                CREATE OR REPLACE SECRET arc_snowflake_secret (
+                    TYPE snowflake,
+                    ACCOUNT '{snowflake_config["account"]}',
+                    USER '{snowflake_config["user"]}',
+                    PASSWORD '{snowflake_config["password"]}',
+                    DATABASE '{snowflake_config["database"]}',
+                    WAREHOUSE '{snowflake_config["warehouse"]}'
+                )
+            """
+            self._connection.execute(secret_sql)
+
+            # Auto-attach Snowflake database as read-only schema
+            # This makes Snowflake tables appear in DuckDB's catalog
+            attach_sql = """
+                ATTACH '' AS snowflake (
+                    TYPE snowflake,
+                    SECRET arc_snowflake_secret,
+                    READ_ONLY
+                )
+            """
+            self._connection.execute(attach_sql)
+
+        except Exception:
+            # Silent failure - Snowflake is optional
+            # If attach fails, users can manually attach using /sql
+            # See docs/snowflake-setup.md for troubleshooting
             pass
 
     def query(self, sql: str, params: list | None = None) -> QueryResult:
