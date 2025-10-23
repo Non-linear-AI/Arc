@@ -1,16 +1,79 @@
 # Snowflake Integration Setup
 
-Arc integrates with Snowflake using DuckDB's Snowflake extension and the ADBC (Arrow Database Connectivity) driver. This guide walks you through the complete setup process.
+Arc integrates with Snowflake data warehouses using DuckDB's Snowflake extension. Query Snowflake tables directly in Arc, join them with local data, and extract data for cost-efficient local feature engineering.
 
-## Prerequisites
+## Quick Start
 
-Arc automatically installs the required Python package (`adbc-driver-snowflake`) when you install Arc. However, for the integration to work, you need to configure your environment properly.
+Once configured (see Configuration section below), Snowflake tables are automatically available when you start Arc:
+
+```bash
+uv run arc chat
+```
+
+### Query Snowflake Directly
+
+```sql
+-- View available tables (Snowflake appears as "snowflake" database)
+> What tables are in my database?
+
+-- Query Snowflake tables directly
+/sql SELECT * FROM snowflake.public.customers
+     WHERE state = 'CA'
+     LIMIT 10
+
+-- Aggregate queries (pushed to Snowflake)
+/sql SELECT state, COUNT(*) as customer_count
+     FROM snowflake.public.customers
+     GROUP BY state
+```
+
+### Extract Data for Local Analysis (Recommended)
+
+**Best practice for ML workflows**: Extract once, transform locally
+
+```sql
+-- 1. Extract relevant data from Snowflake (one-time cost)
+/sql CREATE TABLE ca_customers AS
+     SELECT * FROM snowflake.public.customers
+     WHERE state = 'CA' AND signup_date >= '2024-01-01'
+
+-- 2. Feature engineering runs locally (fast, free iterations)
+/sql CREATE TABLE customer_features AS
+     SELECT
+       customer_id,
+       COUNT(*) as order_count,
+       SUM(amount) as lifetime_value,
+       AVG(amount) as avg_order_value
+     FROM ca_customers c
+     JOIN snowflake.public.orders o ON c.id = o.customer_id
+     GROUP BY customer_id
+
+-- 3. Train models on local data (no Snowflake compute costs)
+> Train a model to predict high-value customers using customer_features
+```
+
+### Join Across Data Sources
+
+```sql
+-- Combine Snowflake + S3 + Local DuckDB tables
+/sql CREATE TABLE enriched_customers AS
+     SELECT
+       sf.customer_id,
+       sf.name,
+       s3.demographic_score,
+       local.predicted_churn
+     FROM snowflake.public.customers sf
+     JOIN 's3://my-bucket/demographics.parquet' s3
+       ON sf.id = s3.customer_id
+     JOIN local_ml_predictions local
+       ON sf.id = local.customer_id
+```
 
 ## Configuration
 
 ### Step 1: Configure Snowflake Credentials
 
-Add your Snowflake credentials to `~/.arc/user-settings.json`:
+**Option A: Settings File** (`~/.arc/user-settings.json`):
 
 ```json
 {
@@ -24,7 +87,7 @@ Add your Snowflake credentials to `~/.arc/user-settings.json`:
 }
 ```
 
-Or use environment variables (takes precedence over settings file):
+**Option B: Environment Variables** (takes precedence):
 
 ```bash
 export SNOWFLAKE_ACCOUNT="mycompany.snowflakecomputing.com"
@@ -35,73 +98,69 @@ export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 export SNOWFLAKE_SCHEMA="PUBLIC"  # Optional, defaults to PUBLIC
 ```
 
-**Note:** The `snowflakeSchema` field is optional and defaults to `PUBLIC` if not specified.
+**Required fields**: `account`, `user`, `password`, `database`, `warehouse`
 
-### Step 2: Set Library Path (Linux/macOS)
+### Step 2: Set Library Path
 
-The ADBC driver includes native libraries that need to be discoverable by DuckDB. You need to set the library path **before** starting Arc.
+The ADBC driver includes native libraries that must be discoverable **before** starting Arc.
 
-#### On Linux:
+#### Linux:
 
 ```bash
-# Navigate to Arc directory
 cd /path/to/arc
 
-# Find the ADBC library directory
+# Find ADBC library directory
 ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
 
-# Set LD_LIBRARY_PATH
+# Set library path
 export LD_LIBRARY_PATH="${ADBC_LIB_DIR}:${LD_LIBRARY_PATH}"
 
-# Now start Arc
+# Start Arc
 uv run arc chat
 ```
 
-#### On macOS:
+#### macOS:
 
 ```bash
-# Navigate to Arc directory
 cd /path/to/arc
 
-# Find the ADBC library directory
+# Find ADBC library directory
 ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
 
-# Set DYLD_LIBRARY_PATH
+# Set library path
 export DYLD_LIBRARY_PATH="${ADBC_LIB_DIR}:${DYLD_LIBRARY_PATH}"
 
-# Now start Arc
+# Start Arc
 uv run arc chat
 ```
 
-#### On Windows:
+#### Windows (PowerShell):
 
 ```powershell
-# Navigate to Arc directory (PowerShell)
 cd C:\path\to\arc
 
-# Find the ADBC library directory
+# Find ADBC library directory
 $ADBC_LIB_DIR = uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)"
 
 # Add to PATH
 $env:PATH = "$ADBC_LIB_DIR;$env:PATH"
 
-# Now start Arc
+# Start Arc
 uv run arc chat
 ```
 
-### Step 3: Create a Startup Script (Recommended)
+### Step 3: Create Startup Script (Recommended)
 
-To avoid setting the library path manually each time, create a startup script:
+To avoid manual setup each time, create a startup script:
 
 #### Linux/macOS: `start-arc.sh`
 
 ```bash
 #!/bin/bash
 
-# Navigate to Arc directory
 cd /path/to/arc
 
-# Set Snowflake credentials
+# Snowflake credentials (or put in settings file)
 export SNOWFLAKE_ACCOUNT="mycompany.snowflakecomputing.com"
 export SNOWFLAKE_USER="username"
 export SNOWFLAKE_PASSWORD="password"
@@ -128,10 +187,9 @@ chmod +x start-arc.sh
 ```batch
 @echo off
 
-REM Navigate to Arc directory
 cd C:\path\to\arc
 
-REM Set Snowflake credentials
+REM Snowflake credentials (or put in settings file)
 set SNOWFLAKE_ACCOUNT=mycompany.snowflakecomputing.com
 set SNOWFLAKE_USER=username
 set SNOWFLAKE_PASSWORD=password
@@ -148,33 +206,11 @@ REM Start Arc
 uv run arc chat
 ```
 
-## Usage
-
-Once configured, Snowflake will automatically attach when you start Arc. You can query Snowflake tables directly:
-
-```sql
--- View available schemas (Snowflake will appear as "snowflake" database)
-/sql SELECT * FROM duckdb_schemas()
-
--- Query Snowflake tables directly
-/sql SELECT * FROM snowflake.public.customers LIMIT 10
-
--- Extract data for local processing (recommended for feature engineering)
-/sql CREATE TABLE local_customers AS
-     SELECT * FROM snowflake.public.customers
-     WHERE signup_date >= '2024-01-01'
-
--- Join Snowflake data with local data
-/sql SELECT s.customer_id, s.total_spend, l.prediction
-     FROM snowflake.public.customers s
-     JOIN local_predictions l ON s.customer_id = l.id
-```
-
 ## Best Practices
 
 ### 1. Extract Once, Transform Locally (ELT Pattern)
 
-For cost efficiency and performance:
+**Why**: Snowflake charges for compute time. Extracting data once and doing feature engineering locally is much cheaper and faster for iterative ML workflows.
 
 ```sql
 -- ✅ Good: Extract relevant data once
@@ -183,7 +219,8 @@ For cost efficiency and performance:
      WHERE date >= '2024-01-01'
 
 -- Then perform feature engineering locally (fast and free)
-/sql SELECT customer_id,
+/sql CREATE TABLE sales_features AS
+     SELECT customer_id,
             COUNT(*) as purchase_count,
             AVG(amount) as avg_purchase
      FROM local_sales
@@ -191,14 +228,15 @@ For cost efficiency and performance:
 ```
 
 ```sql
--- ❌ Avoid: Repeated queries to Snowflake
+-- ❌ Avoid: Repeated queries to Snowflake ($$$ compute costs)
 /sql SELECT COUNT(*) FROM snowflake.sales.transactions  -- $$
 /sql SELECT AVG(amount) FROM snowflake.sales.transactions  -- $$
+/sql SELECT MAX(date) FROM snowflake.sales.transactions  -- $$
 ```
 
 ### 2. Use Filters When Extracting
 
-Extract only what you need:
+Extract only what you need to minimize data transfer and Snowflake compute:
 
 ```sql
 -- ✅ Good: Filter at source
@@ -209,7 +247,7 @@ Extract only what you need:
 
 -- ❌ Avoid: Extracting everything
 /sql CREATE TABLE all_orders AS
-     SELECT * FROM snowflake.orders.fact_orders
+     SELECT * FROM snowflake.orders.fact_orders  -- Millions of rows!
 ```
 
 ### 3. Check Available Tables First
@@ -223,9 +261,22 @@ Use schema discovery to understand what's available:
 Or use SQL:
 
 ```sql
-/sql SELECT * FROM information_schema.tables
+/sql SELECT table_name, table_type
+     FROM information_schema.tables
      WHERE table_catalog = 'snowflake'
 ```
+
+### 4. When to Query Directly vs. Extract
+
+**Query Snowflake directly when:**
+- Exploring data (one-time queries)
+- Aggregations that can be pushed to Snowflake
+- Joining Snowflake tables to determine what data to extract
+
+**Extract to local when:**
+- Feature engineering (many iterative transformations)
+- Model training (requires local data)
+- Repeated access to same dataset
 
 ## Troubleshooting
 
@@ -233,77 +284,152 @@ Or use SQL:
 
 If you don't see `snowflake` in your database list:
 
-1. **Verify credentials are configured:**
-   ```bash
-   cd /path/to/arc
-   uv run python -c "from arc.core.config import SettingsManager; print(SettingsManager().get_snowflake_config())"
-   ```
+**1. Verify credentials are configured:**
 
-2. **Check library path is set:**
-   ```bash
-   echo $LD_LIBRARY_PATH  # Linux/macOS
-   echo %PATH%  # Windows
-   ```
+```bash
+cd /path/to/arc
+uv run python -c "from arc.core.config import SettingsManager; print(SettingsManager().get_snowflake_config())"
+```
 
-3. **Verify ADBC library exists:**
-   ```bash
-   cd /path/to/arc
-   uv run python -c "import adbc_driver_snowflake; from pathlib import Path; p = Path(adbc_driver_snowflake.__file__).parent / 'libadbc_driver_snowflake.so'; print(f'Library exists: {p.exists()} at {p}')"
-   ```
+**2. Check library path is set:**
 
-4. **Try manual attach:**
-   ```sql
-   /sql CREATE SECRET snowflake_secret (
-       TYPE snowflake,
-       ACCOUNT 'mycompany.snowflakecomputing.com',
-       USER 'username',
-       PASSWORD 'password',
-       DATABASE 'PROD_DB',
-       WAREHOUSE 'COMPUTE_WH'
-   )
+```bash
+echo $LD_LIBRARY_PATH  # Linux/macOS
+echo %PATH%  # Windows (should contain ADBC library directory)
+```
 
-   /sql ATTACH '' AS snowflake (
-       TYPE snowflake,
-       SECRET snowflake_secret,
-       READ_ONLY
-   )
-   ```
+**3. Verify ADBC library exists:**
+
+```bash
+cd /path/to/arc
+uv run python -c "import adbc_driver_snowflake; from pathlib import Path; p = Path(adbc_driver_snowflake.__file__).parent / 'libadbc_driver_snowflake.so'; print(f'Library exists: {p.exists()} at {p}')"
+```
+
+**4. Try manual attach:**
+
+```sql
+/sql CREATE SECRET snowflake_secret (
+    TYPE snowflake,
+    ACCOUNT 'mycompany.snowflakecomputing.com',
+    USER 'username',
+    PASSWORD 'password',
+    DATABASE 'PROD_DB',
+    WAREHOUSE 'COMPUTE_WH'
+)
+
+/sql ATTACH '' AS snowflake (
+    TYPE snowflake,
+    SECRET snowflake_secret,
+    READ_ONLY
+)
+```
 
 ### "Unknown ADBC error" or "Library not found"
 
-This means the ADBC native library can't be found:
+**This means the ADBC native library can't be found:**
 
-1. **Check you set the library path BEFORE starting Arc**
-2. **Restart your terminal after setting environment variables**
-3. **Use the startup script approach** (see Step 3 above)
+1. **Check you set the library path BEFORE starting Arc** (not after)
+2. **Restart your terminal** after setting environment variables
+3. **Use the startup script approach** (see Step 3 in Configuration)
+4. **Verify Arc dependencies are installed:** `uv sync --dev`
 
 ### Connection Fails
 
-1. **Verify credentials:** Check username, password, account name
-2. **Check network:** Ensure you can reach Snowflake (firewall, VPN)
-3. **Verify warehouse is running:** Snowflake warehouse must be active
-4. **Check permissions:** User must have access to the database and warehouse
+**Possible causes:**
 
-## Architecture Notes
+1. **Invalid credentials** - Check username, password, account identifier
+2. **Network issues** - Ensure you can reach Snowflake (check firewall, VPN)
+3. **Warehouse not running** - Snowflake warehouse must be active (auto-resume should work)
+4. **Insufficient permissions** - User must have access to the database and warehouse
 
-Arc uses DuckDB's Snowflake extension which connects via ADBC:
+**Test connection outside Arc:**
 
-- **DuckDB Snowflake Extension** (community): `snowflake` extension
-- **ADBC Driver** (Python): `adbc-driver-snowflake` package
-- **Native Library**: `libadbc_driver_snowflake.so` (Linux), `.dylib` (macOS), `.dll` (Windows)
+```bash
+uv run python -c "
+import adbc_driver_snowflake.dbapi as snowflake
+conn = snowflake.connect(
+    account='mycompany.snowflakecomputing.com',
+    user='username',
+    password='password',
+    database='PROD_DB',
+    warehouse='COMPUTE_WH'
+)
+print('Connection successful!')
+"
+```
 
-The ATTACH command makes Snowflake appear as a schema in DuckDB's catalog, allowing seamless joins between Snowflake and local data.
+### Slow Queries
+
+- **Extract data to local** instead of querying Snowflake repeatedly
+- **Use WHERE filters** to reduce data scanned in Snowflake
+- **Check warehouse size** - larger warehouses = faster queries (but higher cost)
+- **Optimize Snowflake tables** - clustering, partitioning (outside Arc scope)
+
+## Architecture & How It Works
+
+### Integration Stack
+
+Arc's Snowflake integration uses:
+
+- **DuckDB Snowflake Extension** (community) - `snowflake` extension from DuckDB's community repository
+- **ADBC Driver** (Python) - `adbc-driver-snowflake` package (installed automatically with Arc)
+- **Native Library** - Platform-specific library files:
+  - Linux: `libadbc_driver_snowflake.so`
+  - macOS: `libadbc_driver_snowflake.dylib`
+  - Windows: `adbc_driver_snowflake.dll`
+
+### Database Attachment
+
+When Arc starts with Snowflake credentials configured:
+
+1. **DuckDB installs the Snowflake extension** (from community repository)
+2. **Creates a DuckDB secret** with Snowflake credentials
+3. **Attaches Snowflake as a read-only database** named `snowflake`
+
+Once attached, Snowflake tables appear in DuckDB's `INFORMATION_SCHEMA`, making them:
+- **Discoverable** via Arc's schema discovery tool
+- **Queryable** using standard SQL
+- **Joinable** with local DuckDB tables and S3 data
+
+### Query Execution
+
+**For queries against Snowflake tables:**
+1. DuckDB sends query to Snowflake via ADBC
+2. Snowflake executes the query on its compute
+3. Results are streamed back to DuckDB via Arrow format
+4. DuckDB presents results to Arc
+
+**For joins between Snowflake and local data:**
+1. DuckDB fetches Snowflake data needed for the join
+2. Join is executed locally in DuckDB
+3. Results are returned to Arc
+
+### Credential Chain
+
+Arc checks for Snowflake credentials in this order:
+
+1. **Environment variables** (`SNOWFLAKE_*`)
+2. **Arc settings file** (`~/.arc/user-settings.json`)
+
+Environment variables take precedence over the settings file.
+
+### Read-Only Access
+
+Snowflake is attached with `READ_ONLY` flag to prevent accidental writes to Snowflake from Arc. This protects production data.
 
 ## Security Best Practices
 
 1. **Never commit credentials** to version control
-2. **Use environment variables** instead of settings files for CI/CD
+2. **Use environment variables** for CI/CD and shared environments
 3. **Rotate passwords regularly**
-4. **Use read-only credentials** when possible
+4. **Use read-only credentials** when possible (least privilege)
 5. **Limit database/warehouse access** to only what's needed
+6. **Use Snowflake roles** to manage permissions
+7. **Enable MFA** on Snowflake accounts
 
 ## Additional Resources
 
 - [DuckDB Snowflake Extension](https://duckdb.org/docs/extensions/snowflake)
 - [ADBC Documentation](https://arrow.apache.org/adbc/)
 - [Snowflake Documentation](https://docs.snowflake.com/)
+- [Snowflake Best Practices](https://docs.snowflake.com/en/user-guide/admin-best-practices)

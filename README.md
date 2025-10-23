@@ -139,68 +139,61 @@ Project configuration is managed through `pyproject.toml`. Key sections include:
 
 ### S3 Data Loading
 
-Arc supports loading data from S3 buckets (public and private) for machine learning workflows.
+Arc supports loading data from S3 buckets (public and private) using DuckDB's S3 extensions. Public buckets and IAM roles work immediately without configuration. Private buckets require credentials.
 
-**Public S3 buckets work immediately:**
+**Quick example:**
 
 ```bash
 uv run arc chat
 ```
 
-```text
-/sql CREATE TABLE taxi AS SELECT * FROM read_csv_auto('s3://datasets-documentation/nyc-taxi/trips_0.gz', delim = '\t', header = True, ignore_errors=true)
+```sql
+-- Public S3 bucket (no setup)
+/sql CREATE TABLE taxi AS
+     SELECT * FROM 's3://nyc-tlc/trip data/yellow_tripdata_2023-01.parquet'
+
+-- Private S3 bucket (requires credentials)
+/sql CREATE TABLE data AS
+     SELECT * FROM 's3://my-private-bucket/data.parquet'
 ```
 
-**IAM roles (EC2, ECS, Lambda) work automatically** - no configuration needed!
+**Supported formats**: CSV, Parquet, JSON, Apache Iceberg
 
-**For private S3 buckets (non-IAM)**, add credentials to `~/.arc/user-settings.json`:
+**📖 For complete setup instructions, see [docs/s3-setup.md](docs/s3-setup.md)**
 
-```json
-{
-  "awsAccessKeyId": "AKIAIOSFODNN7EXAMPLE",
-  "awsSecretAccessKey": "wJalrXUtnFEMI/K7MDENG/...",
-  "awsRegion": "us-east-1"
-}
-```
-
-Or use environment variables:
-
-```bash
-export AWS_ACCESS_KEY_ID="your-key"
-export AWS_SECRET_ACCESS_KEY="your-secret"
-export AWS_REGION="us-east-1"
-```
-
-Supported formats: **CSV, Parquet, JSON, Apache Iceberg**
+This includes:
+- Configuration for public buckets, IAM roles, and private buckets
+- S3-compatible storage (MinIO, Wasabi)
+- Usage patterns and best practices
+- Troubleshooting guide
 
 ### Snowflake Data Loading
 
-Arc supports loading data from Snowflake data warehouses for feature engineering and ML training. When configured, Snowflake tables are automatically accessible in Arc.
+Arc supports loading data from Snowflake data warehouses using DuckDB's Snowflake extension. Query Snowflake tables directly, join them with S3 and local data, and extract data for cost-efficient local feature engineering.
 
-**Quick Start:**
+**Quick example:**
 
-1. Configure credentials in `~/.arc/user-settings.json` or environment variables
-2. Set library path before starting Arc (see setup guide)
-3. Query Snowflake data directly in Arc
-
-**Example:**
+```bash
+uv run arc chat
+```
 
 ```sql
--- Extract data from Snowflake for local feature engineering
+-- Query Snowflake directly
+/sql SELECT * FROM snowflake.public.customers
+     WHERE state = 'CA' LIMIT 10
+
+-- Extract for local feature engineering (recommended)
 /sql CREATE TABLE local_customers AS
      SELECT * FROM snowflake.public.customers
      WHERE signup_date >= '2024-01-01'
-
--- Join Snowflake with local data
-/sql SELECT s.*, l.prediction
-     FROM snowflake.public.orders s
-     JOIN local_predictions l ON s.customer_id = l.customer_id
 ```
+
+**Supported workflows**: Direct queries, data extraction, cross-database joins
 
 **📖 For complete setup instructions, see [docs/snowflake-setup.md](docs/snowflake-setup.md)**
 
 This includes:
-- Credential configuration
+- Credential configuration (settings file and environment variables)
 - Library path setup for Linux/macOS/Windows
 - Startup scripts for easy launch
 - Best practices and troubleshooting
