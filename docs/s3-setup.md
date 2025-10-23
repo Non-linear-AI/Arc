@@ -13,17 +13,19 @@ uv run arc chat
 ```
 
 ```sql
--- Load AWS Open Data Registry datasets
-/sql CREATE TABLE taxi AS
-     SELECT * FROM 's3://nyc-tlc/trip data/yellow_tripdata_2023-01.parquet'
+-- Load Ookla network performance data (global speed test results)
+/sql CREATE TABLE mobile_performance AS
+     SELECT * FROM read_parquet('s3://ookla-open-data/parquet/performance/type=mobile/year=2024/quarter=4/2024-10-01_performance_mobile_tiles.parquet')
+     LIMIT 10000
 
--- Query COVID-19 Data Lake
-/sql SELECT * FROM read_csv_auto('s3://covid19-lake/enigma-jhu/csv/*.csv')
+-- Load Bitcoin blockchain blocks (single day)
+/sql CREATE TABLE btc_blocks AS
+     SELECT * FROM read_parquet('s3://aws-public-blockchain/v1.0/btc/blocks/date=2024-01-01/*.parquet')
+     LIMIT 10000
+
+-- Query Ethereum transactions (date range with wildcards)
+/sql SELECT * FROM read_parquet('s3://aws-public-blockchain/v1.0/eth/transactions/date=2024-01-*/*.parquet')
      LIMIT 100
-
--- Load multiple Parquet files with wildcards
-/sql CREATE TABLE events AS
-     SELECT * FROM 's3://public-bucket/data/events/*.parquet'
 ```
 
 ### Option 2: IAM Roles on AWS (No Setup Required)
