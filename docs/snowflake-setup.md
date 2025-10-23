@@ -2,72 +2,11 @@
 
 Arc integrates with Snowflake data warehouses using DuckDB's Snowflake extension. Query Snowflake tables directly in Arc, join them with local data, and extract data for cost-efficient local feature engineering.
 
-## Quick Start
+## ⚠️ Important: Setup Required Before Starting Arc
 
-Once configured (see Configuration section below), Snowflake tables are automatically available when you start Arc:
+**You must complete the Configuration steps below BEFORE starting Arc.** The Snowflake extension requires setting `LD_LIBRARY_PATH` (Linux), `DYLD_LIBRARY_PATH` (macOS), or `PATH` (Windows) to locate native libraries. **Setting these environment variables after Arc has started will not work** - you must set them before running `uv run arc chat`.
 
-```bash
-uv run arc chat
-```
-
-### Query Snowflake Directly
-
-```sql
--- View available tables (Snowflake appears as "snowflake" database)
-> What tables are in my database?
-
--- Query Snowflake tables directly
-/sql SELECT * FROM snowflake.public.customers
-     WHERE state = 'CA'
-     LIMIT 10
-
--- Aggregate queries (pushed to Snowflake)
-/sql SELECT state, COUNT(*) as customer_count
-     FROM snowflake.public.customers
-     GROUP BY state
-```
-
-### Extract Data for Local Analysis (Recommended)
-
-**Best practice for ML workflows**: Extract once, transform locally
-
-```sql
--- 1. Extract relevant data from Snowflake (one-time cost)
-/sql CREATE TABLE ca_customers AS
-     SELECT * FROM snowflake.public.customers
-     WHERE state = 'CA' AND signup_date >= '2024-01-01'
-
--- 2. Feature engineering runs locally (fast, free iterations)
-/sql CREATE TABLE customer_features AS
-     SELECT
-       customer_id,
-       COUNT(*) as order_count,
-       SUM(amount) as lifetime_value,
-       AVG(amount) as avg_order_value
-     FROM ca_customers c
-     JOIN snowflake.public.orders o ON c.id = o.customer_id
-     GROUP BY customer_id
-
--- 3. Train models on local data (no Snowflake compute costs)
-> Train a model to predict high-value customers using customer_features
-```
-
-### Join Across Data Sources
-
-```sql
--- Combine Snowflake + S3 + Local DuckDB tables
-/sql CREATE TABLE enriched_customers AS
-     SELECT
-       sf.customer_id,
-       sf.name,
-       s3.demographic_score,
-       local.predicted_churn
-     FROM snowflake.public.customers sf
-     JOIN 's3://my-bucket/demographics.parquet' s3
-       ON sf.id = s3.customer_id
-     JOIN local_ml_predictions local
-       ON sf.id = local.customer_id
-```
+**Quick setup**: See the [Configuration](#configuration) section below for complete setup instructions, or use the [startup script](#step-3-create-startup-script-recommended) for automated setup.
 
 ## Configuration
 
@@ -206,6 +145,73 @@ REM Start Arc
 uv run arc chat
 ```
 
+## Quick Start
+
+Once configured (see Configuration section above), Snowflake tables are automatically available when you start Arc:
+
+```bash
+uv run arc chat
+```
+
+### Query Snowflake Directly
+
+```sql
+-- View available tables (Snowflake appears as "snowflake" database)
+> What tables are in my database?
+
+-- Query Snowflake tables directly
+/sql SELECT * FROM snowflake.public.customers
+     WHERE state = 'CA'
+     LIMIT 10
+
+-- Aggregate queries (pushed to Snowflake)
+/sql SELECT state, COUNT(*) as customer_count
+     FROM snowflake.public.customers
+     GROUP BY state
+```
+
+### Extract Data for Local Analysis (Recommended)
+
+**Best practice for ML workflows**: Extract once, transform locally
+
+```sql
+-- 1. Extract relevant data from Snowflake (one-time cost)
+/sql CREATE TABLE ca_customers AS
+     SELECT * FROM snowflake.public.customers
+     WHERE state = 'CA' AND signup_date >= '2024-01-01'
+
+-- 2. Feature engineering runs locally (fast, free iterations)
+/sql CREATE TABLE customer_features AS
+     SELECT
+       customer_id,
+       COUNT(*) as order_count,
+       SUM(amount) as lifetime_value,
+       AVG(amount) as avg_order_value
+     FROM ca_customers c
+     JOIN snowflake.public.orders o ON c.id = o.customer_id
+     GROUP BY customer_id
+
+-- 3. Train models on local data (no Snowflake compute costs)
+> Train a model to predict high-value customers using customer_features
+```
+
+### Join Across Data Sources
+
+```sql
+-- Combine Snowflake + S3 + Local DuckDB tables
+/sql CREATE TABLE enriched_customers AS
+     SELECT
+       sf.customer_id,
+       sf.name,
+       s3.demographic_score,
+       local.predicted_churn
+     FROM snowflake.public.customers sf
+     JOIN 's3://my-bucket/demographics.parquet' s3
+       ON sf.id = s3.customer_id
+     JOIN local_ml_predictions local
+       ON sf.id = local.customer_id
+```
+
 ## Best Practices
 
 ### 1. Extract Once, Transform Locally (ELT Pattern)
@@ -252,18 +258,18 @@ Extract only what you need to minimize data transfer and Snowflake compute:
 
 ### 3. Check Available Tables First
 
-Use schema discovery to understand what's available:
+Use Arc's schema discovery (recommended):
 
 ```text
-> What tables are in my Snowflake database?
+> What tables are in my database?
 ```
 
-Or use SQL:
+This will show both local tables and Snowflake tables. Or use DuckDB's metadata functions:
 
 ```sql
-/sql SELECT table_name, table_type
-     FROM information_schema.tables
-     WHERE table_catalog = 'snowflake'
+/sql SELECT database_name, schema_name, table_name
+     FROM duckdb_tables()
+     WHERE database_name = 'snowflake'
 ```
 
 ### 4. When to Query Directly vs. Extract
@@ -386,9 +392,9 @@ When Arc starts with Snowflake credentials configured:
 2. **Creates a DuckDB secret** with Snowflake credentials
 3. **Attaches Snowflake as a read-only database** named `snowflake`
 
-Once attached, Snowflake tables appear in DuckDB's `INFORMATION_SCHEMA`, making them:
-- **Discoverable** via Arc's schema discovery tool
-- **Queryable** using standard SQL
+Once attached, Snowflake tables are available in DuckDB's catalog and visible through `duckdb_tables()`, making them:
+- **Discoverable** via Arc's schema discovery tool (which uses `duckdb_tables()`)
+- **Queryable** using standard SQL with fully qualified names (e.g., `snowflake.public.customers`)
 - **Joinable** with local DuckDB tables and S3 data
 
 ### Query Execution
