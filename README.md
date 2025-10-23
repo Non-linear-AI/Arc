@@ -172,3 +172,35 @@ export AWS_REGION="us-east-1"
 ```
 
 Supported formats: **CSV, Parquet, JSON, Apache Iceberg**
+
+### Snowflake Data Loading
+
+Arc supports loading data from Snowflake data warehouses for feature engineering and ML training. When configured, Snowflake tables are automatically accessible in Arc.
+
+**Quick Start:**
+
+1. Configure credentials in `~/.arc/user-settings.json` or environment variables
+2. Set library path before starting Arc (see setup guide)
+3. Query Snowflake data directly in Arc
+
+**Example:**
+
+```sql
+-- Extract data from Snowflake for local feature engineering
+/sql CREATE TABLE local_customers AS
+     SELECT * FROM snowflake.public.customers
+     WHERE signup_date >= '2024-01-01'
+
+-- Join Snowflake with local data
+/sql SELECT s.*, l.prediction
+     FROM snowflake.public.orders s
+     JOIN local_predictions l ON s.customer_id = l.customer_id
+```
+
+**📖 For complete setup instructions, see [docs/snowflake-setup.md](docs/snowflake-setup.md)**
+
+This includes:
+- Credential configuration
+- Library path setup for Linux/macOS/Windows
+- Startup scripts for easy launch
+- Best practices and troubleshooting
