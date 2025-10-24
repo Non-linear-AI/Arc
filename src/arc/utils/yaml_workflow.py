@@ -27,6 +27,7 @@ class YamlStateManager:
         """
         self.temp_file = None
         self.context = {}
+        self.conversation_history = None
         self.yaml_suffix = yaml_suffix
         self.prefix = prefix
 
@@ -34,12 +35,14 @@ class YamlStateManager:
         self,
         yaml_content: str,
         context: dict[str, Any],
+        conversation_history: list[dict[str, str]] | None = None,
     ) -> Path:
         """Save YAML content to temporary file and store context for editing.
 
         Args:
             yaml_content: YAML content to save
             context: Arbitrary context dictionary for future editing
+            conversation_history: Optional conversation history for iterative editing
 
         Returns:
             Path to the temporary file
@@ -60,8 +63,11 @@ class YamlStateManager:
         self.temp_file.write(yaml_content)
         self.temp_file.flush()
 
-        # Store context for future editing
+        # Store context and conversation history for future editing
         self.context = context.copy()
+        self.conversation_history = (
+            conversation_history.copy() if conversation_history else None
+        )
 
         return Path(self.temp_file.name)
 
@@ -85,6 +91,14 @@ class YamlStateManager:
         """
         return self.context.copy()
 
+    def get_conversation_history(self) -> list[dict[str, str]] | None:
+        """Get stored conversation history.
+
+        Returns:
+            Copy of stored conversation history or None
+        """
+        return self.conversation_history.copy() if self.conversation_history else None
+
     def cleanup(self):
         """Clean up temporary file and reset state."""
         if self.temp_file:
@@ -96,6 +110,7 @@ class YamlStateManager:
             finally:
                 self.temp_file = None
                 self.context = {}
+                self.conversation_history = None
 
 
 class YamlEditorHelper:
@@ -189,7 +204,10 @@ class YamlConfirmationWorkflow:
     def __init__(
         self,
         validator_func: Callable[[str], list[str]],
-        editor_func: Callable[[str, str, dict[str, Any]], Awaitable[str | None]],
+        editor_func: Callable[
+            [str, str, dict[str, Any], list[dict[str, str]] | None],
+            Awaitable[tuple[str | None, list[dict[str, str]] | None]],
+        ],
         ui_interface,
         yaml_type_name: str = "specification",
         yaml_suffix: str = ".yaml",
@@ -198,8 +216,9 @@ class YamlConfirmationWorkflow:
 
         Args:
             validator_func: Function that takes YAML string and returns list of errors
-            editor_func: Async function that takes (yaml, feedback, context) and returns
-                        edited YAML or None
+            editor_func: Async function that takes (yaml, feedback, context,
+                        conversation_history) and returns tuple of (edited_yaml,
+                        updated_history)
             ui_interface: InteractiveInterface instance for user interaction
             yaml_type_name: Display name for YAML type (e.g., "model", "trainer")
             yaml_suffix: File suffix for temporary files
@@ -218,6 +237,7 @@ class YamlConfirmationWorkflow:
         initial_yaml: str,
         context: dict[str, Any],
         output_path: str | None = None,
+        initial_conversation_history: list[dict[str, str]] | None = None,
     ) -> tuple[bool, str]:
         """Run interactive confirmation workflow.
 
@@ -225,14 +245,15 @@ class YamlConfirmationWorkflow:
             initial_yaml: Initial YAML content to confirm
             context: Context dictionary for editing (passed to editor_func)
             output_path: Optional output file path for display
+            initial_conversation_history: Optional conversation history from initial generation
 
         Returns:
             Tuple of (approved: bool, final_yaml: str)
         """
         yaml_content = initial_yaml
 
-        # Save initial state
-        self.state_manager.save_yaml(yaml_content, context)
+        # Save initial state with conversation history
+        self.state_manager.save_yaml(yaml_content, context, initial_conversation_history)
 
         while True:
             # Display preview
@@ -267,8 +288,11 @@ class YamlConfirmationWorkflow:
                 return True, yaml_content
 
             elif choice == "edit_ai":
-                # AI-assisted editing
-                edited_yaml = await self._edit_with_ai(yaml_content, context)
+                # AI-assisted editing with conversation history
+                conversation_history = self.state_manager.get_conversation_history()
+                edited_yaml, updated_history = await self._edit_with_ai(
+                    yaml_content, context, conversation_history
+                )
                 if edited_yaml is None:
                     continue  # Edit cancelled, show confirmation again
 
@@ -286,7 +310,8 @@ class YamlConfirmationWorkflow:
                     continue
 
                 yaml_content = edited_yaml
-                self.state_manager.save_yaml(yaml_content, context)
+                # Save updated state with new conversation history
+                self.state_manager.save_yaml(yaml_content, context, updated_history)
                 # Reset prompt session after nested AI editing prompts
                 if self.ui:
                     self.ui._printer.reset_prompt_session()
@@ -341,16 +366,20 @@ class YamlConfirmationWorkflow:
             self.ui._printer.display_yaml_with_diff(yaml_content, output_path)
 
     async def _edit_with_ai(
-        self, yaml_content: str, context: dict[str, Any]
-    ) -> str | None:
+        self,
+        yaml_content: str,
+        context: dict[str, Any],
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> tuple[str | None, list[dict[str, str]] | None]:
         """Collect user feedback and edit YAML with AI.
 
         Args:
             yaml_content: Current YAML content
             context: Context dictionary
+            conversation_history: Optional conversation history for continuing conversation
 
         Returns:
-            Edited YAML or None if cancelled
+            Tuple of (edited_yaml, updated_conversation_history) or (None, None) if cancelled
         """
         # Collect user feedback
         if self.ui:
@@ -373,36 +402,38 @@ class YamlConfirmationWorkflow:
                         self.ui.show_system_error(
                             "❌ No feedback provided. Edit cancelled."
                         )
-                    return None
+                    return None, None
 
             except Exception as e:
                 if self.ui:
                     self.ui.show_system_error(f"❌ Error collecting feedback: {e}")
-                return None
+                return None, None
         else:
             # Fallback for non-UI usage
             feedback = input("What changes do you want? ").strip()
             if not feedback:
-                return None
+                return None, None
 
         # Show feedback confirmation
         if self.ui:
             self.ui.show_info(f"🔄 AI will apply: {feedback}")
 
-        # Call the editor function
+        # Call the editor function with conversation history
         try:
-            edited_yaml = await self.editor(yaml_content, feedback, context)
+            edited_yaml, updated_history = await self.editor(
+                yaml_content, feedback, context, conversation_history
+            )
 
             if edited_yaml and self.ui:
                 self.ui.show_info("✅ AI has applied your requested changes.")
 
-            return edited_yaml
+            return edited_yaml, updated_history
 
         except Exception as e:
             error_msg = f"❌ AI editing failed: {str(e)}"
             if self.ui:
                 self.ui.show_system_error(error_msg)
-            return None
+            return None, None
 
     async def _edit_manually(self, yaml_content: str) -> str | None:
         """Launch external editor for manual YAML editing.

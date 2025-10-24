@@ -10,6 +10,7 @@ from arc.tools.file_editor import (
     FileEditorTool,
     ViewFileTool,
 )
+from arc.tools.knowledge import ReadKnowledgeTool
 from arc.tools.ml import (
     MLEvaluateTool,
     MLModelTool,
@@ -35,6 +36,7 @@ __all__ = [
     "ViewFileTool",
     "CreateFileTool",
     "EditFileTool",
+    "ReadKnowledgeTool",
     "SchemaDiscoveryTool",
     "SearchTool",
     "CreateTodoListTool",

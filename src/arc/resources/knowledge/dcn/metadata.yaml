@@ -1,0 +1,30 @@
+# Deep & Cross Network (DCN) Knowledge
+id: dcn
+name: "Deep & Cross Network"
+type: architecture
+description: "Combines explicit feature crossing with deep representation learning for CTR prediction and recommendations"
+
+# Discovery
+keywords:
+  - deep-cross-network
+  - dcn
+  - feature-crossing
+  - ctr-prediction
+  - recommendation
+  - click-through-rate
+  - feature-interaction
+
+problem_type: classification
+
+# Relationships
+related_knowledge:
+  - mlp
+
+# Availability
+phases:
+  - model
+
+# Metadata
+complexity: intermediate
+domain: recommendation
+data_types: [tabular]

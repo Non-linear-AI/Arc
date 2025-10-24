@@ -59,6 +59,7 @@ class MLEvaluateAgent(BaseAgent):
         """
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
+        # Note: knowledge_loader is now initialized in BaseAgent
 
     def get_template_directory(self) -> Path:
         """Get the template directory for evaluator generation.
@@ -79,7 +80,9 @@ class MLEvaluateAgent(BaseAgent):
         target_column_exists: bool = True,
         existing_yaml: str | None = None,
         ml_plan_evaluation: str | None = None,
-    ) -> tuple[EvaluatorSpec, str]:
+        recommended_knowledge_ids: list[str] | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> tuple[EvaluatorSpec, str, list[dict[str, str]]]:
         """Generate Arc evaluator specification based on trainer and instruction.
 
         Args:
@@ -92,39 +95,176 @@ class MLEvaluateAgent(BaseAgent):
             dataset: Test dataset table name
             target_column: Target column name in the dataset
             target_column_exists: Whether target column exists in dataset
-            existing_yaml: Optional existing YAML to edit (switches to editing mode)
+            existing_yaml: Optional existing YAML to edit (editing mode)
             ml_plan_evaluation: Optional evaluation guidance from ML plan
+            recommended_knowledge_ids: Optional list of knowledge IDs
+                recommended by ML Plan
+            conversation_history: Optional conversation history for editing workflow
 
         Returns:
-            Tuple of (parsed EvaluatorSpec, raw YAML string)
+            Tuple of (parsed EvaluatorSpec, raw YAML string, conversation_history)
 
         Raises:
             EvaluatorGeneratorError: If generation fails
         """
-        # Build context for LLM
-        context = {
-            "evaluator_name": name,
-            "instruction": instruction,
-            "trainer_ref": trainer_ref,
-            "trainer_spec": trainer_spec_yaml,
-            "dataset": dataset,
-            "target_column": target_column,
-            "target_column_exists": target_column_exists,
-            "trainer_profile": self._extract_trainer_profile(trainer_spec_yaml),
-            "model_outputs": self._extract_model_outputs(trainer_spec_yaml),
-            "available_metrics": self._get_available_metrics(),
-            "examples": self._get_evaluator_examples(instruction),
-            "existing_yaml": existing_yaml,
-            "ml_plan_evaluation": ml_plan_evaluation,
-        }
-
-        # Generate evaluator specification with single attempt
-        try:
-            evaluator_spec, evaluator_yaml = await self._generate_with_validation_loop(
-                context, self._validate_evaluator_comprehensive, 1
+        # Route to appropriate generation path
+        if conversation_history is None:
+            # Fresh generation - build full context
+            return await self._generate_fresh(
+                name=name,
+                instruction=instruction,
+                trainer_ref=trainer_ref,
+                trainer_spec_yaml=trainer_spec_yaml,
+                dataset=dataset,
+                target_column=target_column,
+                target_column_exists=target_column_exists,
+                existing_yaml=existing_yaml,
+                ml_plan_evaluation=ml_plan_evaluation,
+                recommended_knowledge_ids=recommended_knowledge_ids,
+            )
+        else:
+            # Continue conversation - just append feedback
+            return await self._continue_conversation(
+                feedback=instruction,
+                conversation_history=conversation_history,
             )
 
-            return evaluator_spec, evaluator_yaml
+    async def _generate_fresh(
+        self,
+        name: str,
+        instruction: str,
+        trainer_ref: str,
+        trainer_spec_yaml: str,
+        dataset: str,
+        target_column: str,
+        target_column_exists: bool = True,
+        existing_yaml: str | None = None,
+        ml_plan_evaluation: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
+    ) -> tuple[EvaluatorSpec, str, list[dict[str, str]]]:
+        """Fresh generation with full context building.
+
+        This path is used for initial generation or when starting a new conversation.
+        It builds the complete system message with knowledge loading.
+        """
+        # Pre-load recommended knowledge content
+        recommended_knowledge = ""
+        if recommended_knowledge_ids:
+            # Scan metadata once for all knowledge IDs (performance optimization)
+            metadata_map = self.knowledge_loader.scan_metadata()
+
+            for knowledge_id in recommended_knowledge_ids:
+                content = self.knowledge_loader.load_knowledge(knowledge_id, "evaluate")
+                if content:
+                    # Get metadata for display
+                    metadata = metadata_map.get(knowledge_id)
+                    if metadata:
+                        print(f"  ▸ Using knowledge: {metadata.name}")
+                    recommended_knowledge += (
+                        f"\n\n# Evaluation Knowledge: {knowledge_id}\n\n{content}"
+                    )
+                else:
+                    # Warn user if recommended knowledge fails to load
+                    import logging
+
+                    print(
+                        f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' not found"
+                    )
+                    logging.getLogger(__name__).warning(
+                        f"Could not load recommended knowledge: {knowledge_id}"
+                    )
+
+        # Build system message with all context
+        system_message = self._render_template(
+            "prompt.j2",
+            {
+                "evaluator_name": name,
+                "instruction": instruction,
+                "trainer_ref": trainer_ref,
+                "trainer_spec": trainer_spec_yaml,
+                "dataset": dataset,
+                "target_column": target_column,
+                "target_column_exists": target_column_exists,
+                "trainer_profile": self._extract_trainer_profile(trainer_spec_yaml),
+                "model_outputs": self._extract_model_outputs(trainer_spec_yaml),
+                "available_metrics": self._get_available_metrics(),
+                "examples": self._get_evaluator_examples(instruction),
+                "existing_yaml": existing_yaml,
+                "ml_plan_evaluation": ml_plan_evaluation,
+                "recommended_knowledge": recommended_knowledge,
+            },
+        )
+
+        # User message guides tool usage
+        if existing_yaml:
+            user_message = (
+                f"Edit the existing evaluator specification with these "
+                f"changes: {instruction}. "
+                "The recommended evaluation knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools "
+                "if you need additional guidance."
+            )
+        else:
+            user_message = (
+                f"Generate the evaluator specification for '{name}'. "
+                "The recommended evaluation knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools "
+                "if you need additional guidance."
+            )
+
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
+
+        # Generate with multi-turn tool support
+        try:
+            evaluator_spec, evaluator_yaml, conversation_history = await self._generate_with_tools(
+                system_message=system_message,
+                user_message=user_message,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_evaluator_comprehensive,
+                validation_context={
+                    "available_metrics": self._get_available_metrics(),
+                },
+                max_iterations=3,
+                conversation_history=None,  # Fresh start
+            )
+
+            return evaluator_spec, evaluator_yaml, conversation_history
+
+        except AgentError as e:
+            raise MLEvaluateError(str(e)) from e
+
+    async def _continue_conversation(
+        self,
+        feedback: str,
+        conversation_history: list[dict[str, str]],
+    ) -> tuple[EvaluatorSpec, str, list[dict[str, str]]]:
+        """Continue existing conversation with user feedback.
+
+        This path is used during interactive editing when conversation history exists.
+        It simply appends the user's feedback to the existing conversation without
+        rebuilding the system message.
+        """
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
+
+        # Continue conversation with feedback
+        try:
+            evaluator_spec, evaluator_yaml, updated_history = await self._generate_with_tools(
+                system_message="",  # Not used - already in conversation_history
+                user_message=feedback,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_evaluator_comprehensive,
+                validation_context={
+                    "available_metrics": self._get_available_metrics(),
+                },
+                max_iterations=3,
+                conversation_history=conversation_history,
+            )
+
+            return evaluator_spec, evaluator_yaml, updated_history
 
         except AgentError as e:
             raise MLEvaluateError(str(e)) from e

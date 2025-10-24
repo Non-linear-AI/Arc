@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import jinja2
-
-from arc.core.client import ArcClient
+from arc.core.agents.shared.base_agent import AgentError, BaseAgent
 from arc.graph.features.data_source import DataSourceSpec
 
 if TYPE_CHECKING:
     from arc.database.services.container import ServiceContainer
 
 
-class MLDataError(Exception):
+class MLDataError(AgentError):
     """Exception raised when data processor generation fails."""
 
 
-class MLDataAgent:
+class MLDataAgent(BaseAgent):
     """Agent for generating data processing YAML from natural language."""
 
     def __init__(
@@ -36,11 +34,15 @@ class MLDataAgent:
             base_url: Base URL for LLM API
             model: Model name to use
         """
-        self.services = services
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model = model
-        self.client = ArcClient(api_key, self.model, base_url)
+        super().__init__(services, api_key, base_url, model)
+
+    def get_template_directory(self) -> Path:
+        """Get the template directory for data processing generation.
+
+        Returns:
+            Path to the data processing template directory
+        """
+        return Path(__file__).parent / "templates"
 
     async def generate_data_processing_yaml(
         self,
@@ -48,7 +50,9 @@ class MLDataAgent:
         source_tables: list[str] | None = None,
         database: str = "user",
         existing_yaml: str | None = None,
-    ) -> tuple[DataSourceSpec, str]:
+        recommended_knowledge_ids: list[str] | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Generate or edit data processing YAML from instruction.
 
         Args:
@@ -60,12 +64,45 @@ class MLDataAgent:
             existing_yaml: Existing YAML content to edit (optional).
                 If provided, switches to editing mode where instruction
                 describes the changes to make.
+            recommended_knowledge_ids: Optional list of knowledge IDs
+                recommended by ML Plan
+            conversation_history: Optional conversation history for editing workflow
 
         Returns:
-            Tuple of (DataSourceSpec object, YAML string)
+            Tuple of (DataSourceSpec object, YAML string, conversation_history)
 
         Raises:
             MLDataError: If generation fails
+        """
+        # Route to appropriate generation path
+        if conversation_history is None:
+            # Fresh generation - build full context
+            return await self._generate_fresh(
+                instruction=instruction,
+                source_tables=source_tables,
+                database=database,
+                existing_yaml=existing_yaml,
+                recommended_knowledge_ids=recommended_knowledge_ids,
+            )
+        else:
+            # Continue conversation - just append feedback
+            return await self._continue_conversation(
+                feedback=instruction,
+                conversation_history=conversation_history,
+            )
+
+    async def _generate_fresh(
+        self,
+        instruction: str,
+        source_tables: list[str] | None = None,
+        database: str = "user",
+        existing_yaml: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
+    ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
+        """Fresh generation with full context building.
+
+        This path is used for initial generation or when starting a new conversation.
+        It builds the complete system message with schema discovery and knowledge loading.
         """
         try:
             # Get schema information for available tables
@@ -75,37 +112,120 @@ class MLDataAgent:
                 source_tables, database, include_row_counts=not is_edit_mode
             )
 
-            # Render prompt and build messages
-            # Mode determined by presence of existing_yaml
-            system_prompt = await self._render_system_prompt(
-                instruction,
-                schema_info,
-                source_tables,
-                existing_yaml,
+            # Pre-load recommended knowledge content
+            recommended_knowledge = ""
+            if recommended_knowledge_ids:
+                # Scan metadata once for all knowledge IDs (performance optimization)
+                metadata_map = self.knowledge_loader.scan_metadata()
+
+                for knowledge_id in recommended_knowledge_ids:
+                    content = self.knowledge_loader.load_knowledge(knowledge_id, "data")
+                    if content:
+                        # Get metadata for display
+                        metadata = metadata_map.get(knowledge_id)
+                        if metadata:
+                            print(f"  ▸ Using knowledge: {metadata.name}")
+                        recommended_knowledge += (
+                            f"\n\n# Data Processing Knowledge: {knowledge_id}"
+                            f"\n\n{content}"
+                        )
+                    else:
+                        # Warn user if recommended knowledge fails to load
+                        import logging
+
+                        print(
+                            f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' "
+                            f"not found"
+                        )
+                        logging.getLogger(__name__).warning(
+                            f"Could not load recommended knowledge: {knowledge_id}"
+                        )
+
+            # Build system message with all context
+            system_message = self._render_template(
+                "prompt.j2",
+                {
+                    "user_instruction": instruction,
+                    "schema_info": schema_info,
+                    "source_tables": source_tables or [],
+                    "existing_yaml": existing_yaml,
+                    "recommended_knowledge": recommended_knowledge,
+                },
             )
-            messages = [
-                {"role": "system", "content": system_prompt},
-            ]
 
-            # Generate YAML using LLM
-            yaml_content = await self._generate_yaml_with_llm(messages)
-
-            # Parse YAML and create DataSourceSpec
-            try:
-                spec = DataSourceSpec.from_yaml(yaml_content)
-                return spec, yaml_content
-            except ValueError as e:
-                # Try to retry with error feedback
-                retry_result = await self._retry_generation_with_feedback(
-                    messages, yaml_content, str(e)
+            # User message guides tool usage
+            if existing_yaml:
+                user_message = (
+                    f"Edit the existing data processing specification with "
+                    f"these changes: {instruction}. "
+                    "The recommended data processing knowledge is provided in "
+                    "the system message. Only use the knowledge exploration "
+                    "tools if you need additional guidance."
                 )
-                if retry_result:
-                    return retry_result
-                raise MLDataError(f"Generated invalid YAML configuration: {e}") from e
+            else:
+                user_message = (
+                    "Generate the data processing specification. "
+                    "The recommended data processing knowledge is provided in "
+                    "the system message. Only use the knowledge exploration "
+                    "tools if you need additional guidance."
+                )
 
+            # Get ML tools from BaseAgent
+            tools = self._get_ml_tools()
+
+            # Generate with multi-turn tool support
+            spec, yaml_content, conversation_history = await self._generate_with_tools(
+                system_message=system_message,
+                user_message=user_message,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_data_processing_comprehensive,
+                validation_context={"schema_info": schema_info},
+                max_iterations=3,
+                conversation_history=None,  # Fresh start
+            )
+
+            return spec, yaml_content, conversation_history
+
+        except AgentError as e:
+            raise MLDataError(str(e)) from e
         except Exception as e:
-            if isinstance(e, MLDataError):
-                raise
+            raise MLDataError(
+                f"Failed to generate data processing configuration: {e}"
+            ) from e
+
+    async def _continue_conversation(
+        self,
+        feedback: str,
+        conversation_history: list[dict[str, str]],
+    ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
+        """Continue existing conversation with user feedback.
+
+        This path is used during interactive editing when conversation history exists.
+        It simply appends the user's feedback to the existing conversation without
+        rebuilding the system message.
+        """
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
+
+        # Continue conversation with feedback
+        try:
+            spec, yaml_content, updated_history = await self._generate_with_tools(
+                system_message="",  # Not used - already in conversation_history
+                user_message=feedback,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_data_processing_comprehensive,
+                validation_context={"schema_info": None},  # Already in conversation history
+                max_iterations=3,
+                conversation_history=conversation_history,
+            )
+
+            return spec, yaml_content, updated_history
+
+        except AgentError as e:
+            raise MLDataError(str(e)) from e
+        except Exception as e:
             raise MLDataError(
                 f"Failed to generate data processing configuration: {e}"
             ) from e
@@ -212,131 +332,38 @@ class MLDataAgent:
                 "error": str(e),
             }
 
-    async def _render_system_prompt(
+    def _validate_data_processing_comprehensive(
         self,
-        instruction: str,
-        schema_info: dict,
-        source_tables: list[str] | None,
-        existing_yaml: str | None = None,
-    ) -> str:
-        """Render the system prompt template with instruction.
+        yaml_content: str,
+        context: dict[str, Any],  # noqa: ARG002
+    ) -> dict[str, Any]:
+        """Comprehensive validation of generated data processing spec.
 
         Args:
-            instruction: Detailed instruction (for generation or editing)
-            schema_info: Database schema information
-            source_tables: Source tables list
-            existing_yaml: Existing YAML content to edit (optional)
+            yaml_content: Generated YAML string
+            context: Generation context for validation
 
         Returns:
-            Rendered prompt string for system message
-
-        Raises:
-            MLDataError: If template cannot be loaded or rendered
-        """
-        template_path = Path(__file__).parent / "templates" / "prompt.j2"
-
-        try:
-            # Create Jinja2 environment
-            template_dir = template_path.parent
-            env = jinja2.Environment(
-                loader=jinja2.FileSystemLoader(template_dir),
-                trim_blocks=True,
-                lstrip_blocks=True,
-            )
-
-            # Load and render template
-            template = env.get_template("prompt.j2")
-            prompt = template.render(
-                user_instruction=instruction,
-                schema_info=schema_info,
-                source_tables=source_tables or [],
-                existing_yaml=existing_yaml,
-            )
-
-            return prompt
-
-        except jinja2.TemplateNotFound as e:
-            raise MLDataError(
-                f"Prompt template not found: {template_path}. "
-                "This is a configuration error in the MLDataAgent."
-            ) from e
-        except jinja2.TemplateError as e:
-            raise MLDataError(
-                f"Failed to render prompt template: {e}. "
-                "Check the template syntax in {template_path}."
-            ) from e
-        except Exception as e:
-            raise MLDataError(f"Unexpected error loading prompt template: {e}") from e
-
-    async def _generate_yaml_with_llm(self, messages: list[dict[str, str]]) -> str:
-        """Generate YAML content using LLM.
-
-        Args:
-            messages: List of message dictionaries for LLM chat
-
-        Returns:
-            Generated YAML content
-
-        Raises:
-            MLDataError: If LLM generation fails
+            Dictionary with validation results:
+            {"valid": bool, "object": DataSourceSpec, "error": str}
         """
         try:
-            response = await self.client.chat(messages, tools=[])
+            # Parse YAML syntax
+            self._validate_yaml_syntax(yaml_content)
 
-            if not response.content:
-                raise MLDataError("LLM returned empty response")
+            # Try to parse into DataSourceSpec
+            try:
+                spec = DataSourceSpec.from_yaml(yaml_content)
+            except ValueError as e:
+                return {
+                    "valid": False,
+                    "error": f"Failed to parse into DataSourceSpec: {str(e)}",
+                }
 
-            # Extract YAML from response (handle cases where LLM adds markdown)
-            yaml_content = response.content.strip()
-
-            # Remove markdown code blocks if present
-            if yaml_content.startswith("```yaml"):
-                yaml_content = yaml_content[7:]
-            elif yaml_content.startswith("```"):
-                yaml_content = yaml_content[3:]
-
-            if yaml_content.endswith("```"):
-                yaml_content = yaml_content[:-3]
-
-            return yaml_content.strip()
+            return {"valid": True, "object": spec, "error": None}
 
         except Exception as e:
-            raise MLDataError(f"LLM generation failed: {e}") from e
-
-    async def _retry_generation_with_feedback(
-        self,
-        original_messages: list[dict[str, str]],
-        failed_yaml: str,
-        error_message: str,
-    ) -> tuple[DataSourceSpec, str] | None:
-        """Retry generation with feedback about the error.
-
-        Args:
-            original_messages: The original messages that were sent
-            failed_yaml: The YAML that failed to parse
-            error_message: The error message from parsing failure
-
-        Returns:
-            Tuple of (DataSourceSpec, YAML) if retry succeeds, None otherwise
-        """
-        try:
-            # Add error feedback to the conversation
-            retry_messages = original_messages + [
-                {"role": "assistant", "content": failed_yaml},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Your previous response failed to parse with this error: "
-                        f"{error_message}\n\nPlease fix the YAML and try again. "
-                        f"Ensure it's valid YAML that matches the schema exactly."
-                    ),
-                },
-            ]
-
-            yaml_content = await self._generate_yaml_with_llm(retry_messages)
-            spec = DataSourceSpec.from_yaml(yaml_content)
-            return spec, yaml_content
-
-        except Exception:
-            # If retry also fails, return None to fall back to original error
-            return None
+            return {
+                "valid": False,
+                "error": f"Validation exception: {str(e)}",
+            }

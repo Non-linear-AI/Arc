@@ -35,6 +35,7 @@ class MLModelAgent(BaseAgent):
         """
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
+        # Note: knowledge_loader is now initialized in BaseAgent
 
     def get_template_directory(self) -> Path:
         """Get the template directory for model generation.
@@ -44,25 +45,12 @@ class MLModelAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
-    def _get_template_path(self, _category: str) -> Path:
-        """Get the template path for a specific category.
-
-        Args:
-            category: Model category ("mlp", "transformer", etc.)
-
-        Returns:
-            Path to the base template (now architecture-agnostic)
-        """
-        base_dir = self.get_template_directory()
-        return base_dir / "base.j2"
-
     def get_template_name(self) -> str:
-        """Get the name of the template file based on current category.
+        """Get the name of the template file.
 
         Returns:
             Template filename relative to the template directory
         """
-        # Always use the base template now (architecture-agnostic)
         return "base.j2"
 
     async def generate_model(
@@ -71,11 +59,12 @@ class MLModelAgent(BaseAgent):
         user_context: str,
         table_name: str,
         target_column: str | None = None,
-        category: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
         ml_plan_architecture: str | None = None,
-    ) -> tuple[ModelSpec, str]:
+        recommended_knowledge_ids: list[str] | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Generate Arc model specification based on data and user context.
 
         Args:
@@ -83,155 +72,176 @@ class MLModelAgent(BaseAgent):
             user_context: User description of desired model
             table_name: Database table name for data exploration
             target_column: Optional target column name for task-aware generation
-            category: Optional category hint ("mlp", "transformer", etc.)
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
             ml_plan_architecture: Optional ML plan architecture guidance
+            recommended_knowledge_ids: Optional list of knowledge IDs
+                recommended by ML Plan
+            conversation_history: Optional conversation history for editing workflow
 
         Returns:
-            Tuple of (parsed ModelSpec object, YAML string)
+            Tuple of (parsed ModelSpec object, YAML string, conversation_history)
 
         Raises:
-            ModelGeneratorError: If generation fails
+            MLModelError: If generation fails
+        """
+        # Route to appropriate generation path
+        if conversation_history is None:
+            # Fresh generation - build full context
+            return await self._generate_fresh(
+                name=name,
+                user_context=user_context,
+                table_name=table_name,
+                target_column=target_column,
+                existing_yaml=existing_yaml,
+                editing_instructions=editing_instructions,
+                ml_plan_architecture=ml_plan_architecture,
+                recommended_knowledge_ids=recommended_knowledge_ids,
+            )
+        else:
+            # Continue conversation - just append feedback
+            return await self._continue_conversation(
+                feedback=editing_instructions or "",
+                conversation_history=conversation_history,
+            )
+
+    async def _generate_fresh(
+        self,
+        name: str,
+        user_context: str,
+        table_name: str,
+        target_column: str | None = None,
+        existing_yaml: str | None = None,
+        editing_instructions: str | None = None,
+        ml_plan_architecture: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
+    ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
+        """Fresh generation with full context building.
+
+        This path is used for initial generation or when starting a new conversation.
+        It builds the complete system message with data profiling and knowledge loading.
         """
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Determine category (explicit or auto-detected)
-        resolved_category = category or self._detect_category_from_context(
-            user_context, data_profile
+        # Pre-load recommended knowledge content
+        recommended_knowledge = ""
+        if recommended_knowledge_ids:
+            # Scan metadata once for all knowledge IDs (performance optimization)
+            metadata_map = self.knowledge_loader.scan_metadata()
+
+            for knowledge_id in recommended_knowledge_ids:
+                content = self.knowledge_loader.load_knowledge(knowledge_id, "model")
+                if content:
+                    # Get metadata for display
+                    metadata = metadata_map.get(knowledge_id)
+                    if metadata:
+                        print(f"  ▸ Using knowledge: {metadata.name}")
+                    recommended_knowledge += (
+                        f"\n\n# Architecture Knowledge: {knowledge_id}\n\n{content}"
+                    )
+                else:
+                    # Warn user if recommended knowledge fails to load
+                    import logging
+
+                    print(
+                        f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' not found"
+                    )
+                    logging.getLogger(__name__).warning(
+                        f"Could not load recommended knowledge: {knowledge_id}"
+                    )
+
+        # Build system message with all context
+        system_message = self._render_template(
+            "base.j2",
+            {
+                "model_name": name,
+                "user_intent": user_context,
+                "data_profile": data_profile,
+                "available_components": self._get_model_components(),
+                "ml_plan_architecture": ml_plan_architecture,
+                "recommended_knowledge": recommended_knowledge,
+                "existing_yaml": existing_yaml,
+                "editing_instructions": editing_instructions,
+                "is_editing": existing_yaml is not None,
+            },
         )
 
-        # Architecture display names
-        display_names = {
-            "mlp": "Multi-Layer Perceptron (Feedforward Neural Network)",
-            "transformer": "Transformer (Attention-based Neural Network)",
-            "dcn": "Deep & Cross Network",
-            "mmoe": "Multi-gate Mixture of Experts",
-        }
-
-        context = {
-            "model_name": name,
-            "user_intent": user_context,
-            "data_profile": data_profile,
-            "architecture_type": resolved_category,
-            "architecture_display_name": display_names.get(
-                resolved_category, resolved_category.upper()
-            ),
-            "available_components": self._get_model_components(),
-            "architecture_guides": self._load_architecture_guides([resolved_category]),
-            "existing_yaml": existing_yaml,
-            "editing_instructions": editing_instructions,
-            "is_editing": existing_yaml is not None,
-            "ml_plan_architecture": ml_plan_architecture,
-        }
-
-        # Store category for template selection
-        self._current_category = resolved_category
-
-        # Use the base agent validation loop with default max_iterations
-        try:
-            model_spec, model_yaml = await self._generate_with_validation_loop(
-                context, self._validate_model_comprehensive, 3
+        # User message guides tool usage
+        if existing_yaml:
+            user_message = (
+                f"Edit the existing Arc-Graph specification with these changes: "
+                f"{editing_instructions}. "
+                "The recommended architecture knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools if "
+                "you need additional architectural guidance."
+            )
+        else:
+            user_message = (
+                f"Generate the Arc-Graph model specification for '{name}'. "
+                "The recommended architecture knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools if "
+                "you need additional architectural guidance."
             )
 
-            return model_spec, model_yaml
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
+
+        # Generate with multi-turn tool support
+        try:
+            model_spec, model_yaml, conversation_history = await self._generate_with_tools(
+                system_message=system_message,
+                user_message=user_message,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_model_comprehensive,
+                validation_context={
+                    "data_profile": data_profile,
+                    "available_components": self._get_model_components(),
+                },
+                max_iterations=3,
+                conversation_history=None,  # Fresh start
+            )
+
+            return model_spec, model_yaml, conversation_history
 
         except AgentError as e:
             raise MLModelError(str(e)) from e
 
-    def _detect_category_from_context(
-        self, user_context: str, _data_profile: dict[str, Any]
-    ) -> str:
-        """Detect model category from context and data characteristics.
+    async def _continue_conversation(
+        self,
+        feedback: str,
+        conversation_history: list[dict[str, str]],
+    ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
+        """Continue existing conversation with user feedback.
 
-        Args:
-            user_context: User description of desired model
-            _data_profile: Data profile information (reserved for future use)
-
-        Returns:
-            Detected category: "mlp", "dcn", "mmoe", or "transformer"
+        This path is used during interactive editing when conversation history exists.
+        It simply appends the user's feedback to the existing conversation without
+        rebuilding the system message.
         """
-        context_lower = user_context.lower()
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
 
-        # Multi-gate Mixture of Experts indicators (check first for priority)
-        if any(
-            keyword in context_lower
-            for keyword in [
-                "multi-task",
-                "multiple task",
-                "multitask",
-                "shared representation",
-            ]
-        ):
-            return "mmoe"
+        # Continue conversation with feedback
+        try:
+            model_spec, model_yaml, updated_history = await self._generate_with_tools(
+                system_message="",  # Not used - already in conversation_history
+                user_message=feedback,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_model_comprehensive,
+                validation_context={
+                    "data_profile": None,  # Already in conversation history
+                    "available_components": self._get_model_components(),
+                },
+                max_iterations=3,
+                conversation_history=conversation_history,
+            )
 
-        # Deep & Cross Network indicators
-        if any(
-            keyword in context_lower
-            for keyword in [
-                "feature cross",
-                "interaction",
-                "ctr",
-                "click-through",
-                "recommendation",
-            ]
-        ):
-            return "dcn"
+            return model_spec, model_yaml, updated_history
 
-        # Transformer indicators
-        if any(
-            keyword in context_lower
-            for keyword in [
-                "attention",
-                "sequence",
-                "transformer",
-                "self-attention",
-                "encoder",
-            ]
-        ):
-            return "transformer"
-
-        # Default to MLP for tabular data
-        mlp_keywords = [
-            "classify",
-            "classification",
-            "predict",
-            "prediction",
-            "regression",
-            "binary",
-            "multiclass",
-            "categorical",
-            "numerical",
-            "features",
-            "target",
-            "label",
-            "supervised",
-            "risk",
-            "score",
-            "fraud",
-        ]
-
-        if any(keyword in context_lower for keyword in mlp_keywords):
-            return "mlp"
-
-        # Default to MLP for general cases
-        return "mlp"
-
-    def _validate_category(self, category: str) -> str:
-        """Validate and normalize category input.
-
-        Args:
-            category: Category string to validate
-
-        Returns:
-            Validated category ("mlp", "dcn", "mmoe", "transformer")
-        """
-        valid_categories = {"mlp", "dcn", "mmoe", "transformer"}
-        if category in valid_categories:
-            return category
-
-        return "mlp"  # Default to MLP
+        except AgentError as e:
+            raise MLModelError(str(e)) from e
 
     def _validate_model_comprehensive(
         self, model_yaml: str, context: dict[str, Any]
@@ -309,11 +319,32 @@ class MLModelAgent(BaseAgent):
         graph = model_dict.get("graph", [])
         available_nodes = context.get("available_components", {}).get("node_types", [])
 
+        # Get list of defined modules
+        modules = model_dict.get("modules", {})
+        module_names = list(modules.keys()) if modules else []
+
         for node in graph:
             node_type = node.get("type", "")
 
-            # Validate against new pytorch prefix architecture
-            if node_type and node_type not in available_nodes:
+            if not node_type:
+                continue
+
+            # Allow special Arc components
+            if node_type.startswith("arc."):
+                continue
+
+            # Allow references to custom modules
+            if node_type.startswith("module."):
+                module_name = node_type.split(".", 1)[1]
+                if module_name not in module_names:
+                    errors.append(
+                        f"Unknown module reference: {node_type} "
+                        f"(module '{module_name}' not defined in 'modules' section)"
+                    )
+                continue
+
+            # Validate against available PyTorch components
+            if node_type not in available_nodes:
                 errors.append(f"Unknown node type: {node_type}")
 
         return errors
@@ -383,45 +414,13 @@ class MLModelAgent(BaseAgent):
         except Exception as e:
             raise RuntimeError(f"Failed to load model components: {e}") from e
 
-    def _load_architecture_guides(
-        self, architecture_types: list[str]
-    ) -> dict[str, str]:
-        """Load architecture-specific content from files."""
-        architecture_guides = {}
-
-        for arch_type in architecture_types:
-            content_path = (
-                self.get_template_directory() / "architectures" / f"{arch_type}.md"
-            )
-            try:
-                with open(content_path) as f:
-                    architecture_guides[arch_type.upper()] = f.read()
-            except FileNotFoundError:
-                architecture_guides[arch_type.upper()] = (
-                    f"*Content not found for {arch_type}*"
-                )
-
-        return architecture_guides
-
-    def _get_model_examples(
-        self, user_context: str, data_profile: dict[str, Any], _category: str
-    ) -> list[dict[str, Any]]:
-        """Get relevant model examples based on category.
-
-        Args:
-            user_context: User description of desired model
-            data_profile: Data profile information
-            _category: Model category for targeted examples (reserved for future use)
+    def _get_available_knowledge_metadata(self) -> str:
+        """Get formatted knowledge metadata for LLM context.
 
         Returns:
-            List of relevant model examples
+            Formatted string with available knowledge information
         """
-        # For now, use existing example retrieval but we can enhance this
-        # to be category-aware in the future
-        examples = self.example_repository.retrieve_relevant_model_examples(
-            user_context, data_profile, max_examples=1
-        )
-        return [{"schema": ex.schema, "name": ex.name} for ex in examples]
+        return self.knowledge_loader.format_metadata_for_llm()
 
     async def _get_unified_data_profile(
         self, table_name: str, target_column: str | None = None

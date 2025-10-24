@@ -78,6 +78,33 @@ The ML Plan provides the following evaluation guidance (use as baseline):
 The user instruction above may build upon this plan or request modifications.
 
 {% endif %}
+{% if recommended_knowledge -%}
+## Recommended Evaluation Knowledge
+
+The following evaluation knowledge has been pre-loaded based on ML Plan recommendations:
+
+{{ recommended_knowledge }}
+
+**Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your evaluator specification.
+{% endif %}
+
+## Available Tools
+
+You have access to the following tools for exploration when needed:
+
+1. **database_query**: Execute read-only SQL queries to explore the data
+   - Use when you need to understand data distributions or verify dataset structure
+   - Only use if the trainer profile doesn't provide sufficient information
+
+2. **list_available_knowledge**: List all available evaluation knowledge documents
+   - Use when you need to see what other evaluation patterns are available
+   - Only use if the recommended knowledge above is insufficient
+
+3. **read_knowledge_content**: Read specific evaluation knowledge documents
+   - Use when you need additional evaluation guidance beyond what's provided above
+   - Only use if the recommended knowledge doesn't cover your specific needs
+
+**Tool Usage Guidance**: The recommended knowledge above should be sufficient for most cases. Only use these tools if you genuinely need additional information that isn't provided in the system message.
 
 ## Arc-Graph Evaluator Schema Validation
 

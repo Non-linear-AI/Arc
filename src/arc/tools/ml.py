@@ -83,7 +83,6 @@ class MLModelTool(BaseTool):
         data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
-        category: str | None = None,
         ml_plan: dict | None = None,
     ) -> ToolResult:
         """Generate Arc-Graph model specification via LLM.
@@ -94,7 +93,6 @@ class MLModelTool(BaseTool):
             data_table: Database table to profile for generation
             target_column: Target column for prediction
             auto_confirm: Skip confirmation workflows (for testing only)
-            category: Model category (classification, regression, etc.)
             ml_plan: Optional ML plan dict containing model_architecture_and_loss
                 guidance (SECONDARY baseline, automatically injected by the main agent)
 
@@ -190,14 +188,24 @@ class MLModelTool(BaseTool):
             self.model,
         )
 
+        # Extract knowledge IDs from instruction and ML Plan
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=instruction,
+            ml_plan_architecture=ml_plan_architecture,
+        )
+
         try:
-            model_spec, model_yaml = await agent.generate_model(
+            model_spec, model_yaml, conversation_history = await agent.generate_model(
                 name=str(name),
                 user_context=instruction,  # Use instruction as user_context
                 table_name=str(data_table),
                 target_column=target_column,
-                category=category,
                 ml_plan_architecture=ml_plan_architecture,
+                recommended_knowledge_ids=recommended_knowledge_ids,
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -228,7 +236,7 @@ class MLModelTool(BaseTool):
         if not auto_confirm:
             workflow = YamlConfirmationWorkflow(
                 validator_func=self._create_validator(),
-                editor_func=self._create_editor(instruction, category),
+                editor_func=self._create_editor(instruction),
                 ui_interface=self.ui,
                 yaml_type_name="model",
                 yaml_suffix=".arc-model.yaml",
@@ -238,7 +246,7 @@ class MLModelTool(BaseTool):
                 "model_name": str(name),
                 "table_name": str(data_table),
                 "target_column": target_column,
-                "category": category,
+                "recommended_knowledge_ids": recommended_knowledge_ids,
             }
 
             try:
@@ -246,6 +254,7 @@ class MLModelTool(BaseTool):
                     model_yaml,
                     context_dict,
                     None,  # No file path
+                    conversation_history,  # Pass conversation history for editing
                 )
                 if not proceed:
                     # Close the section before returning
@@ -325,22 +334,23 @@ class MLModelTool(BaseTool):
 
         return validate
 
-    def _create_editor(
-        self, user_context: str | None = None, category: str | None = None
-    ):
+    def _create_editor(self, user_context: str | None = None):
         """Create editor function for AI-assisted editing in the workflow.
 
         Args:
             user_context: User context description
-            category: Model category (optional)
 
         Returns:
-            Async function that edits YAML based on user feedback
+            Async function that edits YAML based on user feedback and returns
+            tuple of (edited_yaml, updated_conversation_history)
         """
 
         async def edit(
-            yaml_content: str, feedback: str, context: dict[str, Any]
-        ) -> str | None:
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
             agent = MLModelAgent(
                 self.services,
                 self.api_key,
@@ -349,20 +359,21 @@ class MLModelTool(BaseTool):
             )
 
             try:
-                _model_spec, edited_yaml = await agent.generate_model(
+                _model_spec, edited_yaml, updated_history = await agent.generate_model(
                     name=context["model_name"],
                     user_context=user_context or "",
                     table_name=context["table_name"],
                     target_column=context.get("target_column"),
-                    category=category,
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
+                    conversation_history=conversation_history,
                 )
-                return edited_yaml
+
+                return edited_yaml, updated_history
             except Exception as e:
                 if self.ui:
                     self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
-                return None
+                return None, None
 
         return edit
 
@@ -560,6 +571,16 @@ class MLTrainTool(BaseTool):
             plan = MLPlan.from_dict(ml_plan)
             ml_plan_training_config = plan.training_configuration
 
+        # Extract knowledge IDs from instruction and ML Plan
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=instruction,
+            ml_plan_architecture=ml_plan_training_config,
+        )
+
         # Generate trainer spec via LLM
         agent = MLTrainAgent(
             self.services,
@@ -569,12 +590,13 @@ class MLTrainTool(BaseTool):
         )
 
         try:
-            trainer_spec, trainer_yaml = await agent.generate_trainer(
+            trainer_spec, trainer_yaml, conversation_history = await agent.generate_trainer(
                 name=str(name),
                 instruction=str(instruction),
                 model_id=model_record.id,
                 model_spec_yaml=model_record.spec,
                 ml_plan_training_config=ml_plan_training_config,
+                recommended_knowledge_ids=recommended_knowledge_ids,
             )
         except Exception as exc:
             from arc.core.agents.ml_train import MLTrainError
@@ -643,6 +665,7 @@ class MLTrainTool(BaseTool):
                     trainer_yaml,
                     context_dict,
                     None,  # No output path - we register to DB
+                    conversation_history,  # Pass conversation history for editing
                 )
                 if not proceed:
                     # Close the section before returning
@@ -1089,11 +1112,24 @@ class MLTrainTool(BaseTool):
         return validate
 
     def _create_editor(self, _user_instruction: str, model_record):
-        """Create editor function for AI-assisted editing."""
+        """Create editor function for AI-assisted editing with conversation history."""
 
         async def edit(
-            yaml_content: str, feedback: str, context: dict[str, Any]
-        ) -> str | None:
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            # Extract knowledge IDs from feedback
+            from arc.core.agents.shared.knowledge_selector import (
+                extract_knowledge_ids_from_text,
+            )
+
+            recommended_knowledge_ids = extract_knowledge_ids_from_text(
+                instruction=feedback,
+                ml_plan_architecture=None,
+            )
+
             agent = MLTrainAgent(
                 self.services,
                 self.api_key,
@@ -1102,18 +1138,20 @@ class MLTrainTool(BaseTool):
             )
 
             try:
-                _trainer_spec, edited_yaml = await agent.generate_trainer(
+                _trainer_spec, edited_yaml, updated_history = await agent.generate_trainer(
                     name=context["trainer_name"],
                     instruction=feedback,
                     model_id=model_record.id,
                     model_spec_yaml=model_record.spec,
                     existing_yaml=yaml_content,
+                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    conversation_history=conversation_history,
                 )
-                return edited_yaml
+                return edited_yaml, updated_history
             except Exception as e:
                 if self.ui:
                     self.ui.show_system_error(f"❌ Edit failed: {e}")
-                return None
+                return None, None
 
         return edit
 
@@ -1314,6 +1352,16 @@ class MLEvaluateTool(BaseTool):
             plan = MLPlan.from_dict(ml_plan)
             ml_plan_evaluation = plan.evaluation
 
+        # Extract knowledge IDs from instruction and ML Plan
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=instruction,
+            ml_plan_architecture=ml_plan_evaluation,
+        )
+
         # Generate evaluator spec via LLM
         from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
@@ -1325,7 +1373,7 @@ class MLEvaluateTool(BaseTool):
         )
 
         try:
-            evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
+            evaluator_spec, evaluator_yaml, conversation_history = await agent.generate_evaluator(
                 name=str(name),
                 instruction=str(instruction),
                 trainer_ref=str(trainer_id),
@@ -1334,6 +1382,7 @@ class MLEvaluateTool(BaseTool):
                 target_column=str(target_column),
                 target_column_exists=target_column_exists,
                 ml_plan_evaluation=ml_plan_evaluation,
+                recommended_knowledge_ids=recommended_knowledge_ids,
             )
         except Exception as exc:
             from arc.core.agents.ml_evaluate import MLEvaluateError
@@ -1398,6 +1447,7 @@ class MLEvaluateTool(BaseTool):
                     evaluator_yaml,
                     context_dict,
                     None,  # No output path - we register to DB
+                    conversation_history,  # Pass conversation history for editing
                 )
                 if not proceed:
                     # Close the section before returning
@@ -1745,11 +1795,24 @@ class MLEvaluateTool(BaseTool):
         trainer_record,
         target_column_exists: bool,
     ):
-        """Create editor function for AI-assisted editing."""
+        """Create editor function for AI-assisted editing with conversation history."""
 
         async def edit(
-            yaml_content: str, feedback: str, context: dict[str, Any]
-        ) -> str | None:
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            # Extract knowledge IDs from feedback
+            from arc.core.agents.shared.knowledge_selector import (
+                extract_knowledge_ids_from_text,
+            )
+
+            recommended_knowledge_ids = extract_knowledge_ids_from_text(
+                instruction=feedback,
+                ml_plan_architecture=None,
+            )
+
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
             agent = MLEvaluateAgent(
@@ -1760,7 +1823,7 @@ class MLEvaluateTool(BaseTool):
             )
 
             try:
-                _evaluator_spec, edited_yaml = await agent.generate_evaluator(
+                _evaluator_spec, edited_yaml, updated_history = await agent.generate_evaluator(
                     name=context["evaluator_name"],
                     instruction=feedback,
                     trainer_ref=trainer_id,
@@ -1769,12 +1832,14 @@ class MLEvaluateTool(BaseTool):
                     target_column=context["target_column"],
                     target_column_exists=target_column_exists,
                     existing_yaml=yaml_content,
+                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    conversation_history=conversation_history,
                 )
-                return edited_yaml
+                return edited_yaml, updated_history
             except Exception as e:
                 if self.ui:
                     self.ui.show_system_error(f"❌ Edit failed: {e}")
-                return None
+                return None, None
 
         return edit
 
@@ -2051,6 +2116,16 @@ class MLEvaluatorGeneratorTool(BaseTool):
             self.ui.show_info(f"ℹ Using registered trainer: {trainer_record.id}")
             self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
 
+        # Extract knowledge IDs from context
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=context,
+            ml_plan_architecture=None,
+        )
+
         from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
         agent = MLEvaluateAgent(
@@ -2061,14 +2136,15 @@ class MLEvaluatorGeneratorTool(BaseTool):
         )
 
         try:
-            evaluator_spec, evaluator_yaml = await agent.generate_evaluator(
+            evaluator_spec, evaluator_yaml, conversation_history = await agent.generate_evaluator(
                 name=str(name),
-                user_context=str(context),
+                instruction=str(context),
                 trainer_ref=str(trainer_id),
                 trainer_spec_yaml=trainer_record.spec,
                 dataset=str(data_table),
                 target_column=str(target_column),
                 target_column_exists=target_column_exists,
+                recommended_knowledge_ids=recommended_knowledge_ids,
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -2130,6 +2206,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                     evaluator_yaml,
                     context_dict,
                     None,  # No output path - we register to DB
+                    conversation_history,  # Pass conversation history for editing
                 )
                 if not proceed:
                     return ToolResult(
@@ -2220,15 +2297,29 @@ class MLEvaluatorGeneratorTool(BaseTool):
         return validate
 
     def _create_editor(self):
-        """Create editor function for AI-assisted editing in the workflow.
+        """Create editor function for AI-assisted editing with conversation history.
 
         Returns:
-            Async function that edits YAML based on user feedback
+            Async function that edits YAML based on user feedback and returns
+            tuple of (edited_yaml, updated_conversation_history)
         """
 
         async def edit(
-            yaml_content: str, feedback: str, context: dict[str, Any]
-        ) -> str | None:
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            # Extract knowledge IDs from feedback
+            from arc.core.agents.shared.knowledge_selector import (
+                extract_knowledge_ids_from_text,
+            )
+
+            recommended_knowledge_ids = extract_knowledge_ids_from_text(
+                instruction=feedback,
+                ml_plan_architecture=None,
+            )
+
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
             agent = MLEvaluateAgent(
@@ -2239,21 +2330,23 @@ class MLEvaluatorGeneratorTool(BaseTool):
             )
 
             try:
-                _evaluator_spec, edited_yaml = await agent.generate_evaluator(
+                _evaluator_spec, edited_yaml, updated_history = await agent.generate_evaluator(
                     name=context["evaluator_name"],
-                    user_context=context["context"],
+                    instruction=feedback,
                     trainer_ref=context["trainer_ref"],
                     trainer_spec_yaml=context["trainer_spec_yaml"],
                     dataset=context["dataset"],
                     target_column=context["target_column"],
+                    target_column_exists=context.get("target_column_exists", True),
                     existing_yaml=yaml_content,
-                    editing_instructions=feedback,
+                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    conversation_history=conversation_history,
                 )
-                return edited_yaml
+                return edited_yaml, updated_history
             except Exception as e:
                 if self.ui:
                     self.ui.show_system_error(f"❌ Edit failed: {e}")
-                return None
+                return None, None
 
         return edit
 
@@ -2285,6 +2378,7 @@ class MLPlanTool(BaseTool):
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
         conversation_history: str | None = None,  # noqa: ARG002
+        verbose: bool = False,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -2328,6 +2422,7 @@ class MLPlanTool(BaseTool):
                 self.api_key,
                 self.base_url,
                 self.model,
+                verbose=verbose,
             )
 
             try:
@@ -2368,9 +2463,6 @@ class MLPlanTool(BaseTool):
             self._ml_plan_section = self.ui._printer.section(color="cyan", add_dot=True)
             ml_plan_section_printer = self._ml_plan_section.__enter__()
             ml_plan_section_printer.print("ML Plan")
-            ml_plan_section_printer.print(
-                "[dim]Analyzing problem and creating comprehensive plan...[/dim]"
-            )
 
         # Helper to print progress messages within the section
         def _progress_callback(message: str):
@@ -2383,6 +2475,7 @@ class MLPlanTool(BaseTool):
             self.base_url,
             self.model,
             progress_callback=_progress_callback if ml_plan_section_printer else None,
+            verbose=verbose,
         )
 
         try:
@@ -2405,12 +2498,6 @@ class MLPlanTool(BaseTool):
 
             while True:
                 try:
-                    # Show progress message
-                    if ml_plan_section_printer:
-                        ml_plan_section_printer.print(
-                            "[dim]• Analyzing data profiles and patterns...[/dim]"
-                        )
-
                     # Generate the plan (pass source_tables as comma-separated string)
                     analysis = await agent.analyze_problem(
                         user_context=str(current_instruction),
@@ -2423,9 +2510,7 @@ class MLPlanTool(BaseTool):
 
                     # Show completion message
                     if ml_plan_section_printer:
-                        ml_plan_section_printer.print(
-                            "[dim]• Plan generation complete[/dim]"
-                        )
+                        ml_plan_section_printer.print("✓ Plan generated successfully")
 
                     # Determine stage
                     if previous_plan:
@@ -2511,16 +2596,23 @@ class MLPlanTool(BaseTool):
                         # Continue loop to generate revised plan
                         continue
                     elif choice == "cancel":
-                        # Close the section before returning
+                        # Print cancellation message inside section
+                        if ml_plan_section_printer:
+                            ml_plan_section_printer.print(
+                                "ML plan cancelled. What would you like to do instead?"
+                            )
+                        # Close the section
                         if hasattr(self, "_ml_plan_section"):
                             self._ml_plan_section.__exit__(None, None, None)
-                        # Return to main agent with prompt
+                        # Return to main agent with context message
+                        # (Message already displayed in section,
+                        # but agent needs context)
                         return ToolResult(
                             success=True,
                             output=(
                                 "ML plan cancelled. What would you like to do instead?"
                             ),
-                            metadata={"cancelled": True},
+                            metadata={"cancelled": True, "suppress_output": True},
                         )
                 else:
                     # Headless mode - auto-accept
