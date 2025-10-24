@@ -106,10 +106,9 @@ class MLDataAgent(BaseAgent):
         """
         try:
             # Get schema information for available tables
-            # Skip row counts in edit mode for faster response
-            is_edit_mode = existing_yaml is not None
+            # Skip row counts for faster response (they're cosmetic and not needed by LLM)
             schema_info = await self._get_schema_context(
-                source_tables, database, include_row_counts=not is_edit_mode
+                source_tables, database, include_row_counts=False
             )
 
             # Pre-load recommended knowledge content
