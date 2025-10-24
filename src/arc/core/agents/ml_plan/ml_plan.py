@@ -49,14 +49,6 @@ class MLPlanAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
-    def get_template_name(self) -> str:
-        """Get the name of the template file.
-
-        Returns:
-            Template filename relative to the template directory
-        """
-        return "base.j2"
-
     async def analyze_problem(
         self,
         user_context: str,

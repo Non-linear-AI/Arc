@@ -45,14 +45,6 @@ class MLModelAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
-    def get_template_name(self) -> str:
-        """Get the name of the template file.
-
-        Returns:
-            Template filename relative to the template directory
-        """
-        return "base.j2"
-
     async def generate_model(
         self,
         name: str,
@@ -153,7 +145,7 @@ class MLModelAgent(BaseAgent):
 
         # Build system message with all context
         system_message = self._render_template(
-            "base.j2",
+            self.get_template_name(),
             {
                 "model_name": name,
                 "user_intent": user_context,
