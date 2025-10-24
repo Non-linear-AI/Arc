@@ -106,7 +106,11 @@ Your output must validate against this Arc-Graph schema:
 
 ### **Input Design**
 
-Define how data enters your model. Use the available columns to create meaningful input tensors:
+**CRITICAL**: You MUST use the EXACT column names as they appear in the available columns list. Do not modify, abbreviate, or invent column names.
+
+**Available Columns**: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }}
+
+Define how data enters your model. Use these available columns to create meaningful input tensors:
 
 **Single Input Pattern** (all columns together):
 ```yaml
@@ -132,9 +136,9 @@ inputs:
 ```
 
 **Input Guidelines**:
+- Use EXACT column names from the available columns list above
 - Group columns by semantic meaning (demographics, financial, behavioral, etc.)
 - Use descriptive input names that reflect the data content
-- Only use columns from the provided list: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }}
 - Choose shapes that match your column groupings
 
 ### **Graph Design**
@@ -257,7 +261,7 @@ You have access to the following tools for exploration when needed:
 ## Requirements
 1. **Schema Compliance**: Valid Arc-Graph YAML structure
 2. **Node Names**: Use descriptive names appropriate for the task
-3. **Input Specification**: Only use columns from the provided list: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }}
+3. **Input Specification**: Use EXACT column names from available columns (see Input Design section)
 4. **Complete Structure**: inputs → graph → outputs → loss (loss section required)
 5. **Loss Function**: {% if data_profile.target_analysis %}Include appropriate loss based on target analysis ({{ data_profile.target_analysis.unique_values }} unique values){% else %}Include appropriate loss function for the task{% endif %}
 6. **Follow Guidance**: If architecture guidance is provided above, follow those best practices
