@@ -210,6 +210,7 @@ Your output must validate against this Arc-Graph evaluator schema:
 - ❌ Markdown code fences (```yaml or ```)
 - ❌ Conversational preamble ("Here's the evaluator...")
 - ❌ Any text that is not valid YAML
+- ❌ Comments or descriptions before the YAML
 
 {% if target_column_exists -%}
 **CORRECT** response format (WITH metrics - target column exists):
@@ -249,10 +250,18 @@ target_column: {{ target_column }}
 ❌ I'll create the evaluator for you:
    name: {{ evaluator_name }}
    ...
+
+❌ Based on the ML Plan guidance and trainer analysis:
+   name: {{ evaluator_name }}
+   ...
 ```
 
 {% if existing_yaml -%}
-Begin your response with the first line of the YAML (the updated evaluator specification):
+**REMINDER**: Your response MUST start with "name: {{ evaluator_name }}" - no text before it!
+
+Begin your response with exactly this: name: {{ evaluator_name }}
 {% else -%}
-Begin your response with the first line of the YAML:
+**REMINDER**: Your response MUST start with "name: {{ evaluator_name }}" - no text before it!
+
+Begin your response with exactly this: name: {{ evaluator_name }}
 {% endif %}

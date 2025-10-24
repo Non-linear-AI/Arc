@@ -302,6 +302,7 @@ config:
 - ❌ Markdown code fences (```yaml or ```)
 - ❌ Conversational preamble ("Here's the configuration...")
 - ❌ Any text that is not valid YAML
+- ❌ Comments or descriptions before the YAML
 
 **CORRECT** response format:
 ```
@@ -330,10 +331,17 @@ config:
 
 ❌ Sure, I'll create the trainer:
    model_ref: ...
+
+❌ Based on the requirements (epochs: 100, batch_size: 32):
+   model_ref: ...
 ```
 
 {% if existing_yaml -%}
-Begin your response with the first line of the YAML (the updated trainer specification):
+**REMINDER**: Your response MUST start with "model_ref: {{ model_id }}" - no text before it!
+
+Begin your response with exactly this: model_ref: {{ model_id }}
 {% else -%}
-Begin your response with the first line of the YAML:
+**REMINDER**: Your response MUST start with "model_ref: {{ model_id }}" - no text before it!
+
+Begin your response with exactly this: model_ref: {{ model_id }}
 {% endif %}

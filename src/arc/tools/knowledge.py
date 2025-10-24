@@ -71,7 +71,12 @@ class ReadKnowledgeTool(BaseTool):
 
         # Build header with metadata (dim style for UI consistency)
         if metadata:
-            header = f"[dim]▸ Using knowledge: {metadata.name}[/dim]\n\n"
+            header_parts = [f"[dim]▸ Using knowledge: {metadata.name}[/dim]"]
+            if metadata.type:
+                header_parts.append(f"[dim]  Type: {metadata.type}[/dim]")
+            if metadata.description:
+                header_parts.append(f"[dim]  {metadata.description}[/dim]")
+            header = "\n".join(header_parts) + "\n\n"
         else:
             header = f"[dim]▸ Using knowledge: {knowledge_id}[/dim]\n\n"
 
