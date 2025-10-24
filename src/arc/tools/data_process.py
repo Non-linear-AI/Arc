@@ -437,10 +437,12 @@ class MLDataProcessTool(BaseTool):
                 yaml_content: Current YAML content
                 feedback: User feedback describing desired changes
                 context: Context dictionary with generation parameters
-                conversation_history: Optional conversation history for continuing conversation
+                conversation_history: Optional conversation history for
+                    continuing conversation
 
             Returns:
-                Tuple of (edited_yaml, updated_conversation_history) or (None, None) if failed
+                Tuple of (edited_yaml, updated_conversation_history) or
+                (None, None) if failed
             """
             try:
                 # Call the generator agent with conversation history

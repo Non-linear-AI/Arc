@@ -101,12 +101,13 @@ class MLDataAgent(BaseAgent):
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
-        This path is used for initial generation or when starting a new conversation.
-        It builds the complete system message with schema discovery and knowledge loading.
+        This path is used for initial generation or when starting a
+        new conversation. It builds the complete system message with
+        schema discovery and knowledge loading.
         """
         try:
             # Get schema information for available tables
-            # Skip row counts for faster response (they're cosmetic and not needed by LLM)
+            # Skip row counts for faster response (cosmetic, not needed by LLM)
             schema_info = await self._get_schema_context(
                 source_tables, database, include_row_counts=False
             )
@@ -215,7 +216,9 @@ class MLDataAgent(BaseAgent):
                 tools=tools,
                 tool_executor=self._execute_ml_tool,
                 validator_func=self._validate_data_processing_comprehensive,
-                validation_context={"schema_info": None},  # Already in conversation history
+                validation_context={
+                    "schema_info": None
+                },  # Already in conversation history
                 max_iterations=3,
                 conversation_history=conversation_history,
             )

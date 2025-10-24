@@ -245,7 +245,8 @@ class YamlConfirmationWorkflow:
             initial_yaml: Initial YAML content to confirm
             context: Context dictionary for editing (passed to editor_func)
             output_path: Optional output file path for display
-            initial_conversation_history: Optional conversation history from initial generation
+            initial_conversation_history: Optional conversation history from
+                initial generation
 
         Returns:
             Tuple of (approved: bool, final_yaml: str)
@@ -253,7 +254,9 @@ class YamlConfirmationWorkflow:
         yaml_content = initial_yaml
 
         # Save initial state with conversation history
-        self.state_manager.save_yaml(yaml_content, context, initial_conversation_history)
+        self.state_manager.save_yaml(
+            yaml_content, context, initial_conversation_history
+        )
 
         while True:
             # Display preview
@@ -376,10 +379,12 @@ class YamlConfirmationWorkflow:
         Args:
             yaml_content: Current YAML content
             context: Context dictionary
-            conversation_history: Optional conversation history for continuing conversation
+            conversation_history: Optional conversation history for
+                continuing conversation
 
         Returns:
-            Tuple of (edited_yaml, updated_conversation_history) or (None, None) if cancelled
+            Tuple of (edited_yaml, updated_conversation_history) or
+            (None, None) if cancelled
         """
         # Collect user feedback
         if self.ui:

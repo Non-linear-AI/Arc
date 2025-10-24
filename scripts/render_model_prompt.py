@@ -67,7 +67,8 @@ async def render_model_prompt():
     )
 
     # Sample parameters matching the user's command:
-    # /ml model --instruction "predict outcome in pidd" --name test --data-table pidd --target-column outcome
+    # /ml model --instruction "predict outcome in pidd" --name test \
+    #   --data-table pidd --target-column outcome
     name = "test"
     user_context = "predict outcome in pidd"
     table_name = "pidd"
@@ -88,7 +89,10 @@ async def render_model_prompt():
             "data_profile": data_profile,
             "available_components": available_components,
             "ml_plan_architecture": None,
-            "recommended_knowledge": "\n\n# Architecture Knowledge: mlp\n\n[MLP knowledge content would be here]",
+            "recommended_knowledge": (
+                "\n\n# Architecture Knowledge: mlp\n\n"
+                "[MLP knowledge content would be here]"
+            ),
             "existing_yaml": None,
             "editing_instructions": None,
             "is_editing": False,

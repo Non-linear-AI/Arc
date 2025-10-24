@@ -56,14 +56,19 @@ inputs:
     print("=" * 80)
     print("Test 3: Preamble text before code fence (THE BUG)")
     print("=" * 80)
-    response3 = """Here's the Arc-Graph model specification for predicting diabetes outcome:
+    response3 = (
+        ("Here's the Arc-Graph model specification for predicting diabetes outcome:")
+        + """
 
 ```yaml
 inputs:
   features:
     dtype: float32
     shape: [null, 8]
-    columns: [pregnancies, glucose, blood_pressure, skin_thickness, insulin, bmi, diabetes_pedigree, age]
+    columns: [
+      pregnancies, glucose, blood_pressure, skin_thickness,
+      insulin, bmi, diabetes_pedigree, age
+    ]
 
 graph:
   - name: hidden1
@@ -82,6 +87,7 @@ loss:
     input: prediction
     target: outcome
 ```"""
+    )
 
     cleaned3 = agent._clean_llm_response(response3)
     print(f"Input:\n{response3}\n")
@@ -89,7 +95,8 @@ loss:
 
     if "```" in cleaned3:
         print("✗ FAIL: Code fences still present in output!")
-        print(f"First line with backticks: {[line for line in cleaned3.split('\\n') if '```' in line][0]}")
+        backtick_lines = [line for line in cleaned3.split("\n") if "```" in line]
+        print(f"First line with backticks: {backtick_lines[0]}")
         return False
     else:
         print("✓ PASS\n")
@@ -161,5 +168,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n✗ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

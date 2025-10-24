@@ -161,7 +161,7 @@ class ArcTrainer:
             return loss_fn_class
         else:
             # Class-based loss - instantiate with automatic parameter conversion
-            # Automatically converts params based on type annotations (e.g., float -> Tensor)
+            # Converts params using type annotations (e.g., float -> Tensor)
             converted_params = convert_params_for_pytorch_module(
                 loss_fn_class, loss_params
             )
