@@ -23,6 +23,8 @@ related_knowledge:
 # Availability
 phases:
   - model
+  - train
+  - evaluate
 
 # Metadata
 complexity: intermediate

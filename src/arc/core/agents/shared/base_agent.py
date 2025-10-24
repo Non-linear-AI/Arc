@@ -183,12 +183,13 @@ class BaseAgent(abc.ABC):
         )
 
     def _clean_llm_response(self, response: str) -> str:
-        """Clean up LLM response by removing markdown code blocks.
+        """Clean up LLM response by removing markdown code blocks and preamble text.
 
         Handles multiple cases:
         1. Code fences at start/end of response
         2. Preamble text before code fence
         3. Explanatory text after code fence
+        4. Preamble text without code fences (detect YAML start)
 
         Args:
             response: Raw LLM response
@@ -221,7 +222,28 @@ class BaseAgent(abc.ABC):
                 # No closing fence, take everything after opening
                 return content[start:].strip()
 
-        # Case 3: No code fences, return as-is
+        # Case 3: No code fences, but detect preamble before YAML
+        # Look for common YAML starting patterns
+        lines = content.split("\n")
+        yaml_start_idx = None
+
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            # Check if line looks like a YAML key-value pair or list item
+            if stripped and (
+                # YAML key-value: "key:" or "key: value"
+                (":" in stripped and not stripped.startswith("#"))
+                # YAML list item: "- item"
+                or stripped.startswith("- ")
+            ):
+                yaml_start_idx = idx
+                break
+
+        if yaml_start_idx is not None and yaml_start_idx > 0:
+            # Found preamble, remove it
+            return "\n".join(lines[yaml_start_idx:]).strip()
+
+        # Case 4: No code fences, no preamble detected, return as-is
         return content
 
     def _validate_yaml_syntax(self, yaml_content: str) -> dict[str, Any]:

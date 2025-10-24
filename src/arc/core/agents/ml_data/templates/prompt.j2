@@ -213,7 +213,7 @@ steps:
     depends_on: [drop_old, users]
     sql: SELECT user_id FROM "users" ...
 
-outputs: [user_features]
+outputs: [user_features]  # REQUIRED: List all table steps here
 ```
 
 **INCORRECT** response formats:

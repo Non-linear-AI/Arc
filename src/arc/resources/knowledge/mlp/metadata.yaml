@@ -5,5 +5,7 @@ description: "Feedforward neural network with fully connected layers for tabular
 problem_type: general
 phases:
   - model
+  - train
+  - evaluate
 complexity: basic
 domain: general
