@@ -5,7 +5,6 @@
   * **Layer Sizing**: Start with a hidden layer 2-4x the input size, then gradually decrease (e.g., 128 → 64 → 32).
   * **Regularization**: Use **`BatchNorm1d`** after linear layers to stabilize training. **`Dropout`** can help prevent overfitting in complex datasets or deeper networks.
   * **Activations**: **`ReLU`** is a robust default. Consider **`GELU`** or **`SiLU`** for deeper networks.
-  * **Dual Outputs**: Provide both raw **logits** (for training loss) and **probabilities** (for inference/prediction).
 
 -----
 
@@ -37,6 +36,8 @@ graph:
     params: { in_features: 64, out_features: 1 }
     inputs: { input: activation.output }
 
+  # Note: binary_cross_entropy_with_logits applies sigmoid internally for training,
+  # but we need explicit sigmoid output for evaluation/inference
   - name: probabilities
     type: torch.nn.functional.sigmoid
     inputs: { input: output_layer.output }

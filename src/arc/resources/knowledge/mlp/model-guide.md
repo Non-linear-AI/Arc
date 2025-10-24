@@ -31,47 +31,56 @@ inputs:
     columns: [feature1, feature2, ...]
 
 graph:
-  - id: hidden1
+  - name: hidden1
     type: torch.nn.Linear
-    inputs: [features]
     params:
       in_features: N
       out_features: 128
+    inputs: { input: features }
 
-  - id: relu1
-    type: torch.nn.ReLU
-    inputs: [hidden1]
+  - name: relu1
+    type: torch.nn.functional.relu
+    inputs: { input: hidden1.output }
 
-  - id: dropout1
+  - name: dropout1
     type: torch.nn.Dropout
-    inputs: [relu1]
     params:
       p: 0.3
+    inputs: { input: relu1.output }
 
-  - id: hidden2
+  - name: hidden2
     type: torch.nn.Linear
-    inputs: [dropout1]
     params:
       in_features: 128
       out_features: 64
+    inputs: { input: dropout1.output }
 
-  - id: relu2
-    type: torch.nn.ReLU
-    inputs: [hidden2]
+  - name: relu2
+    type: torch.nn.functional.relu
+    inputs: { input: hidden2.output }
 
-  - id: output
+  - name: output_layer
     type: torch.nn.Linear
-    inputs: [relu2]
     params:
       in_features: 64
       out_features: 1
+    inputs: { input: relu2.output }
+
+  # Note: binary_cross_entropy_with_logits applies sigmoid internally for training,
+  # but we need explicit sigmoid output for evaluation/inference
+  - name: probabilities
+    type: torch.nn.functional.sigmoid
+    inputs: { input: output_layer.output }
 
 outputs:
-  prediction:
-    node: output
+  logits: output_layer.output
+  probabilities: probabilities.output
 
 loss:
-  type: torch.nn.BCEWithLogitsLoss
+  type: torch.nn.functional.binary_cross_entropy_with_logits
+  inputs:
+    input: logits
+    target: target_column
 ```
 
 ### 2. Multi-Class Classification MLP
@@ -84,58 +93,67 @@ inputs:
     columns: [feature1, feature2, ...]
 
 graph:
-  - id: hidden1
+  - name: hidden1
     type: torch.nn.Linear
-    inputs: [features]
     params:
       in_features: N
       out_features: 256
+    inputs: { input: features }
 
-  - id: relu1
-    type: torch.nn.ReLU
-    inputs: [hidden1]
+  - name: relu1
+    type: torch.nn.functional.relu
+    inputs: { input: hidden1.output }
 
-  - id: dropout1
+  - name: dropout1
     type: torch.nn.Dropout
-    inputs: [relu1]
     params:
       p: 0.3
+    inputs: { input: relu1.output }
 
-  - id: hidden2
+  - name: hidden2
     type: torch.nn.Linear
-    inputs: [dropout1]
     params:
       in_features: 256
       out_features: 128
+    inputs: { input: dropout1.output }
 
-  - id: relu2
-    type: torch.nn.ReLU
-    inputs: [hidden2]
+  - name: relu2
+    type: torch.nn.functional.relu
+    inputs: { input: hidden2.output }
 
-  - id: hidden3
+  - name: hidden3
     type: torch.nn.Linear
-    inputs: [relu2]
     params:
       in_features: 128
       out_features: 64
+    inputs: { input: relu2.output }
 
-  - id: relu3
-    type: torch.nn.ReLU
-    inputs: [hidden3]
+  - name: relu3
+    type: torch.nn.functional.relu
+    inputs: { input: hidden3.output }
 
-  - id: output
+  - name: output_layer
     type: torch.nn.Linear
-    inputs: [relu3]
     params:
       in_features: 64
       out_features: num_classes  # Number of classes
+    inputs: { input: relu3.output }
+
+  - name: probabilities
+    type: torch.nn.functional.softmax
+    params:
+      dim: 1
+    inputs: { input: output_layer.output }
 
 outputs:
-  prediction:
-    node: output
+  logits: output_layer.output
+  probabilities: probabilities.output
 
 loss:
-  type: torch.nn.CrossEntropyLoss
+  type: torch.nn.functional.cross_entropy
+  inputs:
+    input: logits
+    target: target_column
 ```
 
 ### 3. Regression MLP
@@ -148,41 +166,43 @@ inputs:
     columns: [feature1, feature2, ...]
 
 graph:
-  - id: hidden1
+  - name: hidden1
     type: torch.nn.Linear
-    inputs: [features]
     params:
       in_features: N
       out_features: 128
+    inputs: { input: features }
 
-  - id: relu1
-    type: torch.nn.ReLU
-    inputs: [hidden1]
+  - name: relu1
+    type: torch.nn.functional.relu
+    inputs: { input: hidden1.output }
 
-  - id: hidden2
+  - name: hidden2
     type: torch.nn.Linear
-    inputs: [relu1]
     params:
       in_features: 128
       out_features: 64
+    inputs: { input: relu1.output }
 
-  - id: relu2
-    type: torch.nn.ReLU
-    inputs: [hidden2]
+  - name: relu2
+    type: torch.nn.functional.relu
+    inputs: { input: hidden2.output }
 
-  - id: output
+  - name: output_layer
     type: torch.nn.Linear
-    inputs: [relu2]
     params:
       in_features: 64
       out_features: 1
+    inputs: { input: relu2.output }
 
 outputs:
-  prediction:
-    node: output
+  prediction: output_layer.output
 
 loss:
-  type: torch.nn.MSELoss
+  type: torch.nn.functional.mse_loss
+  inputs:
+    input: prediction
+    target: target_column
 ```
 
 ## Configuration Guidelines
@@ -324,7 +344,7 @@ Categorical features should be encoded before the model:
 
 ## Example: PIDD Diabetes Prediction
 
-For a diabetes prediction task with 8 features:
+For a diabetes prediction task with 8 features (binary classification):
 
 ```yaml
 inputs:
@@ -335,48 +355,65 @@ inputs:
               insulin, bmi, diabetes_pedigree, age]
 
 graph:
-  - id: hidden1
+  - name: hidden1
     type: torch.nn.Linear
-    inputs: [features]
     params:
       in_features: 8
       out_features: 64
+    inputs: { input: features }
 
-  - id: relu1
-    type: torch.nn.ReLU
-    inputs: [hidden1]
+  - name: relu1
+    type: torch.nn.functional.relu
+    inputs: { input: hidden1.output }
 
-  - id: dropout1
+  - name: dropout1
     type: torch.nn.Dropout
-    inputs: [relu1]
     params:
       p: 0.3
+    inputs: { input: relu1.output }
 
-  - id: hidden2
+  - name: hidden2
     type: torch.nn.Linear
-    inputs: [dropout1]
     params:
       in_features: 64
       out_features: 32
+    inputs: { input: dropout1.output }
 
-  - id: relu2
-    type: torch.nn.ReLU
-    inputs: [hidden2]
+  - name: relu2
+    type: torch.nn.functional.relu
+    inputs: { input: hidden2.output }
 
-  - id: output
+  - name: output_layer
     type: torch.nn.Linear
-    inputs: [relu2]
     params:
       in_features: 32
       out_features: 1
+    inputs: { input: relu2.output }
+
+  # Note: binary_cross_entropy_with_logits applies sigmoid internally for training,
+  # but we need explicit sigmoid output for evaluation/inference
+  - name: probabilities
+    type: torch.nn.functional.sigmoid
+    inputs: { input: output_layer.output }
 
 outputs:
-  prediction:
-    node: output
+  logits: output_layer.output
+  probabilities: probabilities.output
 
 loss:
-  type: torch.nn.BCEWithLogitsLoss
-  target_columns: [outcome]
+  type: torch.nn.functional.binary_cross_entropy_with_logits
+  inputs:
+    input: logits
+    target: outcome
+```
+
+**Example Optimizer Configuration**:
+```yaml
+optimizer:
+  type: torch.optim.AdamW
+  lr: 0.001
+  params:
+    weight_decay: 0.01
 ```
 
 ## When to Use MLP

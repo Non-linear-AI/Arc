@@ -69,16 +69,11 @@ class ReadKnowledgeTool(BaseTool):
         metadata_map = self.knowledge_loader.scan_metadata()
         metadata = metadata_map.get(knowledge_id)
 
-        # Build header with metadata
+        # Build header with metadata (dim style for UI consistency)
         if metadata:
-            header_parts = [f"▸ Using knowledge: {metadata.name} ({knowledge_id})"]
-            if metadata.type:
-                header_parts.append(f"Type: {metadata.type}")
-            if metadata.description:
-                header_parts.append(f"Description: {metadata.description}")
-            header = " - ".join(header_parts) + "\n\n"
+            header = f"[dim]▸ Using knowledge: {metadata.name}[/dim]\n\n"
         else:
-            header = f"▸ Using knowledge: {knowledge_id}\n\n"
+            header = f"[dim]▸ Using knowledge: {knowledge_id}[/dim]\n\n"
 
         output = header + content
 

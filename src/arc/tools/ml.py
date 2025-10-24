@@ -257,12 +257,18 @@ class MLModelTool(BaseTool):
                     conversation_history,  # Pass conversation history for editing
                 )
                 if not proceed:
+                    # Show cancellation message before closing section
+                    if ml_model_section_printer:
+                        ml_model_section_printer.print("")  # Empty line
+                        ml_model_section_printer.print(
+                            "[dim]✗ Model generation cancelled by user.[/dim]"
+                        )
                     # Close the section before returning
                     if self.ui and hasattr(self, "_ml_model_section"):
                         self._ml_model_section.__exit__(None, None, None)
                     return ToolResult(
                         success=True,
-                        output="✗ Model generation cancelled by user.",
+                        output="Model generation cancelled by user.",
                         metadata={"cancelled": True},
                     )
                 model_yaml = final_yaml
