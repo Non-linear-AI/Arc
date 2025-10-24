@@ -257,7 +257,11 @@ class BaseAgent(abc.ABC):
             if stripped.startswith("- "):
                 # Make sure it's not a markdown list with formatting
                 list_content = stripped[2:].strip()
-                if list_content and "**" not in list_content and "`" not in list_content:
+                if (
+                    list_content
+                    and "**" not in list_content
+                    and "`" not in list_content
+                ):
                     yaml_start_idx = idx
                     break
 

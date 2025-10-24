@@ -184,7 +184,11 @@ class MLTrainAgent(BaseAgent):
 
         # Generate with multi-turn tool support
         try:
-            trainer_spec, trainer_yaml, conversation_history = await self._generate_with_tools(
+            (
+                trainer_spec,
+                trainer_yaml,
+                conversation_history,
+            ) = await self._generate_with_tools(
                 system_message=system_message,
                 user_message=user_message,
                 tools=tools,
@@ -218,7 +222,11 @@ class MLTrainAgent(BaseAgent):
 
         # Continue conversation with feedback
         try:
-            trainer_spec, trainer_yaml, updated_history = await self._generate_with_tools(
+            (
+                trainer_spec,
+                trainer_yaml,
+                updated_history,
+            ) = await self._generate_with_tools(
                 system_message="",  # Not used - already in conversation_history
                 user_message=feedback,
                 tools=tools,

@@ -596,7 +596,11 @@ class MLTrainTool(BaseTool):
         )
 
         try:
-            trainer_spec, trainer_yaml, conversation_history = await agent.generate_trainer(
+            (
+                trainer_spec,
+                trainer_yaml,
+                conversation_history,
+            ) = await agent.generate_trainer(
                 name=str(name),
                 instruction=str(instruction),
                 model_id=model_record.id,
@@ -1144,7 +1148,11 @@ class MLTrainTool(BaseTool):
             )
 
             try:
-                _trainer_spec, edited_yaml, updated_history = await agent.generate_trainer(
+                (
+                    _trainer_spec,
+                    edited_yaml,
+                    updated_history,
+                ) = await agent.generate_trainer(
                     name=context["trainer_name"],
                     instruction=feedback,
                     model_id=model_record.id,
@@ -1379,7 +1387,11 @@ class MLEvaluateTool(BaseTool):
         )
 
         try:
-            evaluator_spec, evaluator_yaml, conversation_history = await agent.generate_evaluator(
+            (
+                evaluator_spec,
+                evaluator_yaml,
+                conversation_history,
+            ) = await agent.generate_evaluator(
                 name=str(name),
                 instruction=str(instruction),
                 trainer_ref=str(trainer_id),
@@ -1829,7 +1841,11 @@ class MLEvaluateTool(BaseTool):
             )
 
             try:
-                _evaluator_spec, edited_yaml, updated_history = await agent.generate_evaluator(
+                (
+                    _evaluator_spec,
+                    edited_yaml,
+                    updated_history,
+                ) = await agent.generate_evaluator(
                     name=context["evaluator_name"],
                     instruction=feedback,
                     trainer_ref=trainer_id,
@@ -2142,7 +2158,11 @@ class MLEvaluatorGeneratorTool(BaseTool):
         )
 
         try:
-            evaluator_spec, evaluator_yaml, conversation_history = await agent.generate_evaluator(
+            (
+                evaluator_spec,
+                evaluator_yaml,
+                conversation_history,
+            ) = await agent.generate_evaluator(
                 name=str(name),
                 instruction=str(context),
                 trainer_ref=str(trainer_id),
@@ -2336,7 +2356,11 @@ class MLEvaluatorGeneratorTool(BaseTool):
             )
 
             try:
-                _evaluator_spec, edited_yaml, updated_history = await agent.generate_evaluator(
+                (
+                    _evaluator_spec,
+                    edited_yaml,
+                    updated_history,
+                ) = await agent.generate_evaluator(
                     name=context["evaluator_name"],
                     instruction=feedback,
                     trainer_ref=context["trainer_ref"],

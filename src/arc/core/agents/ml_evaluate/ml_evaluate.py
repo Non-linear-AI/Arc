@@ -217,7 +217,11 @@ class MLEvaluateAgent(BaseAgent):
 
         # Generate with multi-turn tool support
         try:
-            evaluator_spec, evaluator_yaml, conversation_history = await self._generate_with_tools(
+            (
+                evaluator_spec,
+                evaluator_yaml,
+                conversation_history,
+            ) = await self._generate_with_tools(
                 system_message=system_message,
                 user_message=user_message,
                 tools=tools,
@@ -251,7 +255,11 @@ class MLEvaluateAgent(BaseAgent):
 
         # Continue conversation with feedback
         try:
-            evaluator_spec, evaluator_yaml, updated_history = await self._generate_with_tools(
+            (
+                evaluator_spec,
+                evaluator_yaml,
+                updated_history,
+            ) = await self._generate_with_tools(
                 system_message="",  # Not used - already in conversation_history
                 user_message=feedback,
                 tools=tools,

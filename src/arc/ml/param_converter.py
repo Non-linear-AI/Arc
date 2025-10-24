@@ -107,9 +107,7 @@ def _expects_tensor(annotation: Any) -> bool:
     return False
 
 
-def safe_instantiate_with_conversion(
-    module_class: type, params: dict[str, Any]
-) -> Any:
+def safe_instantiate_with_conversion(module_class: type, params: dict[str, Any]) -> Any:
     """Safely instantiate PyTorch module with automatic parameter conversion.
 
     Tries to instantiate with original params first. If that fails with a type

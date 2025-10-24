@@ -181,7 +181,11 @@ class MLModelAgent(BaseAgent):
 
         # Generate with multi-turn tool support
         try:
-            model_spec, model_yaml, conversation_history = await self._generate_with_tools(
+            (
+                model_spec,
+                model_yaml,
+                conversation_history,
+            ) = await self._generate_with_tools(
                 system_message=system_message,
                 user_message=user_message,
                 tools=tools,
