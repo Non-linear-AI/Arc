@@ -26,12 +26,9 @@ jobs:
       
       - name: Install dependencies
         run: uv sync --dev
-      
-      - name: Run ruff
-        run: uv run ruff check .
-      
-      - name: Run ruff format check
-        run: uv run ruff format --check .
+
+      - name: Run linting and format checks
+        run: make lint-all
 
   test:
     runs-on: ubuntu-latest
@@ -53,6 +50,6 @@ jobs:
       
       - name: Install dependencies
         run: uv sync --dev
-      
+
       - name: Run tests
-        run: uv run pytest
+        run: make test

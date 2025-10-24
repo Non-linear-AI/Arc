@@ -24,9 +24,16 @@ test-watch:  ## Run tests in watch mode
 lint:  ## Run linting checks
 	uv run ruff check .
 
+lint-all:  ## Run linting and format checks (CI mode)
+	uv run ruff check .
+	uv run ruff format --check .
+
 format:  ## Format code and fix linting issues
 	uv run ruff format .
 	uv run ruff check . --fix
+
+format-check:  ## Check formatting without modifying files
+	uv run ruff format --check .
 
 clean:  ## Clean build artifacts
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -34,3 +41,5 @@ clean:  ## Clean build artifacts
 	rm -rf dist/ build/ *.egg-info/ .coverage htmlcov/ .pytest_cache/ .ruff_cache/
 
 all: format lint test  ## Run all checks
+
+ci: lint-all test  ## Run CI checks locally (non-modifying)
