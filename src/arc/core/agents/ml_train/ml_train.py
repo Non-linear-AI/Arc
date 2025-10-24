@@ -194,7 +194,7 @@ class MLTrainAgent(BaseAgent):
                     "available_components": self._get_training_components(),
                 },
                 max_iterations=3,
-                conversation_history=conversation_history,
+                conversation_history=None,  # Fresh generation - no history yet
             )
 
             return trainer_spec, trainer_yaml, conversation_history
