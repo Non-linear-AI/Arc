@@ -291,12 +291,14 @@ async def _ml_plan(
         {
             "instruction": True,
             "source-tables": True,
+            "verbose": False,  # Flag option (no value required)
         },
         command_name="/ml plan",
     )
 
     instruction = options.get("instruction")
     source_tables = options.get("source-tables")
+    verbose = options.get("verbose", False)
 
     if not instruction or not source_tables:
         raise CommandError("/ml plan requires --instruction and --source-tables")
@@ -306,6 +308,7 @@ async def _ml_plan(
         instruction=str(instruction),
         source_tables=str(source_tables),
         previous_plan=agent.current_ml_plan,
+        verbose=bool(verbose),
     )
 
     if result.success:
@@ -313,8 +316,9 @@ async def _ml_plan(
         if result.metadata and "ml_plan" in result.metadata:
             agent.current_ml_plan = result.metadata["ml_plan"]
 
-        # Display assistant's question
-        if result.output:
+        # Display assistant's question (unless suppressed)
+        suppress = result.metadata and result.metadata.get("suppress_output", False)
+        if result.output and not suppress:
             ui.show_info(result.output)
     else:
         raise CommandError(f"Failed to create ML plan: {result.error}")
@@ -372,8 +376,9 @@ async def _ml_revise_plan(
         if result.metadata and "ml_plan" in result.metadata:
             agent.current_ml_plan = result.metadata["ml_plan"]
 
-        # Display assistant's question
-        if result.output:
+        # Display assistant's question (unless suppressed)
+        suppress = result.metadata and result.metadata.get("suppress_output", False)
+        if result.output and not suppress:
             ui.show_info(result.output)
     else:
         raise CommandError(f"Failed to revise ML plan: {result.error}")

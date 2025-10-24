@@ -23,6 +23,7 @@ class MLPlanAgent(BaseAgent):
         base_url: str | None = None,
         model: str | None = None,
         progress_callback: Any | None = None,
+        verbose: bool = False,
     ):
         """Initialize ML plan agent.
 
@@ -32,9 +33,13 @@ class MLPlanAgent(BaseAgent):
             base_url: Optional base URL
             model: Optional model name
             progress_callback: Optional callback for reporting progress/errors
+            verbose: If True, show detailed tool results. If False, show
+                only tool calls.
         """
         super().__init__(services, api_key, base_url, model)
         self.progress_callback = progress_callback
+        # Note: knowledge_loader is now initialized in BaseAgent
+        self.verbose = verbose
 
     def get_template_directory(self) -> Path:
         """Get the template directory for ML planning.
@@ -43,14 +48,6 @@ class MLPlanAgent(BaseAgent):
             Path to the ml_plan template directory
         """
         return Path(__file__).parent / "templates"
-
-    def get_template_name(self) -> str:
-        """Get the name of the template file.
-
-        Returns:
-            Template filename relative to the template directory
-        """
-        return "base.j2"
 
     async def analyze_problem(
         self,
@@ -177,6 +174,9 @@ class MLPlanAgent(BaseAgent):
     ) -> dict[str, Any]:
         """Generate analysis with validation and retry on invalid YAML.
 
+        This now uses conversational tool-based generation, allowing the LLM
+        to explore knowledge documents during plan creation.
+
         Args:
             context: Analysis context
             max_iterations: Maximum number of validation attempts
@@ -184,55 +184,50 @@ class MLPlanAgent(BaseAgent):
         Returns:
             Validated analysis result dictionary
         """
-        last_error = None
-
-        for attempt in range(max_iterations):
-            try:
-                # Add previous error to context for fixing
-                if last_error and attempt > 0:
-                    context["previous_error"] = last_error
-                    context["attempt_number"] = attempt + 1
-                    if self.progress_callback:
-                        msg = (
-                            f"[dim]⚠ Validation failed on attempt "
-                            f"{attempt}/{max_iterations}. "
-                            f"Retrying with error feedback...[/dim]"
-                        )
-                        self.progress_callback(msg)
-
-                # Call LLM with context (it will render template internally)
-                # Pass progress callback if available
-                response = await self._generate_with_llm(
-                    context, progress_callback=self.progress_callback
-                )
-
-                # Parse and validate response
-                analysis_result = self._parse_analysis_response(response)
-
-                # Success - return the result
-                return analysis_result
-
-            except MLPlanError as e:
-                # Validation failed - capture error and retry
-                last_error = str(e)
-                if attempt == max_iterations - 1:
-                    # Final attempt failed
-                    raise MLPlanError(
-                        f"Failed to generate valid ML plan after "
-                        f"{max_iterations} attempts. "
-                        f"Final error: {last_error}"
-                    ) from e
-
-            except Exception as e:
-                # Unexpected error - don't retry
-                raise MLPlanError(
-                    f"Unexpected error during plan generation: {e}"
-                ) from e
-
-        # Should not reach here, but just in case
-        raise MLPlanError(
-            f"Failed to generate valid ML plan after {max_iterations} attempts"
+        # Render system message and user message from template
+        # Use the template to generate clear instructions for the LLM
+        system_message = self._render_template(self.get_template_name(), context)
+        user_message = (
+            "Please analyze this ML problem and generate a comprehensive plan. "
+            "Use the knowledge exploration tools if you need to understand specific "
+            "architectural patterns."
         )
+
+        # Get all tools from BaseAgent (knowledge + database)
+        tools = self._get_ml_tools()
+
+        # Define validator function
+        def validator(content: str, ctx: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+            try:
+                result = self._parse_analysis_response(content)
+                return {"valid": True, "object": result, "error": None}
+            except MLPlanError as e:
+                error_msg = str(e)
+                # Report validation error to user
+                if self.progress_callback:
+                    msg = f"  ✗ Validation error: {error_msg[:200]}..."
+                    self.progress_callback(msg)
+                return {"valid": False, "object": None, "error": error_msg}
+
+        # Use tool-based generation with validation
+        try:
+            analysis_result, _raw_content, _history = await self._generate_with_tools(
+                system_message=system_message,
+                user_message=user_message,
+                tools=tools,
+                tool_executor=self._execute_tool,
+                validator_func=validator,
+                validation_context=context,
+                max_iterations=max_iterations,
+            )
+
+            return analysis_result
+
+        except AgentError as e:
+            # Report the full error to user before re-raising
+            if self.progress_callback:
+                self.progress_callback(f"  ✗ Generation failed: {str(e)[:300]}")
+            raise MLPlanError(str(e)) from e
 
     async def _generate_analysis_with_streaming(self, context: dict[str, Any]):
         """Generate analysis with streaming output.
@@ -272,6 +267,8 @@ class MLPlanAgent(BaseAgent):
         Returns:
             Structured analysis dictionary
         """
+        import re
+
         import yaml
 
         # Try to extract YAML from response
@@ -286,8 +283,33 @@ class MLPlanAgent(BaseAgent):
                 end = response.find("```", start)
                 yaml_str = response[start:end].strip()
             else:
-                # Response should be clean YAML
+                # Response should be clean YAML, but may have preamble text
+                # Find where YAML actually starts by looking for first required field
                 yaml_str = response.strip()
+
+                # If response starts with explanatory text before YAML,
+                # find where the YAML begins (first required field at line start)
+                required_fields = [
+                    "summary:",
+                    "feature_engineering:",
+                    "model_architecture_and_loss:",
+                    "training_configuration:",
+                    "evaluation:",
+                ]
+
+                # Find earliest required field occurrence at line start
+                earliest_match = None
+                for field in required_fields:
+                    pattern = rf"^{re.escape(field)}"
+                    match = re.search(pattern, yaml_str, re.MULTILINE)
+                    if match and (
+                        earliest_match is None or match.start() < earliest_match
+                    ):
+                        earliest_match = match.start()
+
+                # If we found a field, extract from there
+                if earliest_match is not None and earliest_match > 0:
+                    yaml_str = yaml_str[earliest_match:].strip()
 
             result = yaml.safe_load(yaml_str)
 
@@ -495,3 +517,80 @@ class MLPlanAgent(BaseAgent):
 
         except Exception as e:
             return {"error": f"Failed to analyze target column: {str(e)}"}
+
+    async def _execute_tool(self, tool_name: str, arguments: str) -> str:
+        """Execute ML Plan tools with progress reporting.
+
+        Wraps BaseAgent's _execute_ml_tool() with progress callbacks.
+
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: JSON string of tool arguments
+
+        Returns:
+            Tool execution result as string
+        """
+        import json
+
+        args = json.loads(arguments)
+
+        # Report tool call
+        if self.progress_callback:
+            self._report_tool_call(tool_name, args)
+
+        # Execute using BaseAgent's implementation
+        result = await self._execute_ml_tool(tool_name, arguments)
+
+        # Report result (only in verbose mode)
+        if self.verbose and self.progress_callback and result:
+            self._report_tool_result(tool_name, result, args)
+
+        return result
+
+    def _report_tool_call(self, tool_name: str, args: dict):
+        """Report tool call with readable description."""
+        if tool_name == "list_available_knowledge":
+            self.progress_callback("[dim]▸ Listing available architectures[/dim]")
+
+        elif tool_name == "read_knowledge_content":
+            knowledge_id = args.get("knowledge_id", "")
+            self.progress_callback(f"[dim]▸ Reading knowledge: {knowledge_id}[/dim]")
+
+        elif tool_name == "database_query":
+            query = args.get("query", "")
+            # Show condensed query if too long
+            query_display = query[:97] + "..." if len(query) > 100 else query
+            self.progress_callback(f"[dim]▸ Query: {query_display}[/dim]")
+
+    def _report_tool_result(self, tool_name: str, result: str, args: dict):  # noqa: ARG002
+        """Display tool result in readable format."""
+        if tool_name == "database_query":
+            # DatabaseQueryTool already formats nicely, just indent it
+            self.progress_callback("    Result:")
+            for line in result.split("\n"):
+                if line.strip():
+                    self.progress_callback(f"    {line}")
+
+        elif tool_name == "list_available_knowledge":
+            # Show available patterns
+            self.progress_callback("    Available:")
+            for line in result.split("\n"):
+                if line.strip() and line.startswith("-"):
+                    self.progress_callback(f"    {line}")
+
+        elif tool_name == "read_knowledge_content":
+            # Show preview of knowledge content
+            lines = [line for line in result.split("\n") if line.strip()]
+            self.progress_callback("    Preview:")
+            for line in lines[:8]:
+                # Truncate long lines
+                display_line = line if len(line) <= 100 else line[:97] + "..."
+                self.progress_callback(f"    {display_line}")
+            if len(lines) > 8:
+                self.progress_callback(f"    ... ({len(lines) - 8} more lines)")
+
+        # Add blank line for readability
+        self.progress_callback("")
+
+    # Note: Handler methods (_handle_list_knowledge, _handle_read_knowledge,
+    # _handle_database_query) are now inherited from BaseAgent

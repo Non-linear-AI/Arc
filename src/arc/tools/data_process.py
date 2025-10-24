@@ -194,6 +194,7 @@ class MLDataProcessTool(BaseTool):
             (
                 spec,
                 yaml_content,
+                conversation_history,  # Store for interactive editing workflow
             ) = await self.generator_agent.generate_data_processing_yaml(
                 instruction=enhanced_instruction,
                 source_tables=source_tables,
@@ -248,6 +249,7 @@ class MLDataProcessTool(BaseTool):
                         yaml_content,
                         context_dict,
                         None,  # No output path - saved to DB only
+                        conversation_history,  # Pass conversation history for editing
                     )
                     if not proceed:
                         # Close the section before returning
@@ -419,39 +421,48 @@ class MLDataProcessTool(BaseTool):
         """Create editor function for AI-assisted editing in the workflow.
 
         Returns:
-            Editor function that takes (yaml, feedback, context) and returns edited YAML
+            Editor function that takes (yaml, feedback, context, conversation_history)
+            and returns tuple of (edited_yaml, updated_history)
         """
 
         async def edit(
-            yaml_content: str, feedback: str, context: dict[str, str]
-        ) -> str | None:
-            """Edit YAML with AI assistance.
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, str],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            """Edit YAML with AI assistance using conversation history.
 
             Args:
                 yaml_content: Current YAML content
                 feedback: User feedback describing desired changes
                 context: Context dictionary with generation parameters
+                conversation_history: Optional conversation history for
+                    continuing conversation
 
             Returns:
-                Edited YAML string or None if editing failed
+                Tuple of (edited_yaml, updated_conversation_history) or
+                (None, None) if failed
             """
             try:
-                # Call the generator agent with existing YAML
+                # Call the generator agent with conversation history
                 # feedback becomes the instruction in edit mode
                 (
                     _spec,
                     edited_yaml,
+                    updated_history,
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=feedback,  # User's change request
                     source_tables=context.get("source_tables"),
                     database=context.get("database", "user"),
                     existing_yaml=yaml_content,
+                    conversation_history=conversation_history,  # Continue conversation
                 )
-                return edited_yaml
+                return edited_yaml, updated_history
 
             except Exception as e:
                 if self.ui:
                     self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
-                return None
+                return None, None
 
         return edit

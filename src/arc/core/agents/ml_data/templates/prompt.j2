@@ -77,17 +77,25 @@ Apply the requested changes while preserving production-ready quality and overal
 - Example: `SELECT user_id FROM "transactions"` ✓
 
 **Avoid Database-Specific Features:**
-- ❌ `FARM_FINGERPRINT()`, `hash()`, `USING SAMPLE`
-- ✓ Use `MOD()`, `ROW_NUMBER()`, `CASE WHEN`
+- ❌ **Hashing**: `MD5()`, `SHA1()`, `FARM_FINGERPRINT()`, `hash()`
+- ❌ **String functions**: `SUBSTR()` (use `SUBSTRING()`), `CONCAT_WS()` (use `||`)
+- ❌ **Type names**: `VARCHAR` (use `TEXT`), `CHAR`, `NVARCHAR`
+- ❌ **Sampling**: `USING SAMPLE`, `TABLESAMPLE`
+- ❌ **Casting hex to int**: `CAST(hex_string AS INTEGER)` will fail - hex strings are not integers!
+- ✓ **Safe alternatives**: `MOD()`, `ROW_NUMBER()`, `CASE WHEN`, `SUBSTRING()`, `TEXT`
 
-**Random Split Example:**
+**Random Split Example (Using Row Number, NOT Hashing):**
 ```sql
-SELECT *, CASE WHEN MOD(CAST(id AS INTEGER), 10) < 8
-  THEN 'training' ELSE 'validation' END as split
+-- CORRECT: Use ROW_NUMBER for deterministic splits
+SELECT *,
+  CASE WHEN MOD(ROW_NUMBER() OVER (ORDER BY id), 10) < 8
+    THEN 'training'
+    ELSE 'validation'
+  END as split
 FROM "table_name"
 ```
 
-**Standard Functions:** `COUNT()`, `SUM()`, `AVG()`, `ROW_NUMBER()`, `RANK()`, `LAG()`, `LEAD()`, `COALESCE()`, `NULLIF()`, `UPPER()`, `LOWER()`, `LENGTH()`, `TRIM()`, `ABS()`, `ROUND()`, `MOD()`, `CASE WHEN`
+**Standard Functions:** `COUNT()`, `SUM()`, `AVG()`, `MIN()`, `MAX()`, `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `LAG()`, `LEAD()`, `COALESCE()`, `NULLIF()`, `UPPER()`, `LOWER()`, `LENGTH()`, `SUBSTRING()`, `TRIM()`, `ABS()`, `ROUND()`, `FLOOR()`, `CEIL()`, `MOD()`, `CASE WHEN`, `CAST(...AS INTEGER)`, `CAST(...AS DECIMAL)`, `CAST(...AS TEXT)`
 
 # PRODUCTION REQUIREMENTS
 
@@ -188,10 +196,54 @@ outputs: [user_features]
 
 # OUTPUT FORMAT
 
-Return ONLY valid YAML. No explanations, no markdown code blocks, no commentary.
+**CRITICAL**: Your response must be ONLY the raw YAML configuration. Do not include:
+- ❌ Explanatory text before or after the YAML
+- ❌ Markdown code fences (```yaml or ```)
+- ❌ Conversational preamble ("Here's the pipeline...")
+- ❌ Any text that is not valid YAML
 
-{% if existing_yaml %}Apply the requested changes and return the complete updated YAML configuration.
-{% else %}Generate the complete YAML configuration.
+**CORRECT** response format:
+```
+name: user_features
+description: User behavioral features
+
+vars:
+  min_date: '2023-01-01'
+
+steps:
+  - name: drop_old
+    type: execute
+    depends_on: []
+    sql: DROP TABLE IF EXISTS "user_features"
+
+  - name: user_features
+    type: table
+    depends_on: [drop_old, users]
+    sql: SELECT user_id FROM "users" ...
+
+outputs: [user_features]  # REQUIRED: List all table steps here
+```
+
+**INCORRECT** response formats:
+```
+❌ Here's the data pipeline:
+   ```yaml
+   name: user_features
+   ```
+
+❌ ```yaml
+   name: user_features
+   ```
+
+❌ I'll create the pipeline for you:
+   name: user_features
+   ...
+```
+
+{% if existing_yaml -%}
+Begin your response with the first line of the YAML (the updated configuration):
+{% else -%}
+Begin your response with the first line of the YAML:
 {% endif %}
 
 ---

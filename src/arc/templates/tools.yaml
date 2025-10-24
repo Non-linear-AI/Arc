@@ -379,3 +379,29 @@ tools:
         - name
         - instruction
         - source_tables
+
+  - name: read_knowledge
+    description: |
+      Read domain knowledge documents to inform model/trainer/evaluator generation.
+      Knowledge includes architectures (dcn, transformer), patterns (feature-interaction,
+      regularization), and scenarios (fraud-detection, churn-prediction).
+
+      Use this tool to:
+      - Understand architecture details and implementation guidance
+      - Learn problem-specific patterns and best practices
+      - Discover relevant techniques and patterns
+
+      Available knowledge is listed in your context. Read relevant documents before
+      generating specifications to ensure high-quality outputs.
+    parameters:
+      type: object
+      properties:
+        knowledge_id:
+          type: string
+          description: "ID of the knowledge to read (e.g., 'dcn', 'feature-interaction')"
+        phase:
+          type: string
+          enum: [model, trainer, evaluator]
+          description: "Which phase guide to read (default: model)"
+      required:
+        - knowledge_id

@@ -42,6 +42,7 @@ class MLTrainAgent(BaseAgent):
         """
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
+        # Note: knowledge_loader is now initialized in BaseAgent
 
     def get_template_directory(self) -> Path:
         """Get the template directory for trainer generation.
@@ -59,7 +60,9 @@ class MLTrainAgent(BaseAgent):
         model_spec_yaml: str,
         existing_yaml: str | None = None,
         ml_plan_training_config: str | None = None,
-    ) -> tuple[TrainerSpec, str]:
+        recommended_knowledge_ids: list[str] | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> tuple[TrainerSpec, str, list[dict[str, str]]]:
         """Generate Arc trainer specification based on model and instruction.
 
         Args:
@@ -69,35 +72,174 @@ class MLTrainAgent(BaseAgent):
                 For editing: changes to make to existing YAML.
             model_id: ID of the registered model (e.g., "diabetes-logistic-v1")
             model_spec_yaml: Model specification YAML content
-            existing_yaml: Optional existing YAML to edit (switches to editing mode)
-            ml_plan_training_config: Optional training configuration from ML plan
+            existing_yaml: Optional existing YAML to edit (editing mode)
+            ml_plan_training_config: Optional training config from ML plan
+            recommended_knowledge_ids: Optional list of knowledge IDs
+                recommended by ML Plan
+            conversation_history: Optional conversation history for editing workflow
 
         Returns:
-            Tuple of (parsed TrainerSpec, raw YAML string)
+            Tuple of (parsed TrainerSpec, raw YAML string, conversation_history)
 
         Raises:
             TrainerGeneratorError: If generation fails
         """
-        # Build simple context for LLM
-        context = {
-            "trainer_name": name,
-            "instruction": instruction,
-            "model_id": model_id,
-            "model_spec": model_spec_yaml,
-            "model_profile": self._extract_model_profile(model_spec_yaml),
-            "available_components": self._get_training_components(),
-            "examples": self._get_trainer_examples(instruction),
-            "existing_yaml": existing_yaml,
-            "ml_plan_training_config": ml_plan_training_config,
-        }
-
-        # Generate trainer specification with single attempt
-        try:
-            trainer_spec, trainer_yaml = await self._generate_with_validation_loop(
-                context, self._validate_trainer_comprehensive, 1
+        # Route to appropriate generation path
+        if conversation_history is None:
+            # Fresh generation - build full context
+            return await self._generate_fresh(
+                name=name,
+                instruction=instruction,
+                model_id=model_id,
+                model_spec_yaml=model_spec_yaml,
+                existing_yaml=existing_yaml,
+                ml_plan_training_config=ml_plan_training_config,
+                recommended_knowledge_ids=recommended_knowledge_ids,
+            )
+        else:
+            # Continue conversation - just append feedback
+            return await self._continue_conversation(
+                feedback=instruction,
+                conversation_history=conversation_history,
             )
 
-            return trainer_spec, trainer_yaml
+    async def _generate_fresh(
+        self,
+        name: str,
+        instruction: str,
+        model_id: str,
+        model_spec_yaml: str,
+        existing_yaml: str | None = None,
+        ml_plan_training_config: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
+    ) -> tuple[TrainerSpec, str, list[dict[str, str]]]:
+        """Fresh generation with full context building.
+
+        This path is used for initial generation or when starting a new conversation.
+        It builds the complete system message with knowledge loading.
+        """
+        # Pre-load recommended knowledge content
+        recommended_knowledge = ""
+        if recommended_knowledge_ids:
+            # Scan metadata once for all knowledge IDs (performance optimization)
+            metadata_map = self.knowledge_loader.scan_metadata()
+
+            for knowledge_id in recommended_knowledge_ids:
+                content = self.knowledge_loader.load_knowledge(knowledge_id, "train")
+                if content:
+                    # Get metadata for display
+                    metadata = metadata_map.get(knowledge_id)
+                    if metadata:
+                        print(f"  ▸ Using knowledge: {metadata.name}")
+                    recommended_knowledge += (
+                        f"\n\n# Training Knowledge: {knowledge_id}\n\n{content}"
+                    )
+                else:
+                    # Warn user if recommended knowledge fails to load
+                    import logging
+
+                    print(
+                        f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' not found"
+                    )
+                    logging.getLogger(__name__).warning(
+                        f"Could not load recommended knowledge: {knowledge_id}"
+                    )
+
+        # Build system message with all context
+        system_message = self._render_template(
+            "prompt.j2",
+            {
+                "trainer_name": name,
+                "instruction": instruction,
+                "model_id": model_id,
+                "model_spec": model_spec_yaml,
+                "model_profile": self._extract_model_profile(model_spec_yaml),
+                "available_components": self._get_training_components(),
+                "examples": self._get_trainer_examples(instruction),
+                "existing_yaml": existing_yaml,
+                "ml_plan_training_config": ml_plan_training_config,
+                "recommended_knowledge": recommended_knowledge,
+            },
+        )
+
+        # User message guides tool usage
+        if existing_yaml:
+            user_message = (
+                f"Edit the existing trainer specification with these "
+                f"changes: {instruction}. "
+                "The recommended training knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools "
+                "if you need additional guidance."
+            )
+        else:
+            user_message = (
+                f"Generate the trainer specification for '{name}'. "
+                "The recommended training knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools "
+                "if you need additional guidance."
+            )
+
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
+
+        # Generate with multi-turn tool support
+        try:
+            (
+                trainer_spec,
+                trainer_yaml,
+                conversation_history,
+            ) = await self._generate_with_tools(
+                system_message=system_message,
+                user_message=user_message,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_trainer_comprehensive,
+                validation_context={
+                    "available_components": self._get_training_components(),
+                },
+                max_iterations=3,
+                conversation_history=None,  # Fresh generation - no history yet
+            )
+
+            return trainer_spec, trainer_yaml, conversation_history
+
+        except AgentError as e:
+            raise MLTrainError(str(e)) from e
+
+    async def _continue_conversation(
+        self,
+        feedback: str,
+        conversation_history: list[dict[str, str]],
+    ) -> tuple[TrainerSpec, str, list[dict[str, str]]]:
+        """Continue existing conversation with user feedback.
+
+        This path is used during interactive editing when conversation history exists.
+        It simply appends the user's feedback to the existing conversation without
+        rebuilding the system message.
+        """
+        # Get ML tools from BaseAgent
+        tools = self._get_ml_tools()
+
+        # Continue conversation with feedback
+        try:
+            (
+                trainer_spec,
+                trainer_yaml,
+                updated_history,
+            ) = await self._generate_with_tools(
+                system_message="",  # Not used - already in conversation_history
+                user_message=feedback,
+                tools=tools,
+                tool_executor=self._execute_ml_tool,
+                validator_func=self._validate_trainer_comprehensive,
+                validation_context={
+                    "available_components": self._get_training_components(),
+                },
+                max_iterations=3,
+                conversation_history=conversation_history,
+            )
+
+            return trainer_spec, trainer_yaml, updated_history
 
         except AgentError as e:
             raise MLTrainError(str(e)) from e

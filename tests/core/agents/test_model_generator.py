@@ -44,6 +44,7 @@ class TestMLModelAgent:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = "mocked_yaml_content"
+        mock_response.tool_calls = None  # No tool calls by default
         mock_client.chat = AsyncMock(return_value=mock_response)
         generator.arc_client = mock_client
 
@@ -83,10 +84,11 @@ loss:
         # Mock the LLM response
         mock_response = MagicMock()
         mock_response.content = valid_model_yaml
+        mock_response.tool_calls = None  # No tool calls
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Generate model
-        model_spec, model_yaml = await model_generator.generate_model(
+        model_spec, model_yaml, _ = await model_generator.generate_model(
             name="test_model",
             user_context="Binary classification model",
             table_name="test_table",
@@ -111,10 +113,11 @@ loss:
         # Mock the LLM response
         mock_response = MagicMock()
         mock_response.content = valid_model_yaml
+        mock_response.tool_calls = None  # No tool calls
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Generate model (output path handling is now done by CLI)
-        model_spec, model_yaml = await model_generator.generate_model(
+        model_spec, model_yaml, _ = await model_generator.generate_model(
             name="test_model",
             user_context="Binary classification model",
             table_name="test_table",
@@ -132,6 +135,7 @@ loss:
         # Mock invalid YAML response
         mock_response = MagicMock()
         mock_response.content = "invalid: yaml: content: ["
+        mock_response.tool_calls = None  # No tool calls
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Should raise MLModelError
@@ -154,6 +158,7 @@ loss:
 
         mock_response = MagicMock()
         mock_response.content = incomplete_yaml
+        mock_response.tool_calls = None  # No tool calls
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Should raise MLModelError
@@ -182,6 +187,7 @@ loss:
 
         mock_response = MagicMock()
         mock_response.content = invalid_yaml
+        mock_response.tool_calls = None  # No tool calls
         model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
 
         # Should raise MLModelError due to validation
@@ -249,21 +255,6 @@ loss:
         assert "torch.nn.Linear" in node_types
         assert "torch.nn.ReLU" in node_types
 
-    def test_get_model_examples(self, model_generator):
-        """Test getting model examples."""
-        examples = model_generator._get_model_examples(
-            "binary classification", {}, "tabular"
-        )
-
-        assert isinstance(examples, list)
-        # Should return at least one example
-        assert len(examples) >= 0
-
-        if examples:
-            example = examples[0]
-            assert "schema" in example
-            assert "name" in example
-
     def test_validate_model_comprehensive_valid(
         self, model_generator, valid_model_yaml
     ):
@@ -307,158 +298,3 @@ loss:
 
         assert result["valid"] is False
         assert "Column validation errors" in result["error"]
-
-    def test_detect_category_from_context_mlp(self, model_generator):
-        """Test category detection for MLP use cases."""
-        # Test MLP keywords
-        mlp_contexts = [
-            "classify whether customers will buy",
-            "predict house prices using regression",
-            "binary classification for fraud detection",
-            "multiclass classification of products",
-            "supervised learning for risk scoring",
-        ]
-
-        for context in mlp_contexts:
-            category = model_generator._detect_category_from_context(context, {})
-            assert category == "mlp", f"Failed for context: {context}"
-
-    def test_detect_category_from_context_default(self, model_generator):
-        """Test category detection falls back to MLP."""
-        # Test non-specific contexts that should default to MLP
-        default_contexts = [
-            "build a model",
-            "create something that works",
-            "make an AI system",
-            "general purpose model",
-        ]
-
-        for context in default_contexts:
-            category = model_generator._detect_category_from_context(context, {})
-            assert category == "mlp", f"Failed for context: {context}"
-
-    def test_detect_category_from_context_dcn(self, model_generator):
-        """Test category detection for DCN use cases."""
-        # Test DCN keywords
-        dcn_contexts = [
-            "feature crossing for recommendation",
-            "click-through rate prediction",
-            "feature interaction modeling",
-            "CTR prediction with interactions",
-        ]
-
-        for context in dcn_contexts:
-            category = model_generator._detect_category_from_context(context, {})
-            assert category == "dcn", f"Failed for context: {context}"
-
-    def test_detect_category_from_context_mmoe(self, model_generator):
-        """Test category detection for MMoE use cases."""
-        # Test MMoE keywords
-        mmoe_contexts = [
-            "multi-task learning with shared representation",
-            "multiple task prediction",
-            "multitask recommendation system",
-            "shared representation for multiple tasks",
-        ]
-
-        for context in mmoe_contexts:
-            category = model_generator._detect_category_from_context(context, {})
-            assert category == "mmoe", f"Failed for context: {context}"
-
-    def test_detect_category_from_context_transformer(self, model_generator):
-        """Test category detection for Transformer use cases."""
-        # Test Transformer keywords
-        transformer_contexts = [
-            "attention-based model for sequences",
-            "transformer encoder for classification",
-            "self-attention mechanism",
-            "sequence modeling with attention",
-        ]
-
-        for context in transformer_contexts:
-            category = model_generator._detect_category_from_context(context, {})
-            assert category == "transformer", f"Failed for context: {context}"
-
-    def test_validate_category(self, model_generator):
-        """Test category validation and normalization."""
-        # Valid new categories
-        assert model_generator._validate_category("mlp") == "mlp"
-        assert model_generator._validate_category("dcn") == "dcn"
-        assert model_generator._validate_category("mmoe") == "mmoe"
-        assert model_generator._validate_category("transformer") == "transformer"
-
-        # Legacy categories should map to new ones
-        assert model_generator._validate_category("tabular") == "mlp"
-        assert model_generator._validate_category("fallback") == "mlp"
-
-        # Invalid categories should fall back to "mlp"
-        assert model_generator._validate_category("invalid") == "mlp"
-        assert model_generator._validate_category("recommendation") == "mlp"
-        assert model_generator._validate_category("") == "mlp"
-
-    @pytest.mark.asyncio
-    async def test_generate_model_with_explicit_category(
-        self, model_generator, valid_model_yaml
-    ):
-        """Test model generation with explicit category parameter."""
-        # Mock the LLM response
-        mock_response = MagicMock()
-        mock_response.content = valid_model_yaml
-        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
-
-        # Generate model with explicit category
-        model_spec, model_yaml = await model_generator.generate_model(
-            name="test_model",
-            user_context="Some general context",
-            table_name="test_table",
-            category="tabular",
-        )
-
-        # Verify that category was set
-        assert hasattr(model_generator, "_current_category")
-        assert model_generator._current_category == "tabular"
-
-        # Verify result
-        assert isinstance(model_spec, ModelSpec)
-        assert model_yaml is not None
-
-    @pytest.mark.asyncio
-    async def test_generate_model_with_auto_detected_category(
-        self, model_generator, valid_model_yaml
-    ):
-        """Test model generation with auto-detected category."""
-        # Mock the LLM response
-        mock_response = MagicMock()
-        mock_response.content = valid_model_yaml
-        model_generator.arc_client.chat = AsyncMock(return_value=mock_response)
-
-        # Generate model with context that should detect mlp
-        model_spec, model_yaml = await model_generator.generate_model(
-            name="test_model",
-            user_context="binary classification for fraud detection",
-            table_name="test_table",
-        )
-
-        # Verify that category was auto-detected as mlp
-        assert hasattr(model_generator, "_current_category")
-        assert model_generator._current_category == "mlp"
-
-        # Verify result
-        assert isinstance(model_spec, ModelSpec)
-        assert model_yaml is not None
-
-    def test_get_model_examples_with_category(self, model_generator):
-        """Test getting model examples with category parameter."""
-        # Test with category parameter
-        examples = model_generator._get_model_examples(
-            "binary classification", {}, "tabular"
-        )
-
-        assert isinstance(examples, list)
-        # Should return at least zero examples (depending on repository contents)
-        assert len(examples) >= 0
-
-        if examples:
-            example = examples[0]
-            assert "schema" in example
-            assert "name" in example

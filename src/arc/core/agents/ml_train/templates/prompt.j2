@@ -57,6 +57,33 @@ The ML Plan provides the following training configuration guidance (use as basel
 The user instruction above may build upon this plan or request modifications.
 
 {% endif %}
+{% if recommended_knowledge -%}
+## Recommended Training Knowledge
+
+The following training knowledge has been pre-loaded based on ML Plan recommendations:
+
+{{ recommended_knowledge }}
+
+**Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your trainer specification.
+{% endif %}
+
+## Available Tools
+
+You have access to the following tools for exploration when needed:
+
+1. **database_query**: Execute read-only SQL queries to explore the data
+   - Use when you need to understand data distributions, check value ranges, or verify relationships
+   - Only use if the model profile doesn't provide sufficient information
+
+2. **list_available_knowledge**: List all available training knowledge documents
+   - Use when you need to see what other training patterns are available
+   - Only use if the recommended knowledge above is insufficient
+
+3. **read_knowledge_content**: Read specific training knowledge documents
+   - Use when you need additional training guidance beyond what's provided above
+   - Only use if the recommended knowledge doesn't cover your specific needs
+
+**Tool Usage Guidance**: The recommended knowledge above should be sufficient for most cases. Only use these tools if you genuinely need additional information that isn't provided in the system message.
 
 ## IMPORTANT: Trainer-Only Configuration
 Generate ONLY the trainer configuration (optimizer + hyperparameters).
@@ -269,21 +296,52 @@ config:
 **CRITICAL**: All numeric configuration values (lr, epochs, batch_size, validation_split) MUST be actual numbers, NOT column names, table names, or string identifiers from the data!
 
 ## Output Format
+
+**CRITICAL**: Your response must be ONLY the raw YAML specification. Do not include:
+- ❌ Explanatory text before or after the YAML
+- ❌ Markdown code fences (```yaml or ```)
+- ❌ Conversational preamble ("Here's the configuration...")
+- ❌ Any text that is not valid YAML
+- ❌ Comments or descriptions before the YAML
+
+**CORRECT** response format:
+```
+model_ref: {{ model_id }}
+
+optimizer:
+  type: torch.optim.Adam
+  lr: 0.001
+
+config:
+  epochs: 100
+  batch_size: 32
+  ...
+```
+
+**INCORRECT** response formats:
+```
+❌ Here's the trainer specification:
+   ```yaml
+   model_ref: ...
+   ```
+
+❌ ```yaml
+   model_ref: ...
+   ```
+
+❌ Sure, I'll create the trainer:
+   model_ref: ...
+
+❌ Based on the requirements (epochs: 100, batch_size: 32):
+   model_ref: ...
+```
+
 {% if existing_yaml -%}
-Apply the requested changes and return the complete updated YAML configuration.
-- YAML only, no markdown blocks or explanations
-- Make the requested changes while maintaining the overall structure
-- Ensure schema compliance after edits
-- Focus only on training/optimization configuration
+**REMINDER**: Your response MUST start with "model_ref: {{ model_id }}" - no text before it!
 
-Generate the updated trainer specification:
+Begin your response with exactly this: model_ref: {{ model_id }}
 {% else -%}
-Generate the complete YAML configuration.
-- YAML only, no markdown blocks or explanations
-- Start with `model_ref: {{ model_id }}`
-- Then `optimizer:` section with `type` and `lr`
-- Then `config:` section with training hyperparameters
-- Focus only on training/optimization configuration
+**REMINDER**: Your response MUST start with "model_ref: {{ model_id }}" - no text before it!
 
-Generate the trainer specification:
+Begin your response with exactly this: model_ref: {{ model_id }}
 {% endif %}

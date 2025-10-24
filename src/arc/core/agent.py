@@ -22,6 +22,7 @@ from arc.tools import (
     MLModelTool,
     MLPlanTool,
     MLTrainTool,
+    ReadKnowledgeTool,
     SchemaDiscoveryTool,
     SearchTool,
     TodoManager,
@@ -144,6 +145,9 @@ class ArcAgent:
         self.create_todo_tool = CreateTodoListTool(self.todo_manager)
         self.update_todo_tool = UpdateTodoListTool(self.todo_manager)
 
+        # Initialize knowledge tool
+        self.read_knowledge_tool = ReadKnowledgeTool()
+
         # Register basic tools
         self.tool_registry.register("view_file", self.view_file_tool)
         self.tool_registry.register("create_file", self.create_file_tool)
@@ -152,6 +156,7 @@ class ArcAgent:
         self.tool_registry.register("search", self.search_tool)
         self.tool_registry.register("create_todo_list", self.create_todo_tool)
         self.tool_registry.register("update_todo_list", self.update_todo_tool)
+        self.tool_registry.register("read_knowledge", self.read_knowledge_tool)
 
         # Initialize TensorBoard manager
         try:
