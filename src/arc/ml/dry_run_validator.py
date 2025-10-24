@@ -386,6 +386,7 @@ class DryRunValidator:
 
             # Get loss function
             from arc.graph.model.components import get_component_class_or_function
+            from arc.ml.param_converter import convert_params_for_pytorch_module
 
             loss_fn_class, component_kind = get_component_class_or_function(
                 self.model_loss.type
@@ -402,9 +403,9 @@ class DryRunValidator:
                 loss_fn = loss_fn_class
                 self.report.context["loss_fn_type"] = "functional"
             else:  # It's a class (module)
-                # Convert special parameters that require Tensors
-                converted_params = self._convert_loss_params(
-                    self.model_loss.type, loss_params
+                # Automatic parameter conversion based on type annotations
+                converted_params = convert_params_for_pytorch_module(
+                    loss_fn_class, loss_params
                 )
                 loss_fn = loss_fn_class(**converted_params)
                 self.report.context["loss_fn_type"] = "class-based"
@@ -512,29 +513,6 @@ class DryRunValidator:
             }
 
         logger.info(f"✗ {step_name} failed")
-
-    def _convert_loss_params(self, loss_name: str, params: dict) -> dict:
-        """Convert loss parameters that require special handling (e.g., Tensors).
-
-        Args:
-            loss_name: Name of the loss function
-            params: Raw parameters dict
-
-        Returns:
-            Converted parameters dict with Tensors where needed
-        """
-        import torch
-
-        converted = dict(params)
-
-        # BCEWithLogitsLoss.pos_weight must be a Tensor
-        if "BCEWithLogitsLoss" in loss_name and "pos_weight" in converted:
-            pos_weight = converted["pos_weight"]
-            if not isinstance(pos_weight, torch.Tensor):
-                # Convert numeric value to Tensor
-                converted["pos_weight"] = torch.tensor(float(pos_weight))
-
-        return converted
 
     def _analyze_loss_error(self, error: Exception):
         """Analyze loss calculation error and suggest fixes."""

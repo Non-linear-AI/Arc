@@ -147,6 +147,7 @@ class ArcTrainer:
         class-based losses (torch.nn.*).
         """
         from arc.graph.model.components import get_component_class_or_function
+        from arc.ml.param_converter import convert_params_for_pytorch_module
 
         loss_name = self.config.loss_function
         loss_params = self.config.loss_params or {}
@@ -159,31 +160,12 @@ class ArcTrainer:
             # Functional loss - use directly (params passed at call time)
             return loss_fn_class
         else:
-            # Class-based loss - instantiate with params
-            # Convert special parameters that require Tensors
-            converted_params = self._convert_loss_params(loss_name, loss_params)
+            # Class-based loss - instantiate with automatic parameter conversion
+            # Automatically converts params based on type annotations (e.g., float -> Tensor)
+            converted_params = convert_params_for_pytorch_module(
+                loss_fn_class, loss_params
+            )
             return loss_fn_class(**converted_params)
-
-    def _convert_loss_params(self, loss_name: str, params: dict) -> dict:
-        """Convert loss parameters that require special handling (e.g., Tensors).
-
-        Args:
-            loss_name: Name of the loss function
-            params: Raw parameters dict
-
-        Returns:
-            Converted parameters dict with Tensors where needed
-        """
-        converted = dict(params)
-
-        # BCEWithLogitsLoss.pos_weight must be a Tensor
-        if "BCEWithLogitsLoss" in loss_name and "pos_weight" in converted:
-            pos_weight = converted["pos_weight"]
-            if not isinstance(pos_weight, torch.Tensor):
-                # Convert numeric value to Tensor
-                converted["pos_weight"] = torch.tensor(float(pos_weight))
-
-        return converted
 
     def train(
         self,
