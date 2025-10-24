@@ -229,15 +229,37 @@ class BaseAgent(abc.ABC):
 
         for idx, line in enumerate(lines):
             stripped = line.strip()
-            # Check if line looks like a YAML key-value pair or list item
-            if stripped and (
-                # YAML key-value: "key:" or "key: value"
-                (":" in stripped and not stripped.startswith("#"))
-                # YAML list item: "- item"
-                or stripped.startswith("- ")
-            ):
-                yaml_start_idx = idx
-                break
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Check if line looks like a valid YAML key-value pair
+            # Must start with alphanumeric or underscore (valid YAML key)
+            # and have a colon not preceded by markdown formatting
+            if ":" in stripped:
+                # Split on first colon
+                parts = stripped.split(":", 1)
+                if len(parts) == 2:
+                    potential_key = parts[0].strip()
+                    # Valid YAML key: alphanumeric/underscore, no special chars
+                    # Reject markdown patterns like "**text**:", "1.", etc.
+                    if (
+                        potential_key
+                        and not potential_key[0].isdigit()  # Not a numbered list
+                        and "**" not in potential_key  # Not markdown bold
+                        and "`" not in potential_key  # Not markdown code
+                        and "." not in potential_key  # Not a numbered list
+                        and potential_key.replace("_", "").isalnum()  # Valid identifier
+                    ):
+                        yaml_start_idx = idx
+                        break
+
+            # Check for YAML list item: "- item" (but not markdown list "- **text**")
+            if stripped.startswith("- "):
+                # Make sure it's not a markdown list with formatting
+                list_content = stripped[2:].strip()
+                if list_content and "**" not in list_content and "`" not in list_content:
+                    yaml_start_idx = idx
+                    break
 
         if yaml_start_idx is not None and yaml_start_idx > 0:
             # Found preamble, remove it
