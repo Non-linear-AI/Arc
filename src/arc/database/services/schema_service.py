@@ -137,21 +137,31 @@ class SchemaService(BaseService):
     def _discover_tables(self, target_db: str) -> list[TableInfo]:
         """Discover tables in the specified database.
 
+        Uses DuckDB's duckdb_tables() function to discover tables across all
+        attached databases (e.g., Snowflake), not just the main catalog.
+        INFORMATION_SCHEMA.TABLES only shows the current catalog, so it misses
+        attached databases.
+
         Args:
             target_db: Target database ("system" or "user")
 
         Returns:
             List of TableInfo objects
         """
-        # Use DuckDB's INFORMATION_SCHEMA for standard SQL compliance
+        # Use duckdb_tables() to discover tables across all attached databases
+        # This includes tables from Snowflake and other attached catalogs
         query = """
         SELECT
+            database_name,
+            schema_name,
             table_name,
-            table_schema,
-            table_type
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-        ORDER BY table_name
+            CASE
+                WHEN internal = true THEN 'INTERNAL'
+                ELSE 'BASE TABLE'
+            END as table_type
+        FROM duckdb_tables()
+        WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
+        ORDER BY database_name, schema_name, table_name
         """
 
         result = (
@@ -162,10 +172,45 @@ class SchemaService(BaseService):
 
         tables = []
         for row in result:
+            database = row.get("database_name", "main")
+            schema = row.get("schema_name", "main")
+            table = row["table_name"]
+
+            # Determine if this is an attached external database (vs local database)
+            # Known attached database types that need fully qualified names
+            attached_db_types = {
+                "snowflake",
+                "postgres",
+                "postgresql",
+                "mysql",
+                "sqlite",  # When attached via ATTACH
+                "mongodb",
+                "motherduck",
+            }
+
+            # Check if this is an attached external database
+            is_attached_db = database.lower() in attached_db_types
+
+            # For attached external databases, use fully qualified names
+            # For local databases, use simple table names
+            if database in ("system", "memory", "temp"):
+                # System/temp databases: use simple table name
+                qualified_name = table
+                schema_display = schema
+            elif is_attached_db:
+                # Attached external databases: use fully qualified name
+                # (e.g., snowflake.public.customers)
+                qualified_name = f"{database}.{schema}.{table}"
+                schema_display = f"{database}.{schema}"
+            else:
+                # Local database (main, arc_user, etc.): use simple table name
+                qualified_name = table
+                schema_display = schema
+
             tables.append(
                 TableInfo(
-                    name=row["table_name"],
-                    schema=row.get("table_schema", "main"),
+                    name=qualified_name,
+                    schema=schema_display,
                     table_type=row.get("table_type", "BASE TABLE"),
                 )
             )
@@ -175,40 +220,85 @@ class SchemaService(BaseService):
     def _discover_columns(self, table_name: str, target_db: str) -> list[ColumnInfo]:
         """Discover columns for a specific table.
 
+        Handles both simple table names and fully qualified names.
+
+        For simple table names (e.g., "test_users"), uses INFORMATION_SCHEMA.COLUMNS
+        which queries the current database (works for memory, main, arc_user, etc.).
+
+        For fully qualified names (e.g., "snowflake.public.customers"), uses
+        duckdb_columns() with explicit database/schema filtering.
+
         Args:
-            table_name: Name of the table
+            table_name: Name of the table (simple or fully qualified)
             target_db: Target database ("system" or "user")
 
         Returns:
             List of ColumnInfo objects
         """
-        # Use DuckDB's INFORMATION_SCHEMA for column information
-        query = """
-        SELECT
-            table_name,
-            column_name,
-            data_type,
-            is_nullable,
-            column_default,
-            ordinal_position
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE table_name = ?
-        ORDER BY ordinal_position
-        """
+        # Parse table name to check if it's qualified
+        parts = table_name.split(".")
 
-        if target_db == "system":
-            result = self.db_manager.system_query(query, [table_name])
+        if len(parts) == 3:
+            # Fully qualified: database.schema.table
+            # Use duckdb_columns() for cross-database queries
+            database_name, schema_name, simple_table = parts
+
+            query = """
+            SELECT
+                column_name,
+                data_type,
+                is_nullable,
+                column_default,
+                column_index as ordinal_position
+            FROM duckdb_columns()
+            WHERE database_name = ?
+              AND schema_name = ?
+              AND table_name = ?
+            ORDER BY column_index
+            """
+
+            if target_db == "system":
+                result = self.db_manager.system_query(
+                    query, [database_name, schema_name, simple_table]
+                )
+            else:
+                # For user database, format query with parameters
+                safe_query = query.replace("?", "'{}'").format(
+                    database_name, schema_name, simple_table
+                )
+                result = self.db_manager.user_query(safe_query)
+
         else:
-            # For user database, we need to use parameterized query differently
-            # Replace ? with actual table name (safe since table_name is validated)
-            safe_query = query.replace("?", f"'{table_name}'")
-            result = self.db_manager.user_query(safe_query)
+            # Simple table name or schema.table
+            # Use INFORMATION_SCHEMA.COLUMNS (queries current database only)
+            # Schema.table -> parts[1], simple table -> table_name
+            simple_table = parts[1] if len(parts) == 2 else table_name
+
+            query = """
+            SELECT
+                column_name,
+                data_type,
+                is_nullable,
+                column_default,
+                ordinal_position
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE table_name = ?
+            ORDER BY ordinal_position
+            """
+
+            if target_db == "system":
+                result = self.db_manager.system_query(query, [simple_table])
+            else:
+                # For user database, use parameterized query
+                safe_query = query.replace("?", f"'{simple_table}'")
+                result = self.db_manager.user_query(safe_query)
 
         columns = []
         for row in result:
+            # Use original table_name (possibly qualified like "snowflake.public.table")
             columns.append(
                 ColumnInfo(
-                    table_name=row["table_name"],
+                    table_name=table_name,
                     column_name=row["column_name"],
                     data_type=row["data_type"],
                     is_nullable=row.get("is_nullable", "YES") == "YES",
