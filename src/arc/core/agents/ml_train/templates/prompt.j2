@@ -296,21 +296,44 @@ config:
 **CRITICAL**: All numeric configuration values (lr, epochs, batch_size, validation_split) MUST be actual numbers, NOT column names, table names, or string identifiers from the data!
 
 ## Output Format
+
+**CRITICAL**: Your response must be ONLY the raw YAML specification. Do not include:
+- ❌ Explanatory text before or after the YAML
+- ❌ Markdown code fences (```yaml or ```)
+- ❌ Conversational preamble ("Here's the configuration...")
+- ❌ Any text that is not valid YAML
+
+**CORRECT** response format:
+```
+model_ref: {{ model_id }}
+
+optimizer:
+  type: torch.optim.Adam
+  lr: 0.001
+
+config:
+  epochs: 100
+  batch_size: 32
+  ...
+```
+
+**INCORRECT** response formats:
+```
+❌ Here's the trainer specification:
+   ```yaml
+   model_ref: ...
+   ```
+
+❌ ```yaml
+   model_ref: ...
+   ```
+
+❌ Sure, I'll create the trainer:
+   model_ref: ...
+```
+
 {% if existing_yaml -%}
-Apply the requested changes and return the complete updated YAML configuration.
-- YAML only, no markdown blocks or explanations
-- Make the requested changes while maintaining the overall structure
-- Ensure schema compliance after edits
-- Focus only on training/optimization configuration
-
-Generate the updated trainer specification:
+Begin your response with the first line of the YAML (the updated trainer specification):
 {% else -%}
-Generate the complete YAML configuration.
-- YAML only, no markdown blocks or explanations
-- Start with `model_ref: {{ model_id }}`
-- Then `optimizer:` section with `type` and `lr`
-- Then `config:` section with training hyperparameters
-- Focus only on training/optimization configuration
-
-Generate the trainer specification:
+Begin your response with the first line of the YAML:
 {% endif %}

@@ -263,12 +263,47 @@ You have access to the following tools for exploration when needed:
 6. **Follow Guidance**: If architecture guidance is provided above, follow those best practices
 
 ## Output Format
+
+**CRITICAL**: Your response must be ONLY the raw YAML specification. Do not include:
+- ❌ Explanatory text before or after the YAML
+- ❌ Markdown code fences (```yaml or ```)
+- ❌ Conversational preamble ("Here's the specification...")
+- ❌ Any text that is not valid YAML
+
+**CORRECT** response format:
+```
+inputs:
+  features:
+    dtype: float32
+    shape: [null, 8]
+    columns: [col1, col2, ...]
+
+graph:
+  - name: layer1
+    type: torch.nn.Linear
+    ...
+```
+
+**INCORRECT** response formats:
+```
+❌ Here's the specification:
+   ```yaml
+   inputs:
+     ...
+   ```
+
+❌ Sure! I'll generate the model:
+   inputs:
+     ...
+
+❌ ```yaml
+   inputs:
+     ...
+   ```
+```
+
 {% if is_editing -%}
-Generate ONLY the updated YAML specification. No explanations or markdown blocks. Make the requested changes while maintaining the overall structure and ensuring schema compliance.
-
-Generate the updated specification:
+Begin your response with the first line of the YAML (the updated specification):
 {% else -%}
-Generate ONLY the YAML specification. No explanations or markdown blocks.
-
-Generate the specification:
+Begin your response with the first line of the YAML:
 {% endif %}

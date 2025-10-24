@@ -188,10 +188,54 @@ outputs: [user_features]
 
 # OUTPUT FORMAT
 
-Return ONLY valid YAML. No explanations, no markdown code blocks, no commentary.
+**CRITICAL**: Your response must be ONLY the raw YAML configuration. Do not include:
+- ❌ Explanatory text before or after the YAML
+- ❌ Markdown code fences (```yaml or ```)
+- ❌ Conversational preamble ("Here's the pipeline...")
+- ❌ Any text that is not valid YAML
 
-{% if existing_yaml %}Apply the requested changes and return the complete updated YAML configuration.
-{% else %}Generate the complete YAML configuration.
+**CORRECT** response format:
+```
+name: user_features
+description: User behavioral features
+
+vars:
+  min_date: '2023-01-01'
+
+steps:
+  - name: drop_old
+    type: execute
+    depends_on: []
+    sql: DROP TABLE IF EXISTS "user_features"
+
+  - name: user_features
+    type: table
+    depends_on: [drop_old, users]
+    sql: SELECT user_id FROM "users" ...
+
+outputs: [user_features]
+```
+
+**INCORRECT** response formats:
+```
+❌ Here's the data pipeline:
+   ```yaml
+   name: user_features
+   ```
+
+❌ ```yaml
+   name: user_features
+   ```
+
+❌ I'll create the pipeline for you:
+   name: user_features
+   ...
+```
+
+{% if existing_yaml -%}
+Begin your response with the first line of the YAML (the updated configuration):
+{% else -%}
+Begin your response with the first line of the YAML:
 {% endif %}
 
 ---

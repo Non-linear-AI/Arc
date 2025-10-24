@@ -202,24 +202,20 @@ Your output must validate against this Arc-Graph evaluator schema:
 
 ## OUTPUT FORMAT
 
-{% if existing_yaml -%}
-Apply the requested changes and return the complete updated YAML configuration.
-
-Return ONLY valid YAML for the evaluator specification. Do not include explanations, markdown formatting, or code fences. The output should be directly parseable as YAML.
-{% else -%}
-Generate the complete YAML configuration.
-
-Return ONLY valid YAML for the evaluator specification. Do not include explanations, markdown formatting, or code fences. The output should be directly parseable as YAML.
-{% endif %}
+**CRITICAL**: Your response must be ONLY the raw YAML specification. Do not include:
+- ❌ Explanatory text before or after the YAML
+- ❌ Markdown code fences (```yaml or ```)
+- ❌ Conversational preamble ("Here's the evaluator...")
+- ❌ Any text that is not valid YAML
 
 {% if target_column_exists -%}
-Example output format (WITH metrics - target column exists):
-```yaml
-name: diabetes_eval
-trainer_ref: diabetes_trainer
-dataset: test_diabetes_data
-target_column: outcome
-output_name: probabilities  # Specify which model output to use (if model has multiple outputs)
+**CORRECT** response format (WITH metrics - target column exists):
+```
+name: {{ evaluator_name }}
+trainer_ref: {{ trainer_ref }}
+dataset: {{ dataset }}
+target_column: {{ target_column }}
+output_name: probabilities
 metrics:
   - accuracy
   - precision
@@ -227,12 +223,33 @@ metrics:
   - f1_score
 ```
 {% else -%}
-Example output format (WITHOUT metrics - prediction mode):
-```yaml
-name: diabetes_prediction
-trainer_ref: diabetes_trainer
-dataset: new_patient_data
-target_column: outcome
+**CORRECT** response format (WITHOUT metrics - prediction mode):
 ```
-Note: No metrics field since target column is not present in the dataset.
+name: {{ evaluator_name }}
+trainer_ref: {{ trainer_ref }}
+dataset: {{ dataset }}
+target_column: {{ target_column }}
+```
+{% endif %}
+
+**INCORRECT** response formats:
+```
+❌ Here's the evaluator specification:
+   ```yaml
+   name: {{ evaluator_name }}
+   ```
+
+❌ ```yaml
+   name: {{ evaluator_name }}
+   ```
+
+❌ I'll create the evaluator for you:
+   name: {{ evaluator_name }}
+   ...
+```
+
+{% if existing_yaml -%}
+Begin your response with the first line of the YAML (the updated evaluator specification):
+{% else -%}
+Begin your response with the first line of the YAML:
 {% endif %}
