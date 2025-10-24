@@ -185,24 +185,44 @@ class BaseAgent(abc.ABC):
     def _clean_llm_response(self, response: str) -> str:
         """Clean up LLM response by removing markdown code blocks.
 
+        Handles multiple cases:
+        1. Code fences at start/end of response
+        2. Preamble text before code fence
+        3. Explanatory text after code fence
+
         Args:
             response: Raw LLM response
 
         Returns:
-            Cleaned response content
+            Cleaned response content (YAML only, no markdown fences)
         """
         content = response.strip()
 
-        # Remove markdown code blocks if present
-        if content.startswith("```yaml"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
+        # Case 1: Try to extract YAML from markdown code block (```yaml ... ```)
+        # This handles preamble text before the code fence
+        if "```yaml" in content:
+            start = content.find("```yaml") + 7  # Skip "```yaml"
+            end = content.find("```", start)
+            if end != -1:
+                # Found matching closing fence
+                return content[start:end].strip()
+            else:
+                # No closing fence, take everything after opening
+                return content[start:].strip()
 
-        if content.endswith("```"):
-            content = content[:-3]
+        # Case 2: Try to extract from generic code block (``` ... ```)
+        if "```" in content:
+            start = content.find("```") + 3  # Skip "```"
+            end = content.find("```", start)
+            if end != -1:
+                # Found matching closing fence
+                return content[start:end].strip()
+            else:
+                # No closing fence, take everything after opening
+                return content[start:].strip()
 
-        return content.strip()
+        # Case 3: No code fences, return as-is
+        return content
 
     def _validate_yaml_syntax(self, yaml_content: str) -> dict[str, Any]:
         """Validate YAML syntax and parse into dictionary.
