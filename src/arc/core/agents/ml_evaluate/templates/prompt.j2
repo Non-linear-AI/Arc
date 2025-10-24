@@ -159,15 +159,23 @@ Your output must validate against this Arc-Graph evaluator schema:
 
 ## Available Metrics
 
-### Classification Metrics
+**CRITICAL**: You MUST use ONLY the metrics listed below. Do NOT use any other metric names, even if they seem reasonable (e.g., confusion_matrix, roc_curve, precision_recall_curve are NOT supported).
+
+### Classification Metrics (ONLY these are valid)
 {% for metric in available_metrics.classification -%}
-- **{{ metric }}**: {% if metric == "accuracy" %}Fraction of correctly classified samples{% elif metric == "precision" %}True positives / (True positives + False positives){% elif metric == "recall" %}True positives / (True positives + False negatives){% elif metric == "f1_score" %}Harmonic mean of precision and recall{% elif metric == "auc" %}Area under ROC curve{% endif %}
+- **{{ metric }}**: {% if metric == "accuracy" %}Fraction of correctly classified samples{% elif metric == "precision" %}True positives / (True positives + False positives){% elif metric == "recall" %}True positives / (True positives + False negatives){% elif metric == "f1_score" %}Harmonic mean of precision and recall{% elif metric == "auc" %}Area under ROC curve (requires probability outputs){% endif %}
 {% endfor %}
 
-### Regression Metrics
+### Regression Metrics (ONLY these are valid)
 {% for metric in available_metrics.regression -%}
-- **{{ metric }}**: {% if metric == "mse" %}Mean squared error{% elif metric == "mae" %}Mean absolute error{% elif metric == "rmse" %}Root mean squared error{% elif metric == "r2_score" %}R-squared score{% endif %}
+- **{{ metric }}**: {% if metric == "mse" %}Mean squared error{% elif metric == "mae" %}Mean absolute error{% elif metric == "rmse" %}Root mean squared error{% elif metric == "r2_score" %}R-squared score (coefficient of determination){% endif %}
 {% endfor %}
+
+**Invalid Metric Examples** (DO NOT USE):
+- ❌ `confusion_matrix` - Not available (use accuracy, precision, recall instead)
+- ❌ `roc_curve` - Not available (use auc for ROC performance)
+- ❌ `precision_recall_curve` - Not available (use precision, recall, f1_score instead)
+- ❌ `class_wise_metrics` - Not available (metrics compute macro/weighted averages automatically)
 
 ## Guidelines
 
@@ -179,9 +187,11 @@ Your output must validate against this Arc-Graph evaluator schema:
 {% if target_column_exists -%}
    - **IMPORTANT**: The target column EXISTS in the dataset (ground truth available)
    - Include appropriate metrics to evaluate model performance against ground truth
-   - For classification: accuracy, precision, recall, f1_score, auc
-   - For regression: mse, mae, rmse, r2_score
+   - **CRITICAL**: Use ONLY metrics from the Available Metrics section above
+   - For classification: Choose from [accuracy, precision, recall, f1_score, auc]
+   - For regression: Choose from [mse, mae, rmse, r2_score]
    - Base your metric selection on the user instruction ({{ instruction }})
+   - **DO NOT** use metrics like confusion_matrix, roc_curve, precision_recall_curve, etc.
 {% else -%}
    - **IMPORTANT**: The target column DOES NOT exist in the dataset (prediction mode)
    - DO NOT include any metrics in the specification
