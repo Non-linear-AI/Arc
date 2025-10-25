@@ -193,9 +193,13 @@ class MLModelTool(BaseTool):
             extract_knowledge_ids_from_text,
         )
 
+        # Get available knowledge IDs from the knowledge loader
+        available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
         recommended_knowledge_ids = extract_knowledge_ids_from_text(
             instruction=instruction,
             ml_plan_architecture=ml_plan_architecture,
+            available_knowledge_ids=available_knowledge_ids,
         )
 
         try:
@@ -577,22 +581,26 @@ class MLTrainTool(BaseTool):
             plan = MLPlan.from_dict(ml_plan)
             ml_plan_training_config = plan.training_configuration
 
-        # Extract knowledge IDs from instruction and ML Plan
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=instruction,
-            ml_plan_architecture=ml_plan_training_config,
-        )
-
         # Generate trainer spec via LLM
         agent = MLTrainAgent(
             self.services,
             self.api_key,
             self.base_url,
             self.model,
+        )
+
+        # Extract knowledge IDs from instruction and ML Plan
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        # Get available knowledge IDs from the knowledge loader
+        available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=instruction,
+            ml_plan_architecture=ml_plan_training_config,
+            available_knowledge_ids=available_knowledge_ids,
         )
 
         try:
@@ -1130,21 +1138,25 @@ class MLTrainTool(BaseTool):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
         ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Extract knowledge IDs from feedback
-            from arc.core.agents.shared.knowledge_selector import (
-                extract_knowledge_ids_from_text,
-            )
-
-            recommended_knowledge_ids = extract_knowledge_ids_from_text(
-                instruction=feedback,
-                ml_plan_architecture=None,
-            )
-
             agent = MLTrainAgent(
                 self.services,
                 self.api_key,
                 self.base_url,
                 self.model,
+            )
+
+            # Extract knowledge IDs from feedback
+            from arc.core.agents.shared.knowledge_selector import (
+                extract_knowledge_ids_from_text,
+            )
+
+            # Get available knowledge IDs from the knowledge loader
+            available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
+            recommended_knowledge_ids = extract_knowledge_ids_from_text(
+                instruction=feedback,
+                ml_plan_architecture=None,
+                available_knowledge_ids=available_knowledge_ids,
             )
 
             try:
@@ -1366,16 +1378,6 @@ class MLEvaluateTool(BaseTool):
             plan = MLPlan.from_dict(ml_plan)
             ml_plan_evaluation = plan.evaluation
 
-        # Extract knowledge IDs from instruction and ML Plan
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=instruction,
-            ml_plan_architecture=ml_plan_evaluation,
-        )
-
         # Generate evaluator spec via LLM
         from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
@@ -1384,6 +1386,20 @@ class MLEvaluateTool(BaseTool):
             self.api_key,
             self.base_url,
             self.model,
+        )
+
+        # Extract knowledge IDs from instruction and ML Plan
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        # Get available knowledge IDs from the knowledge loader
+        available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=instruction,
+            ml_plan_architecture=ml_plan_evaluation,
+            available_knowledge_ids=available_knowledge_ids,
         )
 
         try:
@@ -1821,16 +1837,6 @@ class MLEvaluateTool(BaseTool):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
         ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Extract knowledge IDs from feedback
-            from arc.core.agents.shared.knowledge_selector import (
-                extract_knowledge_ids_from_text,
-            )
-
-            recommended_knowledge_ids = extract_knowledge_ids_from_text(
-                instruction=feedback,
-                ml_plan_architecture=None,
-            )
-
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
             agent = MLEvaluateAgent(
@@ -1838,6 +1844,20 @@ class MLEvaluateTool(BaseTool):
                 self.api_key,
                 self.base_url,
                 self.model,
+            )
+
+            # Extract knowledge IDs from feedback
+            from arc.core.agents.shared.knowledge_selector import (
+                extract_knowledge_ids_from_text,
+            )
+
+            # Get available knowledge IDs from the knowledge loader
+            available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
+            recommended_knowledge_ids = extract_knowledge_ids_from_text(
+                instruction=feedback,
+                ml_plan_architecture=None,
+                available_knowledge_ids=available_knowledge_ids,
             )
 
             try:
@@ -2138,16 +2158,6 @@ class MLEvaluatorGeneratorTool(BaseTool):
             self.ui.show_info(f"ℹ Using registered trainer: {trainer_record.id}")
             self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
 
-        # Extract knowledge IDs from context
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=context,
-            ml_plan_architecture=None,
-        )
-
         from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
         agent = MLEvaluateAgent(
@@ -2155,6 +2165,20 @@ class MLEvaluatorGeneratorTool(BaseTool):
             self.api_key,
             self.base_url,
             self.model,
+        )
+
+        # Extract knowledge IDs from context
+        from arc.core.agents.shared.knowledge_selector import (
+            extract_knowledge_ids_from_text,
+        )
+
+        # Get available knowledge IDs from the knowledge loader
+        available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
+        recommended_knowledge_ids = extract_knowledge_ids_from_text(
+            instruction=context,
+            ml_plan_architecture=None,
+            available_knowledge_ids=available_knowledge_ids,
         )
 
         try:
@@ -2336,16 +2360,6 @@ class MLEvaluatorGeneratorTool(BaseTool):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
         ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Extract knowledge IDs from feedback
-            from arc.core.agents.shared.knowledge_selector import (
-                extract_knowledge_ids_from_text,
-            )
-
-            recommended_knowledge_ids = extract_knowledge_ids_from_text(
-                instruction=feedback,
-                ml_plan_architecture=None,
-            )
-
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
             agent = MLEvaluateAgent(
@@ -2353,6 +2367,20 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 self.api_key,
                 self.base_url,
                 self.model,
+            )
+
+            # Extract knowledge IDs from feedback
+            from arc.core.agents.shared.knowledge_selector import (
+                extract_knowledge_ids_from_text,
+            )
+
+            # Get available knowledge IDs from the knowledge loader
+            available_knowledge_ids = set(agent.knowledge_loader.scan_metadata().keys())
+
+            recommended_knowledge_ids = extract_knowledge_ids_from_text(
+                instruction=feedback,
+                ml_plan_architecture=None,
+                available_knowledge_ids=available_knowledge_ids,
             )
 
             try:
