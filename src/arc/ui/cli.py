@@ -1,13 +1,16 @@
 """Command-line interface for Arc CLI."""
 
 import asyncio
+import json
 import os
 import shlex
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import click
+import yaml
 from dotenv import load_dotenv
 
 from arc.core import ArcAgent, SettingsManager
@@ -480,8 +483,6 @@ async def _ml_train(
                 raise CommandError(f"Plan '{plan_id}' not found")
 
             # Parse plan YAML to extract training instructions
-            import yaml
-
             plan_data = yaml.safe_load(db_plan.plan_yaml)
 
             # Extract training-related information from plan
@@ -514,7 +515,7 @@ async def _ml_train(
     tensorboard_manager = None
     training_succeeded = False
     try:
-        # Use the MLTrainTool which includes confirmation workflow
+        # Import here: MLTrainTool only needed for /ml train command
         from arc.tools.ml import MLTrainTool
 
         # Get settings for tool initialization
@@ -522,6 +523,7 @@ async def _ml_train(
 
         # Initialize TensorBoard manager for the tool
         try:
+            # Import here: TensorBoardManager is optional and heavy dependency
             from arc.ml import TensorBoardManager
 
             tensorboard_manager = TensorBoardManager()
@@ -709,6 +711,7 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
 
         # If this is an evaluation job, show evaluation results and metrics
         if job_type == "evaluate_model":
+            # Import here: Only needed when displaying evaluation job status
             from arc.database.services import EvaluationTrackingService
 
             eval_tracking = EvaluationTrackingService(
@@ -735,8 +738,6 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
 
                 # Show evaluation metrics
                 if eval_run.metrics_result:
-                    import json
-
                     try:
                         metrics = json.loads(eval_run.metrics_result)
                         rows.append(["", ""])  # Separator
@@ -794,8 +795,6 @@ async def _ml_model(
                 raise CommandError(f"Plan '{plan_id}' not found in database")
 
             # Parse YAML to dict for the tool
-            import yaml
-
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id  # Ensure plan_id is in the dict
 
@@ -815,7 +814,7 @@ async def _ml_model(
         raise CommandError("/ml model requires --instruction when not using --plan-id")
 
     try:
-        # Use the MLModelTool which includes confirmation workflow
+        # Import here: MLModelTool only needed for /ml model command
         from arc.tools.ml import MLModelTool
 
         # Get settings for tool initialization
@@ -868,7 +867,7 @@ async def _ml_evaluate(
     tensorboard_manager = None
     evaluation_succeeded = False
     try:
-        # Use the MLEvaluateTool which combines generation + execution
+        # Import here: MLEvaluateTool only needed for /ml evaluate command
         from arc.tools.ml import MLEvaluateTool
 
         # Get settings for tool initialization
@@ -876,6 +875,7 @@ async def _ml_evaluate(
 
         # Initialize TensorBoard manager for the tool
         try:
+            # Import here: TensorBoardManager is optional and heavy dependency
             from arc.ml import TensorBoardManager
 
             tensorboard_manager = TensorBoardManager()
@@ -977,8 +977,6 @@ async def _ml_data_processing(
                 raise CommandError(f"Plan '{plan_id}' not found in database")
 
             # Parse YAML to dict for the tool
-            import yaml
-
             ml_plan = yaml.safe_load(db_plan.plan_yaml)
             ml_plan["plan_id"] = db_plan.plan_id
 
@@ -987,7 +985,7 @@ async def _ml_data_processing(
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
     try:
-        # Use the MLDataProcessTool for generation with confirmation workflow
+        # Import here: MLDataProcessTool only needed for /ml data command
         from arc.tools.data_process import MLDataProcessTool
 
         # Get settings for tool initialization
@@ -1069,7 +1067,6 @@ async def run_interactive_mode(
             agent = ArcAgent(
                 api_key or "", services, base_url, model, max_tool_rounds, ui
             )
-        from contextlib import suppress
 
         with suppress(Exception):
             ConfirmationService.get_instance().set_ui(ui)
@@ -1340,6 +1337,7 @@ async def run_interactive_mode(
 
         # Clean up TensorBoard processes
         with suppress(Exception):
+            # Import here: TensorBoardManager is optional and heavy dependency
             from arc.ml import TensorBoardManager
 
             tb_manager = TensorBoardManager()

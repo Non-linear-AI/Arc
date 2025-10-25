@@ -1,6 +1,7 @@
 """DuckDB database implementation."""
 
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -401,8 +402,6 @@ class DuckDBDatabase(Database):
 
             # Migrate trainers and evaluators tables to add plan_id column (Phase 7)
             # This ensures backward compatibility with existing databases
-            from contextlib import suppress
-
             with suppress(Exception):
                 # Check if trainers table needs migration
                 check_result = self.query("""
@@ -541,8 +540,6 @@ class DuckDBDatabase(Database):
 
             # Migrate old schema: data_table/target_column -> source_tables
             # Check if old columns exist and migrate
-            from contextlib import suppress
-
             with suppress(Exception):
                 # Check if data_table column exists (old schema)
                 check_result = self.query("""
