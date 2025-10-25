@@ -22,6 +22,10 @@ class MLPlan:
     training_configuration: str
     evaluation: str
 
+    # Optional knowledge recommendations
+    # Agent can read knowledge but chooses which to recommend based on task
+    recommended_knowledge_ids: list[str] = field(default_factory=list)
+
     # Metadata
     version: int = 1
     stage: str = "initial"  # "initial", "post_training", "post_evaluation", etc.
@@ -53,6 +57,7 @@ class MLPlan:
             model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
             training_configuration=analysis.get("training_configuration", ""),
             evaluation=analysis.get("evaluation", ""),
+            recommended_knowledge_ids=analysis.get("recommended_knowledge_ids", []),
             version=version,
             stage=stage,
             reason_for_update=reason,
@@ -66,6 +71,7 @@ class MLPlan:
             "model_architecture_and_loss": self.model_architecture_and_loss,
             "training_configuration": self.training_configuration,
             "evaluation": self.evaluation,
+            "recommended_knowledge_ids": self.recommended_knowledge_ids,
             "version": self.version,
             "stage": self.stage,
             "reason_for_update": self.reason_for_update,
@@ -85,6 +91,7 @@ class MLPlan:
             model_architecture_and_loss=data["model_architecture_and_loss"],
             training_configuration=data["training_configuration"],
             evaluation=data["evaluation"],
+            recommended_knowledge_ids=data.get("recommended_knowledge_ids", []),
             version=data.get("version", 1),
             stage=data.get("stage", "initial"),
             reason_for_update=data.get("reason_for_update"),
@@ -144,6 +151,17 @@ class MLPlan:
                 self.evaluation,
             ]
         )
+
+        # Show recommended knowledge at the end if present
+        if self.recommended_knowledge_ids:
+            knowledge_str = ", ".join(self.recommended_knowledge_ids)
+            lines.extend(
+                [
+                    "",
+                    "**Recommended Knowledge**",
+                    knowledge_str,
+                ]
+            )
 
         return "\n".join(lines)
 

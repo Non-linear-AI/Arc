@@ -52,6 +52,7 @@ class MLDataAgent(BaseAgent):
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
+        skip_data_profiling: bool = False,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Generate or edit data processing YAML from instruction.
 
@@ -67,6 +68,8 @@ class MLDataAgent(BaseAgent):
             recommended_knowledge_ids: Optional list of knowledge IDs
                 recommended by ML Plan
             conversation_history: Optional conversation history for editing workflow
+            skip_data_profiling: If True, skip automatic data profiling (row counts)
+                (useful when data insights are already in instruction)
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string, conversation_history)
@@ -83,6 +86,7 @@ class MLDataAgent(BaseAgent):
                 database=database,
                 existing_yaml=existing_yaml,
                 recommended_knowledge_ids=recommended_knowledge_ids,
+                skip_data_profiling=skip_data_profiling,
             )
         else:
             # Continue conversation - just append feedback
@@ -98,6 +102,7 @@ class MLDataAgent(BaseAgent):
         database: str = "user",
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        skip_data_profiling: bool = False,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -107,9 +112,9 @@ class MLDataAgent(BaseAgent):
         """
         try:
             # Get schema information for available tables
-            # Skip row counts for faster response (cosmetic, not needed by LLM)
+            # Skip row counts when profiling is disabled or for faster response
             schema_info = await self._get_schema_context(
-                source_tables, database, include_row_counts=False
+                source_tables, database, include_row_counts=not skip_data_profiling
             )
 
             # Pre-load recommended knowledge content

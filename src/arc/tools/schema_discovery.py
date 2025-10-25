@@ -132,18 +132,29 @@ class SchemaDiscoveryTool(BaseTool):
 
             if not tables:
                 output = f"No tables found in {target_db} database."
+                metadata = {"table_count": 0}
             else:
-                output = f"Tables in {target_db} database ({len(tables)} total):\n\n"
-                for table in tables:
+                total = len(tables)
+                # Show first 5 tables
+                show_count = min(5, total)
+                output = ""
+
+                for i, table in enumerate(tables[:show_count]):
                     column_count = len(schema_info.get_columns_for_table(table.name))
-                    table_type = table.table_type.replace("BASE TABLE", "Table")
-                    output += f"• {table.name} ({column_count} columns, {table_type})\n"
+                    output += f"• {table.name} [dim]({column_count} cols)[/dim]"
+                    # Add 3 tables per line
+                    if (i + 1) % 3 == 0 or i == show_count - 1:
+                        output += "\n"
+                    else:
+                        output += " "
 
-                output += (
-                    "\nUse 'describe_table' action to see detailed column information."
-                )
+                # Add "… and N more" if there are more tables
+                if total > show_count:
+                    output += f"… and {total - show_count} more"
 
-            return ToolResult.success_result(output)
+                metadata = {"table_count": total}
+
+            return ToolResult.success_result(output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to list tables: {str(e)}")
@@ -171,40 +182,34 @@ class SchemaDiscoveryTool(BaseTool):
 
             # Get table details
             columns = schema_info.get_columns_for_table(table_name)
+            total_cols = len(columns)
+            show_count = min(5, total_cols)
 
-            output = f"Table: {table_name} ({target_db} database)\n"
-            output += f"Columns: {len(columns)}\n\n"
+            # Check if all columns are nullable
+            all_nullable = all(col.is_nullable for col in columns)
+
+            # Add nullable info as first line if all columns are nullable
+            output = "[dim](all nullable)[/dim]\n" if all_nullable else ""
 
             if columns:
-                # Create formatted column listing
-                output += "Column Details:\n"
-                for i, col in enumerate(columns, 1):
-                    nullable = "NULL" if col.is_nullable else "NOT NULL"
-                    default = (
-                        f" DEFAULT {col.default_value}" if col.default_value else ""
-                    )
-                    output += (
-                        f"  {i:2d}. {col.column_name:<20} {col.data_type:<15} "
-                        f"{nullable}{default}\n"
-                    )
+                # Group columns by data type
+                type_groups = {}
+                for col in columns[:show_count]:
+                    dtype = col.data_type
+                    if dtype not in type_groups:
+                        type_groups[dtype] = []
+                    type_groups[dtype].append(col.column_name)
 
-                # Add sample query suggestions
-                column_list = ", ".join([col.column_name for col in columns[:5]])
-                if len(columns) > 5:
-                    column_list += ", ..."
+                # Output grouped by type
+                for dtype, col_names in type_groups.items():
+                    output += f"• {', '.join(col_names)} [dim]({dtype})[/dim]\n"
 
-                output += "\nSample queries:\n"
-                output += f"• SELECT {column_list} FROM {table_name} LIMIT 10;\n"
-                output += f"• SELECT COUNT(*) FROM {table_name};\n"
+                # Add "… and N more" if there are more columns
+                if total_cols > show_count:
+                    output += f"… and {total_cols - show_count} more columns"
 
-                # Add insights for common column patterns
-                insights = self._get_table_insights(columns)
-                if insights:
-                    output += "\nColumn Insights:\n"
-                    for insight in insights:
-                        output += f"• {insight}\n"
-
-            return ToolResult.success_result(output)
+            metadata = {"column_count": total_cols}
+            return ToolResult.success_result(output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to describe table: {str(e)}")

@@ -51,9 +51,6 @@ Apply the requested changes while preserving production-ready quality and overal
 - `steps`: Array of transformation steps
 - `outputs`: Array of step names that produce final tables
 
-**Optional Fields:**
-- `vars`: Variables for SQL substitution using ${var_name} syntax
-
 **Step Structure:**
 ```yaml
 - name: step_name          # Unique identifier (snake_case)
@@ -156,9 +153,6 @@ Demonstrates: idempotency, NULL handling, window functions, aggregations.
 name: user_features
 description: User behavioral features from transactions
 
-vars:
-  min_date: '2023-01-01'
-
 steps:
   - name: drop_old
     type: execute
@@ -172,7 +166,7 @@ steps:
       SELECT user_id, CAST(amount AS DECIMAL(10,2)) as amount,
         transaction_date, COALESCE(category, 'UNKNOWN') as category
       FROM "transactions"
-      WHERE transaction_date >= '${min_date}' AND amount > 0 AND user_id IS NOT NULL
+      WHERE transaction_date >= '2023-01-01' AND amount > 0 AND user_id IS NOT NULL
 
   - name: user_features
     type: table
@@ -206,9 +200,6 @@ outputs: [user_features]
 ```
 name: user_features
 description: User behavioral features
-
-vars:
-  min_date: '2023-01-01'
 
 steps:
   - name: drop_old
@@ -259,7 +250,6 @@ Your output must validate against this structure:
   "properties": {
     "name": {"type": "string"},
     "description": {"type": "string"},
-    "vars": {"type": "object"},
     "steps": {
       "type": "array",
       "items": {

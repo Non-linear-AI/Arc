@@ -21,10 +21,13 @@ You have access to tools to help you make informed architectural decisions:
 
 **Tool Usage Guidance:**
 - Start by listing knowledge to see what architectural patterns are available
-- Use database_query to understand data characteristics (class balance, feature distributions, etc.)
 - Read knowledge that matches the problem characteristics (tabular data → MLP/DCN, sequences → LSTM/Transformer, etc.)
-- Use the knowledge to inform your architectural recommendations with specific implementation details
+{% if skip_data_profiling %}- **IMPORTANT**: Comprehensive data insights are already provided in the task description above. You do NOT need to query the database to verify or gather additional data statistics. Trust the provided insights and focus on using knowledge tools for architectural guidance.
+- The database_query tool is available only if you need very specific data details not covered in the task description (rarely needed).
+{% else %}- Use database_query to understand data characteristics (class balance, feature distributions, etc.)
+{% endif %}- Use the knowledge to inform your architectural recommendations with specific implementation details
 - You can call multiple tools to explore before generating the final plan
+- **IMPORTANT**: Tool results remain in your conversation context. Once you've read a knowledge document or run a query, the result is available to you. Do NOT re-read the same knowledge document or re-run the same query - simply reference the previous result from your context.
 
 {% if mode == "update_section" %}
 ## Your Task: Update ML Plan Section
@@ -264,6 +267,10 @@ training_configuration: >-
 evaluation: >-
   Describe the evaluation metrics (primary and secondary) with specific names
   (AUC-ROC, F1-Score, etc.) and explain why they are appropriate for this problem.
+
+recommended_knowledge_ids:
+  - knowledge_id_1
+  - knowledge_id_2
 ```
 
 **Instructions:**
@@ -271,6 +278,7 @@ evaluation: >-
 - Write clear, actionable guidance in each section with specific technique names
 - Focus on **why** choices are made based on the data and task
 - The summary should be concise but complete (1-2 sentences)
+- **recommended_knowledge_ids** (optional): List the knowledge document IDs that are most relevant for implementing this plan. Only include knowledge you've actually read and found useful. If you didn't use any knowledge documents, you can omit this field or use an empty list.
 
 ## Example Output
 
@@ -297,11 +305,15 @@ training_configuration: >-
 evaluation: >-
   Primary: torchmetrics.AUROC for threshold-independent evaluation on imbalanced data.
   Secondary: torchmetrics.F1Score(threshold=0.5), torchmetrics.Accuracy, Precision/Recall.
+
+recommended_knowledge_ids:
+  - mlp
 ```
 
 **Output Instructions:**
 - Return ONLY valid YAML starting directly with the first field name
 - NO markdown code fences (```yaml or ```), explanatory text, or formatting markers
+- Include recommended_knowledge_ids if you used any knowledge documents for architectural guidance
 {% if mode == "update_section" %}
 - Output the updated "{{ section_to_update }}" section text only (no headers, just YAML field content)
 {% else %}

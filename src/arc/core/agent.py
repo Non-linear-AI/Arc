@@ -17,7 +17,7 @@ from arc.tools import (
     CreateTodoListTool,
     DatabaseQueryTool,
     EditFileTool,
-    MLDataProcessTool,
+    MLDataTool,
     MLEvaluateTool,
     MLModelTool,
     MLPlanTool,
@@ -122,11 +122,8 @@ class ArcAgent:
         self.current_model_name = model
         self.logger.info(f"ArcAgent initialized with model: {self.current_model_name}")
 
-        # ML Plan management - stores current plan across workflow
-        self.current_ml_plan: dict | None = None
+        # ML Plan management
         self.ml_plan_auto_accept: bool = False  # Session-scoped auto-accept flag
-        # Track timestamp for filtering conversation history in revisions
-        self.last_ml_plan_timestamp: datetime | None = None
 
         # Initialize tool registry
         from arc.tools.registry import ToolRegistry
@@ -209,7 +206,7 @@ class ArcAgent:
             self.ui_interface,
             self.tensorboard_manager,
         )
-        self.data_process_tool = MLDataProcessTool(
+        self.ml_data_tool = MLDataTool(
             services,
             self.api_key,
             self.base_url,
@@ -224,7 +221,7 @@ class ArcAgent:
         self.tool_registry.register("ml_model", self.ml_model_tool)
         self.tool_registry.register("ml_train", self.ml_train_tool)
         self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
-        self.tool_registry.register("data_process", self.data_process_tool)
+        self.tool_registry.register("ml_data", self.ml_data_tool)
 
         # Validate tool registry matches tools.yaml
         self._validate_tool_registry()
@@ -578,19 +575,50 @@ class ArcAgent:
             self.chat_history.append(error_entry)
             return [user_entry, error_entry]
 
+    def _has_recent_data_exploration(self, lookback_messages: int = 10) -> bool:
+        """Check if recent chat history contains data exploration tool calls.
+
+        Args:
+            lookback_messages: Number of recent messages to check
+
+        Returns:
+            True if recent database_query or schema_discovery calls exist
+        """
+        # Look at recent chat entries
+        recent_entries = (
+            self.chat_history[-lookback_messages:] if self.chat_history else []
+        )
+
+        for entry in recent_entries:
+            # Check tool calls in this entry
+            if entry.tool_calls:
+                for tool_call in entry.tool_calls:
+                    if tool_call.name in ("database_query", "schema_discovery"):
+                        return True
+
+            # Also check single tool_call field
+            if entry.tool_call and entry.tool_call.name in (
+                "database_query",
+                "schema_discovery",
+            ):
+                return True
+
+        return False
+
     async def _execute_tool(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call using the tool registry.
 
         Handles special preprocessing for tools that need agent context:
-        - ml_plan: Injects previous_plan for revisions
-        - ml_model, ml_train, ml_evaluate, data_process: Inject current_ml_plan
+        - ml_plan, ml_data: Inject skip_data_profiling if recent data exploration
         """
-        # Special handling for ml_plan: inject previous plan for revisions
+        # Special handling for ml_plan: inject skip profiling flag
         if tool_call.name == "ml_plan":
             try:
                 args = json.loads(tool_call.arguments)
-                # Inject previous plan if it exists (for revisions)
-                args["previous_plan"] = self.current_ml_plan
+                # Skip data profiling if agent already explored data
+                if self._has_recent_data_exploration():
+                    args["skip_data_profiling"] = True
+
                 # Recreate tool call with modified arguments
                 tool_call = ArcToolCall(
                     id=tool_call.id,
@@ -602,52 +630,14 @@ class ArcAgent:
                     f"Error preparing ml_plan context: {str(e)}"
                 )
 
-        # Special handling for ml_model: inject current plan
-        if tool_call.name == "ml_model":
+        # Special handling for ml_data: inject skip profiling flag
+        if tool_call.name == "ml_data":
             try:
                 args = json.loads(tool_call.arguments)
-                # Only inject ml_plan if it exists and is valid
-                if self.current_ml_plan is not None:
-                    # Validate ml_plan structure before injecting
-                    if not isinstance(self.current_ml_plan, dict):
-                        return ToolResult.error_result(
-                            "Internal error: ml_plan is not a dictionary. "
-                            "Cannot inject invalid plan into ml_model."
-                        )
-                    # Basic validation: check for required fields
-                    if "model_architecture_and_loss" not in self.current_ml_plan:
-                        self.logger.warning(
-                            "ml_plan missing 'model_architecture_and_loss' section"
-                        )
-                args["ml_plan"] = self.current_ml_plan
-                tool_call = ArcToolCall(
-                    id=tool_call.id,
-                    name=tool_call.name,
-                    arguments=json.dumps(args),
-                )
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Error preparing ml_model context: {str(e)}"
-                )
+                # Skip data profiling if agent already explored data
+                if self._has_recent_data_exploration():
+                    args["skip_data_profiling"] = True
 
-        # Special handling for ml_train: inject current plan
-        if tool_call.name == "ml_train":
-            try:
-                args = json.loads(tool_call.arguments)
-                # Only inject ml_plan if it exists and is valid
-                if self.current_ml_plan is not None:
-                    # Validate ml_plan structure before injecting
-                    if not isinstance(self.current_ml_plan, dict):
-                        return ToolResult.error_result(
-                            "Internal error: ml_plan is not a dictionary. "
-                            "Cannot inject invalid plan into ml_train."
-                        )
-                    # Basic validation: check for required fields
-                    if "training_configuration" not in self.current_ml_plan:
-                        self.logger.warning(
-                            "ml_plan missing 'training_configuration' section"
-                        )
-                args["ml_plan"] = self.current_ml_plan
                 tool_call = ArcToolCall(
                     id=tool_call.id,
                     name=tool_call.name,
@@ -655,160 +645,15 @@ class ArcAgent:
                 )
             except Exception as e:
                 return ToolResult.error_result(
-                    f"Error preparing ml_train context: {str(e)}"
-                )
-
-        # Special handling for ml_evaluate: inject current plan
-        if tool_call.name == "ml_evaluate":
-            try:
-                args = json.loads(tool_call.arguments)
-                # Only inject ml_plan if it exists and is valid
-                if self.current_ml_plan is not None:
-                    # Validate ml_plan structure before injecting
-                    if not isinstance(self.current_ml_plan, dict):
-                        return ToolResult.error_result(
-                            "Internal error: ml_plan is not a dictionary. "
-                            "Cannot inject invalid plan into ml_evaluate."
-                        )
-                    # Basic validation: check for required fields
-                    if "evaluation" not in self.current_ml_plan:
-                        self.logger.warning("ml_plan missing 'evaluation' section")
-                args["ml_plan"] = self.current_ml_plan
-                tool_call = ArcToolCall(
-                    id=tool_call.id,
-                    name=tool_call.name,
-                    arguments=json.dumps(args),
-                )
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Error preparing ml_evaluate context: {str(e)}"
-                )
-
-        # Special handling for data_process: inject current plan
-        if tool_call.name == "data_process":
-            try:
-                args = json.loads(tool_call.arguments)
-                # Only inject ml_plan if it exists and is valid
-                if self.current_ml_plan is not None:
-                    # Validate ml_plan structure before injecting
-                    if not isinstance(self.current_ml_plan, dict):
-                        return ToolResult.error_result(
-                            "Internal error: ml_plan is not a dictionary. "
-                            "Cannot inject invalid plan into data_process."
-                        )
-                    # Basic validation: check for required fields
-                    if "feature_engineering" not in self.current_ml_plan:
-                        self.logger.warning(
-                            "ml_plan missing 'feature_engineering' section"
-                        )
-                args["ml_plan"] = self.current_ml_plan
-                tool_call = ArcToolCall(
-                    id=tool_call.id,
-                    name=tool_call.name,
-                    arguments=json.dumps(args),
-                )
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Error preparing data_process context: {str(e)}"
+                    f"Error preparing ml_data context: {str(e)}"
                 )
 
         # Use tool registry for execution
-        result = await self.tool_registry.execute(tool_call)
-
-        # Post-processing for ml_plan: store plan state
-        if (
-            tool_call.name == "ml_plan"
-            and result.success
-            and result.metadata
-            and "ml_plan" in result.metadata
-        ):
-            # Validate ml_plan before storing
-            plan_data = result.metadata["ml_plan"]
-            if not isinstance(plan_data, dict):
-                self.logger.error(
-                    f"ml_plan tool returned invalid plan: not a dictionary "
-                    f"(type: {type(plan_data).__name__})"
-                )
-                # Don't store invalid plan
-                return ToolResult.error_result(
-                    "Internal error: ml_plan tool returned invalid plan data. "
-                    "Expected dictionary, got {type(plan_data).__name__}."
-                )
-
-            # Validate required fields
-            required_fields = [
-                "summary",
-                "feature_engineering",
-                "model_architecture_and_loss",
-                "training_configuration",
-                "evaluation",
-            ]
-            missing_fields = [f for f in required_fields if f not in plan_data]
-            if missing_fields:
-                self.logger.warning(
-                    f"ml_plan missing required fields: {', '.join(missing_fields)}"
-                )
-                # Store anyway but log warning (plan might be partial/revision)
-
-            self.current_ml_plan = plan_data
-            self.last_ml_plan_timestamp = datetime.now()
-
-        # Tools now return factual data in metadata
-        # (plan_comparison, plan_training_config, plan_evaluation)
-        # The agent's reasoning will analyze this data and decide if plan
-        # revision is warranted
-
-        return result
+        return await self.tool_registry.execute(tool_call)
 
     async def _execute_tool_call(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call (alias for _execute_tool)."""
         return await self._execute_tool(tool_call)
-
-    def _prepare_conversation_for_ml_plan(
-        self, from_timestamp: datetime | None = None, max_turns: int = 10
-    ) -> str:
-        """Prepare conversation history for ML plan tool.
-
-        Converts chat history to a simplified format suitable for ML planning.
-        Returns recent conversation turns to provide context without overwhelming
-        the LLM with too much history.
-
-        Args:
-            from_timestamp: Timestamp to filter messages from (for revisions).
-                           If None, includes all conversation history.
-            max_turns: Maximum number of conversation turns (user+assistant pairs)
-                      to include. Default is 10 turns (20 messages).
-
-        Returns:
-            Formatted conversation history string
-        """
-        conversation = []
-
-        for entry in self.chat_history:
-            # For revisions, only include messages after the last plan timestamp
-            if from_timestamp and entry.timestamp <= from_timestamp:
-                continue
-
-            if entry.type == "user":
-                conversation.append({"role": "user", "content": entry.content})
-            elif entry.type == "assistant" and entry.content:
-                conversation.append({"role": "assistant", "content": entry.content})
-
-        # Limit to recent turns (user + assistant = 1 turn, so max_turns * 2 messages)
-        if max_turns and len(conversation) > max_turns * 2:
-            conversation = conversation[-(max_turns * 2) :]
-
-        # Format as readable conversation
-        if not conversation:
-            return ""
-
-        formatted = []
-        for msg in conversation:
-            role = msg["role"].capitalize()
-            content = msg["content"]
-            formatted.append(f"{role}: {content}")
-
-        return "\n\n".join(formatted)
 
     def get_chat_history(self) -> list[ChatEntry]:
         """Get the complete chat history."""

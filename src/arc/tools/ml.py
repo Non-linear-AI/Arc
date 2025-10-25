@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -83,7 +84,8 @@ class MLModelTool(BaseTool):
         data_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
-        ml_plan: dict | None = None,
+        plan_id: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
     ) -> ToolResult:
         """Generate Arc-Graph model specification via LLM.
 
@@ -93,18 +95,19 @@ class MLModelTool(BaseTool):
             data_table: Database table to profile for generation
             target_column: Target column for prediction
             auto_confirm: Skip confirmation workflows (for testing only)
-            ml_plan: Optional ML plan dict containing model_architecture_and_loss
-                guidance (SECONDARY baseline, automatically injected by the main agent)
+            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
+                model_architecture_and_loss guidance (SECONDARY baseline)
 
-        Note on instruction vs ml_plan precedence:
+        Note on instruction vs plan_id precedence:
             - instruction: PRIMARY driver - user's immediate, specific
               architecture request
-            - ml_plan: SECONDARY baseline - background architectural guidance
+            - plan_id: SECONDARY baseline - loads plan from DB for
+              architectural guidance
             - When there's a conflict, instruction takes precedence
             - Example: If instruction says "use 3 hidden layers" but plan says
               "use 2 layers", the model spec should use 3 hidden layers
               (instruction wins)
-            - The LLM agent should use ml_plan as baseline architectural guidance
+            - The LLM agent should use plan as baseline architectural guidance
               and augment/override it with specifics from instruction
 
         Returns:
@@ -118,7 +121,20 @@ class MLModelTool(BaseTool):
                 color="magenta", add_dot=True
             )
             ml_model_section_printer = self._ml_model_section.__enter__()
-            ml_model_section_printer.print("ML Model")
+
+            # Build title with metadata
+            title = "ML Model"
+            metadata_parts = []
+            if plan_id:
+                metadata_parts.append(plan_id)
+            if recommended_knowledge_ids:
+                metadata_parts.extend(recommended_knowledge_ids)
+            if metadata_parts:
+                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
+
+            ml_model_section_printer.print(title)
+            # Show task description (dimmed)
+            ml_model_section_printer.print(f"[dim]Task: {instruction}[/dim]")
 
         # Helper to close section and return error
         def _error_in_section(message: str) -> ToolResult:
@@ -127,7 +143,11 @@ class MLModelTool(BaseTool):
                 ml_model_section_printer.print(f"✗ {message}")
             if self.ui and hasattr(self, "_ml_model_section"):
                 self._ml_model_section.__exit__(None, None, None)
-            return ToolResult(success=False, output="", metadata={"error_shown": True})
+            return ToolResult(
+                success=False,
+                output=message,  # Pass error to agent
+                metadata={"error_shown": True, "error_message": message},
+            )
 
         # Validate API key and services
         if not self.api_key:
@@ -142,30 +162,40 @@ class MLModelTool(BaseTool):
                 "Database services not initialized."
             )
 
-        # Validate: either ml_plan or instruction must be provided
-        if not ml_plan and not instruction:
+        # Validate: either plan_id or instruction must be provided
+        if not plan_id and not instruction:
             return _error_in_section(
-                "Either 'ml_plan' or 'instruction' must be provided. "
+                "Either 'plan_id' or 'instruction' must be provided. "
                 "ML plan is recommended for full ML workflows."
             )
 
-        # Extract from ML plan if provided (ml_plan is PRIMARY source)
+        # Load plan from database if plan_id is provided
         ml_plan_architecture = None
-        if ml_plan:
-            from arc.core.ml_plan import MLPlan
+        if plan_id:
+            try:
+                # Load plan from database using service
+                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
 
-            plan = MLPlan.from_dict(ml_plan)
+                from arc.core.ml_plan import MLPlan
 
-            # Use plan data if parameters not explicitly provided
-            if not instruction:
-                instruction = plan.summary
-            if not data_table:
-                data_table = ml_plan.get("data_table")
-            if not target_column:
-                target_column = ml_plan.get("target_column")
+                plan = MLPlan.from_dict(ml_plan)
 
-            # CRITICAL: Extract architecture guidance from ML plan
-            ml_plan_architecture = plan.model_architecture_and_loss
+                # Use plan data if parameters not explicitly provided
+                if not instruction:
+                    instruction = plan.summary
+                if not data_table:
+                    data_table = ml_plan.get("data_table")
+                if not target_column:
+                    target_column = ml_plan.get("target_column")
+
+                # CRITICAL: Extract architecture guidance from ML plan
+                ml_plan_architecture = plan.model_architecture_and_loss
+            except ValueError as e:
+                return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
+            except Exception as e:
+                return _error_in_section(
+                    f"Unexpected error loading ML plan '{plan_id}': {e}"
+                )
 
         # Validate required parameters
         if not name or not data_table or not target_column:
@@ -188,16 +218,8 @@ class MLModelTool(BaseTool):
             self.model,
         )
 
-        # Extract knowledge IDs from instruction and ML Plan
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=instruction,
-            ml_plan_architecture=ml_plan_architecture,
-        )
-
+        # Agent will discover relevant knowledge using list_knowledge and
+        # read_knowledge tools based on task context and descriptions
         try:
             model_spec, model_yaml, conversation_history = await agent.generate_model(
                 name=str(name),
@@ -205,7 +227,7 @@ class MLModelTool(BaseTool):
                 table_name=str(data_table),
                 target_column=target_column,
                 ml_plan_architecture=ml_plan_architecture,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                recommended_knowledge_ids=None,  # Let agent discover via tools
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -246,7 +268,6 @@ class MLModelTool(BaseTool):
                 "model_name": str(name),
                 "table_name": str(data_table),
                 "target_column": target_column,
-                "recommended_knowledge_ids": recommended_knowledge_ids,
             }
 
             try:
@@ -486,7 +507,8 @@ class MLTrainTool(BaseTool):
         model_id: str | None = None,
         train_table: str | None = None,
         auto_confirm: bool = False,
-        ml_plan: dict | None = None,
+        plan_id: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
     ) -> ToolResult:
         """Generate trainer spec, register it, and launch training with confirmation.
 
@@ -496,16 +518,16 @@ class MLTrainTool(BaseTool):
             model_id: Model ID (with version, e.g., 'my_model-v1')
             train_table: Training data table
             auto_confirm: Skip confirmation workflows (for testing only)
-            ml_plan: Optional ML plan dict containing training_configuration guidance
-                (SECONDARY baseline, automatically injected by the main agent)
+            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
+                training_configuration guidance (SECONDARY baseline)
 
-        Note on instruction vs ml_plan precedence:
+        Note on instruction vs plan_id precedence:
             - instruction: PRIMARY driver - user's immediate, specific request
-            - ml_plan: SECONDARY baseline - background guidance and context
+            - plan_id: SECONDARY baseline - loads plan from DB for guidance and context
             - When there's a conflict, instruction takes precedence
             - Example: If instruction says "use 10 epochs" but plan says "use 5 epochs",
               the trainer spec should use 10 epochs (instruction wins)
-            - The LLM agent should use ml_plan as baseline context and augment/override
+            - The LLM agent should use plan as baseline context and augment/override
               it with specifics from instruction
 
         Note on training configuration:
@@ -521,7 +543,20 @@ class MLTrainTool(BaseTool):
                 color="magenta", add_dot=True
             )
             ml_trainer_section_printer = self._ml_trainer_section.__enter__()
-            ml_trainer_section_printer.print("ML Train")
+
+            # Build title with metadata
+            title = "ML Train"
+            metadata_parts = []
+            if plan_id:
+                metadata_parts.append(plan_id)
+            if recommended_knowledge_ids:
+                metadata_parts.extend(recommended_knowledge_ids)
+            if metadata_parts:
+                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
+
+            ml_trainer_section_printer.print(title)
+            # Show task description (dimmed)
+            ml_trainer_section_printer.print(f"[dim]Task: {instruction}[/dim]")
 
         # Helper to close section and return error
         def _error_in_section(message: str) -> ToolResult:
@@ -530,7 +565,11 @@ class MLTrainTool(BaseTool):
                 ml_trainer_section_printer.print(f"✗ {message}")
             if self.ui and hasattr(self, "_ml_trainer_section"):
                 self._ml_trainer_section.__exit__(None, None, None)
-            return ToolResult(success=False, output="", metadata={"error_shown": True})
+            return ToolResult(
+                success=False,
+                output=message,  # Pass error to agent
+                metadata={"error_shown": True, "error_message": message},
+            )
 
         # Validate API key and services
         if not self.api_key:
@@ -569,25 +608,26 @@ class MLTrainTool(BaseTool):
                 "[dim]Generating Arc-Graph trainer specification...[/dim]"
             )
 
-        # Extract training configuration from ML plan if provided (Phase 6)
+        # Load plan from database if plan_id is provided
         ml_plan_training_config = None
-        if ml_plan:
-            from arc.core.ml_plan import MLPlan
+        if plan_id:
+            try:
+                # Load plan from database using service
+                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
 
-            plan = MLPlan.from_dict(ml_plan)
-            ml_plan_training_config = plan.training_configuration
+                from arc.core.ml_plan import MLPlan
 
-        # Extract knowledge IDs from instruction and ML Plan
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=instruction,
-            ml_plan_architecture=ml_plan_training_config,
-        )
+                plan = MLPlan.from_dict(ml_plan)
+                ml_plan_training_config = plan.training_configuration
+            except ValueError as e:
+                return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
+            except Exception as e:
+                return _error_in_section(
+                    f"Unexpected error loading ML plan '{plan_id}': {e}"
+                )
 
         # Generate trainer spec via LLM
+        # Agent will discover relevant knowledge using tools
         agent = MLTrainAgent(
             self.services,
             self.api_key,
@@ -606,7 +646,7 @@ class MLTrainTool(BaseTool):
                 model_id=model_record.id,
                 model_spec_yaml=model_record.spec,
                 ml_plan_training_config=ml_plan_training_config,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                recommended_knowledge_ids=None,  # Let agent discover via tools
             )
         except Exception as exc:
             from arc.core.agents.ml_train import MLTrainError
@@ -620,10 +660,18 @@ class MLTrainTool(BaseTool):
                 self._ml_trainer_section.__exit__(None, None, None)
 
             if isinstance(exc, MLTrainError):
+                error_msg = str(exc)
                 return ToolResult(
-                    success=False, output="", metadata={"error_shown": True}
+                    success=False,
+                    output=error_msg,
+                    metadata={"error_shown": True, "error_message": error_msg},
                 )
-            return ToolResult(success=False, output="", metadata={"error_shown": True})
+            error_msg = f"Unexpected error during trainer generation: {exc}"
+            return ToolResult(
+                success=False,
+                output=error_msg,
+                metadata={"error_shown": True, "error_message": error_msg},
+            )
 
         # Validate the generated trainer
         try:
@@ -631,27 +679,35 @@ class MLTrainTool(BaseTool):
             validate_trainer_dict(trainer_dict)
         except (yaml.YAMLError, TrainerValidationError) as exc:
             # Print error within the ML Trainer section
+            error_msg = f"Trainer validation failed: {exc}"
             if ml_trainer_section_printer:
                 ml_trainer_section_printer.print("")
-                ml_trainer_section_printer.print(f"✗ Trainer validation failed: {exc}")
+                ml_trainer_section_printer.print(f"✗ {error_msg}")
             # Close the section before returning
             if self.ui and hasattr(self, "_ml_trainer_section"):
                 self._ml_trainer_section.__exit__(None, None, None)
-            return ToolResult(success=False, output="", metadata={"error_shown": True})
+            return ToolResult(
+                success=False,
+                output=error_msg,
+                metadata={"error_shown": True, "error_message": error_msg},
+            )
         except Exception as exc:
             import logging
 
             logging.exception("Unexpected error during trainer validation")
             # Print error within the ML Trainer section
+            error_msg = f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
             if ml_trainer_section_printer:
                 ml_trainer_section_printer.print("")
-                ml_trainer_section_printer.print(
-                    f"✗ Unexpected validation error: {exc.__class__.__name__}: {exc}"
-                )
+                ml_trainer_section_printer.print(f"✗ {error_msg}")
             # Close the section before returning
             if self.ui and hasattr(self, "_ml_trainer_section"):
                 self._ml_trainer_section.__exit__(None, None, None)
-            return ToolResult(success=False, output="", metadata={"error_shown": True})
+            return ToolResult(
+                success=False,
+                output=error_msg,
+                metadata={"error_shown": True, "error_message": error_msg},
+            )
 
         # Interactive confirmation workflow (unless auto_confirm is True)
         if not auto_confirm:
@@ -1038,10 +1094,6 @@ class MLTrainTool(BaseTool):
                 section_printer.print(f"  • URL: [bold]{url}[/bold]")
                 section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
                 section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
-                section_printer.print("")
-                section_printer.print(
-                    f"[dim]  To stop: /ml tensorboard stop {job_id}[/dim]"
-                )
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
@@ -1050,10 +1102,6 @@ class MLTrainTool(BaseTool):
                 self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
                 self.ui._printer.console.print(f"  • Process ID: {pid}")
                 self.ui._printer.console.print(f"  • Logs: {logdir}")
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    f"  To stop: /ml tensorboard stop {job_id}"
-                )
         except (OSError, RuntimeError) as e:
             # Known TensorBoard launch failures
             if section_printer:
@@ -1130,16 +1178,7 @@ class MLTrainTool(BaseTool):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
         ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Extract knowledge IDs from feedback
-            from arc.core.agents.shared.knowledge_selector import (
-                extract_knowledge_ids_from_text,
-            )
-
-            recommended_knowledge_ids = extract_knowledge_ids_from_text(
-                instruction=feedback,
-                ml_plan_architecture=None,
-            )
-
+            # Agent will discover relevant knowledge using tools
             agent = MLTrainAgent(
                 self.services,
                 self.api_key,
@@ -1158,7 +1197,7 @@ class MLTrainTool(BaseTool):
                     model_id=model_record.id,
                     model_spec_yaml=model_record.spec,
                     existing_yaml=yaml_content,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    recommended_knowledge_ids=None,  # Let agent discover via tools
                     conversation_history=conversation_history,
                 )
                 return edited_yaml, updated_history
@@ -1240,7 +1279,8 @@ class MLEvaluateTool(BaseTool):
         trainer_id: str | None = None,
         evaluate_table: str | None = None,
         auto_confirm: bool = False,
-        ml_plan: dict | None = None,
+        plan_id: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
     ) -> ToolResult:
         """Generate evaluator spec, register it, and launch evaluation.
 
@@ -1250,17 +1290,17 @@ class MLEvaluateTool(BaseTool):
             trainer_id: Trainer ID with version (e.g., 'my-trainer-v1')
             evaluate_table: Test dataset table name
             auto_confirm: Skip confirmation workflows (for testing only)
-            ml_plan: Optional ML plan dict containing evaluation expectations
-                (SECONDARY baseline, automatically injected by the main agent)
+            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
+                evaluation expectations (SECONDARY baseline)
 
-        Note on instruction vs ml_plan precedence:
+        Note on instruction vs plan_id precedence:
             - instruction: PRIMARY driver - user's immediate, specific request
-            - ml_plan: SECONDARY baseline - background guidance and context
+            - plan_id: SECONDARY baseline - loads plan from DB for guidance and context
             - When there's a conflict, instruction takes precedence
             - Example: If instruction says "compute F1 score" but plan says
               "compute accuracy only", the evaluator should compute F1 score
               (instruction wins)
-            - The LLM agent should use ml_plan as baseline context and augment/override
+            - The LLM agent should use plan as baseline context and augment/override
               it with specifics from instruction
 
         Note on async execution:
@@ -1279,7 +1319,20 @@ class MLEvaluateTool(BaseTool):
                 color="magenta", add_dot=True
             )
             ml_evaluator_section_printer = self._ml_evaluator_section.__enter__()
-            ml_evaluator_section_printer.print("ML Evaluator")
+
+            # Build title with metadata
+            title = "ML Evaluator"
+            metadata_parts = []
+            if plan_id:
+                metadata_parts.append(plan_id)
+            if recommended_knowledge_ids:
+                metadata_parts.extend(recommended_knowledge_ids)
+            if metadata_parts:
+                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
+
+            ml_evaluator_section_printer.print(title)
+            # Show task description (dimmed)
+            ml_evaluator_section_printer.print(f"[dim]Task: {instruction}[/dim]")
 
         # Helper to close section and return error
         def _error_in_section(message: str) -> ToolResult:
@@ -1288,7 +1341,11 @@ class MLEvaluateTool(BaseTool):
                 ml_evaluator_section_printer.print(f"✗ {message}")
             if self.ui and hasattr(self, "_ml_evaluator_section"):
                 self._ml_evaluator_section.__exit__(None, None, None)
-            return ToolResult(success=False, output="", metadata={"error_shown": True})
+            return ToolResult(
+                success=False,
+                output=message,  # Pass error to agent
+                metadata={"error_shown": True, "error_message": message},
+            )
 
         # Validate API key and services
         if not self.api_key:
@@ -1358,25 +1415,26 @@ class MLEvaluateTool(BaseTool):
                 "[dim]Generating Arc-Graph evaluator specification...[/dim]"
             )
 
-        # Extract evaluation guidance from ML plan if provided (Phase 6)
+        # Load plan from database if plan_id is provided
         ml_plan_evaluation = None
-        if ml_plan:
-            from arc.core.ml_plan import MLPlan
+        if plan_id:
+            try:
+                # Load plan from database using service
+                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
 
-            plan = MLPlan.from_dict(ml_plan)
-            ml_plan_evaluation = plan.evaluation
+                from arc.core.ml_plan import MLPlan
 
-        # Extract knowledge IDs from instruction and ML Plan
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=instruction,
-            ml_plan_architecture=ml_plan_evaluation,
-        )
+                plan = MLPlan.from_dict(ml_plan)
+                ml_plan_evaluation = plan.evaluation
+            except ValueError as e:
+                return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
+            except Exception as e:
+                return _error_in_section(
+                    f"Unexpected error loading ML plan '{plan_id}': {e}"
+                )
 
         # Generate evaluator spec via LLM
+        # Agent will discover relevant knowledge using tools
         from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
         agent = MLEvaluateAgent(
@@ -1400,7 +1458,7 @@ class MLEvaluateTool(BaseTool):
                 target_column=str(target_column),
                 target_column_exists=target_column_exists,
                 ml_plan_evaluation=ml_plan_evaluation,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                recommended_knowledge_ids=None,  # Let agent discover via tools
             )
         except Exception as exc:
             from arc.core.agents.ml_evaluate import MLEvaluateError
@@ -1821,16 +1879,7 @@ class MLEvaluateTool(BaseTool):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
         ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Extract knowledge IDs from feedback
-            from arc.core.agents.shared.knowledge_selector import (
-                extract_knowledge_ids_from_text,
-            )
-
-            recommended_knowledge_ids = extract_knowledge_ids_from_text(
-                instruction=feedback,
-                ml_plan_architecture=None,
-            )
-
+            # Agent will discover relevant knowledge using tools
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
             agent = MLEvaluateAgent(
@@ -1854,7 +1903,7 @@ class MLEvaluateTool(BaseTool):
                     target_column=context["target_column"],
                     target_column_exists=target_column_exists,
                     existing_yaml=yaml_content,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    recommended_knowledge_ids=None,  # Let agent discover via tools
                     conversation_history=conversation_history,
                 )
                 return edited_yaml, updated_history
@@ -1968,10 +2017,6 @@ class MLEvaluateTool(BaseTool):
                 section_printer.print(f"  • URL: [bold]{url}[/bold]")
                 section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
                 section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
-                section_printer.print("")
-                section_printer.print(
-                    f"[dim]  To stop: /ml tensorboard stop {job_id}[/dim]"
-                )
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
@@ -1980,10 +2025,6 @@ class MLEvaluateTool(BaseTool):
                 self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
                 self.ui._printer.console.print(f"  • Process ID: {pid}")
                 self.ui._printer.console.print(f"  • Logs: {logdir}")
-                self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    f"  To stop: /ml tensorboard stop {job_id}"
-                )
         except (OSError, RuntimeError) as e:
             # Known TensorBoard launch failures
             if section_printer:
@@ -2138,16 +2179,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
             self.ui.show_info(f"ℹ Using registered trainer: {trainer_record.id}")
             self.ui.show_info(f"🤖 Generating evaluator specification for '{name}'...")
 
-        # Extract knowledge IDs from context
-        from arc.core.agents.shared.knowledge_selector import (
-            extract_knowledge_ids_from_text,
-        )
-
-        recommended_knowledge_ids = extract_knowledge_ids_from_text(
-            instruction=context,
-            ml_plan_architecture=None,
-        )
-
+        # Agent will discover relevant knowledge using tools
         from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
         agent = MLEvaluateAgent(
@@ -2170,7 +2202,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                 dataset=str(data_table),
                 target_column=str(target_column),
                 target_column_exists=target_column_exists,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                recommended_knowledge_ids=None,  # Let agent discover via tools
             )
         except Exception as exc:
             # Import here to avoid circular imports
@@ -2336,16 +2368,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
         ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Extract knowledge IDs from feedback
-            from arc.core.agents.shared.knowledge_selector import (
-                extract_knowledge_ids_from_text,
-            )
-
-            recommended_knowledge_ids = extract_knowledge_ids_from_text(
-                instruction=feedback,
-                ml_plan_architecture=None,
-            )
-
+            # Agent will discover relevant knowledge using tools
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
             agent = MLEvaluateAgent(
@@ -2369,7 +2392,7 @@ class MLEvaluatorGeneratorTool(BaseTool):
                     target_column=context["target_column"],
                     target_column_exists=context.get("target_column_exists", True),
                     existing_yaml=yaml_content,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    recommended_knowledge_ids=None,  # Let agent discover via tools
                     conversation_history=conversation_history,
                 )
                 return edited_yaml, updated_history
@@ -2409,6 +2432,7 @@ class MLPlanTool(BaseTool):
         section_to_update: str | None = None,
         conversation_history: str | None = None,  # noqa: ARG002
         verbose: bool = False,
+        skip_data_profiling: bool = False,
     ) -> ToolResult:
         if not self.api_key:
             return ToolResult.error_result(
@@ -2493,6 +2517,8 @@ class MLPlanTool(BaseTool):
             self._ml_plan_section = self.ui._printer.section(color="cyan", add_dot=True)
             ml_plan_section_printer = self._ml_plan_section.__enter__()
             ml_plan_section_printer.print("ML Plan")
+            # Show task description (dimmed)
+            ml_plan_section_printer.print(f"[dim]Task: {instruction}[/dim]")
 
         # Helper to print progress messages within the section
         def _progress_callback(message: str):
@@ -2536,11 +2562,14 @@ class MLPlanTool(BaseTool):
                         if current_instruction != instruction
                         else None,
                         stream=False,
+                        skip_data_profiling=skip_data_profiling,
                     )
 
                     # Show completion message
                     if ml_plan_section_printer:
-                        ml_plan_section_printer.print("✓ Plan generated successfully")
+                        ml_plan_section_printer.print(
+                            "[dim]✓ Plan generated successfully[/dim]"
+                        )
 
                     # Determine stage
                     if previous_plan:
@@ -2570,6 +2599,55 @@ class MLPlanTool(BaseTool):
                         analysis, version=version, stage=stage, reason=reason
                     )
 
+                    # Save plan to database immediately with "draft" status
+                    # This allows other tools to reference it even before user confirms
+                    try:
+                        from datetime import UTC, datetime
+
+                        from arc.database.models.ml_plan import MLPlan as MLPlanModel
+                        from arc.ml.runtime import _slugify_name
+
+                        # Convert plan to dict for storage
+                        plan_dict = plan.to_dict()
+                        plan_dict["source_tables"] = str(source_tables)
+
+                        # Convert plan to YAML format for better readability
+                        plan_yaml = yaml.dump(
+                            plan_dict, default_flow_style=False, sort_keys=False
+                        )
+
+                        # Create database model - use first table for plan ID
+                        first_table = source_tables.split(",")[0].strip()
+                        base_slug = _slugify_name(f"{first_table}-plan")
+                        plan_id = f"{base_slug}-v{version}"
+
+                        now = datetime.now(UTC)
+                        db_plan = MLPlanModel(
+                            plan_id=plan_id,
+                            version=version,
+                            user_context=str(instruction),
+                            source_tables=str(source_tables),
+                            plan_yaml=plan_yaml,  # Store as YAML string
+                            status="draft",  # Initially draft until user confirms
+                            created_at=now,
+                            updated_at=now,
+                        )
+
+                        # Save to database
+                        self.services.ml_plans.create_plan(db_plan)
+
+                        # Add plan_id to plan_dict for use in confirmation workflow
+                        plan_dict["plan_id"] = plan_id
+
+                    except Exception as e:
+                        # Log error but continue - plan still works in memory
+                        if ml_plan_section_printer:
+                            ml_plan_section_printer.print(
+                                f"[dim yellow]⚠ Could not save plan to "
+                                f"database: {e}[/dim yellow]"
+                            )
+                        plan_id = None  # Track that we don't have a DB plan
+
                 except Exception as e:
                     # Handle errors during plan generation
                     error_msg = f"Failed to generate ML plan: {str(e)}"
@@ -2587,7 +2665,9 @@ class MLPlanTool(BaseTool):
 
                 # If auto-accept is enabled, skip workflow
                 if self.agent and self.agent.ml_plan_auto_accept:
-                    output_message = "Plan automatically accepted (auto-accept enabled)"
+                    output_message = (
+                        f"Plan '{plan_id}' automatically accepted (auto-accept enabled)"
+                    )
                     break
 
                 # Display plan and run confirmation workflow
@@ -2607,25 +2687,65 @@ class MLPlanTool(BaseTool):
                         return ToolResult.error_result(error_msg)
 
                     if choice == "accept":
+                        # Update status to confirmed in database
+                        if plan_id:
+                            try:
+                                self.services.ml_plans.update_status(
+                                    plan_id, "confirmed"
+                                )
+                            except Exception as e:
+                                # Log but don't fail
+                                if ml_plan_section_printer:
+                                    ml_plan_section_printer.print(
+                                        f"[dim yellow]⚠ Could not update plan "
+                                        f"status: {e}[/dim yellow]"
+                                    )
                         output_message = (
-                            "Plan accepted. Ready to proceed with implementation."
+                            f"Plan '{plan_id}' accepted. "
+                            f"Ready to proceed with implementation."
                         )
                         break
                     elif choice == "accept_all":
+                        # Update status to confirmed in database
+                        if plan_id:
+                            try:
+                                self.services.ml_plans.update_status(
+                                    plan_id, "confirmed"
+                                )
+                            except Exception as e:
+                                # Log but don't fail
+                                if ml_plan_section_printer:
+                                    ml_plan_section_printer.print(
+                                        f"[dim yellow]⚠ Could not update plan "
+                                        f"status: {e}[/dim yellow]"
+                                    )
                         # Enable auto-accept for this session
                         if self.agent:
                             self.agent.ml_plan_auto_accept = True
                         output_message = (
-                            "Plan accepted. Auto-accept enabled for this session."
+                            f"Plan '{plan_id}' accepted. "
+                            f"Auto-accept enabled for this session."
                         )
                         break
                     elif choice == "feedback":
+                        # Mark current plan as rejected since user wants to revise
+                        if plan_id:
+                            with contextlib.suppress(Exception):
+                                self.services.ml_plans.update_status(
+                                    plan_id, "rejected"
+                                )
                         # Get instruction and loop to revise
                         current_instruction = result.get("feedback", "")
                         version += 1
                         # Continue loop to generate revised plan
                         continue
                     elif choice == "cancel":
+                        # Mark plan as rejected
+                        if plan_id:
+                            with contextlib.suppress(Exception):
+                                self.services.ml_plans.update_status(
+                                    plan_id, "rejected"
+                                )
                         # Print cancellation message inside section
                         if ml_plan_section_printer:
                             ml_plan_section_printer.print(
@@ -2646,67 +2766,24 @@ class MLPlanTool(BaseTool):
                         )
                 else:
                     # Headless mode - auto-accept
+                    # Update status to confirmed since it's auto-accepted
+                    if plan_id:
+                        with contextlib.suppress(Exception):
+                            self.services.ml_plans.update_status(plan_id, "confirmed")
                     formatted_result = plan.format_for_display()
                     output_message = (
-                        "I've created a comprehensive ML workflow plan based on "
-                        f"your requirements.\n\n{formatted_result}"
+                        f"Plan '{plan_id}' created successfully.\n\n{formatted_result}"
                     )
                     break
 
-            # Save plan to database after acceptance
-            try:
-                from datetime import UTC, datetime
-
-                from arc.database.models.ml_plan import MLPlan as MLPlanModel
-                from arc.ml.runtime import _slugify_name
-
-                # Convert plan to dict for storage
-                plan_dict = plan.to_dict()
-                plan_dict["source_tables"] = str(source_tables)
-
-                # Convert plan to YAML format for better readability
-                plan_yaml = yaml.dump(
-                    plan_dict, default_flow_style=False, sort_keys=False
+            # Display registration confirmation in the ML Plan section
+            if ml_plan_section_printer and plan_id:
+                ml_plan_section_printer.print("")  # Empty line before confirmation
+                table_count = len(source_tables.split(","))
+                ml_plan_section_printer.print(
+                    f"[dim]✓ Plan '{plan_id}' saved to database "
+                    f"(v{version} • {stage} • {table_count} tables)[/dim]"
                 )
-
-                # Create database model - use first table for plan ID
-                first_table = source_tables.split(",")[0].strip()
-                base_slug = _slugify_name(f"{first_table}-plan")
-                plan_id = f"{base_slug}-v{version}"
-
-                now = datetime.now(UTC)
-                db_plan = MLPlanModel(
-                    plan_id=plan_id,
-                    version=version,
-                    user_context=str(instruction),
-                    source_tables=str(source_tables),
-                    plan_yaml=plan_yaml,  # Store as YAML string
-                    status="approved",  # Plan was accepted by user
-                    created_at=now,
-                    updated_at=now,
-                )
-
-                # Save to database
-                self.services.ml_plans.create_plan(db_plan)
-
-                # Add plan_id to metadata for linking
-                plan_dict["plan_id"] = plan_id
-
-                # Display registration confirmation in the ML Plan section
-                if ml_plan_section_printer:
-                    ml_plan_section_printer.print("")  # Empty line before confirmation
-                    table_count = len(source_tables.split(","))
-                    ml_plan_section_printer.print(
-                        f"[dim]✓ Plan '{plan_id}' saved to database "
-                        f"(v{version} • {stage} • {table_count} tables)[/dim]"
-                    )
-
-            except Exception as e:
-                # Log error but don't fail - plan still in memory
-                if self.ui:
-                    self.ui.show_warning(
-                        f"⚠ Plan saved to session but not database: {e}"
-                    )
 
             # Close the ML Plan section
             if self.ui and hasattr(self, "_ml_plan_section"):
@@ -2717,7 +2794,9 @@ class MLPlanTool(BaseTool):
                 output=output_message,
                 metadata={
                     "ml_plan": plan_dict,
+                    "plan_id": plan_id,  # Top-level for easy LLM access
                     "is_revision": previous_plan is not None,
+                    "recommended_knowledge_ids": plan.recommended_knowledge_ids,
                 },
             )
 

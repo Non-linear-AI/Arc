@@ -230,22 +230,35 @@ tools:
       analyzes data, user requirements, and creates a detailed plan covering feature
       engineering, model architecture, training strategy, and evaluation metrics.
 
+      IMPORTANT: Use this tool AFTER exploring the data with schema_discovery and database_query.
+      Include data insights in the instruction parameter for better plan quality.
+
       Use for:
-      - Initial plan creation: Provide instruction describing the ML problem
+      - Initial plan creation: Provide instruction with ML problem description AND data insights
+        from exploration (e.g., "Build classifier for X. Data insights: 1000 samples, binary
+        classification (70/30 split), 5 numeric features with range 0-100, no missing values.")
       - Plan revision: Provide instruction describing the requested changes
+        (e.g., "change the model architecture to use 4 layers", "use different features")
 
       The instruction parameter is used for both initial creation and revisions.
-      ALWAYS use this FIRST before building ML models.
     parameters:
       type: object
       properties:
         instruction:
           type: string
           description: |
-            Description of the ML problem, goals, and requirements (for initial creation).
+            For initial creation: Description of the ML problem, goals, requirements, AND
+            data insights from exploration (sample count, class distribution, feature ranges,
+            missing values, correlations, etc.). Including data insights leads to better plans.
+
             For revisions: Description of the changes to make to the existing plan
             (e.g., "change the model architecture to use 4 layers", "use different features",
             "adjust training strategy to use 100 epochs").
+
+            Example initial instruction with insights:
+            "Build binary classifier for diabetes prediction. Data insights: 768 samples,
+            binary outcome (500 positive, 268 negative = 35% positive rate), 8 numeric
+            features (glucose 0-200, BMI 0-67, age 21-81), no missing values."
         source_tables:
           type: string
           description: Comma-separated list of database tables to analyze (e.g., 'users,transactions' or 'pidd')
@@ -254,7 +267,9 @@ tools:
         - source_tables
 
   - name: ml_model
-    description: Generate Arc-Graph model YAML using the model generator agent
+    description: |
+      Generate Arc-Graph model YAML using the model generator agent. If plan_id is provided,
+      the agent will load the plan from the database and use its architecture guidance.
     parameters:
       type: object
       properties:
@@ -270,6 +285,20 @@ tools:
         target_column:
           type: string
           description: Target column for prediction
+        plan_id:
+          type: string
+          description: |
+            Optional ML plan ID to use for model generation (e.g., 'pidd-plan-v1').
+            When provided, the agent loads the plan from database and uses its
+            architecture guidance (model_architecture_and_loss section).
+        recommended_knowledge_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
+            When provided from ml_plan result, these are displayed in the section metadata
+            for visibility and can inform model generation decisions.
       required:
         - name
         - instruction
@@ -285,6 +314,7 @@ tools:
       4) Launches training after user confirmation.
       All training configuration (epochs, batch_size, learning_rate, etc.) must be specified
       in the generated trainer YAML - no runtime overrides are supported.
+      If plan_id is provided, the agent loads the plan from database and uses its training guidance.
     parameters:
       type: object
       properties:
@@ -303,6 +333,20 @@ tools:
         train_table:
           type: string
           description: Training data table name
+        plan_id:
+          type: string
+          description: |
+            Optional ML plan ID to use for training (e.g., 'pidd-plan-v1').
+            When provided, the agent loads the plan from database and uses its
+            training guidance (training_configuration section).
+        recommended_knowledge_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
+            When provided from ml_plan result, these are displayed in the section metadata
+            for visibility and can inform training decisions.
       required:
         - name
         - instruction
@@ -320,7 +364,8 @@ tools:
       Evaluation runs asynchronously in the background. Monitor progress via /ml jobs status
       and view metrics in TensorBoard. Supports classification metrics (accuracy, precision,
       recall, F1, confusion matrix, PR curves, ROC curves) and regression metrics (MSE, MAE,
-      R², scatter plots).
+      R², scatter plots). If plan_id is provided, the agent loads the plan from database and
+      uses its evaluation guidance.
     parameters:
       type: object
       properties:
@@ -338,13 +383,27 @@ tools:
         evaluate_table:
           type: string
           description: Test dataset table name for evaluation
+        plan_id:
+          type: string
+          description: |
+            Optional ML plan ID to use for evaluation (e.g., 'pidd-plan-v1').
+            When provided, the agent loads the plan from database and uses its
+            evaluation guidance (evaluation section).
+        recommended_knowledge_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
+            When provided from ml_plan result, these are displayed in the section metadata
+            for visibility and can inform evaluation decisions.
       required:
         - name
         - instruction
         - trainer_id
         - evaluate_table
 
-  - name: data_process
+  - name: ml_data
     description: |
       Generate and execute SQL data processing pipelines for WRITE OPERATIONS.
       Use when users describe data transformations, feature engineering, or operations
@@ -355,6 +414,8 @@ tools:
       3) Execute pipeline after confirmation,
       4) Create output tables.
       For read-only SELECT queries, use database_query for immediate results.
+      If plan_id is provided, the agent loads the plan from database and uses its
+      feature engineering guidance.
     parameters:
       type: object
       properties:
@@ -375,6 +436,20 @@ tools:
             - system
             - user
           description: "Target database: 'system' for Arc metadata, 'user' for training data (default: user)"
+        plan_id:
+          type: string
+          description: |
+            Optional ML plan ID to use for data processing (e.g., 'pidd-plan-v1').
+            When provided, the agent loads the plan from database and uses its
+            feature engineering guidance (feature_engineering section).
+        recommended_knowledge_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
+            When provided from ml_plan result, these are displayed in the section metadata
+            for visibility and can inform data processing decisions.
       required:
         - name
         - instruction

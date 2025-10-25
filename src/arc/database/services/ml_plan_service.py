@@ -2,12 +2,25 @@
 
 from datetime import UTC, datetime
 
+import yaml
+
 from arc.database.models.ml_plan import MLPlan
 from arc.database.services.base import BaseService
 
 
 class MLPlanService(BaseService):
     """Service for CRUD operations on ML plans."""
+
+    def __init__(self, db_manager):
+        """Initialize MLPlanService with session cache.
+
+        Args:
+            db_manager: Database manager instance
+        """
+        super().__init__(db_manager)
+        # Session-level cache for parsed plan content
+        # Key: plan_id, Value: parsed plan dict
+        self._session_cache: dict[str, dict] = {}
 
     def create_plan(self, plan: MLPlan) -> None:
         """Create a new ML plan in the database.
@@ -69,6 +82,72 @@ class MLPlanService(BaseService):
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    def get_plan_content(self, plan_id: str) -> dict:
+        """Get parsed plan content with session caching.
+
+        This is a fast method for retrieving plan content during a session.
+        First call loads from DB and parses YAML, subsequent calls use cache.
+
+        Args:
+            plan_id: Unique plan identifier
+
+        Returns:
+            Dict with plan sections (feature_engineering, model_architecture_and_loss,
+            training_configuration, evaluation, summary)
+
+        Raises:
+            ValueError: If plan not found or YAML parsing fails
+        """
+        # Check session cache first
+        if plan_id in self._session_cache:
+            return self._session_cache[plan_id]
+
+        # Load from DB
+        db_plan = self.get_plan_by_id(plan_id)
+        if not db_plan:
+            raise ValueError(f"Plan '{plan_id}' not found in database")
+
+        # Parse YAML to dict
+        try:
+            plan_dict = yaml.safe_load(db_plan.plan_yaml)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Failed to parse plan YAML: {e}") from e
+
+        # Ensure it's a dict with expected structure
+        if not isinstance(plan_dict, dict):
+            raise ValueError(f"Plan YAML is not a dictionary: {type(plan_dict)}")
+
+        # Add metadata fields
+        plan_dict["plan_id"] = db_plan.plan_id
+        plan_dict["status"] = db_plan.status
+        plan_dict["version"] = db_plan.version
+
+        # Cache for this session
+        self._session_cache[plan_id] = plan_dict
+
+        return plan_dict
+
+    def update_status(self, plan_id: str, status: str) -> None:
+        """Update the status of a plan.
+
+        Args:
+            plan_id: Unique plan identifier
+            status: New status ('draft', 'confirmed', 'rejected', 'implemented')
+
+        Raises:
+            DatabaseError: If update fails
+        """
+        sql = """
+            UPDATE plans
+            SET status = ?, updated_at = ?
+            WHERE plan_id = ?
+        """
+        self.db_manager.system_execute(sql, [status, datetime.now(UTC), plan_id])
+
+        # Invalidate cache for this plan
+        if plan_id in self._session_cache:
+            del self._session_cache[plan_id]
 
     def get_latest_plan_for_tables(self, source_tables: str) -> MLPlan | None:
         """Get the most recent plan for given source tables.

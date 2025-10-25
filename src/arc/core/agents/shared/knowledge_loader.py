@@ -87,6 +87,8 @@ class KnowledgeLoader:
         self.builtin_path = Path(builtin_path)
         self.user_path = Path(user_path)
         self._metadata_cache: dict[str, KnowledgeMetadata] | None = None
+        # Cache for knowledge content: key=(knowledge_id, phase), value=content
+        self._content_cache: dict[tuple[str, str], str | None] = {}
 
     def scan_metadata(self) -> dict[str, KnowledgeMetadata]:
         """Scan all knowledge metadata files from builtin and user paths.
@@ -176,9 +178,10 @@ class KnowledgeLoader:
         return list(metadata_map.values())
 
     def load_knowledge(self, knowledge_id: str, phase: str = "model") -> str | None:
-        """Load specific knowledge document.
+        """Load specific knowledge document with caching.
 
         Checks user path first, then builtin path.
+        Results are cached to avoid repeated file I/O.
 
         Args:
             knowledge_id: ID of the knowledge to read
@@ -188,6 +191,11 @@ class KnowledgeLoader:
         Returns:
             Content of the knowledge document, or None if not found
         """
+        # Check cache first
+        cache_key = (knowledge_id, phase)
+        if cache_key in self._content_cache:
+            return self._content_cache[cache_key]
+
         # Try user knowledge first (allows override)
         if self.user_path.exists():
             content = self._load_knowledge_from_path(
@@ -195,6 +203,8 @@ class KnowledgeLoader:
             )
             if content is not None:
                 logger.debug(f"Loaded user knowledge: {knowledge_id} ({phase})")
+                # Cache the result
+                self._content_cache[cache_key] = content
                 return content
 
         # Fall back to builtin knowledge
@@ -204,9 +214,13 @@ class KnowledgeLoader:
             )
             if content is not None:
                 logger.debug(f"Loaded builtin knowledge: {knowledge_id} ({phase})")
+                # Cache the result
+                self._content_cache[cache_key] = content
                 return content
 
         logger.warning(f"Knowledge not found: {knowledge_id} (phase: {phase})")
+        # Cache the negative result to avoid repeated lookups
+        self._content_cache[cache_key] = None
         return None
 
     def _load_knowledge_from_path(

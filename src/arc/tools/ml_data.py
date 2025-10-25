@@ -27,7 +27,7 @@ else:
         MLDataError = Exception
 
 
-class MLDataProcessTool(BaseTool):
+class MLDataTool(BaseTool):
     """Tool for generating data processing YAML configurations from natural language.
 
     This tool has a single purpose: convert natural language descriptions into
@@ -43,7 +43,7 @@ class MLDataProcessTool(BaseTool):
         model: str | None = None,
         ui_interface=None,
     ):
-        """Initialize MLDataProcessTool.
+        """Initialize MLDataTool.
 
         Args:
             services: ServiceContainer instance providing database access
@@ -94,7 +94,9 @@ class MLDataProcessTool(BaseTool):
         instruction: str | None = None,
         database: str = "user",
         auto_confirm: bool = False,
-        ml_plan: dict | None = None,
+        plan_id: str | None = None,
+        recommended_knowledge_ids: list[str] | None = None,
+        skip_data_profiling: bool = False,
     ) -> ToolResult:
         """Generate YAML configuration from instruction using LLM.
 
@@ -106,18 +108,21 @@ class MLDataProcessTool(BaseTool):
                 shaped by main agent or provided directly)
             database: Database to use - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
-            ml_plan: Optional ML plan dict containing feature engineering guidance
-                (SECONDARY baseline, automatically injected by the main agent)
+            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
+                feature engineering guidance (SECONDARY baseline)
+            skip_data_profiling: If True, skip automatic data profiling
+                (useful when data insights are already in instruction)
 
-        Note on instruction vs ml_plan precedence:
+        Note on instruction vs plan_id precedence:
             - instruction: PRIMARY driver - user's immediate, specific data
               processing request
-            - ml_plan: SECONDARY baseline - background feature engineering guidance
+            - plan_id: SECONDARY baseline - loads plan from DB for feature
+              engineering guidance
             - When there's a conflict, instruction takes precedence
             - Example: If instruction says "create interaction features" but plan says
               "use raw features only", the processor should create interaction features
               (instruction wins)
-            - The LLM agent should use ml_plan as baseline feature engineering guidance
+            - The LLM agent should use plan as baseline feature engineering guidance
               and augment/override it with specifics from instruction
 
         Returns:
@@ -147,24 +152,50 @@ class MLDataProcessTool(BaseTool):
                 f"Invalid database: {database}. Must be 'system' or 'user'."
             )
 
-        # Extract feature engineering guidance from ML plan if provided
-        # If ML plan is provided, use it as baseline and augment with instruction
+        # Load plan from database if plan_id is provided
+        # If plan is provided, use it as baseline and augment with instruction
         ml_plan_feature_engineering = None
-        if ml_plan:
-            from arc.core.ml_plan import MLPlan
+        if plan_id:
+            try:
+                # Load plan from database using service
+                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
 
-            plan = MLPlan.from_dict(ml_plan)
-            # Extract feature engineering guidance for data processing
-            ml_plan_feature_engineering = plan.feature_engineering
+                from arc.core.ml_plan import MLPlan
+
+                plan = MLPlan.from_dict(ml_plan)
+                # Extract feature engineering guidance for data processing
+                ml_plan_feature_engineering = plan.feature_engineering
+            except ValueError as e:
+                # Close section before returning error
+                return ToolResult.error_result(
+                    f"Failed to load ML plan '{plan_id}': {e}"
+                )
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Unexpected error loading ML plan '{plan_id}': {e}"
+                )
 
         # Show section title and ML plan guidance if provided
         ml_data_process_section_printer = None
         if self.ui:
             self._ml_data_process_section = self.ui._printer.section(
-                color="magenta", add_dot=True
+                color="magenta", add_dot=False
             )
             ml_data_process_section_printer = self._ml_data_process_section.__enter__()
-            ml_data_process_section_printer.print("ML Data")
+
+            # Build title with metadata
+            title = "ML Data"
+            metadata_parts = []
+            if plan_id:
+                metadata_parts.append(plan_id)
+            if recommended_knowledge_ids:
+                metadata_parts.extend(recommended_knowledge_ids)
+            if metadata_parts:
+                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
+
+            ml_data_process_section_printer.print(title)
+            # Show task description (dimmed)
+            ml_data_process_section_printer.print(f"[dim]Task: {instruction}[/dim]")
 
             # Show ML plan feature engineering guidance if provided
             if ml_plan_feature_engineering:
@@ -199,6 +230,7 @@ class MLDataProcessTool(BaseTool):
                 instruction=enhanced_instruction,
                 source_tables=source_tables,
                 database=database,
+                skip_data_profiling=skip_data_profiling,
             )
 
             # Validate the generated spec before confirmation workflow
@@ -347,11 +379,21 @@ class MLDataProcessTool(BaseTool):
                 if self.ui and hasattr(self, "_ml_data_process_section"):
                     self._ml_data_process_section.__exit__(None, None, None)
 
-                # Return success with warning message
-                # Generation/registration succeeded, execution failed
-                return ToolResult.success_result(
-                    f"Data processor '{name}' registered as {processor.id}, "
-                    f"but execution failed: {str(e)}"
+                # Return FAILURE with detailed metadata for agent to understand
+                # Generation/registration succeeded, but execution failed
+                return ToolResult(
+                    success=False,  # Execution failed - agent needs to know
+                    output=f"Data processor '{name}' registered as {processor.id}, "
+                    f"but execution failed: {str(e)}",
+                    metadata={
+                        "processor_id": processor.id,
+                        "processor_name": name,
+                        "generation_succeeded": True,
+                        "registration_succeeded": True,
+                        "execution_succeeded": False,
+                        "execution_error": str(e),
+                        "error_type": "execution_failure",
+                    },
                 )
 
             # Show success summary
@@ -374,7 +416,20 @@ class MLDataProcessTool(BaseTool):
                 f"{', '.join(execution_result.created_tables)} created",
             ]
 
-            return ToolResult.success_result("\n".join(lines))
+            # Return success with detailed metadata
+            return ToolResult(
+                success=True,
+                output="\n".join(lines),
+                metadata={
+                    "processor_id": processor.id,
+                    "processor_name": name,
+                    "generation_succeeded": True,
+                    "registration_succeeded": True,
+                    "execution_succeeded": True,
+                    "created_tables": execution_result.created_tables,
+                    "execution_time": execution_result.execution_time,
+                },
+            )
 
         except Exception as e:
             # Close the section before returning error
