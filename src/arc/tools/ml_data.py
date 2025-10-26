@@ -201,16 +201,19 @@ class MLDataTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
-
-                # Show ML plan feature engineering guidance if provided
-                if ml_plan_feature_engineering:
-                    printer.print(
-                        "[dim][cyan]ℹ Using ML plan feature engineering "
-                        "guidance[/cyan][/dim]"
-                    )
-
                 printer.print(
                     "[dim]Generating Arc-Graph data processor specification...[/dim]"
+                )
+
+            # Helper to show error and return
+            def _error_in_section(message: str) -> ToolResult:
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {message}")
+                return ToolResult(
+                    success=False,
+                    output=message,
+                    metadata={"error_shown": True, "error_message": message},
                 )
 
             try:
@@ -240,7 +243,7 @@ class MLDataTool(BaseTool):
                         yaml_content
                     )
                     if not validation_result.success:
-                        return ToolResult.error_result(
+                        return _error_in_section(
                             f"Generated data processor failed validation: "
                             f"{validation_result.error}"
                         )
@@ -250,7 +253,7 @@ class MLDataTool(BaseTool):
                     _ = spec.get_execution_order()
 
                 except Exception as e:
-                    return ToolResult.error_result(
+                    return _error_in_section(
                         f"Data processor validation failed: {str(e)}"
                     )
 
@@ -313,7 +316,7 @@ class MLDataTool(BaseTool):
                             f"({processor.id} • {len(spec.steps)} steps)[/dim]"
                         )
                 except MLRuntimeError as e:
-                    return ToolResult.error_result(
+                    return _error_in_section(
                         f"Failed to register data processor: {str(e)}"
                     )
 
@@ -419,7 +422,7 @@ class MLDataTool(BaseTool):
                 )
 
             except Exception as e:
-                return ToolResult.error_result(
+                return _error_in_section(
                     f"Failed to generate YAML using LLM: {str(e)}. "
                     "Please check your API key and network connection, "
                     "or try simplifying your request."
