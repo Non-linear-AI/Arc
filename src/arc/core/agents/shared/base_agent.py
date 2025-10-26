@@ -461,14 +461,28 @@ class BaseAgent(abc.ABC):
 
                                     try:
                                         args = json.loads(tool_call.function.arguments)
-                                        # Show tool name and brief arguments
-                                        args_brief = str(args)[:100]
-                                        if len(str(args)) > 100:
-                                            args_brief += "..."
-                                        progress_callback(
-                                            f"[dim]▸ Calling {tool_call.function.name}("
-                                            f"{args_brief})[/dim]"
-                                        )
+                                        # Special formatting for database_query tool
+                                        if tool_call.function.name == "database_query":
+                                            query = args.get("query", "")
+                                            # Clean up query for display (remove extra whitespace)
+                                            query_clean = " ".join(query.split())
+                                            # Truncate at 80 chars
+                                            if len(query_clean) > 80:
+                                                query_brief = query_clean[:80] + "..."
+                                            else:
+                                                query_brief = query_clean
+                                            progress_callback(
+                                                f"[dim]▸ Query: {query_brief}[/dim]"
+                                            )
+                                        else:
+                                            # For other tools, show tool name and brief arguments
+                                            args_brief = str(args)[:100]
+                                            if len(str(args)) > 100:
+                                                args_brief += "..."
+                                            progress_callback(
+                                                f"[dim]▸ Calling {tool_call.function.name}("
+                                                f"{args_brief})[/dim]"
+                                            )
                                     except json.JSONDecodeError:
                                         # If can't parse arguments, show tool name only
                                         progress_callback(
