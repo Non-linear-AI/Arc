@@ -22,6 +22,10 @@ class MLPlan:
     training_configuration: str
     evaluation: str
 
+    # Optional knowledge recommendations
+    # Agent can read knowledge but chooses which to recommend based on task
+    recommended_knowledge_ids: list[str] = field(default_factory=list)
+
     # Metadata
     version: int = 1
     stage: str = "initial"  # "initial", "post_training", "post_evaluation", etc.
@@ -53,6 +57,7 @@ class MLPlan:
             model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
             training_configuration=analysis.get("training_configuration", ""),
             evaluation=analysis.get("evaluation", ""),
+            recommended_knowledge_ids=analysis.get("recommended_knowledge_ids", []),
             version=version,
             stage=stage,
             reason_for_update=reason,
@@ -66,6 +71,7 @@ class MLPlan:
             "model_architecture_and_loss": self.model_architecture_and_loss,
             "training_configuration": self.training_configuration,
             "evaluation": self.evaluation,
+            "recommended_knowledge_ids": self.recommended_knowledge_ids,
             "version": self.version,
             "stage": self.stage,
             "reason_for_update": self.reason_for_update,
@@ -85,6 +91,7 @@ class MLPlan:
             model_architecture_and_loss=data["model_architecture_and_loss"],
             training_configuration=data["training_configuration"],
             evaluation=data["evaluation"],
+            recommended_knowledge_ids=data.get("recommended_knowledge_ids", []),
             version=data.get("version", 1),
             stage=data.get("stage", "initial"),
             reason_for_update=data.get("reason_for_update"),
@@ -105,32 +112,16 @@ class MLPlan:
             "evaluation": self.evaluation,
         }
 
-    def format_for_display(self, show_metadata: bool = True) -> str:
+    def format_for_display(self) -> str:
         """Format plan as readable markdown text with left-aligned headers.
-
-        Args:
-            show_metadata: Whether to show version/stage metadata
 
         Returns:
             Formatted markdown string for display
         """
-        # Use bold instead of headers to avoid Rich's center-alignment
-        lines = ["**ML Workflow Plan**"]
-
-        if show_metadata:
-            lines.append(
-                f"*Version {self.version} • {self.stage.replace('_', ' ').title()}*"
-            )
-            if self.reason_for_update:
-                lines.append(f"*Reason: {self.reason_for_update}*")
-            lines.append("")
-
         # Technical decisions with bold labels instead of headers
+        lines = []
         lines.extend(
             [
-                "**Summary**",
-                self.summary,
-                "",
                 "**Feature Engineering**",
                 self.feature_engineering,
                 "",
@@ -144,6 +135,17 @@ class MLPlan:
                 self.evaluation,
             ]
         )
+
+        # Show knowledge at the end if present
+        if self.recommended_knowledge_ids:
+            knowledge_str = ", ".join(self.recommended_knowledge_ids)
+            lines.extend(
+                [
+                    "",
+                    "**Knowledge**",
+                    knowledge_str,
+                ]
+            )
 
         return "\n".join(lines)
 
@@ -201,26 +203,6 @@ class MLPlanDiff:
         lines.append("")
         lines.append("---")
         lines.append("")
-
-        # Summary
-        if self.summary_changed:
-            lines.extend(
-                [
-                    "**Summary** *(Changed)*",
-                    f"~~{self.old_summary[:80]}...~~",
-                    "",
-                    self.new_summary,
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "**Summary**",
-                    new_plan.summary,
-                    "",
-                ]
-            )
 
         # Feature Engineering
         if self.feature_engineering_changed:

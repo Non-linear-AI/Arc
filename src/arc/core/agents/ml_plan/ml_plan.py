@@ -59,6 +59,7 @@ class MLPlanAgent(BaseAgent):
         source_tables: str,
         instruction: str | None = None,
         stream: bool = False,
+        skip_data_profiling: bool = False,
     ):
         """Analyze ML problem and provide comprehensive plan.
 
@@ -67,6 +68,8 @@ class MLPlanAgent(BaseAgent):
             source_tables: Comma-separated source table names for data exploration
             instruction: Optional instruction for initial generation or refinement
             stream: Whether to stream the output (default: False)
+            skip_data_profiling: If True, skip automatic data profiling
+                (useful when data insights are already in user_context)
 
         Returns:
             If stream=False: Dictionary containing plan fields
@@ -76,9 +79,12 @@ class MLPlanAgent(BaseAgent):
             MLPlanError: If analysis fails
         """
 
-        # Get data profiles for all source tables
-        table_list = [t.strip() for t in source_tables.split(",")]
-        data_profiles = await self._get_multiple_data_profiles(table_list)
+        # Get data profiles for all source tables (unless skipped)
+        if skip_data_profiling:
+            data_profiles = {}
+        else:
+            table_list = [t.strip() for t in source_tables.split(",")]
+            data_profiles = await self._get_multiple_data_profiles(table_list)
 
         # Build analysis context
         context = {
@@ -86,6 +92,7 @@ class MLPlanAgent(BaseAgent):
             "data_profiles": data_profiles,
             "source_tables": source_tables,
             "instruction": instruction,
+            "skip_data_profiling": skip_data_profiling,
         }
 
         # Generate analysis using LLM

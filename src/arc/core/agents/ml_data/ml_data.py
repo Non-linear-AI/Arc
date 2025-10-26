@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,7 @@ class MLDataAgent(BaseAgent):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> None:
         """Initialize MLDataAgent.
 
@@ -33,8 +35,10 @@ class MLDataAgent(BaseAgent):
             api_key: API key for LLM calls
             base_url: Base URL for LLM API
             model: Model name to use
+            progress_callback: Optional callback to report progress/tool usage
         """
         super().__init__(services, api_key, base_url, model)
+        self.progress_callback = progress_callback
 
     def get_template_directory(self) -> Path:
         """Get the template directory for data processing generation.
@@ -52,6 +56,7 @@ class MLDataAgent(BaseAgent):
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
+        skip_data_profiling: bool = False,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Generate or edit data processing YAML from instruction.
 
@@ -67,6 +72,8 @@ class MLDataAgent(BaseAgent):
             recommended_knowledge_ids: Optional list of knowledge IDs
                 recommended by ML Plan
             conversation_history: Optional conversation history for editing workflow
+            skip_data_profiling: If True, skip automatic data profiling (row counts)
+                (useful when data insights are already in instruction)
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string, conversation_history)
@@ -83,6 +90,7 @@ class MLDataAgent(BaseAgent):
                 database=database,
                 existing_yaml=existing_yaml,
                 recommended_knowledge_ids=recommended_knowledge_ids,
+                skip_data_profiling=skip_data_profiling,
             )
         else:
             # Continue conversation - just append feedback
@@ -98,6 +106,7 @@ class MLDataAgent(BaseAgent):
         database: str = "user",
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        skip_data_profiling: bool = False,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -107,39 +116,25 @@ class MLDataAgent(BaseAgent):
         """
         try:
             # Get schema information for available tables
-            # Skip row counts for faster response (cosmetic, not needed by LLM)
+            # Skip row counts when profiling is disabled or for faster response
             schema_info = await self._get_schema_context(
-                source_tables, database, include_row_counts=False
+                source_tables, database, include_row_counts=not skip_data_profiling
             )
 
-            # Pre-load recommended knowledge content
+            # Pre-load recommended knowledge content (handle missing gracefully)
             recommended_knowledge = ""
+            loaded_knowledge_ids = []
             if recommended_knowledge_ids:
-                # Scan metadata once for all knowledge IDs (performance optimization)
-                metadata_map = self.knowledge_loader.scan_metadata()
-
                 for knowledge_id in recommended_knowledge_ids:
                     content = self.knowledge_loader.load_knowledge(knowledge_id, "data")
                     if content:
-                        # Get metadata for display
-                        metadata = metadata_map.get(knowledge_id)
-                        if metadata:
-                            print(f"  ▸ Using knowledge: {metadata.name}")
+                        # Successfully loaded - add to system context
                         recommended_knowledge += (
                             f"\n\n# Data Processing Knowledge: {knowledge_id}"
                             f"\n\n{content}"
                         )
-                    else:
-                        # Warn user if recommended knowledge fails to load
-                        import logging
-
-                        print(
-                            f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' "
-                            f"not found"
-                        )
-                        logging.getLogger(__name__).warning(
-                            f"Could not load recommended knowledge: {knowledge_id}"
-                        )
+                        loaded_knowledge_ids.append(knowledge_id)
+                    # If missing, silently skip (already logged at debug level)
 
             # Build system message with all context
             system_message = self._render_template(
@@ -153,21 +148,27 @@ class MLDataAgent(BaseAgent):
                 },
             )
 
-            # User message guides tool usage
+            # User message guides tool usage and lists pre-loaded knowledge
             if existing_yaml:
                 user_message = (
                     f"Edit the existing data processing specification with "
-                    f"these changes: {instruction}. "
-                    "The recommended data processing knowledge is provided in "
-                    "the system message. Only use the knowledge exploration "
-                    "tools if you need additional guidance."
+                    f"these changes: {instruction}."
                 )
             else:
-                user_message = (
-                    "Generate the data processing specification. "
-                    "The recommended data processing knowledge is provided in "
-                    "the system message. Only use the knowledge exploration "
-                    "tools if you need additional guidance."
+                user_message = "Generate the data processing specification."
+
+            # Tell agent which knowledge IDs are already provided
+            if loaded_knowledge_ids:
+                user_message += (
+                    f"\n\nPre-loaded knowledge (already in system message): "
+                    f"{', '.join(loaded_knowledge_ids)}. "
+                    f"Do NOT reload these. Only use knowledge tools for "
+                    f"additional guidance if needed."
+                )
+            else:
+                user_message += (
+                    "\n\nNo knowledge was pre-loaded. Use list_available_knowledge "
+                    "and read_knowledge_content if you need data processing guidance."
                 )
 
             # Get ML tools from BaseAgent
@@ -183,6 +184,7 @@ class MLDataAgent(BaseAgent):
                 validation_context={"schema_info": schema_info},
                 max_iterations=3,
                 conversation_history=None,  # Fresh start
+                progress_callback=self.progress_callback,
             )
 
             return spec, yaml_content, conversation_history
@@ -221,6 +223,7 @@ class MLDataAgent(BaseAgent):
                 },  # Already in conversation history
                 max_iterations=3,
                 conversation_history=conversation_history,
+                progress_callback=self.progress_callback,
             )
 
             return spec, yaml_content, updated_history
@@ -364,6 +367,12 @@ class MLDataAgent(BaseAgent):
 
             return {"valid": True, "object": spec, "error": None}
 
+        except AgentError as e:
+            # AgentError messages are already well-formatted, don't wrap them
+            return {
+                "valid": False,
+                "error": str(e),
+            }
         except Exception as e:
             return {
                 "valid": False,

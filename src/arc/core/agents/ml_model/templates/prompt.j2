@@ -224,6 +224,81 @@ loss:
 - Reference output field names (from outputs section) in `input` field for validation
 - Use `target` as the target column name from the dataset
 
+**CRITICAL: BCEWithLogitsLoss Requires Probabilities for Evaluation**:
+
+When using `torch.nn.BCEWithLogitsLoss` (or `torch.nn.functional.binary_cross_entropy_with_logits`):
+- **Training**: Loss function works with raw logits (no sigmoid needed)
+- **Evaluation/Prediction**: Requires probabilities (sigmoid transformation MUST be applied)
+
+**YOU MUST**:
+1. Add a sigmoid transformation node to your graph
+2. Include BOTH logits and probabilities in your outputs section
+
+**Example Pattern** (ALWAYS follow this when using BCEWithLogitsLoss):
+```yaml
+graph:
+  # ... your layers ...
+  - name: output_layer
+    type: torch.nn.Linear
+    params: { in_features: 64, out_features: 1 }
+    inputs: { input: previous_layer.output }
+
+  # REQUIRED: Add sigmoid transformation for evaluation
+  - name: probabilities
+    type: torch.nn.functional.sigmoid
+    inputs: { input: output_layer.output }
+
+outputs:
+  logits: output_layer.output           # For training loss
+  probabilities: probabilities.output   # For evaluation (REQUIRED!)
+
+loss:
+  type: torch.nn.BCEWithLogitsLoss
+  inputs:
+    input: logits                       # Use logits, not probabilities
+    target: target_column_name
+```
+
+**Why This Matters**: Evaluation metrics (accuracy, precision, recall, F1) require probabilities in [0, 1] range. If you forget the sigmoid transformation, evaluation will fail or produce incorrect results.
+
+**CRITICAL: CrossEntropyLoss Requires Probabilities for Evaluation**:
+
+When using `torch.nn.CrossEntropyLoss` (or `torch.nn.functional.cross_entropy`) for multi-class classification:
+- **Training**: Loss function works with raw logits (internally applies log_softmax)
+- **Evaluation/Prediction**: Requires probabilities (softmax transformation MUST be applied)
+
+**YOU MUST**:
+1. Add a softmax transformation node to your graph
+2. Include BOTH logits and probabilities in your outputs section
+
+**Example Pattern** (ALWAYS follow this when using CrossEntropyLoss):
+```yaml
+graph:
+  # ... your layers ...
+  - name: output_layer
+    type: torch.nn.Linear
+    params: { in_features: 64, out_features: num_classes }
+    inputs: { input: previous_layer.output }
+
+  # REQUIRED: Add softmax transformation for evaluation
+  - name: probabilities
+    type: torch.nn.functional.softmax
+    params: { dim: 1 }
+    inputs: { input: output_layer.output }
+
+outputs:
+  logits: output_layer.output           # For training loss
+  probabilities: probabilities.output   # For evaluation (REQUIRED!)
+
+loss:
+  type: torch.nn.CrossEntropyLoss
+  inputs:
+    input: logits                       # Use logits, not probabilities
+    target: target_column_name
+```
+
+**Why This Matters**: Multi-class evaluation metrics require class probabilities that sum to 1. The softmax transformation ensures this property.
+
 **When Explicit Activations Are Required**:
 - **Inference/Prediction**: Sigmoid (binary) or Softmax (multi-class) to convert logits to probabilities
 - **BCELoss training**: Sigmoid activation required (vs BCEWithLogitsLoss which handles internally)
@@ -256,7 +331,7 @@ You have access to the following tools for exploration when needed:
    - Use when you need additional architectural guidance beyond what's provided above
    - Only use if the recommended knowledge doesn't cover your specific needs
 
-**Tool Usage Guidance**: The recommended knowledge above should be sufficient for most cases. Only use these tools if you genuinely need additional information that isn't provided in the system message.
+**Tool Usage Guidance**: The recommended knowledge above should be sufficient for most cases. Only use these tools if you genuinely need additional information that isn't provided in the system message. **IMPORTANT**: Tool results remain in your conversation context - once you've read a knowledge document, don't re-read it; reference the previous result.
 
 ## Requirements
 1. **Schema Compliance**: Valid Arc-Graph YAML structure

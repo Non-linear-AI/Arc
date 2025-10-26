@@ -69,57 +69,107 @@ class DatabaseQueryTool(BaseTool):
             result = self.services.query.execute_query(query, target_db)
             execution_time = time.time() - start_time
 
+            # Truncate query if too long (max 100 chars)
+            display_query = query if len(query) <= 100 else query[:97] + "..."
+
+            # Prepare metadata for section title
+            metadata = {"execution_time": execution_time}
+
             # Format results for output
             if result.empty():
-                output = (
-                    f"SQL Query ({target_db} DB): {query}\n"
-                    f"Query executed successfully ({execution_time:.3f}s)\n"
-                    "No results returned."
-                )
+                output = f"{display_query}\nNo results returned."
             else:
                 # Get basic result information
                 row_count = result.count()
                 first_row = result.first()
 
-                if first_row:
+                # Add row count to metadata
+                metadata["row_count"] = row_count
+
+                if not first_row:
+                    output = f"{display_query}\nNo results returned."
+                else:
                     column_names = list(first_row.keys())
-                    columns_info = f"Columns: {', '.join(column_names)}"
-                else:
-                    columns_info = "No columns"
+                    show_row_count = min(5, row_count)
 
-                # Format output with summary
-                output = (
-                    f"SQL Query ({target_db} DB): {query}\n"
-                    f"Query executed successfully ({execution_time:.3f}s)\n"
-                    f"Results: {row_count} row{'s' if row_count != 1 else ''}\n"
-                    f"{columns_info}\n\n"
-                )
+                    # Start output with query only
+                    output = f"{display_query}\n"
 
-                # Add sample data for small result sets
-                if row_count <= 10:
-                    output += "Data:\n"
-                    for i, row in enumerate(result):
-                        row_data = []
-                        for value in row.values():
+                    # Format based on result shape
+                    if row_count == 1:
+                        # Single row: use key=value format
+                        values = []
+                        for key, value in first_row.items():
                             if value is None:
-                                row_data.append("NULL")
-                            elif isinstance(value, str) and len(value) > 50:
-                                row_data.append(f"{value[:47]}...")
+                                formatted_val = "NULL"
+                            elif isinstance(value, float):
+                                formatted_val = f"{value:.3g}"
                             else:
-                                row_data.append(str(value))
-                        output += f"  Row {i + 1}: {', '.join(row_data)}\n"
-                else:
-                    output += (
-                        f"Use `/sql {query}` in interactive mode to view full results."
-                    )
+                                formatted_val = str(value)
+                            values.append(f"{key}={formatted_val}")
+                        output += ", ".join(values)
+                    else:
+                        # Multiple rows: use table format
+                        # Determine column widths (max 20 chars per column)
+                        col_widths = {}
+                        for col in column_names[:5]:  # Max 5 columns
+                            col_widths[col] = min(20, max(len(col), 8))
+
+                        # Show first 5 columns
+                        display_cols = column_names[:5]
+
+                        # Build table header
+                        header_parts = []
+                        for col in display_cols:
+                            header_parts.append(col.ljust(col_widths[col]))
+                        if len(column_names) > 5:
+                            header_parts.append(f"… ({len(column_names)} columns)")
+                        output += " │ ".join(header_parts) + "\n"
+
+                        # Build table rows (show first 5 rows)
+                        for i, row in enumerate(result):
+                            if i >= show_row_count:
+                                break
+                            row_parts = []
+                            for col in display_cols:
+                                value = row.get(col)
+                                if value is None:
+                                    formatted = "NULL"
+                                elif isinstance(value, float):
+                                    formatted = f"{value:.3g}"
+                                elif isinstance(value, str):
+                                    # Don't truncate short strings or column name fields
+                                    should_truncate = len(value) > col_widths[col]
+                                    is_short_string = len(value) <= 30
+                                    is_column_name_field = col.lower() in {
+                                        "column_name",
+                                        "table_name",
+                                        "name",
+                                    }
+                                    if (
+                                        should_truncate
+                                        and not is_short_string
+                                        and not is_column_name_field
+                                    ):
+                                        formatted = value[: col_widths[col] - 3] + "..."
+                                    else:
+                                        formatted = value
+                                else:
+                                    formatted = str(value)
+                                row_parts.append(formatted.ljust(col_widths[col]))
+                            output += " │ ".join(row_parts) + "\n"
+
+                        # Add "… and N more rows" if truncated
+                        if row_count > show_row_count:
+                            output += f"… and {row_count - show_row_count} more rows"
 
             # Add schema warnings if any
             if schema_warnings:
-                output += "\n\nSchema Notes:\n"
+                output += "\nSchema Notes:\n"
                 for warning in schema_warnings:
                     output += f"• {warning}\n"
 
-            return ToolResult.success_result(output)
+            return ToolResult.success_result(output, metadata=metadata)
 
         except QueryValidationError as e:
             # Query validation errors (e.g., invalid SQL, permission issues)

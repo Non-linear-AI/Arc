@@ -285,13 +285,93 @@ class BaseAgent(abc.ABC):
         Raises:
             AgentError: If YAML is invalid
         """
+        # Pre-check: Detect common non-YAML patterns
+        lines = yaml_content.strip().split("\n")
+        non_yaml_indicators = []
+
+        for i, line in enumerate(lines[:10], 1):  # Check first 10 lines
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Detect markdown patterns
+            if stripped.startswith("**") and stripped.endswith("**"):
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown bold syntax '**text**' detected"
+                )
+            elif stripped.startswith("# ") and not stripped.startswith("#!"):
+                # Markdown header (not YAML comment)
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown header '# text' detected"
+                )
+            elif stripped.startswith("```"):
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown code fence '```' detected"
+                )
+            elif stripped.startswith("- **") or "**" in stripped:
+                # Markdown list with bold
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown formatting detected in list"
+                )
+
+        # If markdown detected, provide clear error before YAML parsing
+        if non_yaml_indicators:
+            error_details = "\n".join(non_yaml_indicators)
+            raise AgentError(
+                f"Output contains markdown formatting instead of YAML:\n"
+                f"{error_details}\n\n"
+                f"CRITICAL: You must output ONLY valid YAML. "
+                f"Do NOT include markdown headers, bold text, code fences, "
+                f"or explanatory text. Start directly with YAML key-value pairs."
+            )
+
+        # Parse YAML
         try:
             parsed = yaml.safe_load(yaml_content)
             if not isinstance(parsed, dict):
-                raise AgentError("Generated content is not a valid YAML object")
+                raise AgentError(
+                    "Generated content is not a valid YAML object. "
+                    "Output must be a YAML dictionary starting with key-value pairs, "
+                    "not a string or list."
+                )
             return parsed
         except yaml.YAMLError as e:
-            raise AgentError(f"Invalid YAML syntax: {e}") from e
+            # Enhanced error message with guidance
+            error_msg = str(e)
+
+            # Detect common YAML errors and provide guidance
+            if "found character '\\t'" in error_msg or "tab" in error_msg.lower():
+                guidance = (
+                    "YAML does not allow tabs for indentation. "
+                    "Use spaces only (2 or 4 spaces per level)."
+                )
+            elif "could not find expected ':'" in error_msg:
+                guidance = (
+                    "Missing colon after key name. "
+                    "Every YAML key must be followed by a colon and value."
+                )
+            elif "mapping values are not allowed" in error_msg:
+                guidance = (
+                    "Invalid YAML structure. "
+                    "Check for proper key-value formatting with colons."
+                )
+            elif "while scanning an alias" in error_msg or "found '*'" in error_msg:
+                guidance = (
+                    "Invalid character detected (likely markdown formatting). "
+                    "Output ONLY valid YAML without markdown syntax."
+                )
+            else:
+                guidance = (
+                    "Ensure output is valid YAML with proper indentation, "
+                    "key-value pairs, and no special characters."
+                )
+
+            raise AgentError(
+                f"Invalid YAML syntax: {error_msg}\n\n"
+                f"Guidance: {guidance}\n\n"
+                f"Remember: Output ONLY valid YAML. No markdown, "
+                f"no explanations, no code fences."
+            ) from e
 
     def _save_to_file(self, content: str, output_path: str) -> None:
         """Save content to file.
@@ -383,6 +463,7 @@ class BaseAgent(abc.ABC):
         validation_context: dict[str, Any] | None = None,
         max_iterations: int = 3,
         conversation_history: list[dict[str, str]] | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> tuple[Any, str, list[dict[str, str]]]:
         """Generate content with tool support and validation.
 
@@ -395,6 +476,8 @@ class BaseAgent(abc.ABC):
             validation_context: Optional context for validation
             max_iterations: Maximum number of generation attempts
             conversation_history: Optional conversation history for editing
+            progress_callback: Optional callback to report progress/errors
+                during validation retries and tool calls
 
         Returns:
             Tuple of (validated_object, raw_content, conversation_history)
@@ -452,6 +535,60 @@ class BaseAgent(abc.ABC):
                         # Execute each tool call
                         for tool_call in response_msg.tool_calls:
                             if tool_executor:
+                                # Report tool execution to UI if callback provided
+                                if progress_callback:
+                                    import json
+
+                                    try:
+                                        args = json.loads(tool_call.function.arguments)
+                                        # Special formatting for database_query tool
+                                        if tool_call.function.name == "database_query":
+                                            query = args.get("query", "")
+                                            # Clean up query (remove extra whitespace)
+                                            query_clean = " ".join(query.split())
+                                            # Truncate at 80 chars
+                                            if len(query_clean) > 80:
+                                                query_brief = query_clean[:80] + "..."
+                                            else:
+                                                query_brief = query_clean
+                                            progress_callback(
+                                                f"[dim]▸ Query: {query_brief}[/dim]"
+                                            )
+                                        # Special formatting for knowledge tools
+                                        elif (
+                                            tool_call.function.name
+                                            == "list_available_knowledge"
+                                        ):
+                                            progress_callback(
+                                                "[dim]▸ Listing knowledge...[/dim]"
+                                            )
+                                        elif (
+                                            tool_call.function.name
+                                            == "read_knowledge_content"
+                                        ):
+                                            knowledge_id = args.get("knowledge_id", "")
+                                            domain = args.get("domain", "model")
+                                            progress_callback(
+                                                f"[dim]▸ Reading: {knowledge_id} "
+                                                f"({domain})[/dim]"
+                                            )
+                                        else:
+                                            # For other tools, show name & brief args
+                                            args_brief = str(args)[:100]
+                                            if len(str(args)) > 100:
+                                                args_brief += "..."
+                                            progress_callback(
+                                                f"[dim]▸ Calling "
+                                                f"{tool_call.function.name}("
+                                                f"{args_brief})[/dim]"
+                                            )
+                                    except json.JSONDecodeError:
+                                        # If can't parse arguments, show tool name only
+                                        progress_callback(
+                                            f"[dim]▸ Calling "
+                                            f"{tool_call.function.name}[/dim]"
+                                        )
+
                                 result = await tool_executor(
                                     tool_call.function.name,
                                     tool_call.function.arguments,
@@ -499,11 +636,20 @@ class BaseAgent(abc.ABC):
                                 f"corrected version."
                             )
                             messages.append({"role": "user", "content": error_msg})
-                            logger.warning(
-                                f"Validation failed on attempt "
-                                f"{attempt + 1}/{max_iterations}: "
-                                f"{last_error}. Retrying..."
-                            )
+                            # Report validation failure to UI if callback provided
+                            if progress_callback:
+                                msg = (
+                                    f"[dim]✗ Validation failed on attempt "
+                                    f"{attempt + 1}/{max_iterations}: "
+                                    f"{last_error}. Retrying...[/dim]"
+                                )
+                                progress_callback(msg)
+                            else:
+                                logger.warning(
+                                    f"Validation failed on attempt "
+                                    f"{attempt + 1}/{max_iterations}: "
+                                    f"{last_error}. Retrying..."
+                                )
                             continue
                         else:
                             raise AgentError(
@@ -518,7 +664,15 @@ class BaseAgent(abc.ABC):
             except TimeoutError as e:
                 last_error = "LLM request timed out after 90 seconds"
                 if attempt < max_iterations - 1:
-                    logger.warning(f"Timeout on attempt {attempt + 1}, retrying...")
+                    # Report timeout to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Timeout on attempt "
+                            f"{attempt + 1}/{max_iterations}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
+                    else:
+                        logger.warning(f"Timeout on attempt {attempt + 1}, retrying...")
                     continue
                 else:
                     raise AgentError(last_error) from e
@@ -526,11 +680,20 @@ class BaseAgent(abc.ABC):
             except Exception as e:
                 last_error = f"Generation error: {str(e)}"
                 if attempt < max_iterations - 1:
-                    logger.warning(
-                        f"Generation failed on attempt "
-                        f"{attempt + 1}/{max_iterations}: "
-                        f"{last_error}. Retrying..."
-                    )
+                    # Report generation error to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Generation failed on attempt "
+                            f"{attempt + 1}/{max_iterations}: "
+                            f"{last_error}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
+                    else:
+                        logger.warning(
+                            f"Generation failed on attempt "
+                            f"{attempt + 1}/{max_iterations}: "
+                            f"{last_error}. Retrying..."
+                        )
                     continue
                 else:
                     raise AgentError(f"Content generation failed: {e}") from e

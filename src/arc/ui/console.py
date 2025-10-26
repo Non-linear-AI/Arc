@@ -274,7 +274,7 @@ class InteractiveInterface:
             "ml_evaluate": "Evaluate Model",
             "ml_model": "Model Generator",
             "ml_trainer_generator": "Trainer Generator",
-            "data_process": "Data Processor Generator",
+            "ml_data": "ML Data",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -313,7 +313,7 @@ class InteractiveInterface:
             "ml_trainer_generator",
         ]:
             return "green"  # ML operations (success/completion focused)
-        elif tool_name in ["data_process"]:
+        elif tool_name in ["ml_data"]:
             return "bright_yellow"
         else:
             return "white"  # Default/neutral informational output
@@ -333,7 +333,7 @@ class InteractiveInterface:
             "ml_model",  # MLModelTool shows output in "ML Model" section
             "ml_evaluate",  # MLEvaluateTool shows output in "ML Evaluator" section
             "ml_plan",  # MLPlanTool shows output in "ML Plan" section
-            "data_process",  # MLDataProcessTool shows output in "ML Data" section
+            "ml_data",  # MLDataTool shows output in "ML Data" section
         }
 
         # Skip display if tool already showed its own section
@@ -341,6 +341,31 @@ class InteractiveInterface:
             return
 
         label = self._action_label(tool_name)
+
+        # Append metadata to label if present
+        if result.metadata:
+            metadata_parts = []
+            # Show table name first if present (for describe_table)
+            if "table_name" in result.metadata:
+                metadata_parts.append(result.metadata["table_name"])
+            if "row_count" in result.metadata:
+                row_text = "row" if result.metadata["row_count"] == 1 else "rows"
+                metadata_parts.append(f"{result.metadata['row_count']} {row_text}")
+            if "table_count" in result.metadata:
+                table_text = (
+                    "table" if result.metadata["table_count"] == 1 else "tables"
+                )
+                metadata_parts.append(f"{result.metadata['table_count']} {table_text}")
+            if "column_count" in result.metadata:
+                col_text = "col" if result.metadata["column_count"] == 1 else "cols"
+                metadata_parts.append(f"{result.metadata['column_count']} {col_text}")
+            # Show execution time at the end, only if >= 1 second
+            if "execution_time" in result.metadata:
+                exec_time = result.metadata["execution_time"]
+                if exec_time >= 1.0:
+                    metadata_parts.append(f"{exec_time:.3f}s")
+            if metadata_parts:
+                label += f" [dim]({', '.join(metadata_parts)})[/dim]"
 
         if self._working_active:
             self._working_active = False

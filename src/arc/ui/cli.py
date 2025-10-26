@@ -829,7 +829,7 @@ async def _ml_model(
             instruction=instruction,
             data_table=data_table,
             target_column=target_column,
-            ml_plan=ml_plan,  # Pass ML plan if available
+            plan_id=plan_id if ml_plan else None,  # Pass plan ID if available
         )
 
         if not result.success:
@@ -985,14 +985,14 @@ async def _ml_data_processing(
             raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
 
     try:
-        # Import here: MLDataProcessTool only needed for /ml data command
-        from arc.tools.data_process import MLDataProcessTool
+        # Use the MLDataTool for generation with confirmation workflow
+        from arc.tools.ml_data import MLDataTool
 
         # Get settings for tool initialization
         api_key, base_url, model = _get_ml_tool_config()
 
         # Create the tool with proper dependencies
-        tool = MLDataProcessTool(runtime.services, api_key, base_url, model, ui)
+        tool = MLDataTool(runtime.services, api_key, base_url, model, ui)
 
         # Execute the tool with confirmation workflow
         # This will generate YAML, register to database, and execute the pipeline
@@ -1001,7 +1001,7 @@ async def _ml_data_processing(
             instruction=instruction,
             source_tables=data_tables,
             database=database,
-            ml_plan=ml_plan,
+            plan_id=plan_id if ml_plan else None,
         )
 
         if not result.success:

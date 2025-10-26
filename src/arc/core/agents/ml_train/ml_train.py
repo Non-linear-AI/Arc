@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ class MLTrainAgent(BaseAgent):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ):
         """Initialize trainer generator agent.
 
@@ -39,9 +41,11 @@ class MLTrainAgent(BaseAgent):
             api_key: API key for LLM interactions
             base_url: Optional base URL
             model: Optional model name
+            progress_callback: Optional callback to report progress/tool usage
         """
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
+        self.progress_callback = progress_callback
         # Note: knowledge_loader is now initialized in BaseAgent
 
     def get_template_directory(self) -> Path:
@@ -118,32 +122,19 @@ class MLTrainAgent(BaseAgent):
         This path is used for initial generation or when starting a new conversation.
         It builds the complete system message with knowledge loading.
         """
-        # Pre-load recommended knowledge content
+        # Pre-load recommended knowledge content (handle missing gracefully)
         recommended_knowledge = ""
+        loaded_knowledge_ids = []
         if recommended_knowledge_ids:
-            # Scan metadata once for all knowledge IDs (performance optimization)
-            metadata_map = self.knowledge_loader.scan_metadata()
-
             for knowledge_id in recommended_knowledge_ids:
                 content = self.knowledge_loader.load_knowledge(knowledge_id, "train")
                 if content:
-                    # Get metadata for display
-                    metadata = metadata_map.get(knowledge_id)
-                    if metadata:
-                        print(f"  ▸ Using knowledge: {metadata.name}")
+                    # Successfully loaded - add to system context
                     recommended_knowledge += (
                         f"\n\n# Training Knowledge: {knowledge_id}\n\n{content}"
                     )
-                else:
-                    # Warn user if recommended knowledge fails to load
-                    import logging
-
-                    print(
-                        f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' not found"
-                    )
-                    logging.getLogger(__name__).warning(
-                        f"Could not load recommended knowledge: {knowledge_id}"
-                    )
+                    loaded_knowledge_ids.append(knowledge_id)
+                # If missing, silently skip (already logged at debug level)
 
         # Build system message with all context
         system_message = self._render_template(
@@ -162,21 +153,27 @@ class MLTrainAgent(BaseAgent):
             },
         )
 
-        # User message guides tool usage
+        # User message guides tool usage and lists pre-loaded knowledge
         if existing_yaml:
             user_message = (
                 f"Edit the existing trainer specification with these "
-                f"changes: {instruction}. "
-                "The recommended training knowledge is provided in the "
-                "system message. Only use the knowledge exploration tools "
-                "if you need additional guidance."
+                f"changes: {instruction}."
             )
         else:
-            user_message = (
-                f"Generate the trainer specification for '{name}'. "
-                "The recommended training knowledge is provided in the "
-                "system message. Only use the knowledge exploration tools "
-                "if you need additional guidance."
+            user_message = f"Generate the trainer specification for '{name}'."
+
+        # Tell agent which knowledge IDs are already provided
+        if loaded_knowledge_ids:
+            user_message += (
+                f"\n\nPre-loaded knowledge (already in system message): "
+                f"{', '.join(loaded_knowledge_ids)}. "
+                f"Do NOT reload these. Only use knowledge tools for "
+                f"additional guidance if needed."
+            )
+        else:
+            user_message += (
+                "\n\nNo knowledge was pre-loaded. Use list_available_knowledge "
+                "and read_knowledge_content if you need training guidance."
             )
 
         # Get ML tools from BaseAgent
@@ -199,6 +196,7 @@ class MLTrainAgent(BaseAgent):
                 },
                 max_iterations=3,
                 conversation_history=None,  # Fresh generation - no history yet
+                progress_callback=self.progress_callback,
             )
 
             return trainer_spec, trainer_yaml, conversation_history
@@ -237,6 +235,7 @@ class MLTrainAgent(BaseAgent):
                 },
                 max_iterations=3,
                 conversation_history=conversation_history,
+                progress_callback=self.progress_callback,
             )
 
             return trainer_spec, trainer_yaml, updated_history
@@ -294,6 +293,12 @@ class MLTrainAgent(BaseAgent):
 
             return {"valid": True, "object": trainer_spec, "error": None}
 
+        except AgentError as e:
+            # AgentError messages are already well-formatted, don't wrap them
+            return {
+                "valid": False,
+                "error": str(e),
+            }
         except Exception as e:
             return {
                 "valid": False,
