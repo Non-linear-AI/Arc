@@ -131,6 +131,7 @@ class MLEvaluateTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
+                printer.print("")  # Empty line after task
 
             # Helper to show error and return
             def _error_in_section(message: str) -> ToolResult:
