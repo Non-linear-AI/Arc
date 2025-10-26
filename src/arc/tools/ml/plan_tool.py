@@ -364,6 +364,7 @@ class MLPlanTool(BaseTool):
                                     )
                             # Print cancellation message inside section
                             if printer:
+                                printer.print("")  # Empty line
                                 printer.print(
                                     "ML plan cancelled. What would you like to "
                                     "do instead?"
