@@ -123,6 +123,7 @@ class MLDataAgent(BaseAgent):
 
             # Pre-load recommended knowledge content (handle missing gracefully)
             recommended_knowledge = ""
+            loaded_knowledge_ids = []
             if recommended_knowledge_ids:
                 for knowledge_id in recommended_knowledge_ids:
                     content = self.knowledge_loader.load_knowledge(knowledge_id, "data")
@@ -132,6 +133,7 @@ class MLDataAgent(BaseAgent):
                             f"\n\n# Data Processing Knowledge: {knowledge_id}"
                             f"\n\n{content}"
                         )
+                        loaded_knowledge_ids.append(knowledge_id)
                     # If missing, silently skip (already logged at debug level)
 
             # Build system message with all context
@@ -146,21 +148,27 @@ class MLDataAgent(BaseAgent):
                 },
             )
 
-            # User message guides tool usage
+            # User message guides tool usage and lists pre-loaded knowledge
             if existing_yaml:
                 user_message = (
                     f"Edit the existing data processing specification with "
-                    f"these changes: {instruction}. "
-                    "The recommended data processing knowledge is provided in "
-                    "the system message. Only use the knowledge exploration "
-                    "tools if you need additional guidance."
+                    f"these changes: {instruction}."
                 )
             else:
-                user_message = (
-                    "Generate the data processing specification. "
-                    "The recommended data processing knowledge is provided in "
-                    "the system message. Only use the knowledge exploration "
-                    "tools if you need additional guidance."
+                user_message = "Generate the data processing specification."
+
+            # Tell agent which knowledge IDs are already provided
+            if loaded_knowledge_ids:
+                user_message += (
+                    f"\n\nPre-loaded knowledge (already in system message): "
+                    f"{', '.join(loaded_knowledge_ids)}. "
+                    f"Do NOT reload these. Only use knowledge tools for "
+                    f"additional guidance if needed."
+                )
+            else:
+                user_message += (
+                    "\n\nNo knowledge was pre-loaded. Use list_available_knowledge "
+                    "and read_knowledge_content if you need data processing guidance."
                 )
 
             # Get ML tools from BaseAgent
