@@ -204,6 +204,7 @@ class MLDataProcessTool(BaseTool):
             # Validate the generated spec before confirmation workflow
             try:
                 # Parse and validate structure
+                # Import here: Only needed during validation workflow
                 from arc.graph.features.data_source import DataSourceSpec
 
                 validation_result = DataSourceSpec.validate_yaml_string(yaml_content)
@@ -269,6 +270,7 @@ class MLDataProcessTool(BaseTool):
                     workflow.cleanup()
 
             # Register data processor in database
+            # Import here: Only needed after user confirms spec
             from arc.ml.runtime import MLRuntime, MLRuntimeError
 
             runtime = MLRuntime(self.services, artifacts_dir="artifacts")
@@ -289,6 +291,7 @@ class MLDataProcessTool(BaseTool):
                 )
 
             # Execute the pipeline automatically after confirmation
+            # Import here: Only needed after successful registration
             from arc.ml.data_source_executor import (
                 DataSourceExecutionError,
                 execute_data_source_pipeline,

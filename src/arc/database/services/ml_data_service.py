@@ -7,6 +7,7 @@ and data validation functionality.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import time
 from typing import Any
@@ -760,10 +761,6 @@ class MLDataService(BaseService):
         Raises:
             ValueError: If table doesn't exist or columns are invalid
         """
-        import contextlib
-
-        import torch
-
         if not self.dataset_exists(source_table):
             raise ValueError(f"Source table '{source_table}' does not exist")
 

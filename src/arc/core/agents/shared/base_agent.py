@@ -8,6 +8,7 @@ on an external ArcAgent to pass prompts as user messages.
 from __future__ import annotations
 
 import abc
+import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -661,8 +662,6 @@ class BaseAgent(abc.ABC):
         Returns:
             Tool execution result as string
         """
-        import json
-
         # Parse arguments with error handling
         try:
             args = json.loads(arguments)

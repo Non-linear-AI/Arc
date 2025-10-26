@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from arc.core.agents.shared.base_agent import AgentError, BaseAgent
 from arc.database.services import ServiceContainer
@@ -267,10 +271,6 @@ class MLPlanAgent(BaseAgent):
         Returns:
             Structured analysis dictionary
         """
-        import re
-
-        import yaml
-
         # Try to extract YAML from response
         try:
             # Look for YAML block in markdown code fence (fallback)
@@ -530,8 +530,6 @@ class MLPlanAgent(BaseAgent):
         Returns:
             Tool execution result as string
         """
-        import json
-
         args = json.loads(arguments)
 
         # Report tool call

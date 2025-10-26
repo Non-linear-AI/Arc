@@ -1,8 +1,10 @@
 """Enhanced UX components for Arc CLI."""
 
 import asyncio
+import json
 import sys
 import threading
+import time
 from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from typing import Any
@@ -506,8 +508,6 @@ class InteractiveInterface:
                 async for chunk in agent.process_user_message_stream(user_input):
                     handler.handle_chunk(chunk)
         """
-        import json
-        import time
 
         class StreamResponseHandler:
             def __init__(self, ui, start_time):
@@ -777,8 +777,6 @@ class InteractiveInterface:
                         row_values.append("[dim]NULL[/dim]")
                     elif isinstance(value, (dict, list)):
                         # Format JSON-like objects
-                        import json
-
                         try:
                             row_values.append(
                                 json.dumps(value, indent=None, separators=(",", ":"))

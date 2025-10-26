@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -482,8 +483,6 @@ def with_error_handling(
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                import time
-
                 context = ErrorContext(
                     function_name=func.__name__,
                     arguments={"args": args, "kwargs": kwargs},
