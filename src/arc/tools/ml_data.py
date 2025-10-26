@@ -128,84 +128,18 @@ class MLDataTool(BaseTool):
         Returns:
             ToolResult with operation result
         """
-        if not name:
-            return ToolResult.error_result(
-                "Name is required for data processor registration. "
-                "Provide a name for the data processor."
-            )
-
-        if not instruction:
-            return ToolResult.error_result(
-                "Instruction is required for YAML generation. "
-                "Provide a detailed instruction for your data processing needs."
-            )
-
-        if not source_tables or len(source_tables) == 0:
-            return ToolResult.error_result(
-                "source_tables is required to narrow the scope of data exploration. "
-                "Specify which tables to read from (e.g., ['users', 'transactions'])."
-            )
-
-        # Validate database
-        if database not in ["system", "user"]:
-            return ToolResult.error_result(
-                f"Invalid database: {database}. Must be 'system' or 'user'."
-            )
-
-        # Load plan from database if plan_id is provided
-        # If plan is provided, use it as baseline and augment with instruction
-        ml_plan_feature_engineering = None
-        if plan_id:
-            try:
-                # Load plan from database using service
-                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
-
-                from arc.core.ml_plan import MLPlan
-
-                plan = MLPlan.from_dict(ml_plan)
-                # Extract feature engineering guidance for data processing
-                ml_plan_feature_engineering = plan.feature_engineering
-            except ValueError as e:
-                # Close section before returning error
-                return ToolResult.error_result(
-                    f"Failed to load ML plan '{plan_id}': {e}"
-                )
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Unexpected error loading ML plan '{plan_id}': {e}"
-                )
-
-        # Build metadata for section title
+        # Build metadata for section title (do this before validation for clean code)
         metadata_parts = []
         if plan_id:
             metadata_parts.append(plan_id)
         if recommended_knowledge_ids:
             metadata_parts.extend(recommended_knowledge_ids)
 
-        # Build final instruction: use ML plan as baseline context if available
-        # Main agent can provide shaped instruction that builds on the plan
-        if ml_plan_feature_engineering:
-            # ML plan provides baseline, instruction adds specifics
-            enhanced_instruction = (
-                f"{instruction}\n\n"
-                f"ML Plan Feature Engineering Guidance (use as baseline):\n"
-                f"{ml_plan_feature_engineering}"
-            )
-        else:
-            enhanced_instruction = instruction
-
         # Use context manager for section printing (automatic cleanup and spacing)
         with self._section_printer(
             self.ui, "ML Data", metadata=metadata_parts
         ) as printer:
-            # Show task description
-            if printer:
-                printer.print(f"[dim]Task: {instruction}[/dim]")
-                printer.print(
-                    "[dim]Generating Arc-Graph data processor specification...[/dim]"
-                )
-
-            # Helper to show error and return
+            # Helper to show error and return (define early for use in validation)
             def _error_in_section(message: str) -> ToolResult:
                 if printer:
                     printer.print("")
@@ -214,6 +148,72 @@ class MLDataTool(BaseTool):
                     success=False,
                     output=message,
                     metadata={"error_shown": True, "error_message": message},
+                )
+
+            # Validate required parameters
+            if not name:
+                return _error_in_section(
+                    "Name is required for data processor registration. "
+                    "Provide a name for the data processor."
+                )
+
+            if not instruction:
+                return _error_in_section(
+                    "Instruction is required for YAML generation. "
+                    "Provide a detailed instruction for your data processing needs."
+                )
+
+            if not source_tables or len(source_tables) == 0:
+                return _error_in_section(
+                    "source_tables is required to narrow the scope of data exploration. "
+                    "Specify which tables to read from (e.g., ['users', 'transactions'])."
+                )
+
+            # Validate database
+            if database not in ["system", "user"]:
+                return _error_in_section(
+                    f"Invalid database: {database}. Must be 'system' or 'user'."
+                )
+
+            # Load plan from database if plan_id is provided
+            # If plan is provided, use it as baseline and augment with instruction
+            ml_plan_feature_engineering = None
+            if plan_id:
+                try:
+                    # Load plan from database using service
+                    ml_plan = self.services.ml_plans.get_plan_content(plan_id)
+
+                    from arc.core.ml_plan import MLPlan
+
+                    plan = MLPlan.from_dict(ml_plan)
+                    # Extract feature engineering guidance for data processing
+                    ml_plan_feature_engineering = plan.feature_engineering
+                except ValueError as e:
+                    return _error_in_section(
+                        f"Failed to load ML plan '{plan_id}': {e}"
+                    )
+                except Exception as e:
+                    return _error_in_section(
+                        f"Unexpected error loading ML plan '{plan_id}': {e}"
+                    )
+
+            # Build final instruction: use ML plan as baseline context if available
+            # Main agent can provide shaped instruction that builds on the plan
+            if ml_plan_feature_engineering:
+                # ML plan provides baseline, instruction adds specifics
+                enhanced_instruction = (
+                    f"{instruction}\n\n"
+                    f"ML Plan Feature Engineering Guidance (use as baseline):\n"
+                    f"{ml_plan_feature_engineering}"
+                )
+            else:
+                enhanced_instruction = instruction
+
+            # Show task description
+            if printer:
+                printer.print(f"[dim]Task: {instruction}[/dim]")
+                printer.print(
+                    "[dim]Generating Arc-Graph data processor specification...[/dim]"
                 )
 
             try:

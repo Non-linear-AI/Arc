@@ -75,7 +75,7 @@ class BaseTool(ABC):
                 # ... do work ...
                 if p:
                     p.print("✓ Complete")
-                # Empty line and cleanup happen automatically
+                # Section cleanup happens automatically
         """
         if ui_interface:
             # Use add_dot=True for proper visual hierarchy (indentation)

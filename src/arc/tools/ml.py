@@ -239,8 +239,8 @@ class MLModelTool(BaseTool):
                 from arc.core.agents.ml_model import MLModelError
 
                 if isinstance(exc, MLModelError):
-                    return ToolResult.error_result(str(exc))
-                return ToolResult.error_result(
+                    return _error_in_section(str(exc))
+                return _error_in_section(
                     f"Unexpected error during model generation: {exc}"
                 )
 
@@ -249,13 +249,13 @@ class MLModelTool(BaseTool):
                 model_dict = yaml.safe_load(model_yaml)
                 validate_model_dict(model_dict)
             except (yaml.YAMLError, ModelValidationError) as exc:
-                return ToolResult.error_result(f"Model validation failed: {exc}")
+                return _error_in_section(f"Model validation failed: {exc}")
             except Exception as exc:
                 # Log unexpected errors with full traceback
                 import logging
 
                 logging.exception("Unexpected error during model validation")
-                return ToolResult.error_result(
+                return _error_in_section(
                     f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
                 )
 
@@ -309,7 +309,7 @@ class MLModelTool(BaseTool):
                 )
                 model_id = model.id
             except Exception as exc:
-                return ToolResult.error_result(f"Failed to save model to DB: {exc}")
+                return _error_in_section(f"Failed to save model to DB: {exc}")
 
             # Display registration confirmation in the ML Model section
             if printer:
