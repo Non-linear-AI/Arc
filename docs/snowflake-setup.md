@@ -2,11 +2,11 @@
 
 Arc integrates with Snowflake data warehouses using DuckDB's Snowflake extension. Query Snowflake tables directly in Arc, join them with local data, and extract data for cost-efficient local feature engineering.
 
-## ⚠️ Important: Setup Required Before Starting Arc
+## ✅ Automatic Setup
 
-**You must complete the Configuration steps below BEFORE starting Arc.** The Snowflake extension requires setting `LD_LIBRARY_PATH` (Linux), `DYLD_LIBRARY_PATH` (macOS), or `PATH` (Windows) to locate native libraries. **Setting these environment variables after Arc has started will not work** - you must set them before running `uv run arc chat`.
+**Arc automatically configures the Snowflake native library paths on startup.** You just need to provide your Snowflake credentials.
 
-**Quick setup**: See the [Configuration](#configuration) section below for complete setup instructions, or use the [startup script](#step-3-create-startup-script-recommended) for automated setup.
+**Quick setup**: See the [Configuration](#configuration) section below to configure your Snowflake credentials, then simply run `uv run arc chat`.
 
 ## Configuration
 
@@ -39,111 +39,36 @@ export SNOWFLAKE_SCHEMA="PUBLIC"  # Optional, defaults to PUBLIC
 
 **Required fields**: `account`, `user`, `password`, `database`, `warehouse`
 
-### Step 2: Set Library Path
+### Step 2: Start Arc
 
-The ADBC driver includes native libraries that must be discoverable **before** starting Arc.
-
-#### Linux:
+That's it! Just run:
 
 ```bash
-cd /path/to/arc
-
-# Find ADBC library directory
-ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
-
-# Set library path
-export LD_LIBRARY_PATH="${ADBC_LIB_DIR}:${LD_LIBRARY_PATH}"
-
-# Start Arc
 uv run arc chat
 ```
 
-#### macOS:
+Arc will automatically configure the native library paths needed for Snowflake integration on startup.
+
+### Alternative: Manual Startup Script (Optional)
+
+If you prefer explicit control over environment setup, you can use the provided startup scripts in the `scripts/` directory:
+
+#### Linux/macOS:
 
 ```bash
-cd /path/to/arc
-
-# Find ADBC library directory
-ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
-
-# Set library path
-export DYLD_LIBRARY_PATH="${ADBC_LIB_DIR}:${DYLD_LIBRARY_PATH}"
-
-# Start Arc
-uv run arc chat
+./scripts/start-arc.sh
 ```
 
-#### Windows (PowerShell):
-
-```powershell
-cd C:\path\to\arc
-
-# Find ADBC library directory
-$ADBC_LIB_DIR = uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)"
-
-# Add to PATH
-$env:PATH = "$ADBC_LIB_DIR;$env:PATH"
-
-# Start Arc
-uv run arc chat
-```
-
-### Step 3: Create Startup Script (Recommended)
-
-To avoid manual setup each time, create a startup script:
-
-#### Linux/macOS: `start-arc.sh`
-
-```bash
-#!/bin/bash
-
-cd /path/to/arc
-
-# Snowflake credentials (or put in settings file)
-export SNOWFLAKE_ACCOUNT="mycompany.snowflakecomputing.com"
-export SNOWFLAKE_USER="username"
-export SNOWFLAKE_PASSWORD="password"
-export SNOWFLAKE_DATABASE="PROD_DB"
-export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
-
-# Set ADBC library path
-ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
-export LD_LIBRARY_PATH="${ADBC_LIB_DIR}:${LD_LIBRARY_PATH}"
-
-# Start Arc
-uv run arc chat
-```
-
-Make it executable:
-
-```bash
-chmod +x start-arc.sh
-./start-arc.sh
-```
-
-#### Windows: `start-arc.bat`
+#### Windows:
 
 ```batch
-@echo off
-
-cd C:\path\to\arc
-
-REM Snowflake credentials (or put in settings file)
-set SNOWFLAKE_ACCOUNT=mycompany.snowflakecomputing.com
-set SNOWFLAKE_USER=username
-set SNOWFLAKE_PASSWORD=password
-set SNOWFLAKE_DATABASE=PROD_DB
-set SNOWFLAKE_WAREHOUSE=COMPUTE_WH
-
-REM Get ADBC library directory
-for /f "delims=" %%i in ('uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)"') do set ADBC_LIB_DIR=%%i
-
-REM Add to PATH
-set PATH=%ADBC_LIB_DIR%;%PATH%
-
-REM Start Arc
-uv run arc chat
+scripts\start-arc.bat
 ```
+
+These scripts manually set the library path environment variables before starting Arc. This is useful for:
+- Debugging startup issues
+- Environments where automatic restart doesn't work
+- Users who prefer explicit control
 
 ## Quick Start
 
@@ -297,21 +222,14 @@ cd /path/to/arc
 uv run python -c "from arc.core.config import SettingsManager; print(SettingsManager().get_snowflake_config())"
 ```
 
-**2. Check library path is set:**
-
-```bash
-echo $LD_LIBRARY_PATH  # Linux/macOS
-echo %PATH%  # Windows (should contain ADBC library directory)
-```
-
-**3. Verify ADBC library exists:**
+**2. Verify ADBC library exists:**
 
 ```bash
 cd /path/to/arc
 uv run python -c "import adbc_driver_snowflake; from pathlib import Path; p = Path(adbc_driver_snowflake.__file__).parent / 'libadbc_driver_snowflake.so'; print(f'Library exists: {p.exists()} at {p}')"
 ```
 
-**4. Try manual attach:**
+**3. Try manual attach:**
 
 ```sql
 /sql CREATE SECRET snowflake_secret (
@@ -332,12 +250,38 @@ uv run python -c "import adbc_driver_snowflake; from pathlib import Path; p = Pa
 
 ### "Unknown ADBC error" or "Library not found"
 
-**This means the ADBC native library can't be found:**
+**This error means the ADBC native library can't be found.** Arc should automatically configure library paths on startup, but if you see this error:
 
-1. **Check you set the library path BEFORE starting Arc** (not after)
-2. **Restart your terminal** after setting environment variables
-3. **Use the startup script approach** (see Step 3 in Configuration)
-4. **Verify Arc dependencies are installed:** `uv sync --dev`
+1. **Try using the manual startup script:**
+   ```bash
+   ./scripts/start-arc.sh  # Linux/macOS
+   scripts\start-arc.bat   # Windows
+   ```
+
+2. **Verify Arc dependencies are installed:** `uv sync --dev`
+
+3. **Manual setup (if automatic restart doesn't work):**
+
+   **Linux:**
+   ```bash
+   ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
+   export LD_LIBRARY_PATH="${ADBC_LIB_DIR}:${LD_LIBRARY_PATH}"
+   uv run arc chat
+   ```
+
+   **macOS:**
+   ```bash
+   ADBC_LIB_DIR=$(uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)")
+   export DYLD_LIBRARY_PATH="${ADBC_LIB_DIR}:${DYLD_LIBRARY_PATH}"
+   uv run arc chat
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   $ADBC_LIB_DIR = uv run python -c "import adbc_driver_snowflake; from pathlib import Path; print(Path(adbc_driver_snowflake.__file__).parent)"
+   $env:PATH = "$ADBC_LIB_DIR;$env:PATH"
+   uv run arc chat
+   ```
 
 ### Connection Fails
 
