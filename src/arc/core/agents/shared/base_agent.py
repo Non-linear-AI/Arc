@@ -749,7 +749,7 @@ class BaseAgent(abc.ABC):
         )
 
     def _create_list_knowledge_tool(self) -> Any:
-        """Create list knowledge tool for browsing available architectures.
+        """Create list knowledge tool for browsing available knowledges.
 
         Returns:
             ArcTool for listing available knowledge documents
