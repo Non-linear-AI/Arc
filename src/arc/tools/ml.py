@@ -737,7 +737,7 @@ class MLTrainTool(BaseTool):
                         f"Optimizer: {trainer_spec.optimizer.type})[/dim]"
                     )
             except Exception as exc:
-                return ToolResult.error_result(f"Failed to register trainer: {exc}")
+                return _error_in_section(f"Failed to register trainer: {exc}")
 
             # Build simple output for ToolResult (detailed output already shown in UI)
             lines = [f"Trainer '{name}' registered successfully as {trainer_record.id}"]
@@ -1412,8 +1412,8 @@ class MLEvaluateTool(BaseTool):
                 from arc.core.agents.ml_evaluate import MLEvaluateError
 
                 if isinstance(exc, MLEvaluateError):
-                    return ToolResult.error_result(str(exc))
-                return ToolResult.error_result(
+                    return _error_in_section(str(exc))
+                return _error_in_section(
                     f"Unexpected error during evaluator generation: {exc}"
                 )
 
@@ -1427,11 +1427,11 @@ class MLEvaluateTool(BaseTool):
                 evaluator_dict = yaml.safe_load(evaluator_yaml)
                 validate_evaluator_dict(evaluator_dict)
             except yaml.YAMLError as exc:
-                return ToolResult.error_result(
+                return _error_in_section(
                     f"Generated evaluator contains invalid YAML: {exc}"
                 )
             except EvaluatorValidationError as exc:
-                return ToolResult.error_result(
+                return _error_in_section(
                     f"Generated evaluator failed validation: {exc}"
                 )
             except Exception as exc:
@@ -1439,7 +1439,7 @@ class MLEvaluateTool(BaseTool):
                 import logging
 
                 logging.exception("Unexpected error during evaluator validation")
-                return ToolResult.error_result(
+                return _error_in_section(
                     f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
                 )
 
@@ -1556,7 +1556,7 @@ class MLEvaluateTool(BaseTool):
                             f"Dataset: {evaluator_spec.dataset})[/dim]"
                         )
             except Exception as exc:
-                return ToolResult.error_result(f"Failed to register evaluator: {exc}")
+                return _error_in_section(f"Failed to register evaluator: {exc}")
 
             # Build simple output for ToolResult (detailed output already shown in UI)
             lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
@@ -2373,6 +2373,7 @@ class MLPlanTool(BaseTool):
         verbose: bool = False,
         skip_data_profiling: bool = False,
     ) -> ToolResult:
+        # Early validation for common errors (before any section printing)
         if not self.api_key:
             return ToolResult.error_result(
                 "API key required for ML planning. "
@@ -2390,7 +2391,7 @@ class MLPlanTool(BaseTool):
                 "are required for ML planning."
             )
 
-        # Handle section update mode (different workflow)
+        # Handle section update mode (different workflow - no UI section needed)
         if section_to_update:
             # Section update mode requires previous_plan and instruction
             if not previous_plan:
