@@ -118,6 +118,7 @@ class MLModelAgent(BaseAgent):
 
         # Pre-load recommended knowledge content (handle missing gracefully)
         recommended_knowledge = ""
+        loaded_knowledge_ids = []
         if recommended_knowledge_ids:
             for knowledge_id in recommended_knowledge_ids:
                 content = self.knowledge_loader.load_knowledge(knowledge_id, "model")
@@ -126,6 +127,7 @@ class MLModelAgent(BaseAgent):
                     recommended_knowledge += (
                         f"\n\n# Architecture Knowledge: {knowledge_id}\n\n{content}"
                     )
+                    loaded_knowledge_ids.append(knowledge_id)
                 # If missing, silently skip (already logged at debug level)
 
         # Build system message with all context
@@ -144,21 +146,27 @@ class MLModelAgent(BaseAgent):
             },
         )
 
-        # User message guides tool usage
+        # User message guides tool usage and lists pre-loaded knowledge
         if existing_yaml:
             user_message = (
                 f"Edit the existing Arc-Graph specification with these changes: "
-                f"{editing_instructions}. "
-                "The recommended architecture knowledge is provided in the "
-                "system message. Only use the knowledge exploration tools if "
-                "you need additional architectural guidance."
+                f"{editing_instructions}."
             )
         else:
-            user_message = (
-                f"Generate the Arc-Graph model specification for '{name}'. "
-                "The recommended architecture knowledge is provided in the "
-                "system message. Only use the knowledge exploration tools if "
-                "you need additional architectural guidance."
+            user_message = f"Generate the Arc-Graph model specification for '{name}'."
+
+        # Tell agent which knowledge IDs are already provided
+        if loaded_knowledge_ids:
+            user_message += (
+                f"\n\nPre-loaded knowledge (already in system message): "
+                f"{', '.join(loaded_knowledge_ids)}. "
+                f"Do NOT reload these. Only use knowledge tools for "
+                f"additional guidance if needed."
+            )
+        else:
+            user_message += (
+                "\n\nNo knowledge was pre-loaded. Use list_available_knowledge "
+                "and read_knowledge_content if you need architecture guidance."
             )
 
         # Get ML tools from BaseAgent
@@ -285,6 +293,12 @@ class MLModelAgent(BaseAgent):
 
             return {"valid": True, "object": model_spec, "error": None}
 
+        except AgentError as e:
+            # AgentError messages are already well-formatted, don't wrap them
+            return {
+                "valid": False,
+                "error": str(e),
+            }
         except Exception as e:
             return {
                 "valid": False,

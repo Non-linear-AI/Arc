@@ -285,13 +285,93 @@ class BaseAgent(abc.ABC):
         Raises:
             AgentError: If YAML is invalid
         """
+        # Pre-check: Detect common non-YAML patterns
+        lines = yaml_content.strip().split("\n")
+        non_yaml_indicators = []
+
+        for i, line in enumerate(lines[:10], 1):  # Check first 10 lines
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Detect markdown patterns
+            if stripped.startswith("**") and stripped.endswith("**"):
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown bold syntax '**text**' detected"
+                )
+            elif stripped.startswith("# ") and not stripped.startswith("#!"):
+                # Markdown header (not YAML comment)
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown header '# text' detected"
+                )
+            elif stripped.startswith("```"):
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown code fence '```' detected"
+                )
+            elif stripped.startswith("- **") or "**" in stripped:
+                # Markdown list with bold
+                non_yaml_indicators.append(
+                    f"Line {i}: Markdown formatting detected in list"
+                )
+
+        # If markdown detected, provide clear error before YAML parsing
+        if non_yaml_indicators:
+            error_details = "\n".join(non_yaml_indicators)
+            raise AgentError(
+                f"Output contains markdown formatting instead of YAML:\n"
+                f"{error_details}\n\n"
+                f"CRITICAL: You must output ONLY valid YAML. "
+                f"Do NOT include markdown headers, bold text, code fences, "
+                f"or explanatory text. Start directly with YAML key-value pairs."
+            )
+
+        # Parse YAML
         try:
             parsed = yaml.safe_load(yaml_content)
             if not isinstance(parsed, dict):
-                raise AgentError("Generated content is not a valid YAML object")
+                raise AgentError(
+                    "Generated content is not a valid YAML object. "
+                    "Output must be a YAML dictionary starting with key-value pairs, "
+                    "not a string or list."
+                )
             return parsed
         except yaml.YAMLError as e:
-            raise AgentError(f"Invalid YAML syntax: {e}") from e
+            # Enhanced error message with guidance
+            error_msg = str(e)
+
+            # Detect common YAML errors and provide guidance
+            if "found character '\\t'" in error_msg or "tab" in error_msg.lower():
+                guidance = (
+                    "YAML does not allow tabs for indentation. "
+                    "Use spaces only (2 or 4 spaces per level)."
+                )
+            elif "could not find expected ':'" in error_msg:
+                guidance = (
+                    "Missing colon after key name. "
+                    "Every YAML key must be followed by a colon and value."
+                )
+            elif "mapping values are not allowed" in error_msg:
+                guidance = (
+                    "Invalid YAML structure. "
+                    "Check for proper key-value formatting with colons."
+                )
+            elif "while scanning an alias" in error_msg or "found '*'" in error_msg:
+                guidance = (
+                    "Invalid character detected (likely markdown formatting). "
+                    "Output ONLY valid YAML without markdown syntax."
+                )
+            else:
+                guidance = (
+                    "Ensure output is valid YAML with proper indentation, "
+                    "key-value pairs, and no special characters."
+                )
+
+            raise AgentError(
+                f"Invalid YAML syntax: {error_msg}\n\n"
+                f"Guidance: {guidance}\n\n"
+                f"Remember: Output ONLY valid YAML. No markdown, "
+                f"no explanations, no code fences."
+            ) from e
 
     def _save_to_file(self, content: str, output_path: str) -> None:
         """Save content to file.

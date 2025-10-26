@@ -367,6 +367,12 @@ class MLDataAgent(BaseAgent):
 
             return {"valid": True, "object": spec, "error": None}
 
+        except AgentError as e:
+            # AgentError messages are already well-formatted, don't wrap them
+            return {
+                "valid": False,
+                "error": str(e),
+            }
         except Exception as e:
             return {
                 "valid": False,
