@@ -474,6 +474,17 @@ class BaseAgent(abc.ABC):
                                             progress_callback(
                                                 f"[dim]▸ Query: {query_brief}[/dim]"
                                             )
+                                        # Special formatting for knowledge tools
+                                        elif tool_call.function.name == "list_available_knowledge":
+                                            progress_callback(
+                                                "[dim]▸ Listing knowledge...[/dim]"
+                                            )
+                                        elif tool_call.function.name == "read_knowledge_content":
+                                            knowledge_id = args.get("knowledge_id", "")
+                                            domain = args.get("domain", "model")
+                                            progress_callback(
+                                                f"[dim]▸ Reading: {knowledge_id} ({domain})[/dim]"
+                                            )
                                         else:
                                             # For other tools, show tool name and brief arguments
                                             args_brief = str(args)[:100]

@@ -1781,77 +1781,77 @@ class MLEvaluateTool(BaseTool):
                 metadata=result_metadata,
             )
 
-        def _create_validator(self):
-            """Create validator function for the workflow."""
+    def _create_validator(self):
+        """Create validator function for the workflow."""
 
-            def validate(yaml_str: str) -> list[str]:
-                try:
-                    from arc.graph.evaluator import (
-                        EvaluatorValidationError,
-                        validate_evaluator_dict,
-                    )
-
-                    evaluator_dict = yaml.safe_load(yaml_str)
-                    validate_evaluator_dict(evaluator_dict)
-                    return []  # No errors
-                except yaml.YAMLError as e:
-                    return [f"Invalid YAML: {e}"]
-                except EvaluatorValidationError as e:
-                    return [f"Validation error: {e}"]
-                except Exception as e:
-                    return [f"Unexpected error: {e}"]
-
-            return validate
-
-        def _create_editor(
-            self,
-            _user_instruction: str,
-            trainer_id: str,
-            trainer_record,
-            target_column_exists: bool,
-        ):
-            """Create editor function for AI-assisted editing with conversation history."""
-
-            async def edit(
-                yaml_content: str,
-                feedback: str,
-                context: dict[str, Any],
-                conversation_history: list[dict[str, str]] | None = None,
-            ) -> tuple[str | None, list[dict[str, str]] | None]:
-                # Agent will discover relevant knowledge using tools
-                from arc.core.agents.ml_evaluate import MLEvaluateAgent
-
-                agent = MLEvaluateAgent(
-                    self.services,
-                    self.api_key,
-                    self.base_url,
-                    self.model,
+        def validate(yaml_str: str) -> list[str]:
+            try:
+                from arc.graph.evaluator import (
+                    EvaluatorValidationError,
+                    validate_evaluator_dict,
                 )
 
-                try:
-                    (
-                        _evaluator_spec,
-                        edited_yaml,
-                        updated_history,
-                    ) = await agent.generate_evaluator(
-                        name=context["evaluator_name"],
-                        instruction=feedback,
-                        trainer_ref=trainer_id,
-                        trainer_spec_yaml=trainer_record.spec,
-                        dataset=context["dataset"],
-                        target_column=context["target_column"],
-                        target_column_exists=target_column_exists,
-                        existing_yaml=yaml_content,
-                        recommended_knowledge_ids=None,  # Let agent discover via tools
-                        conversation_history=conversation_history,
-                    )
-                    return edited_yaml, updated_history
-                except Exception as e:
-                    if self.ui:
-                        self.ui.show_system_error(f"❌ Edit failed: {e}")
-                    return None, None
+                evaluator_dict = yaml.safe_load(yaml_str)
+                validate_evaluator_dict(evaluator_dict)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except EvaluatorValidationError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
 
-            return edit
+        return validate
+
+    def _create_editor(
+        self,
+        _user_instruction: str,
+        trainer_id: str,
+        trainer_record,
+        target_column_exists: bool,
+    ):
+        """Create editor function for AI-assisted editing with conversation history."""
+
+        async def edit(
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            # Agent will discover relevant knowledge using tools
+            from arc.core.agents.ml_evaluate import MLEvaluateAgent
+
+            agent = MLEvaluateAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
+            )
+
+            try:
+                (
+                    _evaluator_spec,
+                    edited_yaml,
+                    updated_history,
+                ) = await agent.generate_evaluator(
+                    name=context["evaluator_name"],
+                    instruction=feedback,
+                    trainer_ref=trainer_id,
+                    trainer_spec_yaml=trainer_record.spec,
+                    dataset=context["dataset"],
+                    target_column=context["target_column"],
+                    target_column_exists=target_column_exists,
+                    existing_yaml=yaml_content,
+                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    conversation_history=conversation_history,
+                )
+                return edited_yaml, updated_history
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ Edit failed: {e}")
+                return None, None
+
+        return edit
 
     async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.
