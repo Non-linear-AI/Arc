@@ -213,9 +213,6 @@ class MLDataTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
-                printer.print(
-                    "[dim]Generating Arc-Graph data processor specification...[/dim]"
-                )
 
             try:
                 # Set progress callback for this invocation
