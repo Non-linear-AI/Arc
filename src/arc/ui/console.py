@@ -348,8 +348,6 @@ class InteractiveInterface:
             # Show table name first if present (for describe_table)
             if "table_name" in result.metadata:
                 metadata_parts.append(result.metadata["table_name"])
-            if "execution_time" in result.metadata:
-                metadata_parts.append(f"{result.metadata['execution_time']:.3f}s")
             if "row_count" in result.metadata:
                 row_text = "row" if result.metadata["row_count"] == 1 else "rows"
                 metadata_parts.append(f"{result.metadata['row_count']} {row_text}")
@@ -361,6 +359,11 @@ class InteractiveInterface:
             if "column_count" in result.metadata:
                 col_text = "col" if result.metadata["column_count"] == 1 else "cols"
                 metadata_parts.append(f"{result.metadata['column_count']} {col_text}")
+            # Show execution time at the end, only if >= 1 second
+            if "execution_time" in result.metadata:
+                exec_time = result.metadata["execution_time"]
+                if exec_time >= 1.0:
+                    metadata_parts.append(f"{exec_time:.3f}s")
             if metadata_parts:
                 label += f" [dim]({', '.join(metadata_parts)})[/dim]"
 
