@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,6 +45,54 @@ class BaseTool(ABC):
     def __init__(self):
         """Initialize base tool with logger."""
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    @contextmanager
+    def _section_printer(
+        self,
+        ui_interface,
+        title: str,
+        color: str = "magenta",
+        metadata: list[str] | None = None,
+    ):
+        """Context manager for consistent section printing across tools.
+
+        This provides automatic section management with proper visual hierarchy
+        (indentation via add_dot=True) and spacing.
+
+        Args:
+            ui_interface: UI interface instance (or None for non-UI contexts)
+            title: Section title text
+            color: Section color (default: magenta)
+            metadata: Optional list of metadata strings to append to title
+
+        Yields:
+            Section printer if UI available, None otherwise
+
+        Example:
+            with self._section_printer(self.ui, "ML Model", metadata=[plan_id]) as p:
+                if p:
+                    p.print("Processing...")
+                # ... do work ...
+                if p:
+                    p.print("✓ Complete")
+                # Empty line and cleanup happen automatically
+        """
+        if ui_interface:
+            # Use add_dot=True for proper visual hierarchy (indentation)
+            with ui_interface._printer.section(color=color, add_dot=True) as printer:
+                # Build title with metadata
+                full_title = title
+                if metadata:
+                    full_title += f" [dim]({' • '.join(metadata)})[/dim]"
+                printer.print(full_title)
+
+                yield printer
+
+                # Always add empty line for visual separation before close
+                printer.print("")
+        else:
+            # No UI - yield None, no-op
+            yield None
 
     @abstractmethod
     async def execute(self, **kwargs: Any) -> ToolResult:

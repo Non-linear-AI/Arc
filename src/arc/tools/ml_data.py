@@ -175,38 +175,12 @@ class MLDataTool(BaseTool):
                     f"Unexpected error loading ML plan '{plan_id}': {e}"
                 )
 
-        # Show section title and ML plan guidance if provided
-        ml_data_process_section_printer = None
-        if self.ui:
-            self._ml_data_process_section = self.ui._printer.section(
-                color="magenta", add_dot=False
-            )
-            ml_data_process_section_printer = self._ml_data_process_section.__enter__()
-
-            # Build title with metadata
-            title = "ML Data"
-            metadata_parts = []
-            if plan_id:
-                metadata_parts.append(plan_id)
-            if recommended_knowledge_ids:
-                metadata_parts.extend(recommended_knowledge_ids)
-            if metadata_parts:
-                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
-
-            ml_data_process_section_printer.print(title)
-            # Show task description (dimmed)
-            ml_data_process_section_printer.print(f"[dim]Task: {instruction}[/dim]")
-
-            # Show ML plan feature engineering guidance if provided
-            if ml_plan_feature_engineering:
-                ml_data_process_section_printer.print(
-                    "[dim][cyan]ℹ Using ML plan feature engineering "
-                    "guidance[/cyan][/dim]"
-                )
-
-            ml_data_process_section_printer.print(
-                "[dim]Generating Arc-Graph data processor specification...[/dim]"
-            )
+        # Build metadata for section title
+        metadata_parts = []
+        if plan_id:
+            metadata_parts.append(plan_id)
+        if recommended_knowledge_ids:
+            metadata_parts.extend(recommended_knowledge_ids)
 
         # Build final instruction: use ML plan as baseline context if available
         # Main agent can provide shaped instruction that builds on the plan
@@ -220,230 +194,236 @@ class MLDataTool(BaseTool):
         else:
             enhanced_instruction = instruction
 
-        try:
-            # Generate using LLM (generator_agent is guaranteed to exist)
-            (
-                spec,
-                yaml_content,
-                conversation_history,  # Store for interactive editing workflow
-            ) = await self.generator_agent.generate_data_processing_yaml(
-                instruction=enhanced_instruction,
-                source_tables=source_tables,
-                database=database,
-                skip_data_profiling=skip_data_profiling,
-            )
+        # Use context manager for section printing (automatic cleanup and spacing)
+        with self._section_printer(
+            self.ui, "ML Data", metadata=metadata_parts
+        ) as printer:
+            # Show task description
+            if printer:
+                printer.print(f"[dim]Task: {instruction}[/dim]")
 
-            # Validate the generated spec before confirmation workflow
+                # Show ML plan feature engineering guidance if provided
+                if ml_plan_feature_engineering:
+                    printer.print(
+                        "[dim][cyan]ℹ Using ML plan feature engineering "
+                        "guidance[/cyan][/dim]"
+                    )
+
+                printer.print(
+                    "[dim]Generating Arc-Graph data processor specification...[/dim]"
+                )
+
             try:
-                # Parse and validate structure
-                # Import here: Only needed during validation workflow
-                from arc.graph.features.data_source import DataSourceSpec
-
-                validation_result = DataSourceSpec.validate_yaml_string(yaml_content)
-                if not validation_result.success:
-                    return ToolResult.error_result(
-                        f"Generated data processor failed validation: "
-                        f"{validation_result.error}"
-                    )
-
-                # Validate dependencies and execution order
-                spec.validate_dependencies()
-                _ = spec.get_execution_order()
-
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Data processor validation failed: {str(e)}"
+                # Generate using LLM (generator_agent is guaranteed to exist)
+                (
+                    spec,
+                    yaml_content,
+                    conversation_history,  # Store for interactive editing workflow
+                ) = await self.generator_agent.generate_data_processing_yaml(
+                    instruction=enhanced_instruction,
+                    source_tables=source_tables,
+                    database=database,
+                    skip_data_profiling=skip_data_profiling,
+                    recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
-            # Interactive confirmation workflow
-            # (unless auto_confirm is True or no UI available)
-            # Get UI from singleton if not provided directly
-            ui = self.ui
-            if ui is None:
-                ui = ConfirmationService.get_instance()._ui
+                # Show completion message
+                if printer:
+                    printer.print("[dim]✓ Data processor generated successfully[/dim]")
 
-            if not auto_confirm and ui:
-                workflow = YamlConfirmationWorkflow(
-                    validator_func=self._create_validator(),
-                    editor_func=self._create_editor(),
-                    ui_interface=ui,
-                    yaml_type_name="data processor",
-                    yaml_suffix=".arc-data.yaml",
-                )
-
-                context_dict = {
-                    "instruction": str(enhanced_instruction),
-                    "source_tables": source_tables,
-                    "database": database,
-                }
-
+                # Validate the generated spec before confirmation workflow
                 try:
-                    proceed, final_yaml = await workflow.run_workflow(
-                        yaml_content,
-                        context_dict,
-                        None,  # No output path - saved to DB only
-                        conversation_history,  # Pass conversation history for editing
-                    )
-                    if not proceed:
-                        # Close the section before returning
-                        if self.ui and hasattr(self, "_ml_data_process_section"):
-                            self._ml_data_process_section.__exit__(None, None, None)
-                        return ToolResult(
-                            success=True,
-                            output="✗ Data processor generation cancelled by user.",
-                            metadata={"cancelled": True},
-                        )
-                    yaml_content = final_yaml
-                    # Re-parse spec from edited YAML
+                    # Parse and validate structure
                     from arc.graph.features.data_source import DataSourceSpec
 
-                    spec = DataSourceSpec.from_yaml(yaml_content)
-                finally:
-                    workflow.cleanup()
-
-            # Register data processor in database
-            # Import here: Only needed after user confirms spec
-            from arc.ml.runtime import MLRuntime, MLRuntimeError
-
-            runtime = MLRuntime(self.services, artifacts_dir="artifacts")
-            try:
-                processor = runtime.register_data_processor(
-                    name=name, spec=spec, description=spec.description
-                )
-                # Display registration confirmation in the Data Processor section
-                if ml_data_process_section_printer:
-                    ml_data_process_section_printer.print("")
-                    ml_data_process_section_printer.print(
-                        f"[dim]✓ Data processor '{name}' registered to database "
-                        f"({processor.id} • {len(spec.steps)} steps)[/dim]"
+                    validation_result = DataSourceSpec.validate_yaml_string(
+                        yaml_content
                     )
-            except MLRuntimeError as e:
-                return ToolResult.error_result(
-                    f"Failed to register data processor: {str(e)}"
-                )
-
-            # Execute the pipeline automatically after confirmation
-            # Import here: Only needed after successful registration
-            from arc.ml.data_source_executor import (
-                DataSourceExecutionError,
-                execute_data_source_pipeline,
-            )
-
-            # Show execution message
-            if ml_data_process_section_printer:
-                ml_data_process_section_printer.print("")
-                ml_data_process_section_printer.print(
-                    "→ Executing data processing pipeline..."
-                )
-
-            # Define progress callback for real-time updates
-            def progress_callback(message: str, level: str):
-                """Handle progress updates during execution."""
-                if ml_data_process_section_printer:
-                    if level == "step":
-                        ml_data_process_section_printer.print(f"[dim]  {message}[/dim]")
-                    elif level == "warning":
-                        ml_data_process_section_printer.print(
-                            f"[yellow]  ⚠️ {message}[/yellow]"
-                        )
-                    elif level == "error":
-                        ml_data_process_section_printer.print(
-                            f"[red]  ❌ {message}[/red]"
+                    if not validation_result.success:
+                        return ToolResult.error_result(
+                            f"Generated data processor failed validation: "
+                            f"{validation_result.error}"
                         )
 
-            try:
-                execution_result = await execute_data_source_pipeline(
-                    spec, database, self.services.db_manager, progress_callback
+                    # Validate dependencies and execution order
+                    spec.validate_dependencies()
+                    _ = spec.get_execution_order()
+
+                except Exception as e:
+                    return ToolResult.error_result(
+                        f"Data processor validation failed: {str(e)}"
+                    )
+
+                # Interactive confirmation workflow
+                # (unless auto_confirm is True or no UI available)
+                # Get UI from singleton if not provided directly
+                ui = self.ui
+                if ui is None:
+                    ui = ConfirmationService.get_instance()._ui
+
+                if not auto_confirm and ui:
+                    workflow = YamlConfirmationWorkflow(
+                        validator_func=self._create_validator(),
+                        editor_func=self._create_editor(),
+                        ui_interface=ui,
+                        yaml_type_name="data processor",
+                        yaml_suffix=".arc-data.yaml",
+                    )
+
+                    context_dict = {
+                        "instruction": str(enhanced_instruction),
+                        "source_tables": source_tables,
+                        "database": database,
+                    }
+
+                    try:
+                        proceed, final_yaml = await workflow.run_workflow(
+                            yaml_content,
+                            context_dict,
+                            None,  # No output path - saved to DB only
+                            conversation_history,  # Pass history for editing
+                        )
+                        if not proceed:
+                            return ToolResult(
+                                success=True,
+                                output="✗ Data processor generation cancelled by user.",
+                                metadata={"cancelled": True},
+                            )
+                        yaml_content = final_yaml
+                        # Re-parse spec from edited YAML
+                        from arc.graph.features.data_source import DataSourceSpec
+
+                        spec = DataSourceSpec.from_yaml(yaml_content)
+                    finally:
+                        workflow.cleanup()
+
+                # Register data processor in database
+                from arc.ml.runtime import MLRuntime, MLRuntimeError
+
+                runtime = MLRuntime(self.services, artifacts_dir="artifacts")
+                try:
+                    processor = runtime.register_data_processor(
+                        name=name, spec=spec, description=spec.description
+                    )
+                    # Display registration confirmation in the Data Processor section
+                    if printer:
+                        printer.print("")
+                        printer.print(
+                            f"[dim]✓ Data processor '{name}' registered to database "
+                            f"({processor.id} • {len(spec.steps)} steps)[/dim]"
+                        )
+                except MLRuntimeError as e:
+                    return ToolResult.error_result(
+                        f"Failed to register data processor: {str(e)}"
+                    )
+
+                # Execute the pipeline automatically after confirmation
+                from arc.ml.data_source_executor import (
+                    DataSourceExecutionError,
+                    execute_data_source_pipeline,
                 )
 
-                # Invalidate schema cache since new tables were created
-                self.services.schema.invalidate_cache(database)
+                # Show execution message
+                if printer:
+                    printer.print("")
+                    printer.print(
+                        "→ Executing data processing pipeline..."
+                    )
 
-            except DataSourceExecutionError as e:
-                # Generation and registration succeeded, but execution failed
-                if ml_data_process_section_printer:
-                    ml_data_process_section_printer.print("")
-                    ml_data_process_section_printer.print(
-                        f"[yellow]⚠️  Pipeline execution failed: {str(e)}[/yellow]"
-                    )
-                    ml_data_process_section_printer.print("")
-                    ml_data_process_section_printer.print(
-                        "[dim]The data processor was successfully generated and "
-                        "registered to the database.[/dim]"
-                    )
-                    ml_data_process_section_printer.print(
-                        "[dim]You can review and fix the SQL queries, then re-run "
-                        "the processor.[/dim]"
-                    )
-                # Close the section before returning
-                if self.ui and hasattr(self, "_ml_data_process_section"):
-                    self._ml_data_process_section.__exit__(None, None, None)
+                # Define progress callback for real-time updates
+                def progress_callback(message: str, level: str):
+                    """Handle progress updates during execution."""
+                    if printer:
+                        if level == "step":
+                            printer.print(f"[dim]  {message}[/dim]")
+                        elif level == "warning":
+                            printer.print(
+                                f"[yellow]  ⚠️ {message}[/yellow]"
+                            )
+                        elif level == "error":
+                            printer.print(
+                                f"[red]  ❌ {message}[/red]"
+                            )
 
-                # Return FAILURE with detailed metadata for agent to understand
-                # Generation/registration succeeded, but execution failed
+                try:
+                    execution_result = await execute_data_source_pipeline(
+                        spec, database, self.services.db_manager, progress_callback
+                    )
+
+                    # Invalidate schema cache since new tables were created
+                    self.services.schema.invalidate_cache(database)
+
+                except DataSourceExecutionError as e:
+                    # Generation and registration succeeded, but execution failed
+                    if printer:
+                        printer.print("")
+                        printer.print(
+                            f"[yellow]⚠️  Pipeline execution failed: {str(e)}[/yellow]"
+                        )
+                        printer.print("")
+                        printer.print(
+                            "[dim]The data processor was successfully generated and "
+                            "registered to the database.[/dim]"
+                        )
+                        printer.print(
+                            "[dim]You can review and fix the SQL queries, then re-run "
+                            "the processor.[/dim]"
+                        )
+
+                    # Return FAILURE with detailed metadata for agent to understand
+                    # Generation/registration succeeded, but execution failed
+                    return ToolResult(
+                        success=False,  # Execution failed - agent needs to know
+                        output=f"Data processor '{name}' registered as {processor.id}, "
+                        f"but execution failed: {str(e)}",
+                        metadata={
+                            "processor_id": processor.id,
+                            "processor_name": name,
+                            "generation_succeeded": True,
+                            "registration_succeeded": True,
+                            "execution_succeeded": False,
+                            "execution_error": str(e),
+                            "error_type": "execution_failure",
+                        },
+                    )
+
+                # Show success summary
+                if printer:
+                    printer.print("")
+                    printer.print(
+                        f"[dim]✓ Pipeline executed successfully "
+                        f"({', '.join(execution_result.created_tables)} created • "
+                        f"{execution_result.execution_time:.2f}s)[/dim]"
+                    )
+
+                # Build simple output for ToolResult
+                lines = [
+                    f"Data processor '{name}' registered as {processor.id}",
+                    f"Pipeline executed: "
+                    f"{', '.join(execution_result.created_tables)} created",
+                ]
+
+                # Return success with detailed metadata
                 return ToolResult(
-                    success=False,  # Execution failed - agent needs to know
-                    output=f"Data processor '{name}' registered as {processor.id}, "
-                    f"but execution failed: {str(e)}",
+                    success=True,
+                    output="\n".join(lines),
                     metadata={
                         "processor_id": processor.id,
                         "processor_name": name,
                         "generation_succeeded": True,
                         "registration_succeeded": True,
-                        "execution_succeeded": False,
-                        "execution_error": str(e),
-                        "error_type": "execution_failure",
+                        "execution_succeeded": True,
+                        "created_tables": execution_result.created_tables,
+                        "execution_time": execution_result.execution_time,
                     },
                 )
 
-            # Show success summary
-            if ml_data_process_section_printer:
-                ml_data_process_section_printer.print("")
-                ml_data_process_section_printer.print(
-                    f"[dim]✓ Pipeline executed successfully "
-                    f"({', '.join(execution_result.created_tables)} created • "
-                    f"{execution_result.execution_time:.2f}s)[/dim]"
+            except Exception as e:
+                return ToolResult.error_result(
+                    f"Failed to generate YAML using LLM: {str(e)}. "
+                    "Please check your API key and network connection, "
+                    "or try simplifying your request."
                 )
-
-            # Add empty line for visual separation
-            if ml_data_process_section_printer:
-                ml_data_process_section_printer.print("")
-
-            # Close the Data Processor section
-            if self.ui and hasattr(self, "_ml_data_process_section"):
-                self._ml_data_process_section.__exit__(None, None, None)
-
-            # Build simple output for ToolResult
-            lines = [
-                f"Data processor '{name}' registered successfully as {processor.id}",
-                f"Pipeline executed: "
-                f"{', '.join(execution_result.created_tables)} created",
-            ]
-
-            # Return success with detailed metadata
-            return ToolResult(
-                success=True,
-                output="\n".join(lines),
-                metadata={
-                    "processor_id": processor.id,
-                    "processor_name": name,
-                    "generation_succeeded": True,
-                    "registration_succeeded": True,
-                    "execution_succeeded": True,
-                    "created_tables": execution_result.created_tables,
-                    "execution_time": execution_result.execution_time,
-                },
-            )
-
-        except Exception as e:
-            # Close the section before returning error
-            if self.ui and hasattr(self, "_ml_data_process_section"):
-                self._ml_data_process_section.__exit__(None, None, None)
-            return ToolResult.error_result(
-                f"Failed to generate YAML using LLM: {str(e)}. "
-                "Please check your API key and network connection, "
-                "or try simplifying your request."
-            )
 
     async def execute(self, **kwargs) -> ToolResult:
         """Execute method for BaseTool compatibility."""
