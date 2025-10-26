@@ -94,13 +94,12 @@ class DatabaseQueryTool(BaseTool):
                 if not first_row:
                     output = f"{display_query}\nNo results returned."
                 else:
-                    # Build Rich table for clean display (dimmed for agent context)
+                    # Build Rich table for clean display (will be dimmed via Padding wrapper)
                     table = Table(
                         show_header=True,
-                        header_style="bold dim",
-                        border_style="dim",
+                        header_style="bold",
+                        border_style="color(240)",
                         box=box.HORIZONTALS,
-                        style="dim",
                     )
 
                     # Add columns from first row
@@ -140,6 +139,7 @@ class DatabaseQueryTool(BaseTool):
                     # Return metadata for Rich rendering (minimal style)
                     metadata["rich_table"] = table
                     metadata["summary"] = summary
+                    metadata["query"] = display_query
                     output = "[RICH_TABLE]"
 
             # Add schema warnings if any

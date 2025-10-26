@@ -11,6 +11,8 @@ from typing import Any
 
 from rich import box
 from rich.align import Align
+from rich.console import Group
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
@@ -380,7 +382,7 @@ class InteractiveInterface:
                 and content.strip()
             ):
                 self._print_todo_with_inline_progress(label, content, printer=p)
-            # Handle database_query with Rich table (minimal style like /sql)
+            # Handle database_query with Rich table (minimal style like /sql, but dimmed)
             elif (
                 tool_name == "database_query"
                 and result.metadata
@@ -388,8 +390,15 @@ class InteractiveInterface:
             ):
                 # Print label (header)
                 p.print(f"{label}")
-                # Print Rich table directly
-                p.print(result.metadata["rich_table"])
+                # Print query if available
+                if "query" in result.metadata:
+                    p.print(f"[dim]{result.metadata['query']}[/dim]")
+                    p.print()  # Blank line after query
+                # Print Rich table wrapped in dim style using Padding
+                dimmed_table = Padding(
+                    result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
+                )
+                p.print(dimmed_table)
                 # Print summary
                 if "summary" in result.metadata:
                     p.print(f"[dim]{result.metadata['summary']}[/dim]")
