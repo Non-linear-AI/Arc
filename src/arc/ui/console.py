@@ -348,7 +348,7 @@ class InteractiveInterface:
         if result.metadata:
             metadata_parts = []
 
-            # Special handling for database_query tool
+            # Special handling for database_query and schema_discovery tools
             if tool_name == "database_query":
                 # Show database name (system/user)
                 if "target_db" in result.metadata:
@@ -358,6 +358,12 @@ class InteractiveInterface:
                     exec_time = result.metadata["execution_time"]
                     if exec_time >= 1.0:
                         metadata_parts.append(f"{exec_time:.1f}s")
+            elif tool_name == "schema_discovery":
+                # Show table name and database
+                if "table_name" in result.metadata:
+                    metadata_parts.append(result.metadata["table_name"])
+                if "target_db" in result.metadata:
+                    metadata_parts.append(result.metadata["target_db"])
             else:
                 # Default metadata handling for other tools
                 # Show table name first if present (for describe_table)
@@ -408,6 +414,22 @@ class InteractiveInterface:
                 if "query" in result.metadata:
                     p.print(f"[dim]{result.metadata['query']}[/dim]")
                 # Print Rich table wrapped in dim style using Padding
+                dimmed_table = Padding(
+                    result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
+                )
+                p.print(dimmed_table)
+                # Print summary
+                if "summary" in result.metadata:
+                    p.print(f"[dim]{result.metadata['summary']}[/dim]")
+            # Handle schema_discovery with Rich table (similar to database_query, no query)
+            elif (
+                tool_name == "schema_discovery"
+                and result.metadata
+                and "rich_table" in result.metadata
+            ):
+                # Print label (header)
+                p.print(f"{label}")
+                # Print Rich table wrapped in dim style using Padding (no query for schema)
                 dimmed_table = Padding(
                     result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
                 )

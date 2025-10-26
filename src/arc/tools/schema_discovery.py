@@ -170,6 +170,9 @@ class SchemaDiscoveryTool(BaseTool):
             ToolResult with table structure details
         """
         try:
+            from rich import box
+            from rich.table import Table
+
             schema_info = self.services.schema.get_schema_info(target_db)
 
             # Check if table exists
@@ -183,32 +186,49 @@ class SchemaDiscoveryTool(BaseTool):
             # Get table details
             columns = schema_info.get_columns_for_table(table_name)
             total_cols = len(columns)
-            show_count = min(5, total_cols)
 
-            output = ""
+            if not columns:
+                return ToolResult.success_result(
+                    f"Table '{table_name}' has no columns.",
+                    metadata={"table_name": table_name, "column_count": 0, "target_db": target_db},
+                )
 
-            if columns:
-                # Group columns by data type
-                type_groups = {}
-                for col in columns[:show_count]:
-                    dtype = col.data_type
-                    if dtype not in type_groups:
-                        type_groups[dtype] = []
-                    type_groups[dtype].append(col.column_name)
+            # Build Rich table for schema display
+            table = Table(
+                show_header=True,
+                header_style="bold",
+                border_style="color(240)",
+                box=box.HORIZONTALS,
+            )
 
-                # Output grouped by type
-                for dtype, col_names in type_groups.items():
-                    output += f"• {', '.join(col_names)} [dim]({dtype})[/dim]\n"
+            # Add columns
+            table.add_column("Column", no_wrap=False)
+            table.add_column("Type", no_wrap=False)
 
-                # Add "… and N more" if there are more columns
-                if total_cols > show_count:
-                    output += f"… and {total_cols - show_count} more columns"
+            # Add rows (limit to 20 for schema display)
+            max_rows = 20
+            for idx, col in enumerate(columns):
+                if idx >= max_rows:
+                    table.add_row("...", "...", style="dim")
+                    break
+                table.add_row(col.column_name, col.data_type)
+
+            # Prepare summary
+            if total_cols > max_rows:
+                summary = f"Showing {max_rows} of {total_cols} columns"
+            else:
+                col_text = "column" if total_cols == 1 else "columns"
+                summary = f"{total_cols} {col_text}"
 
             metadata = {
                 "table_name": table_name,
                 "column_count": total_cols,
+                "target_db": target_db,
+                "rich_table": table,
+                "summary": summary,
             }
-            return ToolResult.success_result(output, metadata=metadata)
+
+            return ToolResult.success_result("[RICH_TABLE]", metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to describe table: {str(e)}")
