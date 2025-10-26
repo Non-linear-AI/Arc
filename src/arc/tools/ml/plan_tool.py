@@ -371,19 +371,13 @@ class MLPlanTool(BaseTool):
                             # Print cancellation message inside section
                             if printer:
                                 printer.print("")  # Empty line
-                                printer.print(
-                                    "ML plan cancelled. What would you like to "
-                                    "do instead?"
-                                )
+                                printer.print("[dim]✗ ML plan cancelled by user.[/dim]")
                             # Return to main agent with context message
                             # (Message already displayed in section,
                             # but agent needs context)
                             return ToolResult(
                                 success=True,
-                                output=(
-                                    "ML plan cancelled. What would you like to "
-                                    "do instead?"
-                                ),
+                                output="ML plan cancelled by user.",
                                 metadata={"cancelled": True, "suppress_output": True},
                             )
                     else:
