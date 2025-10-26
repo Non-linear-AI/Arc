@@ -464,7 +464,7 @@ class BaseAgent(abc.ABC):
                                         # Special formatting for database_query tool
                                         if tool_call.function.name == "database_query":
                                             query = args.get("query", "")
-                                            # Clean up query for display (remove extra whitespace)
+                                            # Clean up query (remove extra whitespace)
                                             query_clean = " ".join(query.split())
                                             # Truncate at 80 chars
                                             if len(query_clean) > 80:
@@ -475,23 +475,31 @@ class BaseAgent(abc.ABC):
                                                 f"[dim]▸ Query: {query_brief}[/dim]"
                                             )
                                         # Special formatting for knowledge tools
-                                        elif tool_call.function.name == "list_available_knowledge":
+                                        elif (
+                                            tool_call.function.name
+                                            == "list_available_knowledge"
+                                        ):
                                             progress_callback(
                                                 "[dim]▸ Listing knowledge...[/dim]"
                                             )
-                                        elif tool_call.function.name == "read_knowledge_content":
+                                        elif (
+                                            tool_call.function.name
+                                            == "read_knowledge_content"
+                                        ):
                                             knowledge_id = args.get("knowledge_id", "")
                                             domain = args.get("domain", "model")
                                             progress_callback(
-                                                f"[dim]▸ Reading: {knowledge_id} ({domain})[/dim]"
+                                                f"[dim]▸ Reading: {knowledge_id} "
+                                                f"({domain})[/dim]"
                                             )
                                         else:
-                                            # For other tools, show tool name and brief arguments
+                                            # For other tools, show name & brief args
                                             args_brief = str(args)[:100]
                                             if len(str(args)) > 100:
                                                 args_brief += "..."
                                             progress_callback(
-                                                f"[dim]▸ Calling {tool_call.function.name}("
+                                                f"[dim]▸ Calling "
+                                                f"{tool_call.function.name}("
                                                 f"{args_brief})[/dim]"
                                             )
                                     except json.JSONDecodeError:

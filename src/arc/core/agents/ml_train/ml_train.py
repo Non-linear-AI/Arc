@@ -121,9 +121,6 @@ class MLTrainAgent(BaseAgent):
         # Pre-load recommended knowledge content (handle missing gracefully)
         recommended_knowledge = ""
         if recommended_knowledge_ids:
-            # Scan metadata once for all knowledge IDs
-            metadata_map = self.knowledge_loader.scan_metadata()
-
             for knowledge_id in recommended_knowledge_ids:
                 content = self.knowledge_loader.load_knowledge(knowledge_id, "train")
                 if content:
@@ -131,7 +128,7 @@ class MLTrainAgent(BaseAgent):
                     recommended_knowledge += (
                         f"\n\n# Training Knowledge: {knowledge_id}\n\n{content}"
                     )
-                # If knowledge doesn't exist, silently skip it (already logged at debug level)
+                # If missing, silently skip (already logged at debug level)
 
         # Build system message with all context
         system_message = self._render_template(
