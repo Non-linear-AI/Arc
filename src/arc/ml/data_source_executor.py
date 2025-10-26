@@ -133,20 +133,12 @@ async def execute_data_source_pipeline(
                         db_manager.user_execute(sql)
                 elif step_type == "view":
                     # Create temporary view for intermediate steps
-                    # Drop both table and view to handle schema changes between runs
-                    drop_table_sql = f"DROP TABLE IF EXISTS {quoted_name}"
-                    drop_view_sql = f"DROP VIEW IF EXISTS {quoted_name}"
-                    create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
-
+                    # Use CREATE OR REPLACE to handle re-runs
+                    create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
                     intermediate_views.append(step.name)  # Track for cleanup
-
                     if target_db == "system":
-                        db_manager.system_execute(drop_table_sql)
-                        db_manager.system_execute(drop_view_sql)
                         db_manager.system_execute(create_sql)
                     else:
-                        db_manager.user_execute(drop_table_sql)
-                        db_manager.user_execute(drop_view_sql)
                         db_manager.user_execute(create_sql)
                 elif step_type == "table":
                     # Create persistent table for output steps
@@ -196,14 +188,16 @@ async def execute_data_source_pipeline(
         progress_callback(success_msg, "success")
         progress_log.append((success_msg, "success"))
 
-        output_list = ", ".join(spec.outputs)
-        output_msg = f"Output tables: {output_list}"
-        progress_callback(output_msg, "info")
-        progress_log.append((output_msg, "info"))
+        # Only show output tables if there are any
+        if spec.outputs:
+            output_list = ", ".join(spec.outputs)
+            output_msg = f"Output tables: {output_list}"
+            progress_callback(output_msg, "info")
+            progress_log.append((output_msg, "info"))
 
-        # Add blank line after output tables
-        progress_callback("", "info")
-        progress_log.append(("", "info"))
+            # Add blank line after output tables
+            progress_callback("", "info")
+            progress_log.append(("", "info"))
 
     return DataSourceExecutionResult(
         created_tables=spec.outputs.copy(),

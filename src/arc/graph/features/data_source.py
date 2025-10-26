@@ -88,9 +88,7 @@ class DataSourceSpec:
         if not self.steps:
             raise ValueError("At least one step is required")
 
-        if not self.outputs:
-            raise ValueError("At least one output must be specified")
-
+        # Outputs can be empty for utility pipelines (cleanup, views only, etc.)
         # Validate that all outputs exist as steps
         step_names = {step.name for step in self.steps}
         for output in self.outputs:
