@@ -383,6 +383,7 @@ class BaseAgent(abc.ABC):
         validation_context: dict[str, Any] | None = None,
         max_iterations: int = 3,
         conversation_history: list[dict[str, str]] | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> tuple[Any, str, list[dict[str, str]]]:
         """Generate content with tool support and validation.
 
@@ -395,6 +396,8 @@ class BaseAgent(abc.ABC):
             validation_context: Optional context for validation
             max_iterations: Maximum number of generation attempts
             conversation_history: Optional conversation history for editing
+            progress_callback: Optional callback to report progress/errors
+                during validation retries and tool calls
 
         Returns:
             Tuple of (validated_object, raw_content, conversation_history)
@@ -452,6 +455,27 @@ class BaseAgent(abc.ABC):
                         # Execute each tool call
                         for tool_call in response_msg.tool_calls:
                             if tool_executor:
+                                # Report tool execution to UI if callback provided
+                                if progress_callback:
+                                    import json
+
+                                    try:
+                                        args = json.loads(tool_call.function.arguments)
+                                        # Show tool name and brief arguments
+                                        args_brief = str(args)[:100]
+                                        if len(str(args)) > 100:
+                                            args_brief += "..."
+                                        progress_callback(
+                                            f"[dim]▸ Calling {tool_call.function.name}("
+                                            f"{args_brief})[/dim]"
+                                        )
+                                    except json.JSONDecodeError:
+                                        # If can't parse arguments, show tool name only
+                                        progress_callback(
+                                            f"[dim]▸ Calling "
+                                            f"{tool_call.function.name}[/dim]"
+                                        )
+
                                 result = await tool_executor(
                                     tool_call.function.name,
                                     tool_call.function.arguments,
@@ -499,11 +523,20 @@ class BaseAgent(abc.ABC):
                                 f"corrected version."
                             )
                             messages.append({"role": "user", "content": error_msg})
-                            logger.warning(
-                                f"Validation failed on attempt "
-                                f"{attempt + 1}/{max_iterations}: "
-                                f"{last_error}. Retrying..."
-                            )
+                            # Report validation failure to UI if callback provided
+                            if progress_callback:
+                                msg = (
+                                    f"[dim]✗ Validation failed on attempt "
+                                    f"{attempt + 1}/{max_iterations}: "
+                                    f"{last_error}. Retrying...[/dim]"
+                                )
+                                progress_callback(msg)
+                            else:
+                                logger.warning(
+                                    f"Validation failed on attempt "
+                                    f"{attempt + 1}/{max_iterations}: "
+                                    f"{last_error}. Retrying..."
+                                )
                             continue
                         else:
                             raise AgentError(
@@ -518,7 +551,15 @@ class BaseAgent(abc.ABC):
             except TimeoutError as e:
                 last_error = "LLM request timed out after 90 seconds"
                 if attempt < max_iterations - 1:
-                    logger.warning(f"Timeout on attempt {attempt + 1}, retrying...")
+                    # Report timeout to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Timeout on attempt "
+                            f"{attempt + 1}/{max_iterations}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
+                    else:
+                        logger.warning(f"Timeout on attempt {attempt + 1}, retrying...")
                     continue
                 else:
                     raise AgentError(last_error) from e
@@ -526,11 +567,20 @@ class BaseAgent(abc.ABC):
             except Exception as e:
                 last_error = f"Generation error: {str(e)}"
                 if attempt < max_iterations - 1:
-                    logger.warning(
-                        f"Generation failed on attempt "
-                        f"{attempt + 1}/{max_iterations}: "
-                        f"{last_error}. Retrying..."
-                    )
+                    # Report generation error to UI if callback provided
+                    if progress_callback:
+                        msg = (
+                            f"[dim]✗ Generation failed on attempt "
+                            f"{attempt + 1}/{max_iterations}: "
+                            f"{last_error}. Retrying...[/dim]"
+                        )
+                        progress_callback(msg)
+                    else:
+                        logger.warning(
+                            f"Generation failed on attempt "
+                            f"{attempt + 1}/{max_iterations}: "
+                            f"{last_error}. Retrying..."
+                        )
                     continue
                 else:
                     raise AgentError(f"Content generation failed: {e}") from e

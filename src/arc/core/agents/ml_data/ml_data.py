@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,7 @@ class MLDataAgent(BaseAgent):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> None:
         """Initialize MLDataAgent.
 
@@ -33,8 +35,10 @@ class MLDataAgent(BaseAgent):
             api_key: API key for LLM calls
             base_url: Base URL for LLM API
             model: Model name to use
+            progress_callback: Optional callback to report progress/tool usage
         """
         super().__init__(services, api_key, base_url, model)
+        self.progress_callback = progress_callback
 
     def get_template_directory(self) -> Path:
         """Get the template directory for data processing generation.
@@ -128,8 +132,10 @@ class MLDataAgent(BaseAgent):
                     if content:
                         # Get metadata for display
                         metadata = metadata_map.get(knowledge_id)
-                        if metadata:
-                            print(f"  ▸ Using knowledge: {metadata.name}")
+                        if metadata and self.progress_callback:
+                            self.progress_callback(
+                                f"[dim]▸ Using knowledge: {metadata.name}[/dim]"
+                            )
                         recommended_knowledge += (
                             f"\n\n# Data Processing Knowledge: {knowledge_id}"
                             f"\n\n{content}"
@@ -138,10 +144,11 @@ class MLDataAgent(BaseAgent):
                         # Warn user if recommended knowledge fails to load
                         import logging
 
-                        print(
-                            f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' "
-                            f"not found"
-                        )
+                        if self.progress_callback:
+                            self.progress_callback(
+                                f"[yellow]⚠  Warning: Recommended knowledge "
+                                f"'{knowledge_id}' not found[/yellow]"
+                            )
                         logging.getLogger(__name__).warning(
                             f"Could not load recommended knowledge: {knowledge_id}"
                         )
@@ -188,6 +195,7 @@ class MLDataAgent(BaseAgent):
                 validation_context={"schema_info": schema_info},
                 max_iterations=3,
                 conversation_history=None,  # Fresh start
+                progress_callback=self.progress_callback,
             )
 
             return spec, yaml_content, conversation_history
@@ -226,6 +234,7 @@ class MLDataAgent(BaseAgent):
                 },  # Already in conversation history
                 max_iterations=3,
                 conversation_history=conversation_history,
+                progress_callback=self.progress_callback,
             )
 
             return spec, yaml_content, updated_history

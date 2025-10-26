@@ -165,8 +165,9 @@ class MLDataTool(BaseTool):
 
             if not source_tables or len(source_tables) == 0:
                 return _error_in_section(
-                    "source_tables is required to narrow the scope of data exploration. "
-                    "Specify which tables to read from (e.g., ['users', 'transactions'])."
+                    "source_tables is required to narrow the scope of data "
+                    "exploration. Specify which tables to read from "
+                    "(e.g., ['users', 'transactions'])."
                 )
 
             # Validate database
@@ -217,6 +218,13 @@ class MLDataTool(BaseTool):
                 )
 
             try:
+                # Set progress callback for this invocation
+                # (agent can be reused with different printers)
+                if printer:
+                    self.generator_agent.progress_callback = printer.print
+                else:
+                    self.generator_agent.progress_callback = None
+
                 # Generate using LLM (generator_agent is guaranteed to exist)
                 (
                     spec,
@@ -490,6 +498,11 @@ class MLDataTool(BaseTool):
                 (None, None) if failed
             """
             try:
+                # Set progress callback for editing invocation
+                # Note: progress_callback should already be set from generate(),
+                # but we keep it here for robustness
+                # (it's the same agent instance, so callback is preserved)
+
                 # Call the generator agent with conversation history
                 # feedback becomes the instruction in edit mode
                 (
