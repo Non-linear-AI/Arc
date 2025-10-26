@@ -137,265 +137,85 @@ class MLModelTool(BaseTool):
             ToolResult with model registration details
         """
         # Show section title first, before any validation
-        # Keep the section printer reference to use for all messages including errors
-        ml_model_section_printer = None
-        if self.ui:
-            self._ml_model_section = self.ui._printer.section(
-                color="magenta", add_dot=True
-            )
-            ml_model_section_printer = self._ml_model_section.__enter__()
-
-            # Build title with metadata
-            title = "ML Model"
-            metadata_parts = []
-            if plan_id:
-                metadata_parts.append(plan_id)
-            if recommended_knowledge_ids:
-                metadata_parts.extend(recommended_knowledge_ids)
-            if metadata_parts:
-                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
-
-            ml_model_section_printer.print(title)
-            # Show task description (dimmed)
-            ml_model_section_printer.print(f"[dim]Task: {instruction}[/dim]")
-
-        # Helper to close section and return error
-        def _error_in_section(message: str) -> ToolResult:
-            if ml_model_section_printer:
-                ml_model_section_printer.print("")
-                ml_model_section_printer.print(f"✗ {message}")
-            if self.ui and hasattr(self, "_ml_model_section"):
-                self._ml_model_section.__exit__(None, None, None)
-            return ToolResult(
-                success=False,
-                output=message,  # Pass error to agent
-                metadata={"error_shown": True, "error_message": message},
-            )
-
-        # Validate API key and services
-        if not self.api_key:
-            return _error_in_section(
-                "API key required for model generation. "
-                "Set ARC_API_KEY or configure an API key before using this tool."
-            )
-
-        if not self.services:
-            return _error_in_section(
-                "Model generation service unavailable. "
-                "Database services not initialized."
-            )
-
-        # Validate: either plan_id or instruction must be provided
-        if not plan_id and not instruction:
-            return _error_in_section(
-                "Either 'plan_id' or 'instruction' must be provided. "
-                "ML plan is recommended for full ML workflows."
-            )
-
-        # Load plan from database if plan_id is provided
-        ml_plan_architecture = None
+        # Build metadata for section title
+        metadata_parts = []
         if plan_id:
-            ml_plan, plan = _load_ml_plan(self.services, plan_id)
-            if ml_plan is None:
-                # plan contains error message
-                return _error_in_section(plan)
+            metadata_parts.append(plan_id)
+        if recommended_knowledge_ids:
+            metadata_parts.extend(recommended_knowledge_ids)
 
-            # Use plan data if parameters not explicitly provided
-            if not instruction:
-                instruction = plan.summary
-            if not data_table:
-                data_table = ml_plan.get("data_table")
-            if not target_column:
-                target_column = ml_plan.get("target_column")
+        # Use context manager for section printing
+        with self._section_printer(
+            self.ui, "ML Model", metadata=metadata_parts
+        ) as printer:
+            # Show task description
+            if printer:
+                printer.print(f"[dim]Task: {instruction}[/dim]")
 
-            # CRITICAL: Extract architecture guidance from ML plan
-            ml_plan_architecture = plan.model_architecture_and_loss
-
-        # Validate required parameters
-        if not name or not data_table or not target_column:
-            return _error_in_section(
-                "Parameters 'name', 'data_table', and 'target_column' are required "
-                "to generate a model specification."
-            )
-
-        # Show generation status
-        if ml_model_section_printer:
-            ml_model_section_printer.print(
-                "[dim]Generating Arc-Graph model specification...[/dim]"
-            )
-
-        # Generate model using agent
-        agent = MLModelAgent(
-            self.services,
-            self.api_key,
-            self.base_url,
-            self.model,
-        )
-
-        # Agent will discover relevant knowledge using list_knowledge and
-        # read_knowledge tools based on task context and descriptions
-        try:
-            model_spec, model_yaml, conversation_history = await agent.generate_model(
-                name=str(name),
-                user_context=instruction,  # Use instruction as user_context
-                table_name=str(data_table),
-                target_column=target_column,
-                ml_plan_architecture=ml_plan_architecture,
-                recommended_knowledge_ids=None,  # Let agent discover via tools
-            )
-        except Exception as exc:
-            # Import here to avoid circular imports
-            from arc.core.agents.ml_model import MLModelError
-
-            if isinstance(exc, MLModelError):
-                return ToolResult.error_result(str(exc))
-            return ToolResult.error_result(
-                f"Unexpected error during model generation: {exc}"
-            )
-
-        # Validate the generated model using Arc-Graph validator
-        try:
-            model_dict = yaml.safe_load(model_yaml)
-            validate_model_dict(model_dict)
-        except (yaml.YAMLError, ModelValidationError) as exc:
-            return ToolResult.error_result(f"Model validation failed: {exc}")
-        except Exception as exc:
-            # Log unexpected errors with full traceback
-            import logging
-
-            logging.exception("Unexpected error during model validation")
-            return ToolResult.error_result(
-                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
-            )
-
-        # Interactive confirmation workflow (unless auto_confirm is True)
-        if not auto_confirm:
-            workflow = YamlConfirmationWorkflow(
-                validator_func=self._create_validator(),
-                editor_func=self._create_editor(instruction),
-                ui_interface=self.ui,
-                yaml_type_name="model",
-                yaml_suffix=".arc-model.yaml",
-            )
-
-            context_dict = {
-                "model_name": str(name),
-                "table_name": str(data_table),
-                "target_column": target_column,
-            }
-
-            try:
-                proceed, final_yaml = await workflow.run_workflow(
-                    model_yaml,
-                    context_dict,
-                    None,  # No file path
-                    conversation_history,  # Pass conversation history for editing
+            # Helper to show error and return
+            def _error_in_section(message: str) -> ToolResult:
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {message}")
+                return ToolResult(
+                    success=False,
+                    output=message,
+                    metadata={"error_shown": True, "error_message": message},
                 )
-                if not proceed:
-                    # Show cancellation message before closing section
-                    if ml_model_section_printer:
-                        ml_model_section_printer.print("")  # Empty line
-                        ml_model_section_printer.print(
-                            "[dim]✗ Model generation cancelled by user.[/dim]"
-                        )
-                    # Close the section before returning
-                    if self.ui and hasattr(self, "_ml_model_section"):
-                        self._ml_model_section.__exit__(None, None, None)
-                    return ToolResult(
-                        success=True,
-                        output="Model generation cancelled by user.",
-                        metadata={"cancelled": True},
-                    )
-                model_yaml = final_yaml
-            finally:
-                workflow.cleanup()
 
-        # Save model to DB with plan_id if using ML plan
-        try:
-            plan_id = ml_plan.get("plan_id") if ml_plan else None
-            model = self._save_model_to_db(
-                name=str(name),
-                yaml_content=model_yaml,
-                description=instruction[:200] if instruction else "Generated model",
-                plan_id=plan_id,
-            )
-            model_id = model.id
-        except Exception as exc:
-            return ToolResult.error_result(f"Failed to save model to DB: {exc}")
+            # Validate API key and services
+            if not self.api_key:
+                return _error_in_section(
+                    "API key required for model generation. "
+                    "Set ARC_API_KEY or configure an API key before using this tool."
+                )
 
-        # Display registration confirmation in the ML Model section
-        if ml_model_section_printer:
-            ml_model_section_printer.print("")  # Empty line before confirmation
-            ml_model_section_printer.print(
-                f"[dim]✓ Model '{name}' registered to database "
-                f"({model_id} • {len(model_spec.inputs)} inputs • "
-                f"{len(model_spec.graph)} nodes • "
-                f"{len(model_spec.outputs)} outputs)[/dim]"
-            )
+            if not self.services:
+                return _error_in_section(
+                    "Model generation service unavailable. "
+                    "Database services not initialized."
+                )
 
-        # Add empty line for visual separation
-        if ml_model_section_printer:
-            ml_model_section_printer.print("")
+            # Validate: either plan_id or instruction must be provided
+            if not plan_id and not instruction:
+                return _error_in_section(
+                    "Either 'plan_id' or 'instruction' must be provided. "
+                    "ML plan is recommended for full ML workflows."
+                )
 
-        # Close the ML Model section
-        if self.ui and hasattr(self, "_ml_model_section"):
-            self._ml_model_section.__exit__(None, None, None)
+            # Load plan from database if plan_id is provided
+            ml_plan_architecture = None
+            if plan_id:
+                ml_plan, plan = _load_ml_plan(self.services, plan_id)
+                if ml_plan is None:
+                    # plan contains error message
+                    return _error_in_section(plan)
 
-        # Build simple output for ToolResult (detailed output already shown in UI)
-        lines = [f"Model '{name}' registered successfully as {model_id}"]
+                # Use plan data if parameters not explicitly provided
+                if not instruction:
+                    instruction = plan.summary
+                if not data_table:
+                    data_table = ml_plan.get("data_table")
+                if not target_column:
+                    target_column = ml_plan.get("target_column")
 
-        # Build simplified metadata
-        result_metadata = {
-            "model_id": model_id,
-            "model_name": name,
-            "yaml_content": model_yaml,
-            "from_ml_plan": ml_plan is not None,
-        }
+                # CRITICAL: Extract architecture guidance from ML plan
+                ml_plan_architecture = plan.model_architecture_and_loss
 
-        return ToolResult(
-            success=True,
-            output="\n".join(lines),
-            metadata=result_metadata,
-        )
+            # Validate required parameters
+            if not name or not data_table or not target_column:
+                return _error_in_section(
+                    "Parameters 'name', 'data_table', and 'target_column' are required "
+                    "to generate a model specification."
+                )
 
-    def _create_validator(self):
-        """Create validator function for the workflow.
+            # Show generation status
+            if printer:
+                printer.print(
+                    "[dim]Generating Arc-Graph model specification...[/dim]"
+                )
 
-        Returns:
-            Function that validates YAML and returns list of error strings
-        """
-
-        def validate(yaml_str: str) -> list[str]:
-            try:
-                model_dict = yaml.safe_load(yaml_str)
-                validate_model_dict(model_dict)
-                return []  # No errors
-            except yaml.YAMLError as e:
-                return [f"Invalid YAML: {e}"]
-            except ModelValidationError as e:
-                return [f"Validation error: {e}"]
-            except Exception as e:
-                return [f"Unexpected error: {e}"]
-
-        return validate
-
-    def _create_editor(self, user_context: str | None = None):
-        """Create editor function for AI-assisted editing in the workflow.
-
-        Args:
-            user_context: User context description
-
-        Returns:
-            Async function that edits YAML based on user feedback and returns
-            tuple of (edited_yaml, updated_conversation_history)
-        """
-
-        async def edit(
-            yaml_content: str,
-            feedback: str,
-            context: dict[str, Any],
-            conversation_history: list[dict[str, str]] | None = None,
-        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            # Generate model using agent
             agent = MLModelAgent(
                 self.services,
                 self.api_key,
@@ -403,85 +223,254 @@ class MLModelTool(BaseTool):
                 self.model,
             )
 
+            # Agent will discover relevant knowledge using list_knowledge and
+            # read_knowledge tools based on task context and descriptions
             try:
-                _model_spec, edited_yaml, updated_history = await agent.generate_model(
-                    name=context["model_name"],
-                    user_context=user_context or "",
-                    table_name=context["table_name"],
-                    target_column=context.get("target_column"),
-                    existing_yaml=yaml_content,
-                    editing_instructions=feedback,
-                    conversation_history=conversation_history,
+                model_spec, model_yaml, conversation_history = await agent.generate_model(
+                    name=str(name),
+                    user_context=instruction,  # Use instruction as user_context
+                    table_name=str(data_table),
+                    target_column=target_column,
+                    ml_plan_architecture=ml_plan_architecture,
+                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                )
+            except Exception as exc:
+                # Import here to avoid circular imports
+                from arc.core.agents.ml_model import MLModelError
+
+                if isinstance(exc, MLModelError):
+                    return ToolResult.error_result(str(exc))
+                return ToolResult.error_result(
+                    f"Unexpected error during model generation: {exc}"
                 )
 
-                return edited_yaml, updated_history
-            except Exception as e:
-                if self.ui:
-                    self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
-                return None, None
+            # Validate the generated model using Arc-Graph validator
+            try:
+                model_dict = yaml.safe_load(model_yaml)
+                validate_model_dict(model_dict)
+            except (yaml.YAMLError, ModelValidationError) as exc:
+                return ToolResult.error_result(f"Model validation failed: {exc}")
+            except Exception as exc:
+                # Log unexpected errors with full traceback
+                import logging
 
-        return edit
+                logging.exception("Unexpected error during model validation")
+                return ToolResult.error_result(
+                    f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
+                )
 
-    def _save_model_to_db(
-        self,
-        name: str,
-        yaml_content: str,
-        description: str,
-        plan_id: str | None = None,
-    ) -> Model:
-        """Save generated model directly to DB (no file needed).
+            # Interactive confirmation workflow (unless auto_confirm is True)
+            if not auto_confirm:
+                workflow = YamlConfirmationWorkflow(
+                    validator_func=self._create_validator(),
+                    editor_func=self._create_editor(instruction),
+                    ui_interface=self.ui,
+                    yaml_type_name="model",
+                    yaml_suffix=".arc-model.yaml",
+                )
 
-        Args:
-            name: Model name
-            yaml_content: YAML specification as string
-            description: Model description
-            plan_id: Optional ML plan ID that guided this model generation
+                context_dict = {
+                    "model_name": str(name),
+                    "table_name": str(data_table),
+                    "target_column": target_column,
+                }
 
-        Returns:
-            Created Model object with model_id
+                try:
+                    proceed, final_yaml = await workflow.run_workflow(
+                        model_yaml,
+                        context_dict,
+                        None,  # No file path
+                        conversation_history,  # Pass conversation history for editing
+                    )
+                    if not proceed:
+                        # Show cancellation message before closing section
+                        if printer:
+                            printer.print("")  # Empty line
+                            printer.print(
+                                "[dim]✗ Model generation cancelled by user.[/dim]"
+                            )
+                        # Close the section before returning
+                        if self.ui and hasattr(self, "_ml_model_section"):
+                            self._ml_model_section.__exit__(None, None, None)
+                        return ToolResult(
+                            success=True,
+                            output="Model generation cancelled by user.",
+                            metadata={"cancelled": True},
+                        )
+                    model_yaml = final_yaml
+                finally:
+                    workflow.cleanup()
 
-        Raises:
-            ValueError: If YAML is invalid or DB save fails
-        """
-        from datetime import UTC, datetime
+            # Save model to DB with plan_id if using ML plan
+            try:
+                plan_id = ml_plan.get("plan_id") if ml_plan else None
+                model = self._save_model_to_db(
+                    name=str(name),
+                    yaml_content=model_yaml,
+                    description=instruction[:200] if instruction else "Generated model",
+                    plan_id=plan_id,
+                )
+                model_id = model.id
+            except Exception as exc:
+                return ToolResult.error_result(f"Failed to save model to DB: {exc}")
 
-        from arc.database.models.model import Model
-        from arc.graph.model import ModelSpec
-        from arc.ml.runtime import _slugify_name
+            # Display registration confirmation in the ML Model section
+            if printer:
+                printer.print("")  # Empty line before confirmation
+                printer.print(
+                    f"[dim]✓ Model '{name}' registered to database "
+                    f"({model_id} • {len(model_spec.inputs)} inputs • "
+                    f"{len(model_spec.graph)} nodes • "
+                    f"{len(model_spec.outputs)} outputs)[/dim]"
+                )
 
-        # Validate YAML first
-        try:
-            model_spec = ModelSpec.from_yaml(yaml_content)
-            _ = model_spec.get_input_names()
-            _ = model_spec.get_output_names()
-        except Exception as exc:
-            raise ValueError(f"Invalid model YAML: {exc}") from exc
+            # Add empty line for visual separation
+            if printer:
+                printer.print("")
 
-        # Get next version
-        latest = self.services.models.get_latest_model_by_name(name)
-        version = 1 if latest is None else latest.version + 1
+                self._ml_model_section.__exit__(None, None, None)
 
-        # Create model ID
-        base_slug = _slugify_name(name)
-        model_id = f"{base_slug}-v{version}"
+            # Build simple output for ToolResult (detailed output already shown in UI)
+            lines = [f"Model '{name}' registered successfully as {model_id}"]
 
-        # Create model object
-        now = datetime.now(UTC)
-        model = Model(
-            id=model_id,
-            type="ml.model_spec",
-            name=name,
-            version=version,
-            description=description,
-            spec=yaml_content,
-            created_at=now,
-            updated_at=now,
-            plan_id=plan_id,  # Link to ML plan if provided
-        )
+            # Build simplified metadata
+            result_metadata = {
+                "model_id": model_id,
+                "model_name": name,
+                "yaml_content": model_yaml,
+                "from_ml_plan": ml_plan is not None,
+            }
 
-        # Save to DB
-        self.services.models.create_model(model)
-        return model
+            return ToolResult(
+                success=True,
+                output="\n".join(lines),
+                metadata=result_metadata,
+            )
+
+        def _create_validator(self):
+            """Create validator function for the workflow.
+
+            Returns:
+                Function that validates YAML and returns list of error strings
+            """
+
+            def validate(yaml_str: str) -> list[str]:
+                try:
+                    model_dict = yaml.safe_load(yaml_str)
+                    validate_model_dict(model_dict)
+                    return []  # No errors
+                except yaml.YAMLError as e:
+                    return [f"Invalid YAML: {e}"]
+                except ModelValidationError as e:
+                    return [f"Validation error: {e}"]
+                except Exception as e:
+                    return [f"Unexpected error: {e}"]
+
+            return validate
+
+        def _create_editor(self, user_context: str | None = None):
+            """Create editor function for AI-assisted editing in the workflow.
+
+            Args:
+                user_context: User context description
+
+            Returns:
+                Async function that edits YAML based on user feedback and returns
+                tuple of (edited_yaml, updated_conversation_history)
+            """
+
+            async def edit(
+                yaml_content: str,
+                feedback: str,
+                context: dict[str, Any],
+                conversation_history: list[dict[str, str]] | None = None,
+            ) -> tuple[str | None, list[dict[str, str]] | None]:
+                agent = MLModelAgent(
+                    self.services,
+                    self.api_key,
+                    self.base_url,
+                    self.model,
+                )
+
+                try:
+                    _model_spec, edited_yaml, updated_history = await agent.generate_model(
+                        name=context["model_name"],
+                        user_context=user_context or "",
+                        table_name=context["table_name"],
+                        target_column=context.get("target_column"),
+                        existing_yaml=yaml_content,
+                        editing_instructions=feedback,
+                        conversation_history=conversation_history,
+                    )
+
+                    return edited_yaml, updated_history
+                except Exception as e:
+                    if self.ui:
+                        self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
+                    return None, None
+
+            return edit
+
+        def _save_model_to_db(
+            self,
+            name: str,
+            yaml_content: str,
+            description: str,
+            plan_id: str | None = None,
+        ) -> Model:
+            """Save generated model directly to DB (no file needed).
+
+            Args:
+                name: Model name
+                yaml_content: YAML specification as string
+                description: Model description
+                plan_id: Optional ML plan ID that guided this model generation
+
+            Returns:
+                Created Model object with model_id
+
+            Raises:
+                ValueError: If YAML is invalid or DB save fails
+            """
+            from datetime import UTC, datetime
+
+            from arc.database.models.model import Model
+            from arc.graph.model import ModelSpec
+            from arc.ml.runtime import _slugify_name
+
+            # Validate YAML first
+            try:
+                model_spec = ModelSpec.from_yaml(yaml_content)
+                _ = model_spec.get_input_names()
+                _ = model_spec.get_output_names()
+            except Exception as exc:
+                raise ValueError(f"Invalid model YAML: {exc}") from exc
+
+            # Get next version
+            latest = self.services.models.get_latest_model_by_name(name)
+            version = 1 if latest is None else latest.version + 1
+
+            # Create model ID
+            base_slug = _slugify_name(name)
+            model_id = f"{base_slug}-v{version}"
+
+            # Create model object
+            now = datetime.now(UTC)
+            model = Model(
+                id=model_id,
+                type="ml.model_spec",
+                name=name,
+                version=version,
+                description=description,
+                spec=yaml_content,
+                created_at=now,
+                updated_at=now,
+                plan_id=plan_id,  # Link to ML plan if provided
+            )
+
+            # Save to DB
+            self.services.models.create_model(model)
+            return model
 
 
 class MLTrainTool(BaseTool):
@@ -554,454 +543,443 @@ class MLTrainTool(BaseTool):
             No runtime overrides are supported.
         """
         # Show section title first, before any validation
-        # Keep the section printer reference to use for all messages including errors
-        ml_trainer_section_printer = None
-        if self.ui:
-            self._ml_trainer_section = self.ui._printer.section(
-                color="magenta", add_dot=True
-            )
-            ml_trainer_section_printer = self._ml_trainer_section.__enter__()
-
-            # Build title with metadata
-            title = "ML Train"
-            metadata_parts = []
-            if plan_id:
-                metadata_parts.append(plan_id)
-            if recommended_knowledge_ids:
-                metadata_parts.extend(recommended_knowledge_ids)
-            if metadata_parts:
-                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
-
-            ml_trainer_section_printer.print(title)
-            # Show task description (dimmed)
-            ml_trainer_section_printer.print(f"[dim]Task: {instruction}[/dim]")
-
-        # Helper to close section and return error
-        def _error_in_section(message: str) -> ToolResult:
-            if ml_trainer_section_printer:
-                ml_trainer_section_printer.print("")
-                ml_trainer_section_printer.print(f"✗ {message}")
-            if self.ui and hasattr(self, "_ml_trainer_section"):
-                self._ml_trainer_section.__exit__(None, None, None)
-            return ToolResult(
-                success=False,
-                output=message,  # Pass error to agent
-                metadata={"error_shown": True, "error_message": message},
-            )
-
-        # Validate API key and services
-        if not self.api_key:
-            return _error_in_section(
-                "API key required for trainer generation. "
-                "Set ARC_API_KEY or configure an API key before using this tool."
-            )
-
-        if not self.services:
-            return _error_in_section(
-                "Trainer generation service unavailable. "
-                "Database services not initialized."
-            )
-
-        # Validate required parameters
-        if not name or not instruction or not model_id or not train_table:
-            return _error_in_section(
-                "Parameters 'name', 'instruction', 'model_id', and 'train_table' "
-                "are required."
-            )
-
-        # Get the registered model by ID
-        try:
-            model_record = self.services.models.get_model_by_id(str(model_id))
-            if not model_record:
-                return _error_in_section(
-                    f"Model '{model_id}' not found in registry. "
-                    "Please check the model ID or register the model first."
-                )
-        except Exception as exc:
-            return _error_in_section(f"Failed to retrieve model '{model_id}': {exc}")
-
-        # Show generation status
-        if ml_trainer_section_printer:
-            ml_trainer_section_printer.print(
-                "[dim]Generating Arc-Graph trainer specification...[/dim]"
-            )
-
-        # Load plan from database if plan_id is provided
-        ml_plan_training_config = None
+        # Build metadata for section title
+        metadata_parts = []
         if plan_id:
-            ml_plan, plan = _load_ml_plan(self.services, plan_id)
-            if ml_plan is None:
-                # plan contains error message
-                return _error_in_section(plan)
-            ml_plan_training_config = plan.training_configuration
+            metadata_parts.append(plan_id)
+        if recommended_knowledge_ids:
+            metadata_parts.extend(recommended_knowledge_ids)
 
-        # Generate trainer spec via LLM
-        # Agent will discover relevant knowledge using tools
-        agent = MLTrainAgent(
-            self.services,
-            self.api_key,
-            self.base_url,
-            self.model,
-        )
+        # Use context manager for section printing
+        with self._section_printer(
+            self.ui, "ML Trainer", metadata=metadata_parts
+        ) as printer:
+            # Show task description
+            if printer:
+                printer.print(f"[dim]Task: {instruction}[/dim]")
 
-        try:
-            (
-                trainer_spec,
-                trainer_yaml,
-                conversation_history,
-            ) = await agent.generate_trainer(
-                name=str(name),
-                instruction=str(instruction),
-                model_id=model_record.id,
-                model_spec_yaml=model_record.spec,
-                ml_plan_training_config=ml_plan_training_config,
-                recommended_knowledge_ids=None,  # Let agent discover via tools
+            # Helper to show error and return
+            def _error_in_section(message: str) -> ToolResult:
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {message}")
+                return ToolResult(
+                    success=False,
+                    output=message,
+                    metadata={"error_shown": True, "error_message": message},
+                )
+
+            # Validate API key and services
+            if not self.api_key:
+                return _error_in_section(
+                    "API key required for trainer generation. "
+                    "Set ARC_API_KEY or configure an API key before using this tool."
+                )
+
+            if not self.services:
+                return _error_in_section(
+                    "Trainer generation service unavailable. "
+                    "Database services not initialized."
+                )
+
+            # Validate required parameters
+            if not name or not instruction or not model_id or not train_table:
+                return _error_in_section(
+                    "Parameters 'name', 'instruction', 'model_id', and 'train_table' "
+                    "are required."
+                )
+
+            # Get the registered model by ID
+            try:
+                model_record = self.services.models.get_model_by_id(str(model_id))
+                if not model_record:
+                    return _error_in_section(
+                        f"Model '{model_id}' not found in registry. "
+                        "Please check the model ID or register the model first."
+                    )
+            except Exception as exc:
+                return _error_in_section(f"Failed to retrieve model '{model_id}': {exc}")
+
+            # Show generation status
+            if printer:
+                printer.print(
+                    "[dim]Generating Arc-Graph trainer specification...[/dim]"
+                )
+
+            # Load plan from database if plan_id is provided
+            ml_plan_training_config = None
+            if plan_id:
+                ml_plan, plan = _load_ml_plan(self.services, plan_id)
+                if ml_plan is None:
+                    # plan contains error message
+                    return _error_in_section(plan)
+                ml_plan_training_config = plan.training_configuration
+
+            # Generate trainer spec via LLM
+            # Agent will discover relevant knowledge using tools
+            agent = MLTrainAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
             )
-        except Exception as exc:
-            from arc.core.agents.ml_train import MLTrainError
 
-            # Print error within the ML Trainer section
-            if ml_trainer_section_printer:
-                ml_trainer_section_printer.print("")
-                ml_trainer_section_printer.print(f"✗ {str(exc)}")
-            # Close the section before returning
-            if self.ui and hasattr(self, "_ml_trainer_section"):
-                self._ml_trainer_section.__exit__(None, None, None)
+            try:
+                (
+                    trainer_spec,
+                    trainer_yaml,
+                    conversation_history,
+                ) = await agent.generate_trainer(
+                    name=str(name),
+                    instruction=str(instruction),
+                    model_id=model_record.id,
+                    model_spec_yaml=model_record.spec,
+                    ml_plan_training_config=ml_plan_training_config,
+                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                )
+            except Exception as exc:
+                from arc.core.agents.ml_train import MLTrainError
 
-            if isinstance(exc, MLTrainError):
-                error_msg = str(exc)
+                # Print error within the ML Trainer section
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {str(exc)}")
+                # Close the section before returning
+                if self.ui and hasattr(self, "_ml_trainer_section"):
+                    self._ml_trainer_section.__exit__(None, None, None)
+
+                if isinstance(exc, MLTrainError):
+                    error_msg = str(exc)
+                    return ToolResult(
+                        success=False,
+                        output=error_msg,
+                        metadata={"error_shown": True, "error_message": error_msg},
+                    )
+                error_msg = f"Unexpected error during trainer generation: {exc}"
                 return ToolResult(
                     success=False,
                     output=error_msg,
                     metadata={"error_shown": True, "error_message": error_msg},
                 )
-            error_msg = f"Unexpected error during trainer generation: {exc}"
-            return ToolResult(
-                success=False,
-                output=error_msg,
-                metadata={"error_shown": True, "error_message": error_msg},
-            )
 
-        # Validate the generated trainer
-        try:
-            trainer_dict = yaml.safe_load(trainer_yaml)
-            validate_trainer_dict(trainer_dict)
-        except (yaml.YAMLError, TrainerValidationError) as exc:
-            # Print error within the ML Trainer section
-            error_msg = f"Trainer validation failed: {exc}"
-            if ml_trainer_section_printer:
-                ml_trainer_section_printer.print("")
-                ml_trainer_section_printer.print(f"✗ {error_msg}")
-            # Close the section before returning
-            if self.ui and hasattr(self, "_ml_trainer_section"):
-                self._ml_trainer_section.__exit__(None, None, None)
-            return ToolResult(
-                success=False,
-                output=error_msg,
-                metadata={"error_shown": True, "error_message": error_msg},
-            )
-        except Exception as exc:
-            import logging
-
-            logging.exception("Unexpected error during trainer validation")
-            # Print error within the ML Trainer section
-            error_msg = f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
-            if ml_trainer_section_printer:
-                ml_trainer_section_printer.print("")
-                ml_trainer_section_printer.print(f"✗ {error_msg}")
-            # Close the section before returning
-            if self.ui and hasattr(self, "_ml_trainer_section"):
-                self._ml_trainer_section.__exit__(None, None, None)
-            return ToolResult(
-                success=False,
-                output=error_msg,
-                metadata={"error_shown": True, "error_message": error_msg},
-            )
-
-        # Interactive confirmation workflow (unless auto_confirm is True)
-        if not auto_confirm:
-            workflow = YamlConfirmationWorkflow(
-                validator_func=self._create_validator(),
-                editor_func=self._create_editor(instruction, model_record),
-                ui_interface=self.ui,
-                yaml_type_name="trainer",
-                yaml_suffix=".arc-trainer.yaml",
-            )
-
-            context_dict = {
-                "trainer_name": str(name),
-                "instruction": str(instruction),
-                "model_id": model_record.id,
-                "model_spec_yaml": model_record.spec,
-            }
-
+            # Validate the generated trainer
             try:
-                proceed, final_yaml = await workflow.run_workflow(
-                    trainer_yaml,
-                    context_dict,
-                    None,  # No output path - we register to DB
-                    conversation_history,  # Pass conversation history for editing
-                )
-                if not proceed:
-                    # Close the section before returning
-                    if self.ui and hasattr(self, "_ml_trainer_section"):
-                        self._ml_trainer_section.__exit__(None, None, None)
-                    return ToolResult(
-                        success=True,
-                        output="✗ Trainer generation cancelled.",
-                        metadata={"cancelled": True},
-                    )
-                trainer_yaml = final_yaml
-            finally:
-                workflow.cleanup()
-
-        # Auto-register trainer to database
-        try:
-            # Extract plan_id from ml_plan if provided
-            plan_id = ml_plan.get("plan_id") if ml_plan else None
-
-            trainer_record = self.runtime.create_trainer(
-                name=str(name),
-                model_id=str(model_id),
-                schema_yaml=trainer_yaml,
-                description=f"Generated trainer for model {model_id}",
-                plan_id=plan_id,
-            )
-
-            # Display registration confirmation in the ML Trainer section
-            if ml_trainer_section_printer:
-                ml_trainer_section_printer.print("")  # Empty line before confirmation
-                ml_trainer_section_printer.print(
-                    f"[dim]✓ Trainer '{name}' registered to database "
-                    f"({trainer_record.id} • Model: {trainer_spec.model_ref} • "
-                    f"Optimizer: {trainer_spec.optimizer.type})[/dim]"
-                )
-        except Exception as exc:
-            return ToolResult.error_result(f"Failed to register trainer: {exc}")
-
-        # Build simple output for ToolResult (detailed output already shown in UI)
-        lines = [f"Trainer '{name}' registered successfully as {trainer_record.id}"]
-
-        # Build result metadata (before auto-launch to use in error handling)
-        result_metadata = {
-            "trainer_id": trainer_record.id,
-            "trainer_name": name,
-            "model_id": model_record.id,
-            "yaml_content": trainer_yaml,
-            "training_launched": False,  # Will update if training launches
-        }
-
-        # Auto-launch training after trainer is accepted
-        job_id = None
-
-        if True:  # Always train when trainer is accepted
-            if ml_trainer_section_printer:
-                ml_trainer_section_printer.print("")  # Empty line before training
-                ml_trainer_section_printer.print(
-                    f"→ Launching training with trainer '{name}'..."
-                )
-
-            try:
-                job_id = await asyncio.to_thread(
-                    self.runtime.train_with_trainer,
-                    trainer_name=str(name),
-                    train_table=str(train_table),
-                )
-
-                lines.append("")
-                lines.append("✓ Training job submitted successfully.")
-                lines.append(f"Training table: {train_table}")
-                lines.append(f"Job ID: {job_id}")
-
-                # Show training success message in section
-                if ml_trainer_section_printer:
-                    ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print(
-                        "[dim]✓ Training job submitted successfully.[/dim]"
-                    )
-                    ml_trainer_section_printer.print(
-                        f"[dim]Training table: {train_table}[/dim]"
-                    )
-                    ml_trainer_section_printer.print(f"[dim]Job ID: {job_id}[/dim]")
-
-                # Show job monitoring instructions in section
-                if ml_trainer_section_printer:
-                    ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print(
-                        "[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]"
-                    )
-                    ml_trainer_section_printer.print(
-                        f"[dim]  • Status: /ml jobs status {job_id}[/dim]"
-                    )
-                    ml_trainer_section_printer.print(
-                        f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]"
-                    )
-
-                # Handle TensorBoard launch
-                if not auto_confirm and self.ui:
-                    if self.tensorboard_manager:
-                        try:
-                            await self._handle_tensorboard_launch(
-                                job_id, ml_trainer_section_printer
-                            )
-                        except (OSError, RuntimeError) as e:
-                            # Known TensorBoard launch failures
-                            if ml_trainer_section_printer:
-                                ml_trainer_section_printer.print(
-                                    f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
-                                )
-                            self._show_manual_tensorboard_instructions(
-                                job_id, ml_trainer_section_printer
-                            )
-                        except Exception as e:
-                            # Log unexpected errors with full traceback
-                            import logging
-
-                            logging.exception(
-                                "Unexpected error during TensorBoard launch"
-                            )
-                            error_msg = f"{e.__class__.__name__}: {e}"
-                            if ml_trainer_section_printer:
-                                ml_trainer_section_printer.print(
-                                    "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
-                                )
-                                ml_trainer_section_printer.print(
-                                    f"[yellow]{error_msg}[/yellow]"
-                                )
-                            self._show_manual_tensorboard_instructions(
-                                job_id, ml_trainer_section_printer
-                            )
-                    else:
-                        # No TensorBoard manager available
-                        if ml_trainer_section_printer:
-                            ml_trainer_section_printer.print(
-                                "[dim]ℹ️  TensorBoard auto-launch not available "
-                                "(restart arc chat to enable)[/dim]"
-                            )
-                        self._show_manual_tensorboard_instructions(
-                            job_id, ml_trainer_section_printer
-                        )
-
-                # Training job launched successfully - job status can be
-                # checked separately. The agent will monitor job status and
-                # analyze results when training completes
-
-            except MLRuntimeError as exc:
-                # Trainer was successfully registered but training launch failed
-                # Display error in section and return success with warning since
-                # trainer is usable
-                if ml_trainer_section_printer:
-                    ml_trainer_section_printer.print("⚠ Training Validation Failed")
-                    ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print(f"[red]{exc}[/red]")
-                    ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print(
-                        f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
-                    )
-                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                    ml_trainer_section_printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
-
-                lines.append("")
-                lines.append("⚠ Training Validation Failed")
-                lines.append("")
-                lines.append(f"{exc}")
-                lines.append("")
-                lines.append(f"Note: Trainer '{name}' was registered successfully")
-                retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                lines.append(f"Retry: {retry_cmd}")
-
-                # Extract validation report if available for agent debugging
-                validation_report = getattr(exc, "validation_report", None)
-
-                metadata = {
-                    **result_metadata,
-                    "training_launch_failed": True,
-                    "training_error": str(exc),
-                }
-
-                # Include detailed validation report for agent debugging
-                if validation_report:
-                    metadata["validation_report"] = validation_report
-
+                trainer_dict = yaml.safe_load(trainer_yaml)
+                validate_trainer_dict(trainer_dict)
+            except (yaml.YAMLError, TrainerValidationError) as exc:
+                # Print error within the ML Trainer section
+                error_msg = f"Trainer validation failed: {exc}"
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {error_msg}")
+                # Close the section before returning
+                if self.ui and hasattr(self, "_ml_trainer_section"):
+                    self._ml_trainer_section.__exit__(None, None, None)
                 return ToolResult(
-                    success=True,  # Trainer registration succeeded
-                    output="\n".join(lines),
-                    metadata=metadata,
+                    success=False,
+                    output=error_msg,
+                    metadata={"error_shown": True, "error_message": error_msg},
                 )
             except Exception as exc:
-                # Log unexpected errors with full traceback
                 import logging
 
-                logging.exception("Unexpected error during training launch")
-
-                # Trainer was successfully registered but training launch failed
-                # Display error in section
-                if ml_trainer_section_printer:
-                    ml_trainer_section_printer.print("⚠ Training Validation Failed")
-                    ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print(
-                        f"[red]{exc.__class__.__name__}: {exc}[/red]"
-                    )
-                    ml_trainer_section_printer.print("")
-                    ml_trainer_section_printer.print(
-                        f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
-                    )
-                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                    ml_trainer_section_printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
-
-                lines.append("")
-                lines.append("⚠ Training Validation Failed")
-                lines.append("")
-                lines.append(f"{exc.__class__.__name__}: {exc}")
-                lines.append("")
-                lines.append(f"Note: Trainer '{name}' was registered successfully")
-                retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
-                lines.append(f"Retry: {retry_cmd}")
-
-                # Extract validation report if available (might not be present)
-                validation_report = getattr(exc, "validation_report", None)
-
-                metadata = {
-                    **result_metadata,
-                    "training_launch_failed": True,
-                    "training_error": f"{exc.__class__.__name__}: {exc}",
-                }
-
-                if validation_report:
-                    metadata["validation_report"] = validation_report
-
+                logging.exception("Unexpected error during trainer validation")
+                # Print error within the ML Trainer section
+                error_msg = f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {error_msg}")
+                # Close the section before returning
+                if self.ui and hasattr(self, "_ml_trainer_section"):
+                    self._ml_trainer_section.__exit__(None, None, None)
                 return ToolResult(
-                    success=True,  # Trainer registration succeeded
-                    output="\n".join(lines),
-                    metadata=metadata,
+                    success=False,
+                    output=error_msg,
+                    metadata={"error_shown": True, "error_message": error_msg},
                 )
 
-        # Build result metadata
-        result_metadata = {
-            "trainer_id": trainer_record.id,
-            "trainer_name": name,
-            "model_id": model_record.id,
-            "yaml_content": trainer_yaml,
-            "training_launched": job_id is not None,
-            "from_ml_plan": ml_plan is not None,
-        }
+            # Interactive confirmation workflow (unless auto_confirm is True)
+            if not auto_confirm:
+                workflow = YamlConfirmationWorkflow(
+                    validator_func=self._create_validator(),
+                    editor_func=self._create_editor(instruction, model_record),
+                    ui_interface=self.ui,
+                    yaml_type_name="trainer",
+                    yaml_suffix=".arc-trainer.yaml",
+                )
 
-        if job_id:
-            result_metadata["job_id"] = job_id
+                context_dict = {
+                    "trainer_name": str(name),
+                    "instruction": str(instruction),
+                    "model_id": model_record.id,
+                    "model_spec_yaml": model_record.spec,
+                }
 
-        # Add empty line for visual separation
-        if ml_trainer_section_printer:
-            ml_trainer_section_printer.print("")
+                try:
+                    proceed, final_yaml = await workflow.run_workflow(
+                        trainer_yaml,
+                        context_dict,
+                        None,  # No output path - we register to DB
+                        conversation_history,  # Pass conversation history for editing
+                    )
+                    if not proceed:
+                        # Close the section before returning
+                        if self.ui and hasattr(self, "_ml_trainer_section"):
+                            self._ml_trainer_section.__exit__(None, None, None)
+                        return ToolResult(
+                            success=True,
+                            output="✗ Trainer generation cancelled.",
+                            metadata={"cancelled": True},
+                        )
+                    trainer_yaml = final_yaml
+                finally:
+                    workflow.cleanup()
 
-        # Close the ML Trainer section
-        if self.ui and hasattr(self, "_ml_trainer_section"):
-            self._ml_trainer_section.__exit__(None, None, None)
+            # Auto-register trainer to database
+            try:
+                # Extract plan_id from ml_plan if provided
+                plan_id = ml_plan.get("plan_id") if ml_plan else None
 
-        return ToolResult(
-            success=True,
-            output="\n".join(lines),
-            metadata=result_metadata,
-        )
+                trainer_record = self.runtime.create_trainer(
+                    name=str(name),
+                    model_id=str(model_id),
+                    schema_yaml=trainer_yaml,
+                    description=f"Generated trainer for model {model_id}",
+                    plan_id=plan_id,
+                )
+
+                # Display registration confirmation in the ML Trainer section
+                if printer:
+                    printer.print("")  # Empty line before confirmation
+                    printer.print(
+                        f"[dim]✓ Trainer '{name}' registered to database "
+                        f"({trainer_record.id} • Model: {trainer_spec.model_ref} • "
+                        f"Optimizer: {trainer_spec.optimizer.type})[/dim]"
+                    )
+            except Exception as exc:
+                return ToolResult.error_result(f"Failed to register trainer: {exc}")
+
+            # Build simple output for ToolResult (detailed output already shown in UI)
+            lines = [f"Trainer '{name}' registered successfully as {trainer_record.id}"]
+
+            # Build result metadata (before auto-launch to use in error handling)
+            result_metadata = {
+                "trainer_id": trainer_record.id,
+                "trainer_name": name,
+                "model_id": model_record.id,
+                "yaml_content": trainer_yaml,
+                "training_launched": False,  # Will update if training launches
+            }
+
+            # Auto-launch training after trainer is accepted
+            job_id = None
+
+            if True:  # Always train when trainer is accepted
+                if printer:
+                    printer.print("")  # Empty line before training
+                    printer.print(
+                        f"→ Launching training with trainer '{name}'..."
+                    )
+
+                try:
+                    job_id = await asyncio.to_thread(
+                        self.runtime.train_with_trainer,
+                        trainer_name=str(name),
+                        train_table=str(train_table),
+                    )
+
+                    lines.append("")
+                    lines.append("✓ Training job submitted successfully.")
+                    lines.append(f"Training table: {train_table}")
+                    lines.append(f"Job ID: {job_id}")
+
+                    # Show training success message in section
+                    if printer:
+                        printer.print("")
+                        printer.print(
+                            "[dim]✓ Training job submitted successfully.[/dim]"
+                        )
+                        printer.print(
+                            f"[dim]Training table: {train_table}[/dim]"
+                        )
+                        printer.print(f"[dim]Job ID: {job_id}[/dim]")
+
+                    # Show job monitoring instructions in section
+                    if printer:
+                        printer.print("")
+                        printer.print(
+                            "[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]"
+                        )
+                        printer.print(
+                            f"[dim]  • Status: /ml jobs status {job_id}[/dim]"
+                        )
+                        printer.print(
+                            f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]"
+                        )
+
+                    # Handle TensorBoard launch
+                    if not auto_confirm and self.ui:
+                        if self.tensorboard_manager:
+                            try:
+                                await self._handle_tensorboard_launch(
+                                    job_id, printer
+                                )
+                            except (OSError, RuntimeError) as e:
+                                # Known TensorBoard launch failures
+                                if printer:
+                                    printer.print(
+                                        f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                                    )
+                                self._show_manual_tensorboard_instructions(
+                                    job_id, printer
+                                )
+                            except Exception as e:
+                                # Log unexpected errors with full traceback
+                                import logging
+
+                                logging.exception(
+                                    "Unexpected error during TensorBoard launch"
+                                )
+                                error_msg = f"{e.__class__.__name__}: {e}"
+                                if printer:
+                                    printer.print(
+                                        "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
+                                    )
+                                    printer.print(
+                                        f"[yellow]{error_msg}[/yellow]"
+                                    )
+                                self._show_manual_tensorboard_instructions(
+                                    job_id, printer
+                                )
+                        else:
+                            # No TensorBoard manager available
+                            if printer:
+                                printer.print(
+                                    "[dim]ℹ️  TensorBoard auto-launch not available "
+                                    "(restart arc chat to enable)[/dim]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job_id, printer
+                            )
+
+                    # Training job launched successfully - job status can be
+                    # checked separately. The agent will monitor job status and
+                    # analyze results when training completes
+
+                except MLRuntimeError as exc:
+                    # Trainer was successfully registered but training launch failed
+                    # Display error in section and return success with warning since
+                    # trainer is usable
+                    if printer:
+                        printer.print("⚠ Training Validation Failed")
+                        printer.print("")
+                        printer.print(f"[red]{exc}[/red]")
+                        printer.print("")
+                        printer.print(
+                            f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                        )
+                        retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                        printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
+
+                    lines.append("")
+                    lines.append("⚠ Training Validation Failed")
+                    lines.append("")
+                    lines.append(f"{exc}")
+                    lines.append("")
+                    lines.append(f"Note: Trainer '{name}' was registered successfully")
+                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                    lines.append(f"Retry: {retry_cmd}")
+
+                    # Extract validation report if available for agent debugging
+                    validation_report = getattr(exc, "validation_report", None)
+
+                    metadata = {
+                        **result_metadata,
+                        "training_launch_failed": True,
+                        "training_error": str(exc),
+                    }
+
+                    # Include detailed validation report for agent debugging
+                    if validation_report:
+                        metadata["validation_report"] = validation_report
+
+                    return ToolResult(
+                        success=True,  # Trainer registration succeeded
+                        output="\n".join(lines),
+                        metadata=metadata,
+                    )
+                except Exception as exc:
+                    # Log unexpected errors with full traceback
+                    import logging
+
+                    logging.exception("Unexpected error during training launch")
+
+                    # Trainer was successfully registered but training launch failed
+                    # Display error in section
+                    if printer:
+                        printer.print("⚠ Training Validation Failed")
+                        printer.print("")
+                        printer.print(
+                            f"[red]{exc.__class__.__name__}: {exc}[/red]"
+                        )
+                        printer.print("")
+                        printer.print(
+                            f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                        )
+                        retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                        printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
+
+                    lines.append("")
+                    lines.append("⚠ Training Validation Failed")
+                    lines.append("")
+                    lines.append(f"{exc.__class__.__name__}: {exc}")
+                    lines.append("")
+                    lines.append(f"Note: Trainer '{name}' was registered successfully")
+                    retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                    lines.append(f"Retry: {retry_cmd}")
+
+                    # Extract validation report if available (might not be present)
+                    validation_report = getattr(exc, "validation_report", None)
+
+                    metadata = {
+                        **result_metadata,
+                        "training_launch_failed": True,
+                        "training_error": f"{exc.__class__.__name__}: {exc}",
+                    }
+
+                    if validation_report:
+                        metadata["validation_report"] = validation_report
+
+                    return ToolResult(
+                        success=True,  # Trainer registration succeeded
+                        output="\n".join(lines),
+                        metadata=metadata,
+                    )
+
+            # Build result metadata
+            result_metadata = {
+                "trainer_id": trainer_record.id,
+                "trainer_name": name,
+                "model_id": model_record.id,
+                "yaml_content": trainer_yaml,
+                "training_launched": job_id is not None,
+                "from_ml_plan": ml_plan is not None,
+            }
+
+            if job_id:
+                result_metadata["job_id"] = job_id
+
+            # Add empty line for visual separation
+            if printer:
+                printer.print("")
+
+                self._ml_trainer_section.__exit__(None, None, None)
+
+            return ToolResult(
+                success=True,
+                output="\n".join(lines),
+                metadata=result_metadata,
+            )
 
     async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.
@@ -1325,568 +1303,110 @@ class MLEvaluateTool(BaseTool):
             ToolResult with job_id for monitoring async evaluation
         """
         # Show section title first, before any validation
-        # Keep the section printer reference to use for all messages including errors
-        ml_evaluator_section_printer = None
-        if self.ui:
-            self._ml_evaluator_section = self.ui._printer.section(
-                color="magenta", add_dot=True
-            )
-            ml_evaluator_section_printer = self._ml_evaluator_section.__enter__()
-
-            # Build title with metadata
-            title = "ML Evaluator"
-            metadata_parts = []
-            if plan_id:
-                metadata_parts.append(plan_id)
-            if recommended_knowledge_ids:
-                metadata_parts.extend(recommended_knowledge_ids)
-            if metadata_parts:
-                title += f" [dim]({' • '.join(metadata_parts)})[/dim]"
-
-            ml_evaluator_section_printer.print(title)
-            # Show task description (dimmed)
-            ml_evaluator_section_printer.print(f"[dim]Task: {instruction}[/dim]")
-
-        # Helper to close section and return error
-        def _error_in_section(message: str) -> ToolResult:
-            if ml_evaluator_section_printer:
-                ml_evaluator_section_printer.print("")
-                ml_evaluator_section_printer.print(f"✗ {message}")
-            if self.ui and hasattr(self, "_ml_evaluator_section"):
-                self._ml_evaluator_section.__exit__(None, None, None)
-            return ToolResult(
-                success=False,
-                output=message,  # Pass error to agent
-                metadata={"error_shown": True, "error_message": message},
-            )
-
-        # Validate API key and services
-        if not self.api_key:
-            return _error_in_section(
-                "API key required for evaluator generation. "
-                "Set ARC_API_KEY or configure an API key before using this tool."
-            )
-
-        if not self.services:
-            return _error_in_section(
-                "Evaluator generation service unavailable. "
-                "Database services not initialized."
-            )
-
-        # Validate required parameters
-        if not name or not instruction or not trainer_id or not evaluate_table:
-            return _error_in_section(
-                "Parameters 'name', 'instruction', 'trainer_id', and 'evaluate_table' "
-                "are required."
-            )
-
-        # Get the registered trainer
-        try:
-            trainer_record = self.services.trainers.get_trainer_by_id(str(trainer_id))
-            if not trainer_record:
-                return _error_in_section(
-                    f"Trainer '{trainer_id}' not found in registry. "
-                    "Please train a model first using /ml train"
-                )
-        except Exception as exc:
-            return _error_in_section(
-                f"Failed to retrieve trainer '{trainer_id}': {exc}"
-            )
-
-        # Get model spec and infer target column
-        try:
-            model_record = self.services.models.get_model_by_id(trainer_record.model_id)
-            if not model_record:
-                return _error_in_section(
-                    f"Model '{trainer_record.model_id}' not found in registry"
-                )
-
-            # Infer target column from model spec
-            target_column = self._infer_target_column_from_model(model_record.spec)
-            if not target_column:
-                return _error_in_section(
-                    "Cannot infer target column from model spec. "
-                    "Ensure model's loss spec includes a 'target' input."
-                )
-
-        except Exception as exc:
-            return _error_in_section(f"Failed to retrieve model for trainer: {exc}")
-
-        # Check if target column exists in evaluate table
-        target_column_exists = False
-        try:
-            schema_info = self.services.schema.get_schema_info(target_db="user")
-            columns = schema_info.get_column_names(str(evaluate_table))
-            target_column_exists = str(target_column) in columns
-        except Exception:
-            # If schema check fails, default to assuming target exists
-            target_column_exists = True
-
-        # Show generation status
-        if ml_evaluator_section_printer:
-            ml_evaluator_section_printer.print(
-                "[dim]Generating Arc-Graph evaluator specification...[/dim]"
-            )
-
-        # Load plan from database if plan_id is provided
-        ml_plan_evaluation = None
+        # Build metadata for section title
+        metadata_parts = []
         if plan_id:
-            ml_plan, plan = _load_ml_plan(self.services, plan_id)
-            if ml_plan is None:
-                # plan contains error message
-                return _error_in_section(plan)
-            ml_plan_evaluation = plan.evaluation
+            metadata_parts.append(plan_id)
+        if recommended_knowledge_ids:
+            metadata_parts.extend(recommended_knowledge_ids)
 
-        # Generate evaluator spec via LLM
-        # Agent will discover relevant knowledge using tools
-        from arc.core.agents.ml_evaluate import MLEvaluateAgent
+        # Use context manager for section printing
+        with self._section_printer(
+            self.ui, "ML Evaluator", metadata=metadata_parts
+        ) as printer:
+            # Show task description
+            if printer:
+                printer.print(f"[dim]Task: {instruction}[/dim]")
 
-        agent = MLEvaluateAgent(
-            self.services,
-            self.api_key,
-            self.base_url,
-            self.model,
-        )
+            # Helper to show error and return
+            def _error_in_section(message: str) -> ToolResult:
+                if printer:
+                    printer.print("")
+                    printer.print(f"✗ {message}")
+                return ToolResult(
+                    success=False,
+                    output=message,
+                    metadata={"error_shown": True, "error_message": message},
+                )
 
-        try:
-            (
-                evaluator_spec,
-                evaluator_yaml,
-                conversation_history,
-            ) = await agent.generate_evaluator(
-                name=str(name),
-                instruction=str(instruction),
-                trainer_ref=str(trainer_id),
-                trainer_spec_yaml=trainer_record.spec,
-                dataset=str(evaluate_table),
-                target_column=str(target_column),
-                target_column_exists=target_column_exists,
-                ml_plan_evaluation=ml_plan_evaluation,
-                recommended_knowledge_ids=None,  # Let agent discover via tools
-            )
-        except Exception as exc:
-            from arc.core.agents.ml_evaluate import MLEvaluateError
+            # Validate API key and services
+            if not self.api_key:
+                return _error_in_section(
+                    "API key required for evaluator generation. "
+                    "Set ARC_API_KEY or configure an API key before using this tool."
+                )
 
-            if isinstance(exc, MLEvaluateError):
-                return ToolResult.error_result(str(exc))
-            return ToolResult.error_result(
-                f"Unexpected error during evaluator generation: {exc}"
-            )
+            if not self.services:
+                return _error_in_section(
+                    "Evaluator generation service unavailable. "
+                    "Database services not initialized."
+                )
 
-        # Validate the generated evaluator
-        try:
-            from arc.graph.evaluator import (
-                EvaluatorValidationError,
-                validate_evaluator_dict,
-            )
+            # Validate required parameters
+            if not name or not instruction or not trainer_id or not evaluate_table:
+                return _error_in_section(
+                    "Parameters 'name', 'instruction', 'trainer_id', and 'evaluate_table' "
+                    "are required."
+                )
 
-            evaluator_dict = yaml.safe_load(evaluator_yaml)
-            validate_evaluator_dict(evaluator_dict)
-        except yaml.YAMLError as exc:
-            return ToolResult.error_result(
-                f"Generated evaluator contains invalid YAML: {exc}"
-            )
-        except EvaluatorValidationError as exc:
-            return ToolResult.error_result(
-                f"Generated evaluator failed validation: {exc}"
-            )
-        except Exception as exc:
-            # Log unexpected errors with full traceback
-            import logging
-
-            logging.exception("Unexpected error during evaluator validation")
-            return ToolResult.error_result(
-                f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
-            )
-
-        # Interactive confirmation workflow (unless auto_confirm is True)
-        if not auto_confirm:
-            workflow = YamlConfirmationWorkflow(
-                validator_func=self._create_validator(),
-                editor_func=self._create_editor(
-                    instruction, trainer_id, trainer_record, target_column_exists
-                ),
-                ui_interface=self.ui,
-                yaml_type_name="evaluator",
-                yaml_suffix=".arc-evaluator.yaml",
-            )
-
-            context_dict = {
-                "evaluator_name": str(name),
-                "instruction": str(instruction),
-                "trainer_id": str(trainer_id),
-                "trainer_ref": str(trainer_id),
-                "trainer_spec_yaml": trainer_record.spec,
-                "dataset": str(evaluate_table),
-                "target_column": str(target_column),
-                "target_column_exists": target_column_exists,
-            }
-
+            # Get the registered trainer
             try:
-                proceed, final_yaml = await workflow.run_workflow(
-                    evaluator_yaml,
-                    context_dict,
-                    None,  # No output path - we register to DB
-                    conversation_history,  # Pass conversation history for editing
-                )
-                if not proceed:
-                    # Close the section before returning
-                    if self.ui and hasattr(self, "_ml_evaluator_section"):
-                        self._ml_evaluator_section.__exit__(None, None, None)
-                    return ToolResult(
-                        success=True,
-                        output="✗ Evaluator cancelled.",
-                        metadata={"cancelled": True},
+                trainer_record = self.services.trainers.get_trainer_by_id(str(trainer_id))
+                if not trainer_record:
+                    return _error_in_section(
+                        f"Trainer '{trainer_id}' not found in registry. "
+                        "Please train a model first using /ml train"
                     )
-                evaluator_yaml = final_yaml
-            finally:
-                workflow.cleanup()
-
-        # Auto-register evaluator to database (or reuse existing)
-        try:
-            from datetime import UTC, datetime
-
-            from arc.database.models.evaluator import Evaluator
-
-            # Check if evaluator with same spec already exists
-            existing_evaluator = self.services.evaluators.get_latest_evaluator_by_name(
-                str(name)
-            )
-            evaluator_record = None
-
-            # Use semantic YAML comparison instead of string comparison
-            # This handles whitespace differences and formatting variations
-            spec_matches = False
-            if existing_evaluator:
-                try:
-                    existing_spec_dict = yaml.safe_load(existing_evaluator.spec)
-                    new_spec_dict = yaml.safe_load(evaluator_yaml)
-                    spec_matches = existing_spec_dict == new_spec_dict
-                except yaml.YAMLError:
-                    # If YAML parsing fails, fall back to string comparison
-                    spec_matches = (
-                        existing_evaluator.spec.strip() == evaluator_yaml.strip()
-                    )
-
-            if spec_matches:
-                # Reuse existing evaluator (same spec)
-                evaluator_record = existing_evaluator
-                # Display "using existing" message in the ML Evaluator section
-                if ml_evaluator_section_printer:
-                    ml_evaluator_section_printer.print(
-                        ""
-                    )  # Empty line before confirmation
-                    ml_evaluator_section_printer.print(
-                        f"[dim]✓ Using existing evaluator '{name}' "
-                        f"({evaluator_record.id} • "
-                        f"Trainer: {evaluator_spec.trainer_ref} • "
-                        f"Dataset: {evaluator_spec.dataset})[/dim]"
-                    )
-            else:
-                # Create new version (spec changed or first time)
-                next_version = self.services.evaluators.get_next_version_for_name(
-                    str(name)
-                )
-                evaluator_id = f"{name}-v{next_version}"
-
-                evaluator_record = Evaluator(
-                    id=evaluator_id,
-                    name=str(name),
-                    version=next_version,
-                    trainer_id=trainer_record.id,
-                    trainer_version=trainer_record.version,
-                    spec=evaluator_yaml,
-                    description=f"Generated evaluator for trainer {trainer_id}",
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
+            except Exception as exc:
+                return _error_in_section(
+                    f"Failed to retrieve trainer '{trainer_id}': {exc}"
                 )
 
-                self.services.evaluators.create_evaluator(evaluator_record)
-
-                # Display registration confirmation in the ML Evaluator section
-                if ml_evaluator_section_printer:
-                    ml_evaluator_section_printer.print(
-                        ""
-                    )  # Empty line before confirmation
-                    ml_evaluator_section_printer.print(
-                        f"[dim]✓ Evaluator '{name}' registered to database "
-                        f"({evaluator_record.id} • "
-                        f"Trainer: {evaluator_spec.trainer_ref} • "
-                        f"Dataset: {evaluator_spec.dataset})[/dim]"
-                    )
-        except Exception as exc:
-            return ToolResult.error_result(f"Failed to register evaluator: {exc}")
-
-        # Build simple output for ToolResult (detailed output already shown in UI)
-        lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
-
-        # Launch evaluation as background job (async pattern)
-        if ml_evaluator_section_printer:
-            ml_evaluator_section_printer.print("")
-            ml_evaluator_section_printer.print(
-                f"→ Launching evaluation with '{name}'..."
-            )
-
-        # Create job record for this evaluation
-        from arc.jobs.models import Job, JobType
-
-        job = Job.create(
-            job_type=JobType.EVALUATE_MODEL,
-            model_id=None,  # Not using legacy model_id
-            message=f"Evaluating {evaluator_record.id} on {evaluate_table}",
-        )
-        self.services.jobs.create_job(job)
-
-        # Create evaluation run record
-        from arc.database.models.evaluation import EvaluationStatus
-        from arc.database.services import EvaluationTrackingService
-
-        tracking_service = EvaluationTrackingService(self.services.trainers.db_manager)
-
-        try:
-            eval_run = tracking_service.create_run(
-                evaluator_id=evaluator_record.id,
-                trainer_id=trainer_record.id,
-                dataset=str(evaluate_table),
-                target_column=str(target_column),
-                job_id=job.job_id,
-            )
-
-            # Update job and run status to running
-            job.start(f"Running evaluation: {evaluator_record.id}")
-            self.services.jobs.update_job(job)
-
-            tracking_service.update_run_status(
-                eval_run.run_id,
-                EvaluationStatus.RUNNING,
-                timestamp_field="started_at",
-            )
-
-            # Load evaluator from trainer
-            from arc.ml.evaluator import ArcEvaluator
-
-            evaluator = ArcEvaluator.load_from_trainer(
-                artifact_manager=self.runtime.artifact_manager,
-                trainer_service=self.services.trainers,
-                evaluator_spec=evaluator_spec,
-                device="cpu",
-            )
-
-            # Derive output table name from evaluator ID
-            output_table = f"{evaluator_record.id}_predictions"
-
-            # Setup TensorBoard logging directory
-            from pathlib import Path
-
-            tensorboard_log_dir = Path(f"tensorboard/run_{job.job_id}")
-
-            # Launch evaluation in background and return immediately
-            async def run_evaluation_background():
-                """Background task to run evaluation without blocking."""
-                try:
-                    result = await asyncio.to_thread(
-                        evaluator.evaluate,
-                        self.services.ml_data,
-                        output_table,
-                        tensorboard_log_dir,
-                    )
-
-                    # Update run with results
-                    tracking_service.update_run_result(
-                        eval_run.run_id,
-                        metrics_result=result.metrics,
-                        prediction_table=output_table,
-                    )
-
-                    # Mark as completed
-                    tracking_service.update_run_status(
-                        eval_run.run_id,
-                        EvaluationStatus.COMPLETED,
-                        timestamp_field="completed_at",
-                    )
-
-                    # Update job status
-                    metrics_summary = ", ".join(
-                        f"{k}={v:.4f}" for k, v in list(result.metrics.items())[:3]
-                    )
-                    job.complete(f"Evaluation completed: {metrics_summary}")
-                    self.services.jobs.update_job(job)
-
-                except Exception as exc:
-                    # Update run with error
-                    try:
-                        tracking_service.update_run_error(eval_run.run_id, str(exc))
-                        tracking_service.update_run_status(
-                            eval_run.run_id,
-                            EvaluationStatus.FAILED,
-                        )
-                    except Exception:  # noqa: S110
-                        pass
-
-                    # Update job with error
-                    try:
-                        job.fail(f"Evaluation failed: {str(exc)[:200]}")
-                        self.services.jobs.update_job(job)
-                    except Exception:  # noqa: S110
-                        pass
-
-            # Launch background task (fire-and-forget)
-            asyncio.create_task(run_evaluation_background())
-
-            # Return immediately with job info
-            lines.append("")
-            lines.append("✓ Evaluation job submitted successfully.")
-            lines.append(f"  Evaluator: {evaluator_record.id}")
-            lines.append(f"  Dataset: {evaluate_table}")
-            lines.append(f"  Job ID: {job.job_id}")
-            lines.append(f"  Run ID: {eval_run.run_id}")
-
-            # Show job monitoring instructions in section
-            if ml_evaluator_section_printer:
-                ml_evaluator_section_printer.print("")
-                ml_evaluator_section_printer.print(
-                    "[dim][cyan]ℹ Monitor evaluation progress:[/cyan][/dim]"
-                )
-                ml_evaluator_section_printer.print(
-                    f"[dim]  • Status: /ml jobs status {job.job_id}[/dim]"
-                )
-                ml_evaluator_section_printer.print(
-                    f"[dim]  • Logs: /ml jobs logs {job.job_id}[/dim]"
-                )
-
-            # Handle TensorBoard launch for monitoring
-            if not auto_confirm and self.ui:
-                if self.tensorboard_manager:
-                    try:
-                        await self._handle_tensorboard_launch(
-                            job.job_id, ml_evaluator_section_printer
-                        )
-                    except (OSError, RuntimeError) as e:
-                        # Known TensorBoard launch failures
-                        if ml_evaluator_section_printer:
-                            ml_evaluator_section_printer.print(
-                                f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
-                            )
-                        self._show_manual_tensorboard_instructions(
-                            job.job_id, ml_evaluator_section_printer
-                        )
-                    except Exception as e:
-                        # Log unexpected errors with full traceback
-                        import logging
-
-                        logging.exception("Unexpected error during TensorBoard launch")
-                        error_msg = f"{e.__class__.__name__}: {e}"
-                        if ml_evaluator_section_printer:
-                            ml_evaluator_section_printer.print(
-                                f"[yellow]⚠️  TensorBoard setup failed: "
-                                f"{error_msg}[/yellow]"
-                            )
-                        self._show_manual_tensorboard_instructions(
-                            job.job_id, ml_evaluator_section_printer
-                        )
-                else:
-                    # No TensorBoard manager available
-                    if ml_evaluator_section_printer:
-                        ml_evaluator_section_printer.print(
-                            "[dim]ℹ️  TensorBoard auto-launch not available "
-                            "(restart arc chat to enable)[/dim]"
-                        )
-                    self._show_manual_tensorboard_instructions(
-                        job.job_id, ml_evaluator_section_printer
-                    )
-
-            # Evaluation launched successfully - job status can be checked separately
-
-        except Exception as exc:
-            # Evaluator was successfully registered but evaluation launch failed
-            lines.append("")
-            lines.append("⚠️  Evaluation launch failed but evaluator is registered.")
-            lines.append(f"Error: {exc}")
-            lines.append("")
-            retry_cmd = f"/ml evaluate --evaluator {name} --data {evaluate_table}"
-            lines.append(f"Retry evaluation with: {retry_cmd}")
-
-            # Close the section before returning
-            if self.ui and hasattr(self, "_ml_evaluator_section"):
-                self._ml_evaluator_section.__exit__(None, None, None)
-
-            return ToolResult(
-                success=True,  # Evaluator registration succeeded
-                output="\n".join(lines),
-                metadata={
-                    "evaluator_id": evaluator_record.id,
-                    "evaluator_name": name,
-                    "trainer_id": trainer_record.id,
-                    "yaml_content": evaluator_yaml,
-                    "evaluation_launched": False,
-                    "evaluation_error": str(exc),
-                    "from_ml_plan": ml_plan is not None,
-                },
-            )
-
-        # Add empty line for visual separation
-        if ml_evaluator_section_printer:
-            ml_evaluator_section_printer.print("")
-
-        # Close the ML Evaluator section
-        if self.ui and hasattr(self, "_ml_evaluator_section"):
-            self._ml_evaluator_section.__exit__(None, None, None)
-
-        # Build result metadata
-        result_metadata = {
-            "evaluator_id": evaluator_record.id,
-            "evaluator_name": name,
-            "trainer_id": trainer_record.id,
-            "yaml_content": evaluator_yaml,
-            "evaluation_launched": True,
-            "job_id": job.job_id,
-            "run_id": eval_run.run_id,
-            "from_ml_plan": ml_plan is not None,
-        }
-
-        return ToolResult(
-            success=True,
-            output="\n".join(lines),
-            metadata=result_metadata,
-        )
-
-    def _create_validator(self):
-        """Create validator function for the workflow."""
-
-        def validate(yaml_str: str) -> list[str]:
+            # Get model spec and infer target column
             try:
-                from arc.graph.evaluator import (
-                    EvaluatorValidationError,
-                    validate_evaluator_dict,
+                model_record = self.services.models.get_model_by_id(trainer_record.model_id)
+                if not model_record:
+                    return _error_in_section(
+                        f"Model '{trainer_record.model_id}' not found in registry"
+                    )
+
+                # Infer target column from model spec
+                target_column = self._infer_target_column_from_model(model_record.spec)
+                if not target_column:
+                    return _error_in_section(
+                        "Cannot infer target column from model spec. "
+                        "Ensure model's loss spec includes a 'target' input."
+                    )
+
+            except Exception as exc:
+                return _error_in_section(f"Failed to retrieve model for trainer: {exc}")
+
+            # Check if target column exists in evaluate table
+            target_column_exists = False
+            try:
+                schema_info = self.services.schema.get_schema_info(target_db="user")
+                columns = schema_info.get_column_names(str(evaluate_table))
+                target_column_exists = str(target_column) in columns
+            except Exception:
+                # If schema check fails, default to assuming target exists
+                target_column_exists = True
+
+            # Show generation status
+            if printer:
+                printer.print(
+                    "[dim]Generating Arc-Graph evaluator specification...[/dim]"
                 )
 
-                evaluator_dict = yaml.safe_load(yaml_str)
-                validate_evaluator_dict(evaluator_dict)
-                return []  # No errors
-            except yaml.YAMLError as e:
-                return [f"Invalid YAML: {e}"]
-            except EvaluatorValidationError as e:
-                return [f"Validation error: {e}"]
-            except Exception as e:
-                return [f"Unexpected error: {e}"]
+            # Load plan from database if plan_id is provided
+            ml_plan_evaluation = None
+            if plan_id:
+                ml_plan, plan = _load_ml_plan(self.services, plan_id)
+                if ml_plan is None:
+                    # plan contains error message
+                    return _error_in_section(plan)
+                ml_plan_evaluation = plan.evaluation
 
-        return validate
-
-    def _create_editor(
-        self,
-        _user_instruction: str,
-        trainer_id: str,
-        trainer_record,
-        target_column_exists: bool,
-    ):
-        """Create editor function for AI-assisted editing with conversation history."""
-
-        async def edit(
-            yaml_content: str,
-            feedback: str,
-            context: dict[str, Any],
-            conversation_history: list[dict[str, str]] | None = None,
-        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            # Generate evaluator spec via LLM
             # Agent will discover relevant knowledge using tools
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
 
@@ -1899,28 +1419,475 @@ class MLEvaluateTool(BaseTool):
 
             try:
                 (
-                    _evaluator_spec,
-                    edited_yaml,
-                    updated_history,
+                    evaluator_spec,
+                    evaluator_yaml,
+                    conversation_history,
                 ) = await agent.generate_evaluator(
-                    name=context["evaluator_name"],
-                    instruction=feedback,
-                    trainer_ref=trainer_id,
+                    name=str(name),
+                    instruction=str(instruction),
+                    trainer_ref=str(trainer_id),
                     trainer_spec_yaml=trainer_record.spec,
-                    dataset=context["dataset"],
-                    target_column=context["target_column"],
+                    dataset=str(evaluate_table),
+                    target_column=str(target_column),
                     target_column_exists=target_column_exists,
-                    existing_yaml=yaml_content,
+                    ml_plan_evaluation=ml_plan_evaluation,
                     recommended_knowledge_ids=None,  # Let agent discover via tools
-                    conversation_history=conversation_history,
                 )
-                return edited_yaml, updated_history
-            except Exception as e:
-                if self.ui:
-                    self.ui.show_system_error(f"❌ Edit failed: {e}")
-                return None, None
+            except Exception as exc:
+                from arc.core.agents.ml_evaluate import MLEvaluateError
 
-        return edit
+                if isinstance(exc, MLEvaluateError):
+                    return ToolResult.error_result(str(exc))
+                return ToolResult.error_result(
+                    f"Unexpected error during evaluator generation: {exc}"
+                )
+
+            # Validate the generated evaluator
+            try:
+                from arc.graph.evaluator import (
+                    EvaluatorValidationError,
+                    validate_evaluator_dict,
+                )
+
+                evaluator_dict = yaml.safe_load(evaluator_yaml)
+                validate_evaluator_dict(evaluator_dict)
+            except yaml.YAMLError as exc:
+                return ToolResult.error_result(
+                    f"Generated evaluator contains invalid YAML: {exc}"
+                )
+            except EvaluatorValidationError as exc:
+                return ToolResult.error_result(
+                    f"Generated evaluator failed validation: {exc}"
+                )
+            except Exception as exc:
+                # Log unexpected errors with full traceback
+                import logging
+
+                logging.exception("Unexpected error during evaluator validation")
+                return ToolResult.error_result(
+                    f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
+                )
+
+            # Interactive confirmation workflow (unless auto_confirm is True)
+            if not auto_confirm:
+                workflow = YamlConfirmationWorkflow(
+                    validator_func=self._create_validator(),
+                    editor_func=self._create_editor(
+                        instruction, trainer_id, trainer_record, target_column_exists
+                    ),
+                    ui_interface=self.ui,
+                    yaml_type_name="evaluator",
+                    yaml_suffix=".arc-evaluator.yaml",
+                )
+
+                context_dict = {
+                    "evaluator_name": str(name),
+                    "instruction": str(instruction),
+                    "trainer_id": str(trainer_id),
+                    "trainer_ref": str(trainer_id),
+                    "trainer_spec_yaml": trainer_record.spec,
+                    "dataset": str(evaluate_table),
+                    "target_column": str(target_column),
+                    "target_column_exists": target_column_exists,
+                }
+
+                try:
+                    proceed, final_yaml = await workflow.run_workflow(
+                        evaluator_yaml,
+                        context_dict,
+                        None,  # No output path - we register to DB
+                        conversation_history,  # Pass conversation history for editing
+                    )
+                    if not proceed:
+                        # Close the section before returning
+                        if self.ui and hasattr(self, "_ml_evaluator_section"):
+                            self._ml_evaluator_section.__exit__(None, None, None)
+                        return ToolResult(
+                            success=True,
+                            output="✗ Evaluator cancelled.",
+                            metadata={"cancelled": True},
+                        )
+                    evaluator_yaml = final_yaml
+                finally:
+                    workflow.cleanup()
+
+            # Auto-register evaluator to database (or reuse existing)
+            try:
+                from datetime import UTC, datetime
+
+                from arc.database.models.evaluator import Evaluator
+
+                # Check if evaluator with same spec already exists
+                existing_evaluator = self.services.evaluators.get_latest_evaluator_by_name(
+                    str(name)
+                )
+                evaluator_record = None
+
+                # Use semantic YAML comparison instead of string comparison
+                # This handles whitespace differences and formatting variations
+                spec_matches = False
+                if existing_evaluator:
+                    try:
+                        existing_spec_dict = yaml.safe_load(existing_evaluator.spec)
+                        new_spec_dict = yaml.safe_load(evaluator_yaml)
+                        spec_matches = existing_spec_dict == new_spec_dict
+                    except yaml.YAMLError:
+                        # If YAML parsing fails, fall back to string comparison
+                        spec_matches = (
+                            existing_evaluator.spec.strip() == evaluator_yaml.strip()
+                        )
+
+                if spec_matches:
+                    # Reuse existing evaluator (same spec)
+                    evaluator_record = existing_evaluator
+                    # Display "using existing" message in the ML Evaluator section
+                    if printer:
+                        printer.print(
+                            ""
+                        )  # Empty line before confirmation
+                        printer.print(
+                            f"[dim]✓ Using existing evaluator '{name}' "
+                            f"({evaluator_record.id} • "
+                            f"Trainer: {evaluator_spec.trainer_ref} • "
+                            f"Dataset: {evaluator_spec.dataset})[/dim]"
+                        )
+                else:
+                    # Create new version (spec changed or first time)
+                    next_version = self.services.evaluators.get_next_version_for_name(
+                        str(name)
+                    )
+                    evaluator_id = f"{name}-v{next_version}"
+
+                    evaluator_record = Evaluator(
+                        id=evaluator_id,
+                        name=str(name),
+                        version=next_version,
+                        trainer_id=trainer_record.id,
+                        trainer_version=trainer_record.version,
+                        spec=evaluator_yaml,
+                        description=f"Generated evaluator for trainer {trainer_id}",
+                        created_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
+                    )
+
+                    self.services.evaluators.create_evaluator(evaluator_record)
+
+                    # Display registration confirmation in the ML Evaluator section
+                    if printer:
+                        printer.print(
+                            ""
+                        )  # Empty line before confirmation
+                        printer.print(
+                            f"[dim]✓ Evaluator '{name}' registered to database "
+                            f"({evaluator_record.id} • "
+                            f"Trainer: {evaluator_spec.trainer_ref} • "
+                            f"Dataset: {evaluator_spec.dataset})[/dim]"
+                        )
+            except Exception as exc:
+                return ToolResult.error_result(f"Failed to register evaluator: {exc}")
+
+            # Build simple output for ToolResult (detailed output already shown in UI)
+            lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
+
+            # Launch evaluation as background job (async pattern)
+            if printer:
+                printer.print("")
+                printer.print(
+                    f"→ Launching evaluation with '{name}'..."
+                )
+
+            # Create job record for this evaluation
+            from arc.jobs.models import Job, JobType
+
+            job = Job.create(
+                job_type=JobType.EVALUATE_MODEL,
+                model_id=None,  # Not using legacy model_id
+                message=f"Evaluating {evaluator_record.id} on {evaluate_table}",
+            )
+            self.services.jobs.create_job(job)
+
+            # Create evaluation run record
+            from arc.database.models.evaluation import EvaluationStatus
+            from arc.database.services import EvaluationTrackingService
+
+            tracking_service = EvaluationTrackingService(self.services.trainers.db_manager)
+
+            try:
+                eval_run = tracking_service.create_run(
+                    evaluator_id=evaluator_record.id,
+                    trainer_id=trainer_record.id,
+                    dataset=str(evaluate_table),
+                    target_column=str(target_column),
+                    job_id=job.job_id,
+                )
+
+                # Update job and run status to running
+                job.start(f"Running evaluation: {evaluator_record.id}")
+                self.services.jobs.update_job(job)
+
+                tracking_service.update_run_status(
+                    eval_run.run_id,
+                    EvaluationStatus.RUNNING,
+                    timestamp_field="started_at",
+                )
+
+                # Load evaluator from trainer
+                from arc.ml.evaluator import ArcEvaluator
+
+                evaluator = ArcEvaluator.load_from_trainer(
+                    artifact_manager=self.runtime.artifact_manager,
+                    trainer_service=self.services.trainers,
+                    evaluator_spec=evaluator_spec,
+                    device="cpu",
+                )
+
+                # Derive output table name from evaluator ID
+                output_table = f"{evaluator_record.id}_predictions"
+
+                # Setup TensorBoard logging directory
+                from pathlib import Path
+
+                tensorboard_log_dir = Path(f"tensorboard/run_{job.job_id}")
+
+                # Launch evaluation in background and return immediately
+                async def run_evaluation_background():
+                    """Background task to run evaluation without blocking."""
+                    try:
+                        result = await asyncio.to_thread(
+                            evaluator.evaluate,
+                            self.services.ml_data,
+                            output_table,
+                            tensorboard_log_dir,
+                        )
+
+                        # Update run with results
+                        tracking_service.update_run_result(
+                            eval_run.run_id,
+                            metrics_result=result.metrics,
+                            prediction_table=output_table,
+                        )
+
+                        # Mark as completed
+                        tracking_service.update_run_status(
+                            eval_run.run_id,
+                            EvaluationStatus.COMPLETED,
+                            timestamp_field="completed_at",
+                        )
+
+                        # Update job status
+                        metrics_summary = ", ".join(
+                            f"{k}={v:.4f}" for k, v in list(result.metrics.items())[:3]
+                        )
+                        job.complete(f"Evaluation completed: {metrics_summary}")
+                        self.services.jobs.update_job(job)
+
+                    except Exception as exc:
+                        # Update run with error
+                        try:
+                            tracking_service.update_run_error(eval_run.run_id, str(exc))
+                            tracking_service.update_run_status(
+                                eval_run.run_id,
+                                EvaluationStatus.FAILED,
+                            )
+                        except Exception:  # noqa: S110
+                            pass
+
+                        # Update job with error
+                        try:
+                            job.fail(f"Evaluation failed: {str(exc)[:200]}")
+                            self.services.jobs.update_job(job)
+                        except Exception:  # noqa: S110
+                            pass
+
+                # Launch background task (fire-and-forget)
+                asyncio.create_task(run_evaluation_background())
+
+                # Return immediately with job info
+                lines.append("")
+                lines.append("✓ Evaluation job submitted successfully.")
+                lines.append(f"  Evaluator: {evaluator_record.id}")
+                lines.append(f"  Dataset: {evaluate_table}")
+                lines.append(f"  Job ID: {job.job_id}")
+                lines.append(f"  Run ID: {eval_run.run_id}")
+
+                # Show job monitoring instructions in section
+                if printer:
+                    printer.print("")
+                    printer.print(
+                        "[dim][cyan]ℹ Monitor evaluation progress:[/cyan][/dim]"
+                    )
+                    printer.print(
+                        f"[dim]  • Status: /ml jobs status {job.job_id}[/dim]"
+                    )
+                    printer.print(
+                        f"[dim]  • Logs: /ml jobs logs {job.job_id}[/dim]"
+                    )
+
+                # Handle TensorBoard launch for monitoring
+                if not auto_confirm and self.ui:
+                    if self.tensorboard_manager:
+                        try:
+                            await self._handle_tensorboard_launch(
+                                job.job_id, printer
+                            )
+                        except (OSError, RuntimeError) as e:
+                            # Known TensorBoard launch failures
+                            if printer:
+                                printer.print(
+                                    f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job.job_id, printer
+                            )
+                        except Exception as e:
+                            # Log unexpected errors with full traceback
+                            import logging
+
+                            logging.exception("Unexpected error during TensorBoard launch")
+                            error_msg = f"{e.__class__.__name__}: {e}"
+                            if printer:
+                                printer.print(
+                                    f"[yellow]⚠️  TensorBoard setup failed: "
+                                    f"{error_msg}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(
+                                job.job_id, printer
+                            )
+                    else:
+                        # No TensorBoard manager available
+                        if printer:
+                            printer.print(
+                                "[dim]ℹ️  TensorBoard auto-launch not available "
+                                "(restart arc chat to enable)[/dim]"
+                            )
+                        self._show_manual_tensorboard_instructions(
+                            job.job_id, printer
+                        )
+
+                # Evaluation launched successfully - job status can be checked separately
+
+            except Exception as exc:
+                # Evaluator was successfully registered but evaluation launch failed
+                lines.append("")
+                lines.append("⚠️  Evaluation launch failed but evaluator is registered.")
+                lines.append(f"Error: {exc}")
+                lines.append("")
+                retry_cmd = f"/ml evaluate --evaluator {name} --data {evaluate_table}"
+                lines.append(f"Retry evaluation with: {retry_cmd}")
+
+                # Close the section before returning
+                if self.ui and hasattr(self, "_ml_evaluator_section"):
+                    self._ml_evaluator_section.__exit__(None, None, None)
+
+                return ToolResult(
+                    success=True,  # Evaluator registration succeeded
+                    output="\n".join(lines),
+                    metadata={
+                        "evaluator_id": evaluator_record.id,
+                        "evaluator_name": name,
+                        "trainer_id": trainer_record.id,
+                        "yaml_content": evaluator_yaml,
+                        "evaluation_launched": False,
+                        "evaluation_error": str(exc),
+                        "from_ml_plan": ml_plan is not None,
+                    },
+                )
+
+            # Add empty line for visual separation
+            if printer:
+                printer.print("")
+
+                self._ml_evaluator_section.__exit__(None, None, None)
+
+            # Build result metadata
+            result_metadata = {
+                "evaluator_id": evaluator_record.id,
+                "evaluator_name": name,
+                "trainer_id": trainer_record.id,
+                "yaml_content": evaluator_yaml,
+                "evaluation_launched": True,
+                "job_id": job.job_id,
+                "run_id": eval_run.run_id,
+                "from_ml_plan": ml_plan is not None,
+            }
+
+            return ToolResult(
+                success=True,
+                output="\n".join(lines),
+                metadata=result_metadata,
+            )
+
+        def _create_validator(self):
+            """Create validator function for the workflow."""
+
+            def validate(yaml_str: str) -> list[str]:
+                try:
+                    from arc.graph.evaluator import (
+                        EvaluatorValidationError,
+                        validate_evaluator_dict,
+                    )
+
+                    evaluator_dict = yaml.safe_load(yaml_str)
+                    validate_evaluator_dict(evaluator_dict)
+                    return []  # No errors
+                except yaml.YAMLError as e:
+                    return [f"Invalid YAML: {e}"]
+                except EvaluatorValidationError as e:
+                    return [f"Validation error: {e}"]
+                except Exception as e:
+                    return [f"Unexpected error: {e}"]
+
+            return validate
+
+        def _create_editor(
+            self,
+            _user_instruction: str,
+            trainer_id: str,
+            trainer_record,
+            target_column_exists: bool,
+        ):
+            """Create editor function for AI-assisted editing with conversation history."""
+
+            async def edit(
+                yaml_content: str,
+                feedback: str,
+                context: dict[str, Any],
+                conversation_history: list[dict[str, str]] | None = None,
+            ) -> tuple[str | None, list[dict[str, str]] | None]:
+                # Agent will discover relevant knowledge using tools
+                from arc.core.agents.ml_evaluate import MLEvaluateAgent
+
+                agent = MLEvaluateAgent(
+                    self.services,
+                    self.api_key,
+                    self.base_url,
+                    self.model,
+                )
+
+                try:
+                    (
+                        _evaluator_spec,
+                        edited_yaml,
+                        updated_history,
+                    ) = await agent.generate_evaluator(
+                        name=context["evaluator_name"],
+                        instruction=feedback,
+                        trainer_ref=trainer_id,
+                        trainer_spec_yaml=trainer_record.spec,
+                        dataset=context["dataset"],
+                        target_column=context["target_column"],
+                        target_column_exists=target_column_exists,
+                        existing_yaml=yaml_content,
+                        recommended_knowledge_ids=None,  # Let agent discover via tools
+                        conversation_history=conversation_history,
+                    )
+                    return edited_yaml, updated_history
+                except Exception as e:
+                    if self.ui:
+                        self.ui.show_system_error(f"❌ Edit failed: {e}")
+                    return None, None
+
+            return edit
 
     async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.
