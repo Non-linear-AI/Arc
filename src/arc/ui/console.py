@@ -380,6 +380,19 @@ class InteractiveInterface:
                 and content.strip()
             ):
                 self._print_todo_with_inline_progress(label, content, printer=p)
+            # Handle database_query with Rich table (minimal style like /sql)
+            elif (
+                tool_name == "database_query"
+                and result.metadata
+                and "rich_table" in result.metadata
+            ):
+                # Print label (header)
+                p.print(f"{label}")
+                # Print Rich table directly
+                p.print(result.metadata["rich_table"])
+                # Print summary
+                if "summary" in result.metadata:
+                    p.print(f"[dim]{result.metadata['summary']}[/dim]")
             else:
                 p.print(f"{label}")
                 if content.strip():
