@@ -73,7 +73,7 @@ class DatabaseQueryTool(BaseTool):
             display_query = query if len(query) <= 100 else query[:97] + "..."
 
             # Prepare metadata for section title
-            metadata = {"execution_time": execution_time}
+            metadata = {"execution_time": execution_time, "target_db": target_db}
 
             # Format results using Rich Table (like /sql command)
             if result.empty():

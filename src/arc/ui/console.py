@@ -347,25 +347,39 @@ class InteractiveInterface:
         # Append metadata to label if present
         if result.metadata:
             metadata_parts = []
-            # Show table name first if present (for describe_table)
-            if "table_name" in result.metadata:
-                metadata_parts.append(result.metadata["table_name"])
-            if "row_count" in result.metadata:
-                row_text = "row" if result.metadata["row_count"] == 1 else "rows"
-                metadata_parts.append(f"{result.metadata['row_count']} {row_text}")
-            if "table_count" in result.metadata:
-                table_text = (
-                    "table" if result.metadata["table_count"] == 1 else "tables"
-                )
-                metadata_parts.append(f"{result.metadata['table_count']} {table_text}")
-            if "column_count" in result.metadata:
-                col_text = "col" if result.metadata["column_count"] == 1 else "cols"
-                metadata_parts.append(f"{result.metadata['column_count']} {col_text}")
-            # Show execution time at the end, only if >= 1 second
-            if "execution_time" in result.metadata:
-                exec_time = result.metadata["execution_time"]
-                if exec_time >= 1.0:
-                    metadata_parts.append(f"{exec_time:.3f}s")
+
+            # Special handling for database_query tool
+            if tool_name == "database_query":
+                # Show database name (system/user)
+                if "target_db" in result.metadata:
+                    metadata_parts.append(result.metadata["target_db"])
+                # Show execution time only if >= 1 second
+                if "execution_time" in result.metadata:
+                    exec_time = result.metadata["execution_time"]
+                    if exec_time >= 1.0:
+                        metadata_parts.append(f"{exec_time:.1f}s")
+            else:
+                # Default metadata handling for other tools
+                # Show table name first if present (for describe_table)
+                if "table_name" in result.metadata:
+                    metadata_parts.append(result.metadata["table_name"])
+                if "row_count" in result.metadata:
+                    row_text = "row" if result.metadata["row_count"] == 1 else "rows"
+                    metadata_parts.append(f"{result.metadata['row_count']} {row_text}")
+                if "table_count" in result.metadata:
+                    table_text = (
+                        "table" if result.metadata["table_count"] == 1 else "tables"
+                    )
+                    metadata_parts.append(f"{result.metadata['table_count']} {table_text}")
+                if "column_count" in result.metadata:
+                    col_text = "col" if result.metadata["column_count"] == 1 else "cols"
+                    metadata_parts.append(f"{result.metadata['column_count']} {col_text}")
+                # Show execution time at the end, only if >= 1 second
+                if "execution_time" in result.metadata:
+                    exec_time = result.metadata["execution_time"]
+                    if exec_time >= 1.0:
+                        metadata_parts.append(f"{exec_time:.3f}s")
+
             if metadata_parts:
                 label += f" [dim]({', '.join(metadata_parts)})[/dim]"
 
@@ -393,7 +407,6 @@ class InteractiveInterface:
                 # Print query if available
                 if "query" in result.metadata:
                     p.print(f"[dim]{result.metadata['query']}[/dim]")
-                    p.print()  # Blank line after query
                 # Print Rich table wrapped in dim style using Padding
                 dimmed_table = Padding(
                     result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
