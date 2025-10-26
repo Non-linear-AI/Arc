@@ -211,6 +211,7 @@ class MLDataTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
+                printer.print("")  # Empty line after task
 
             try:
                 # Set progress callback for this invocation
