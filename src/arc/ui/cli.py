@@ -829,7 +829,7 @@ async def _ml_model(
             instruction=instruction,
             data_table=data_table,
             target_column=target_column,
-            ml_plan=ml_plan,  # Pass ML plan if available
+            plan_id=plan_id if ml_plan else None,  # Pass plan ID if available
         )
 
         if not result.success:
@@ -1001,7 +1001,7 @@ async def _ml_data_processing(
             instruction=instruction,
             source_tables=data_tables,
             database=database,
-            ml_plan=ml_plan,
+            plan_id=plan_id if ml_plan else None,
         )
 
         if not result.success:
