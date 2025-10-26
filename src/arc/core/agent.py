@@ -606,27 +606,8 @@ class ArcAgent:
         """Execute a tool call using the tool registry.
 
         Handles special preprocessing for tools that need agent context:
-        - ml_plan, ml_data: Inject skip_data_profiling if recent data exploration
+        - ml_data: Inject skip_data_profiling if recent data exploration
         """
-        # Special handling for ml_plan: inject skip profiling flag
-        if tool_call.name == "ml_plan":
-            try:
-                args = json.loads(tool_call.arguments)
-                # Skip data profiling if agent already explored data
-                if self._has_recent_data_exploration():
-                    args["skip_data_profiling"] = True
-
-                # Recreate tool call with modified arguments
-                tool_call = ArcToolCall(
-                    id=tool_call.id,
-                    name=tool_call.name,
-                    arguments=json.dumps(args),
-                )
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Error preparing ml_plan context: {str(e)}"
-                )
-
         # Special handling for ml_data: inject skip profiling flag
         if tool_call.name == "ml_data":
             try:

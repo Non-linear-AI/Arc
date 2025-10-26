@@ -39,7 +39,6 @@ class MLPlanTool(BaseTool):
         section_to_update: str | None = None,
         conversation_history: str | None = None,  # noqa: ARG002
         verbose: bool = False,
-        skip_data_profiling: bool = False,
     ) -> ToolResult:
         # Early validation for common errors (before any section printing)
         if not self.api_key:
@@ -179,7 +178,6 @@ class MLPlanTool(BaseTool):
                             if current_instruction != instruction
                             else None,
                             stream=False,
-                            skip_data_profiling=skip_data_profiling,
                         )
 
                         # Inject the passed-in name into the analysis result
