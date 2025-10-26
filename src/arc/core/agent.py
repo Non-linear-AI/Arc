@@ -603,29 +603,7 @@ class ArcAgent:
         return False
 
     async def _execute_tool(self, tool_call: ArcToolCall) -> ToolResult:
-        """Execute a tool call using the tool registry.
-
-        Handles special preprocessing for tools that need agent context:
-        - ml_data: Inject skip_data_profiling if recent data exploration
-        """
-        # Special handling for ml_data: inject skip profiling flag
-        if tool_call.name == "ml_data":
-            try:
-                args = json.loads(tool_call.arguments)
-                # Skip data profiling if agent already explored data
-                if self._has_recent_data_exploration():
-                    args["skip_data_profiling"] = True
-
-                tool_call = ArcToolCall(
-                    id=tool_call.id,
-                    name=tool_call.name,
-                    arguments=json.dumps(args),
-                )
-            except Exception as e:
-                return ToolResult.error_result(
-                    f"Error preparing ml_data context: {str(e)}"
-                )
-
+        """Execute a tool call using the tool registry."""
         # Use tool registry for execution
         # ML tools should not have timeouts since they wait for user input
         ml_tools = {"ml_plan", "ml_model", "ml_train", "ml_evaluate", "ml_data"}

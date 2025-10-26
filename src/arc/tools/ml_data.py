@@ -227,7 +227,6 @@ class MLDataTool(BaseTool):
                     instruction=enhanced_instruction,
                     source_tables=source_tables,
                     database=database,
-                    skip_data_profiling=skip_data_profiling,
                     recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
