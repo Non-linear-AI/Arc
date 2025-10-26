@@ -22,13 +22,13 @@ class DatabaseQueryTool(BaseTool):
         self.services = services
 
     async def execute(
-        self, query: str, target_db: str = "system", validate_schema: bool = True
+        self, query: str, target_db: str = "user", validate_schema: bool = True
     ) -> ToolResult:
         """Execute a SQL query against the specified database.
 
         Args:
             query: SQL query to execute
-            target_db: Target database - "system" (read-only) or "user" (full access)
+            target_db: Target database - "user" (default, full access) or "system" (read-only)
             validate_schema: Whether to validate query against database schema
 
         Returns:
