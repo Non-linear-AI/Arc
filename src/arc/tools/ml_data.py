@@ -405,6 +405,10 @@ class MLDataTool(BaseTool):
                     f"{execution_result.execution_time:.2f}s)[/dim]"
                 )
 
+            # Add empty line for visual separation
+            if ml_data_process_section_printer:
+                ml_data_process_section_printer.print("")
+
             # Close the Data Processor section
             if self.ui and hasattr(self, "_ml_data_process_section"):
                 self._ml_data_process_section.__exit__(None, None, None)

@@ -576,13 +576,13 @@ class ArcAgent:
             return [user_entry, error_entry]
 
     def _has_recent_data_exploration(self, lookback_messages: int = 10) -> bool:
-        """Check if recent chat history contains data exploration tool calls.
+        """Check if recent chat history contains successful data exploration tool calls.
 
         Args:
             lookback_messages: Number of recent messages to check
 
         Returns:
-            True if recent database_query or schema_discovery calls exist
+            True if recent successful database_query or schema_discovery calls exist
         """
         # Look at recent chat entries
         recent_entries = (
@@ -590,16 +590,13 @@ class ArcAgent:
         )
 
         for entry in recent_entries:
-            # Check tool calls in this entry
-            if entry.tool_calls:
-                for tool_call in entry.tool_calls:
-                    if tool_call.name in ("database_query", "schema_discovery"):
-                        return True
-
-            # Also check single tool_call field
-            if entry.tool_call and entry.tool_call.name in (
-                "database_query",
-                "schema_discovery",
+            # Only consider entries with tool results (completed tool calls)
+            # and check if the tool call succeeded
+            if (
+                entry.tool_result
+                and entry.tool_call
+                and entry.tool_result.success
+                and entry.tool_call.name in ("database_query", "schema_discovery")
             ):
                 return True
 

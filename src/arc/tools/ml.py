@@ -59,6 +59,29 @@ def _as_string_list(value: Any, field_name: str) -> list[str] | None:
     raise ValueError(f"{field_name} must be an array of strings or comma-separated")
 
 
+def _load_ml_plan(services, plan_id: str) -> tuple[dict, Any] | tuple[None, str]:
+    """Load ML plan from database.
+
+    Args:
+        services: ServiceContainer with ml_plans service
+        plan_id: ML plan ID to load
+
+    Returns:
+        Tuple of (ml_plan_dict, MLPlan_object) on success,
+        or (None, error_message) on failure
+    """
+    try:
+        from arc.core.ml_plan import MLPlan
+
+        ml_plan = services.ml_plans.get_plan_content(plan_id)
+        plan = MLPlan.from_dict(ml_plan)
+        return (ml_plan, plan)
+    except ValueError as e:
+        return (None, f"Failed to load ML plan '{plan_id}': {e}")
+    except Exception as e:
+        return (None, f"Unexpected error loading ML plan '{plan_id}': {e}")
+
+
 class MLModelTool(BaseTool):
     """Tool for generating Arc-Graph model specifications via LLM."""
 
@@ -172,30 +195,21 @@ class MLModelTool(BaseTool):
         # Load plan from database if plan_id is provided
         ml_plan_architecture = None
         if plan_id:
-            try:
-                # Load plan from database using service
-                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
+            ml_plan, plan = _load_ml_plan(self.services, plan_id)
+            if ml_plan is None:
+                # plan contains error message
+                return _error_in_section(plan)
 
-                from arc.core.ml_plan import MLPlan
+            # Use plan data if parameters not explicitly provided
+            if not instruction:
+                instruction = plan.summary
+            if not data_table:
+                data_table = ml_plan.get("data_table")
+            if not target_column:
+                target_column = ml_plan.get("target_column")
 
-                plan = MLPlan.from_dict(ml_plan)
-
-                # Use plan data if parameters not explicitly provided
-                if not instruction:
-                    instruction = plan.summary
-                if not data_table:
-                    data_table = ml_plan.get("data_table")
-                if not target_column:
-                    target_column = ml_plan.get("target_column")
-
-                # CRITICAL: Extract architecture guidance from ML plan
-                ml_plan_architecture = plan.model_architecture_and_loss
-            except ValueError as e:
-                return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
-            except Exception as e:
-                return _error_in_section(
-                    f"Unexpected error loading ML plan '{plan_id}': {e}"
-                )
+            # CRITICAL: Extract architecture guidance from ML plan
+            ml_plan_architecture = plan.model_architecture_and_loss
 
         # Validate required parameters
         if not name or not data_table or not target_column:
@@ -318,6 +332,10 @@ class MLModelTool(BaseTool):
                 f"{len(model_spec.graph)} nodes • "
                 f"{len(model_spec.outputs)} outputs)[/dim]"
             )
+
+        # Add empty line for visual separation
+        if ml_model_section_printer:
+            ml_model_section_printer.print("")
 
         # Close the ML Model section
         if self.ui and hasattr(self, "_ml_model_section"):
@@ -611,20 +629,11 @@ class MLTrainTool(BaseTool):
         # Load plan from database if plan_id is provided
         ml_plan_training_config = None
         if plan_id:
-            try:
-                # Load plan from database using service
-                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
-
-                from arc.core.ml_plan import MLPlan
-
-                plan = MLPlan.from_dict(ml_plan)
-                ml_plan_training_config = plan.training_configuration
-            except ValueError as e:
-                return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
-            except Exception as e:
-                return _error_in_section(
-                    f"Unexpected error loading ML plan '{plan_id}': {e}"
-                )
+            ml_plan, plan = _load_ml_plan(self.services, plan_id)
+            if ml_plan is None:
+                # plan contains error message
+                return _error_in_section(plan)
+            ml_plan_training_config = plan.training_configuration
 
         # Generate trainer spec via LLM
         # Agent will discover relevant knowledge using tools
@@ -979,6 +988,10 @@ class MLTrainTool(BaseTool):
 
         if job_id:
             result_metadata["job_id"] = job_id
+
+        # Add empty line for visual separation
+        if ml_trainer_section_printer:
+            ml_trainer_section_printer.print("")
 
         # Close the ML Trainer section
         if self.ui and hasattr(self, "_ml_trainer_section"):
@@ -1418,20 +1431,11 @@ class MLEvaluateTool(BaseTool):
         # Load plan from database if plan_id is provided
         ml_plan_evaluation = None
         if plan_id:
-            try:
-                # Load plan from database using service
-                ml_plan = self.services.ml_plans.get_plan_content(plan_id)
-
-                from arc.core.ml_plan import MLPlan
-
-                plan = MLPlan.from_dict(ml_plan)
-                ml_plan_evaluation = plan.evaluation
-            except ValueError as e:
-                return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
-            except Exception as e:
-                return _error_in_section(
-                    f"Unexpected error loading ML plan '{plan_id}': {e}"
-                )
+            ml_plan, plan = _load_ml_plan(self.services, plan_id)
+            if ml_plan is None:
+                # plan contains error message
+                return _error_in_section(plan)
+            ml_plan_evaluation = plan.evaluation
 
         # Generate evaluator spec via LLM
         # Agent will discover relevant knowledge using tools
@@ -1819,6 +1823,10 @@ class MLEvaluateTool(BaseTool):
                     "from_ml_plan": ml_plan is not None,
                 },
             )
+
+        # Add empty line for visual separation
+        if ml_evaluator_section_printer:
+            ml_evaluator_section_printer.print("")
 
         # Close the ML Evaluator section
         if self.ui and hasattr(self, "_ml_evaluator_section"):
