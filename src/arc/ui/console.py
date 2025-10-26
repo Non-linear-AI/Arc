@@ -359,10 +359,12 @@ class InteractiveInterface:
                     if exec_time >= 1.0:
                         metadata_parts.append(f"{exec_time:.1f}s")
             elif tool_name == "schema_discovery":
-                # Show table name and database
+                # Show table name if present, otherwise show database
                 if "table_name" in result.metadata:
+                    # When describing a specific table, just show table name
                     metadata_parts.append(result.metadata["table_name"])
-                if "target_db" in result.metadata:
+                elif "target_db" in result.metadata:
+                    # When listing tables, show database
                     metadata_parts.append(result.metadata["target_db"])
             else:
                 # Default metadata handling for other tools
