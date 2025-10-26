@@ -123,7 +123,7 @@ class MLPlan:
         # Show plan name at the top with clear label
         lines.extend(
             [
-                f"**Plan:** {self.name}",
+                f"**Plan** {self.name}",
                 "",
                 "**Feature Engineering**",
                 self.feature_engineering,
