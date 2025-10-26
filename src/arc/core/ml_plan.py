@@ -112,32 +112,16 @@ class MLPlan:
             "evaluation": self.evaluation,
         }
 
-    def format_for_display(self, show_metadata: bool = True) -> str:
+    def format_for_display(self) -> str:
         """Format plan as readable markdown text with left-aligned headers.
-
-        Args:
-            show_metadata: Whether to show version/stage metadata
 
         Returns:
             Formatted markdown string for display
         """
-        # Use bold instead of headers to avoid Rich's center-alignment
-        lines = ["**ML Workflow Plan**"]
-
-        if show_metadata:
-            lines.append(
-                f"*Version {self.version} • {self.stage.replace('_', ' ').title()}*"
-            )
-            if self.reason_for_update:
-                lines.append(f"*Reason: {self.reason_for_update}*")
-            lines.append("")
-
         # Technical decisions with bold labels instead of headers
+        lines = []
         lines.extend(
             [
-                "**Summary**",
-                self.summary,
-                "",
                 "**Feature Engineering**",
                 self.feature_engineering,
                 "",
@@ -152,13 +136,13 @@ class MLPlan:
             ]
         )
 
-        # Show recommended knowledge at the end if present
+        # Show knowledge at the end if present
         if self.recommended_knowledge_ids:
             knowledge_str = ", ".join(self.recommended_knowledge_ids)
             lines.extend(
                 [
                     "",
-                    "**Recommended Knowledge**",
+                    "**Knowledge**",
                     knowledge_str,
                 ]
             )
@@ -219,26 +203,6 @@ class MLPlanDiff:
         lines.append("")
         lines.append("---")
         lines.append("")
-
-        # Summary
-        if self.summary_changed:
-            lines.extend(
-                [
-                    "**Summary** *(Changed)*",
-                    f"~~{self.old_summary[:80]}...~~",
-                    "",
-                    self.new_summary,
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "**Summary**",
-                    new_plan.summary,
-                    "",
-                ]
-            )
 
         # Feature Engineering
         if self.feature_engineering_changed:

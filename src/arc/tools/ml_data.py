@@ -190,9 +190,7 @@ class MLDataTool(BaseTool):
                     # Extract feature engineering guidance for data processing
                     ml_plan_feature_engineering = plan.feature_engineering
                 except ValueError as e:
-                    return _error_in_section(
-                        f"Failed to load ML plan '{plan_id}': {e}"
-                    )
+                    return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
                 except Exception as e:
                     return _error_in_section(
                         f"Unexpected error loading ML plan '{plan_id}': {e}"
@@ -334,9 +332,7 @@ class MLDataTool(BaseTool):
                 # Show execution message
                 if printer:
                     printer.print("")
-                    printer.print(
-                        "→ Executing data processing pipeline..."
-                    )
+                    printer.print("→ Executing data processing pipeline...")
 
                 # Define progress callback for real-time updates
                 def progress_callback(message: str, level: str):
@@ -345,13 +341,9 @@ class MLDataTool(BaseTool):
                         if level == "step":
                             printer.print(f"[dim]  {message}[/dim]")
                         elif level == "warning":
-                            printer.print(
-                                f"[yellow]  ⚠️ {message}[/yellow]"
-                            )
+                            printer.print(f"[yellow]  ⚠️ {message}[/yellow]")
                         elif level == "error":
-                            printer.print(
-                                f"[red]  ❌ {message}[/red]"
-                            )
+                            printer.print(f"[red]  ❌ {message}[/red]")
 
                 try:
                     execution_result = await execute_data_source_pipeline(

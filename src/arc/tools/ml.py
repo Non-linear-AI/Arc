@@ -226,7 +226,11 @@ class MLModelTool(BaseTool):
             # Agent will discover relevant knowledge using list_knowledge and
             # read_knowledge tools based on task context and descriptions
             try:
-                model_spec, model_yaml, conversation_history = await agent.generate_model(
+                (
+                    model_spec,
+                    model_yaml,
+                    conversation_history,
+                ) = await agent.generate_model(
                     name=str(name),
                     user_context=instruction,  # Use instruction as user_context
                     table_name=str(data_table),
@@ -325,7 +329,6 @@ class MLModelTool(BaseTool):
                     f"{len(model_spec.graph)} nodes • "
                     f"{len(model_spec.outputs)} outputs)[/dim]"
                 )
-
 
             # Build simple output for ToolResult (detailed output already shown in UI)
             lines = [f"Model '{name}' registered successfully as {model_id}"]
@@ -595,7 +598,9 @@ class MLTrainTool(BaseTool):
                         "Please check the model ID or register the model first."
                     )
             except Exception as exc:
-                return _error_in_section(f"Failed to retrieve model '{model_id}': {exc}")
+                return _error_in_section(
+                    f"Failed to retrieve model '{model_id}': {exc}"
+                )
 
             # Load plan from database if plan_id is provided
             ml_plan_training_config = None
@@ -681,7 +686,9 @@ class MLTrainTool(BaseTool):
 
                 logging.exception("Unexpected error during trainer validation")
                 # Print error within the ML Trainer section
-                error_msg = f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
+                error_msg = (
+                    f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
+                )
                 if printer:
                     printer.print("")
                     printer.print(f"✗ {error_msg}")
@@ -767,9 +774,7 @@ class MLTrainTool(BaseTool):
             if True:  # Always train when trainer is accepted
                 if printer:
                     printer.print("")  # Empty line before training
-                    printer.print(
-                        f"→ Launching training with trainer '{name}'..."
-                    )
+                    printer.print(f"→ Launching training with trainer '{name}'...")
 
                 try:
                     job_id = await asyncio.to_thread(
@@ -789,9 +794,7 @@ class MLTrainTool(BaseTool):
                         printer.print(
                             "[dim]✓ Training job submitted successfully.[/dim]"
                         )
-                        printer.print(
-                            f"[dim]Training table: {train_table}[/dim]"
-                        )
+                        printer.print(f"[dim]Training table: {train_table}[/dim]")
                         printer.print(f"[dim]Job ID: {job_id}[/dim]")
 
                     # Show job monitoring instructions in section
@@ -803,22 +806,19 @@ class MLTrainTool(BaseTool):
                         printer.print(
                             f"[dim]  • Status: /ml jobs status {job_id}[/dim]"
                         )
-                        printer.print(
-                            f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]"
-                        )
+                        printer.print(f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]")
 
                     # Handle TensorBoard launch
                     if not auto_confirm and self.ui:
                         if self.tensorboard_manager:
                             try:
-                                await self._handle_tensorboard_launch(
-                                    job_id, printer
-                                )
+                                await self._handle_tensorboard_launch(job_id, printer)
                             except (OSError, RuntimeError) as e:
                                 # Known TensorBoard launch failures
                                 if printer:
                                     printer.print(
-                                        f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
+                                        f"[yellow]⚠️  TensorBoard setup "
+                                        f"failed: {e}[/yellow]"
                                     )
                                 self._show_manual_tensorboard_instructions(
                                     job_id, printer
@@ -835,9 +835,7 @@ class MLTrainTool(BaseTool):
                                     printer.print(
                                         "[yellow]⚠️  TensorBoard setup failed:[/yellow]"
                                     )
-                                    printer.print(
-                                        f"[yellow]{error_msg}[/yellow]"
-                                    )
+                                    printer.print(f"[yellow]{error_msg}[/yellow]")
                                 self._show_manual_tensorboard_instructions(
                                     job_id, printer
                                 )
@@ -848,9 +846,7 @@ class MLTrainTool(BaseTool):
                                     "[dim]ℹ️  TensorBoard auto-launch not available "
                                     "(restart arc chat to enable)[/dim]"
                                 )
-                            self._show_manual_tensorboard_instructions(
-                                job_id, printer
-                            )
+                            self._show_manual_tensorboard_instructions(job_id, printer)
 
                     # Training job launched successfully - job status can be
                     # checked separately. The agent will monitor job status and
@@ -866,9 +862,12 @@ class MLTrainTool(BaseTool):
                         printer.print(f"[red]{exc}[/red]")
                         printer.print("")
                         printer.print(
-                            f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                            f"[dim]Note: Trainer '{name}' was registered "
+                            f"successfully[/dim]"
                         )
-                        retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                        retry_cmd = (
+                            f"/ml jobs submit --trainer {name} --data {train_table}"
+                        )
                         printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
 
                     lines.append("")
@@ -909,14 +908,15 @@ class MLTrainTool(BaseTool):
                     if printer:
                         printer.print("⚠ Training Validation Failed")
                         printer.print("")
-                        printer.print(
-                            f"[red]{exc.__class__.__name__}: {exc}[/red]"
-                        )
+                        printer.print(f"[red]{exc.__class__.__name__}: {exc}[/red]")
                         printer.print("")
                         printer.print(
-                            f"[dim]Note: Trainer '{name}' was registered successfully[/dim]"
+                            f"[dim]Note: Trainer '{name}' was registered "
+                            f"successfully[/dim]"
                         )
-                        retry_cmd = f"/ml jobs submit --trainer {name} --data {train_table}"
+                        retry_cmd = (
+                            f"/ml jobs submit --trainer {name} --data {train_table}"
+                        )
                         printer.print(f"[dim]Retry: {retry_cmd}[/dim]")
 
                     lines.append("")
@@ -958,7 +958,6 @@ class MLTrainTool(BaseTool):
 
             if job_id:
                 result_metadata["job_id"] = job_id
-
 
             return ToolResult(
                 success=True,
@@ -1330,13 +1329,15 @@ class MLEvaluateTool(BaseTool):
             # Validate required parameters
             if not name or not instruction or not trainer_id or not evaluate_table:
                 return _error_in_section(
-                    "Parameters 'name', 'instruction', 'trainer_id', and 'evaluate_table' "
-                    "are required."
+                    "Parameters 'name', 'instruction', 'trainer_id', and "
+                    "'evaluate_table' are required."
                 )
 
             # Get the registered trainer
             try:
-                trainer_record = self.services.trainers.get_trainer_by_id(str(trainer_id))
+                trainer_record = self.services.trainers.get_trainer_by_id(
+                    str(trainer_id)
+                )
                 if not trainer_record:
                     return _error_in_section(
                         f"Trainer '{trainer_id}' not found in registry. "
@@ -1349,7 +1350,9 @@ class MLEvaluateTool(BaseTool):
 
             # Get model spec and infer target column
             try:
-                model_record = self.services.models.get_model_by_id(trainer_record.model_id)
+                model_record = self.services.models.get_model_by_id(
+                    trainer_record.model_id
+                )
                 if not model_record:
                     return _error_in_section(
                         f"Model '{trainer_record.model_id}' not found in registry"
@@ -1505,8 +1508,8 @@ class MLEvaluateTool(BaseTool):
                 from arc.database.models.evaluator import Evaluator
 
                 # Check if evaluator with same spec already exists
-                existing_evaluator = self.services.evaluators.get_latest_evaluator_by_name(
-                    str(name)
+                existing_evaluator = (
+                    self.services.evaluators.get_latest_evaluator_by_name(str(name))
                 )
                 evaluator_record = None
 
@@ -1529,9 +1532,7 @@ class MLEvaluateTool(BaseTool):
                     evaluator_record = existing_evaluator
                     # Display "using existing" message in the ML Evaluator section
                     if printer:
-                        printer.print(
-                            ""
-                        )  # Empty line before confirmation
+                        printer.print("")  # Empty line before confirmation
                         printer.print(
                             f"[dim]✓ Using existing evaluator '{name}' "
                             f"({evaluator_record.id} • "
@@ -1561,9 +1562,7 @@ class MLEvaluateTool(BaseTool):
 
                     # Display registration confirmation in the ML Evaluator section
                     if printer:
-                        printer.print(
-                            ""
-                        )  # Empty line before confirmation
+                        printer.print("")  # Empty line before confirmation
                         printer.print(
                             f"[dim]✓ Evaluator '{name}' registered to database "
                             f"({evaluator_record.id} • "
@@ -1574,14 +1573,14 @@ class MLEvaluateTool(BaseTool):
                 return _error_in_section(f"Failed to register evaluator: {exc}")
 
             # Build simple output for ToolResult (detailed output already shown in UI)
-            lines = [f"Evaluator '{name}' registered successfully as {evaluator_record.id}"]
+            lines = [
+                f"Evaluator '{name}' registered successfully as {evaluator_record.id}"
+            ]
 
             # Launch evaluation as background job (async pattern)
             if printer:
                 printer.print("")
-                printer.print(
-                    f"→ Launching evaluation with '{name}'..."
-                )
+                printer.print(f"→ Launching evaluation with '{name}'...")
 
             # Create job record for this evaluation
             from arc.jobs.models import Job, JobType
@@ -1597,7 +1596,9 @@ class MLEvaluateTool(BaseTool):
             from arc.database.models.evaluation import EvaluationStatus
             from arc.database.services import EvaluationTrackingService
 
-            tracking_service = EvaluationTrackingService(self.services.trainers.db_manager)
+            tracking_service = EvaluationTrackingService(
+                self.services.trainers.db_manager
+            )
 
             try:
                 eval_run = tracking_service.create_run(
@@ -1706,17 +1707,13 @@ class MLEvaluateTool(BaseTool):
                     printer.print(
                         f"[dim]  • Status: /ml jobs status {job.job_id}[/dim]"
                     )
-                    printer.print(
-                        f"[dim]  • Logs: /ml jobs logs {job.job_id}[/dim]"
-                    )
+                    printer.print(f"[dim]  • Logs: /ml jobs logs {job.job_id}[/dim]")
 
                 # Handle TensorBoard launch for monitoring
                 if not auto_confirm and self.ui:
                     if self.tensorboard_manager:
                         try:
-                            await self._handle_tensorboard_launch(
-                                job.job_id, printer
-                            )
+                            await self._handle_tensorboard_launch(job.job_id, printer)
                         except (OSError, RuntimeError) as e:
                             # Known TensorBoard launch failures
                             if printer:
@@ -1730,7 +1727,9 @@ class MLEvaluateTool(BaseTool):
                             # Log unexpected errors with full traceback
                             import logging
 
-                            logging.exception("Unexpected error during TensorBoard launch")
+                            logging.exception(
+                                "Unexpected error during TensorBoard launch"
+                            )
                             error_msg = f"{e.__class__.__name__}: {e}"
                             if printer:
                                 printer.print(
@@ -1747,11 +1746,10 @@ class MLEvaluateTool(BaseTool):
                                 "[dim]ℹ️  TensorBoard auto-launch not available "
                                 "(restart arc chat to enable)[/dim]"
                             )
-                        self._show_manual_tensorboard_instructions(
-                            job.job_id, printer
-                        )
+                        self._show_manual_tensorboard_instructions(job.job_id, printer)
 
-                # Evaluation launched successfully - job status can be checked separately
+                # Evaluation launched successfully - job status can be
+                # checked separately
 
             except Exception as exc:
                 # Evaluator was successfully registered but evaluation launch failed
@@ -1761,7 +1759,6 @@ class MLEvaluateTool(BaseTool):
                 lines.append("")
                 retry_cmd = f"/ml evaluate --evaluator {name} --data {evaluate_table}"
                 lines.append(f"Retry evaluation with: {retry_cmd}")
-
 
                 return ToolResult(
                     success=True,  # Evaluator registration succeeded
@@ -1776,7 +1773,6 @@ class MLEvaluateTool(BaseTool):
                         "from_ml_plan": ml_plan is not None,
                     },
                 )
-
 
             # Build result metadata
             result_metadata = {
@@ -2040,8 +2036,6 @@ class MLEvaluateTool(BaseTool):
             )
 
 
-
-
 class MLPlanTool(BaseTool):
     """Tool for creating and revising ML plans with technical decisions."""
 
@@ -2150,9 +2144,7 @@ class MLPlanTool(BaseTool):
 
         # Full plan generation mode
         # Use context manager for section printing
-        with self._section_printer(
-            self.ui, "ML Plan", color="cyan"
-        ) as printer:
+        with self._section_printer(self.ui, "ML Plan", color="cyan") as printer:
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
@@ -2202,7 +2194,8 @@ class MLPlanTool(BaseTool):
 
                 while True:
                     try:
-                        # Generate the plan (pass source_tables as comma-separated string)
+                        # Generate the plan (pass source_tables as
+                        # comma-separated string)
                         analysis = await agent.analyze_problem(
                             user_context=str(current_instruction),
                             source_tables=str(source_tables),
@@ -2215,9 +2208,7 @@ class MLPlanTool(BaseTool):
 
                         # Show completion message
                         if printer:
-                            printer.print(
-                                "[dim]✓ Plan generated successfully[/dim]"
-                            )
+                            printer.print("[dim]✓ Plan generated successfully[/dim]")
 
                         # Determine stage
                         if previous_plan:
@@ -2248,7 +2239,8 @@ class MLPlanTool(BaseTool):
                         )
 
                         # Save plan to database immediately with "draft" status
-                        # This allows other tools to reference it even before user confirms
+                        # This allows other tools to reference it even before
+                        # user confirms
                         try:
                             from datetime import UTC, datetime
 
@@ -2313,7 +2305,8 @@ class MLPlanTool(BaseTool):
                     # If auto-accept is enabled, skip workflow
                     if self.agent and self.agent.ml_plan_auto_accept:
                         output_message = (
-                            f"Plan '{plan_id}' automatically accepted (auto-accept enabled)"
+                            f"Plan '{plan_id}' automatically accepted "
+                            f"(auto-accept enabled)"
                         )
                         break
 
@@ -2398,7 +2391,8 @@ class MLPlanTool(BaseTool):
                             # Print cancellation message inside section
                             if printer:
                                 printer.print(
-                                    "ML plan cancelled. What would you like to do instead?"
+                                    "ML plan cancelled. What would you like to "
+                                    "do instead?"
                                 )
                             # Return to main agent with context message
                             # (Message already displayed in section,
@@ -2406,7 +2400,8 @@ class MLPlanTool(BaseTool):
                             return ToolResult(
                                 success=True,
                                 output=(
-                                    "ML plan cancelled. What would you like to do instead?"
+                                    "ML plan cancelled. What would you like to "
+                                    "do instead?"
                                 ),
                                 metadata={"cancelled": True, "suppress_output": True},
                             )
@@ -2415,10 +2410,13 @@ class MLPlanTool(BaseTool):
                         # Update status to confirmed since it's auto-accepted
                         if plan_id:
                             with contextlib.suppress(Exception):
-                                self.services.ml_plans.update_status(plan_id, "confirmed")
+                                self.services.ml_plans.update_status(
+                                    plan_id, "confirmed"
+                                )
                         formatted_result = plan.format_for_display()
                         output_message = (
-                            f"Plan '{plan_id}' created successfully.\n\n{formatted_result}"
+                            f"Plan '{plan_id}' created successfully.\n\n"
+                            f"{formatted_result}"
                         )
                         break
 
@@ -2430,7 +2428,6 @@ class MLPlanTool(BaseTool):
                         f"[dim]✓ Plan '{plan_id}' saved to database "
                         f"(v{version} • {stage} • {table_count} tables)[/dim]"
                     )
-
 
                 return ToolResult(
                     success=True,
@@ -2448,6 +2445,4 @@ class MLPlanTool(BaseTool):
 
                 if isinstance(exc, MLPlanError):
                     return _error_in_section(str(exc))
-                return _error_in_section(
-                    f"Unexpected error during ML planning: {exc}"
-                )
+                return _error_in_section(f"Unexpected error during ML planning: {exc}")

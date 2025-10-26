@@ -185,10 +185,6 @@ class SchemaDiscoveryTool(BaseTool):
             total_cols = len(columns)
             show_count = min(5, total_cols)
 
-            # Check if all columns are nullable
-            all_nullable = all(col.is_nullable for col in columns)
-
-            # Add nullable info as first line if all columns are nullable
             output = ""
 
             if columns:
