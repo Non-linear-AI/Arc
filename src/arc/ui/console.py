@@ -345,6 +345,9 @@ class InteractiveInterface:
         # Append metadata to label if present
         if result.metadata:
             metadata_parts = []
+            # Show table name first if present (for describe_table)
+            if "table_name" in result.metadata:
+                metadata_parts.append(result.metadata["table_name"])
             if "execution_time" in result.metadata:
                 metadata_parts.append(f"{result.metadata['execution_time']:.3f}s")
             if "row_count" in result.metadata:

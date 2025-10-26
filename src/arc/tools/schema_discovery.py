@@ -208,7 +208,10 @@ class SchemaDiscoveryTool(BaseTool):
                 if total_cols > show_count:
                     output += f"… and {total_cols - show_count} more columns"
 
-            metadata = {"column_count": total_cols}
+            metadata = {
+                "table_name": table_name,
+                "column_count": total_cols,
+            }
             return ToolResult.success_result(output, metadata=metadata)
 
         except Exception as e:
