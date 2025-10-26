@@ -558,7 +558,7 @@ class Printer:
         try:
             self._input_active = True
             choice = ChoiceInput(
-                message=" Use arrows/enter to select (or type number):",
+                message=" Use arrows/enter to select:",
                 options=options,
                 default=default,
                 show_frame=False,

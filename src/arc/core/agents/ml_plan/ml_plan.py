@@ -553,7 +553,7 @@ class MLPlanAgent(BaseAgent):
     def _report_tool_call(self, tool_name: str, args: dict):
         """Report tool call with readable description."""
         if tool_name == "list_available_knowledge":
-            self.progress_callback("[dim]▸ Listing available architectures[/dim]")
+            self.progress_callback("[dim]▸ Listing available knowledges[/dim]")
 
         elif tool_name == "read_knowledge_content":
             knowledge_id = args.get("knowledge_id", "")
