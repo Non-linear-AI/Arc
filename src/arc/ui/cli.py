@@ -310,6 +310,7 @@ async def _ml_plan(
     options = _parse_options(
         args,
         {
+            "name": True,
             "instruction": True,
             "source-tables": True,
             "verbose": False,  # Flag option (no value required)
@@ -317,15 +318,17 @@ async def _ml_plan(
         command_name="/ml plan",
     )
 
+    name = options.get("name")
     instruction = options.get("instruction")
     source_tables = options.get("source-tables")
     verbose = options.get("verbose", False)
 
-    if not instruction or not source_tables:
-        raise CommandError("/ml plan requires --instruction and --source-tables")
+    if not name or not instruction or not source_tables:
+        raise CommandError("/ml plan requires --name, --instruction, and --source-tables")
 
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(
+        name=str(name),
         instruction=str(instruction),
         source_tables=str(source_tables),
         previous_plan=agent.current_ml_plan,
@@ -365,17 +368,27 @@ async def _ml_revise_plan(
     options = _parse_options(
         args,
         {
+            "name": True,
             "instruction": True,
             "source-tables": True,
         },
         command_name="/ml revise-plan",
     )
 
+    name = options.get("name")
     instruction = options.get("instruction")
     source_tables = options.get("source-tables")
 
     if not instruction:
         raise CommandError("/ml revise-plan requires --instruction")
+
+    # Use name from current plan if not provided
+    if not name:
+        name = agent.current_ml_plan.get("name")
+        if not name:
+            raise CommandError(
+                "/ml revise-plan requires --name (not found in current plan)"
+            )
 
     # Use source_tables from current plan if not provided
     if not source_tables:
@@ -387,6 +400,7 @@ async def _ml_revise_plan(
 
     # Execute ML plan tool with revision instruction
     result = await agent.ml_plan_tool.execute(
+        name=str(name),
         instruction=str(instruction),
         source_tables=str(source_tables),
         previous_plan=agent.current_ml_plan,
