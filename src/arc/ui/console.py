@@ -221,12 +221,12 @@ class InteractiveInterface:
             p.print("ML Commands")
             ml_commands = [
                 (
-                    "/ml plan --context DESC --data-table TABLE --target-column COL",
+                    "/ml plan --name NAME --instruction DESC --source-tables TABLES",
                     "Create ML workflow plan (feature engineering, architecture, "
                     "training, evaluation)",
                 ),
                 (
-                    "/ml revise-plan --feedback FEEDBACK",
+                    "/ml revise-plan --instruction CHANGES [--name NAME]",
                     "Revise the current ML plan based on feedback or training results",
                 ),
                 (
