@@ -51,7 +51,7 @@ class SettingsManager:
         # Validate based on key
         if key == "apiKey":
             # Allow empty API keys for enterprise gateway mode
-            value = validate_api_key(value) if value else ""
+            value = validate_api_key(value)
         elif key == "baseURL":
             value = validate_url(value)
         elif key == "model":
@@ -99,18 +99,34 @@ class SettingsManager:
         return settings.get("apiKey")
 
     def get_base_url(self) -> str:
-        """Get base URL from environment or settings."""
+        """Get base URL from environment or settings.
+
+        Returns:
+            Base URL, defaults to "https://api.openai.com/v1" if not configured
+
+        Note:
+            Empty strings from environment variables are treated as not configured.
+        """
         # First check environment
         base_url = os.getenv("ARC_BASE_URL")
-        if base_url:
-            return base_url
+        if base_url and base_url.strip():
+            return base_url.strip()
 
         # Then check settings file
         settings = self.load_user_settings()
-        return settings.get("baseURL", "https://api.openai.com/v1")
+        base_url = settings.get("baseURL")
+        if base_url and base_url.strip():
+            return base_url.strip()
 
-    def get_current_model(self) -> str | None:
-        """Get current model from environment or settings."""
+        # Return default if nothing configured
+        return "https://api.openai.com/v1"
+
+    def get_current_model(self) -> str:
+        """Get current model from environment or settings.
+
+        Returns:
+            Model name, defaults to "gpt-4o" if not configured
+        """
         # First check environment
         model = os.getenv("ARC_MODEL")
         if model:
@@ -118,7 +134,13 @@ class SettingsManager:
 
         # Then check settings file
         settings = self.load_user_settings()
-        return settings.get("model")
+        model = settings.get("model")
+
+        # Return default model if not configured
+        if not model:
+            return "gpt-4o"
+
+        return model
 
     def get_system_database_path(self) -> str:
         """Get system database path from environment or settings."""

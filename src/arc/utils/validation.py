@@ -185,23 +185,23 @@ def validate_file_path(path: str, must_exist: bool = False) -> Path:
     return path_obj
 
 
-def validate_api_key(api_key: str) -> str:
+def validate_api_key(api_key: str | None) -> str:
     """Validate an API key.
 
     Args:
-        api_key: The API key to validate
+        api_key: The API key to validate (can be None or empty for gateway mode)
 
     Returns:
-        Stripped API key
+        Stripped API key (empty string if None provided)
 
     Raises:
         ValidationError: If the API key is invalid
 
     Note:
-        Empty strings are allowed to support enterprise gateway environments
+        Empty strings and None are allowed to support enterprise gateway environments
         where authentication is handled by the gateway (only base_url needed).
     """
-    # Strip whitespace
+    # Strip whitespace (convert None to empty string)
     api_key = api_key.strip() if api_key else ""
 
     # Allow empty API keys for enterprise gateway mode
@@ -218,25 +218,43 @@ def validate_api_key(api_key: str) -> str:
     return api_key
 
 
-def validate_url(url: str) -> str:
+def validate_url(url: str | None) -> str:
     """Validate a URL.
 
     Args:
-        url: The URL to validate
+        url: The URL to validate (can be None)
 
     Returns:
         Validated URL
 
     Raises:
-        ValidationError: If the URL is invalid
+        ValidationError: If the URL is invalid, None, empty, or whitespace-only
     """
-    if not url:
-        raise ValidationError("URL cannot be empty")
+    # Explicit None check with helpful message
+    if url is None:
+        raise ValidationError(
+            "URL is required but not configured. "
+            "Please set baseURL in ~/.arc/user-settings.json "
+            "or use the /config command."
+        )
+
+    # Check for empty string
+    if url == "":
+        raise ValidationError(
+            "URL cannot be empty. "
+            "Please configure baseURL in ~/.arc/user-settings.json "
+            "or use the /config command."
+        )
 
     url = url.strip()
 
-    if not url:
-        raise ValidationError("URL cannot be only whitespace")
+    # Check for whitespace-only string
+    if url == "":
+        raise ValidationError(
+            "URL cannot be only whitespace. "
+            "Please configure a valid baseURL in ~/.arc/user-settings.json "
+            "or use the /config command."
+        )
 
     # Check for protocol
     if not (url.startswith("http://") or url.startswith("https://")):
