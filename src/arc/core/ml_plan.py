@@ -120,10 +120,10 @@ class MLPlan:
         """
         # Technical decisions with bold labels instead of headers
         lines = []
-        # Show plan name at the top
+        # Show plan name at the top with clear label
         lines.extend(
             [
-                f"**{self.name}**",
+                f"**Plan:** {self.name}",
                 "",
                 "**Feature Engineering**",
                 self.feature_engineering,
