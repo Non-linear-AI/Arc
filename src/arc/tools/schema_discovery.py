@@ -153,8 +153,8 @@ class SchemaDiscoveryTool(BaseTool):
             table.add_column("Table", no_wrap=False)
             table.add_column("Columns", no_wrap=False, justify="right")
 
-            # Add rows (limit to 20 for table list)
-            max_rows = 20
+            # Add rows (limit to 5 for table list)
+            max_rows = 5
             for idx, tbl in enumerate(tables):
                 if idx >= max_rows:
                     table.add_row("...", "...", style="dim")
@@ -227,8 +227,8 @@ class SchemaDiscoveryTool(BaseTool):
             table.add_column("Column", no_wrap=False)
             table.add_column("Type", no_wrap=False)
 
-            # Add rows (limit to 20 for schema display)
-            max_rows = 20
+            # Add rows (limit to 5 for schema display)
+            max_rows = 5
             for idx, col in enumerate(columns):
                 if idx >= max_rows:
                     table.add_row("...", "...", style="dim")
