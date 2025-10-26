@@ -189,7 +189,7 @@ class SchemaDiscoveryTool(BaseTool):
             all_nullable = all(col.is_nullable for col in columns)
 
             # Add nullable info as first line if all columns are nullable
-            output = "[dim](all nullable)[/dim]\n" if all_nullable else ""
+            output = ""
 
             if columns:
                 # Group columns by data type
