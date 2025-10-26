@@ -230,6 +230,9 @@ class MLRuntime:
         Always creates a new version for each registration to maintain
         full history of all generation attempts.
 
+        Handles race conditions by retrying with updated version on
+        duplicate key errors.
+
         Args:
             name: Data processor name
             spec: DataSourceSpec object (already parsed and validated)
@@ -239,7 +242,7 @@ class MLRuntime:
             DataProcessor object with generated id and version
 
         Raises:
-            MLRuntimeError: If registration fails
+            MLRuntimeError: If registration fails after retries
         """
         from arc.database.models.data_processor import DataProcessor
 
@@ -247,33 +250,59 @@ class MLRuntime:
 
         # Convert spec to YAML string for storage
         spec_yaml = spec.to_yaml()
-
-        # Get next version (always create new version)
-        next_version = self.services.data_processors.get_next_version_for_name(name)
         base_slug = _slugify_name(name)
-        processor_id = f"{base_slug}-v{next_version}"
 
-        # Create DataProcessor
-        now = datetime.now(UTC)
-        processor = DataProcessor(
-            id=processor_id,
-            name=name,
-            version=next_version,
-            spec=spec_yaml,
-            description=description or spec.description,
-            created_at=now,
-            updated_at=now,
+        # Retry logic to handle race conditions where multiple processes
+        # try to insert the same version number simultaneously
+        max_retries = 5
+        for attempt in range(max_retries):
+            # Get next version (always create new version)
+            next_version = self.services.data_processors.get_next_version_for_name(name)
+            processor_id = f"{base_slug}-v{next_version}"
+
+            # Create DataProcessor
+            now = datetime.now(UTC)
+            processor = DataProcessor(
+                id=processor_id,
+                name=name,
+                version=next_version,
+                spec=spec_yaml,
+                description=description or spec.description,
+                created_at=now,
+                updated_at=now,
+            )
+
+            # Try to save to database
+            try:
+                self.services.data_processors.create_data_processor(processor)
+                # Success - return the processor
+                return processor
+            except DatabaseError as exc:
+                # Check if this is a duplicate key error
+                error_msg = str(exc).lower()
+                is_duplicate = (
+                    "duplicate" in error_msg
+                    or "unique constraint" in error_msg
+                    or "primary key" in error_msg
+                )
+
+                if is_duplicate and attempt < max_retries - 1:
+                    # Retry with fresh version number
+                    # Small delay to reduce contention
+                    import time
+
+                    time.sleep(0.01 * (attempt + 1))
+                    continue
+                else:
+                    # Not a duplicate error or max retries exceeded
+                    raise MLRuntimeError(
+                        f"Failed to register data processor: {exc}"
+                    ) from exc
+
+        # Should never reach here due to return/raise in loop
+        raise MLRuntimeError(
+            f"Failed to register data processor after {max_retries} attempts"
         )
-
-        # Save to database
-        try:
-            self.services.data_processors.create_data_processor(processor)
-        except DatabaseError as exc:
-            raise MLRuntimeError(
-                f"Failed to register data processor: {exc}"
-            ) from exc
-
-        return processor
 
     def load_data_processor(
         self,
