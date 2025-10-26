@@ -289,9 +289,6 @@ class MLModelTool(BaseTool):
                             printer.print(
                                 "[dim]✗ Model generation cancelled by user.[/dim]"
                             )
-                        # Close the section before returning
-                        if self.ui and hasattr(self, "_ml_model_section"):
-                            self._ml_model_section.__exit__(None, None, None)
                         return ToolResult(
                             success=True,
                             output="Model generation cancelled by user.",
@@ -324,11 +321,6 @@ class MLModelTool(BaseTool):
                     f"{len(model_spec.outputs)} outputs)[/dim]"
                 )
 
-            # Add empty line for visual separation
-            if printer:
-                printer.print("")
-
-                self._ml_model_section.__exit__(None, None, None)
 
             # Build simple output for ToolResult (detailed output already shown in UI)
             lines = [f"Model '{name}' registered successfully as {model_id}"]
@@ -644,9 +636,6 @@ class MLTrainTool(BaseTool):
                 if printer:
                     printer.print("")
                     printer.print(f"✗ {str(exc)}")
-                # Close the section before returning
-                if self.ui and hasattr(self, "_ml_trainer_section"):
-                    self._ml_trainer_section.__exit__(None, None, None)
 
                 if isinstance(exc, MLTrainError):
                     error_msg = str(exc)
@@ -672,9 +661,6 @@ class MLTrainTool(BaseTool):
                 if printer:
                     printer.print("")
                     printer.print(f"✗ {error_msg}")
-                # Close the section before returning
-                if self.ui and hasattr(self, "_ml_trainer_section"):
-                    self._ml_trainer_section.__exit__(None, None, None)
                 return ToolResult(
                     success=False,
                     output=error_msg,
@@ -689,9 +675,6 @@ class MLTrainTool(BaseTool):
                 if printer:
                     printer.print("")
                     printer.print(f"✗ {error_msg}")
-                # Close the section before returning
-                if self.ui and hasattr(self, "_ml_trainer_section"):
-                    self._ml_trainer_section.__exit__(None, None, None)
                 return ToolResult(
                     success=False,
                     output=error_msg,
@@ -723,9 +706,6 @@ class MLTrainTool(BaseTool):
                         conversation_history,  # Pass conversation history for editing
                     )
                     if not proceed:
-                        # Close the section before returning
-                        if self.ui and hasattr(self, "_ml_trainer_section"):
-                            self._ml_trainer_section.__exit__(None, None, None)
                         return ToolResult(
                             success=True,
                             output="✗ Trainer generation cancelled.",
@@ -969,11 +949,6 @@ class MLTrainTool(BaseTool):
             if job_id:
                 result_metadata["job_id"] = job_id
 
-            # Add empty line for visual separation
-            if printer:
-                printer.print("")
-
-                self._ml_trainer_section.__exit__(None, None, None)
 
             return ToolResult(
                 success=True,
@@ -1499,9 +1474,6 @@ class MLEvaluateTool(BaseTool):
                         conversation_history,  # Pass conversation history for editing
                     )
                     if not proceed:
-                        # Close the section before returning
-                        if self.ui and hasattr(self, "_ml_evaluator_section"):
-                            self._ml_evaluator_section.__exit__(None, None, None)
                         return ToolResult(
                             success=True,
                             output="✗ Evaluator cancelled.",
@@ -1775,9 +1747,6 @@ class MLEvaluateTool(BaseTool):
                 retry_cmd = f"/ml evaluate --evaluator {name} --data {evaluate_table}"
                 lines.append(f"Retry evaluation with: {retry_cmd}")
 
-                # Close the section before returning
-                if self.ui and hasattr(self, "_ml_evaluator_section"):
-                    self._ml_evaluator_section.__exit__(None, None, None)
 
                 return ToolResult(
                     success=True,  # Evaluator registration succeeded
@@ -1793,11 +1762,6 @@ class MLEvaluateTool(BaseTool):
                     },
                 )
 
-            # Add empty line for visual separation
-            if printer:
-                printer.print("")
-
-                self._ml_evaluator_section.__exit__(None, None, None)
 
             # Build result metadata
             result_metadata = {

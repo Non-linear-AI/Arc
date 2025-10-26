@@ -87,9 +87,6 @@ class BaseTool(ABC):
                 printer.print(full_title)
 
                 yield printer
-
-                # Always add empty line for visual separation before close
-                printer.print("")
         else:
             # No UI - yield None, no-op
             yield None
