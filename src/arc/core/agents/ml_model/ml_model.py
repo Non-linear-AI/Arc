@@ -116,16 +116,20 @@ class MLModelAgent(BaseAgent):
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Don't pre-load knowledge - let agent discover what's available using tools
-        # This prevents errors from non-existent knowledge IDs and gives agent flexibility
-        recommended_knowledge_guidance = ""
+        # Pre-load recommended knowledge content (handle missing gracefully)
+        recommended_knowledge = ""
         if recommended_knowledge_ids:
-            recommended_knowledge_guidance = (
-                f"\n\nRecommended knowledge IDs from ML Plan: "
-                f"{', '.join(recommended_knowledge_ids)}\n"
-                f"Note: Use list_available_knowledge first to see what exists, "
-                f"then read relevant documents."
-            )
+            # Scan metadata once for all knowledge IDs
+            metadata_map = self.knowledge_loader.scan_metadata()
+
+            for knowledge_id in recommended_knowledge_ids:
+                content = self.knowledge_loader.load_knowledge(knowledge_id, "model")
+                if content:
+                    # Successfully loaded - add to system context
+                    recommended_knowledge += (
+                        f"\n\n# Architecture Knowledge: {knowledge_id}\n\n{content}"
+                    )
+                # If knowledge doesn't exist, silently skip it (already logged at debug level)
 
         # Build system message with all context
         system_message = self._render_template(
@@ -136,7 +140,7 @@ class MLModelAgent(BaseAgent):
                 "data_profile": data_profile,
                 "available_components": self._get_model_components(),
                 "ml_plan_architecture": ml_plan_architecture,
-                "recommended_knowledge": recommended_knowledge_guidance,
+                "recommended_knowledge": recommended_knowledge,
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,
                 "is_editing": existing_yaml is not None,
@@ -148,14 +152,16 @@ class MLModelAgent(BaseAgent):
             user_message = (
                 f"Edit the existing Arc-Graph specification with these changes: "
                 f"{editing_instructions}. "
-                "If you need architecture guidance, first use list_available_knowledge "
-                "to see what's available, then read_knowledge_content for relevant documents."
+                "The recommended architecture knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools if "
+                "you need additional architectural guidance."
             )
         else:
             user_message = (
                 f"Generate the Arc-Graph model specification for '{name}'. "
-                "If you need architecture guidance, first use list_available_knowledge "
-                "to see what's available, then read_knowledge_content for relevant documents."
+                "The recommended architecture knowledge is provided in the "
+                "system message. Only use the knowledge exploration tools if "
+                "you need additional architectural guidance."
             )
 
         # Get ML tools from BaseAgent
