@@ -80,7 +80,7 @@ Your previous response had the following error:
 
 Please fix this error in your response. Make sure to:
 1. Return ONLY valid YAML (no markdown code fences like ```yaml)
-2. Include ALL required sections: summary, feature_engineering, model_architecture_and_loss, training_configuration, evaluation
+2. Include ALL required sections: feature_engineering, model_architecture_and_loss, training_configuration, evaluation
 3. Ensure the YAML is properly formatted with correct indentation
 {% endif %}
 {% endif %}
@@ -246,9 +246,6 @@ Use `list_available_knowledge` to see all options, then `read_knowledge_content`
 Provide a comprehensive ML analysis in YAML format that will be shown to the user for confirmation:
 
 ```yaml
-summary: >-
-  1-2 sentence overview of the ML task and recommended approach.
-
 feature_engineering: >-
   Describe how features should be processed and prepared. Include normalization,
   encoding, feature grouping, and any preprocessing steps needed. Use specific
@@ -277,16 +274,11 @@ recommended_knowledge_ids:
 - Use the `>-` YAML literal block style for multi-line text (folds newlines into spaces)
 - Write clear, actionable guidance in each section with specific technique names
 - Focus on **why** choices are made based on the data and task
-- The summary should be concise but complete (1-2 sentences)
 - **recommended_knowledge_ids** (optional): List the knowledge document IDs that are most relevant for implementing this plan. Only include knowledge you've actually read and found useful. If you didn't use any knowledge documents, you can omit this field or use an empty list.
 
 ## Example Output
 
 ```yaml
-summary: >-
-  Binary classification predicting diabetes from 8 tabular features using 3-layer
-  MLP with BCEWithLogitsLoss.
-
 feature_engineering: >-
   StandardScaler for all 8 numerical features. Median imputation for missing values.
   20% stratified validation split. Fit scaler on train only, transform train+val

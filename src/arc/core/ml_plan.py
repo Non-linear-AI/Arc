@@ -16,7 +16,7 @@ class MLPlan:
     """
 
     # Core plan content - Technical Decisions only
-    summary: str
+    name: str
     feature_engineering: str
     model_architecture_and_loss: str
     training_configuration: str
@@ -52,7 +52,7 @@ class MLPlan:
             MLPlan instance
         """
         return cls(
-            summary=analysis.get("summary", ""),
+            name=analysis.get("name", ""),
             feature_engineering=analysis.get("feature_engineering", ""),
             model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
             training_configuration=analysis.get("training_configuration", ""),
@@ -66,7 +66,7 @@ class MLPlan:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            "summary": self.summary,
+            "name": self.name,
             "feature_engineering": self.feature_engineering,
             "model_architecture_and_loss": self.model_architecture_and_loss,
             "training_configuration": self.training_configuration,
@@ -86,7 +86,7 @@ class MLPlan:
             created_at = datetime.fromisoformat(created_at)
 
         return cls(
-            summary=data["summary"],
+            name=data["name"],
             feature_engineering=data["feature_engineering"],
             model_architecture_and_loss=data["model_architecture_and_loss"],
             training_configuration=data["training_configuration"],
@@ -105,7 +105,7 @@ class MLPlan:
         analysis_result parameter.
         """
         return {
-            "summary": self.summary,
+            "name": self.name,
             "feature_engineering": self.feature_engineering,
             "model_architecture_and_loss": self.model_architecture_and_loss,
             "training_configuration": self.training_configuration,
@@ -120,8 +120,11 @@ class MLPlan:
         """
         # Technical decisions with bold labels instead of headers
         lines = []
+        # Show plan name at the top
         lines.extend(
             [
+                f"**{self.name}**",
+                "",
                 "**Feature Engineering**",
                 self.feature_engineering,
                 "",
@@ -154,15 +157,12 @@ class MLPlan:
 class MLPlanDiff:
     """Represents differences between two ML plans."""
 
-    summary_changed: bool = False
     feature_engineering_changed: bool = False
     architecture_changed: bool = False
     training_config_changed: bool = False
     evaluation_changed: bool = False
 
     # Store old/new values for changed sections
-    old_summary: str = ""
-    new_summary: str = ""
     old_feature_engineering: str = ""
     new_feature_engineering: str = ""
     old_architecture: str = ""
@@ -175,8 +175,7 @@ class MLPlanDiff:
     def has_changes(self) -> bool:
         """Check if there are any changes."""
         return (
-            self.summary_changed
-            or self.feature_engineering_changed
+            self.feature_engineering_changed
             or self.architecture_changed
             or self.training_config_changed
             or self.evaluation_changed
@@ -333,11 +332,6 @@ def compute_plan_diff(old_plan: dict | MLPlan, new_plan: MLPlan) -> MLPlanDiff:
     diff = MLPlanDiff()
 
     # Text field changes
-    if old_plan.summary != new_plan.summary:
-        diff.summary_changed = True
-        diff.old_summary = old_plan.summary
-        diff.new_summary = new_plan.summary
-
     if old_plan.feature_engineering != new_plan.feature_engineering:
         diff.feature_engineering_changed = True
         diff.old_feature_engineering = old_plan.feature_engineering

@@ -13,6 +13,7 @@ class MLPlan:
     """
 
     plan_id: str  # Unique identifier (e.g., "diabetes-classifier-plan-v1")
+    name: str  # User-friendly plan name (e.g., "diabetes-classifier-plan")
     version: int  # Version number for the same base plan
     user_context: str  # Original user intent/description
     source_tables: str  # Comma-separated source table names

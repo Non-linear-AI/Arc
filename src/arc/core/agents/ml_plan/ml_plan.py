@@ -297,7 +297,6 @@ class MLPlanAgent(BaseAgent):
                 # If response starts with explanatory text before YAML,
                 # find where the YAML begins (first required field at line start)
                 required_fields = [
-                    "summary:",
                     "feature_engineering:",
                     "model_architecture_and_loss:",
                     "training_configuration:",
@@ -322,7 +321,6 @@ class MLPlanAgent(BaseAgent):
 
             # Validate required fields
             required_fields = [
-                "summary",
                 "feature_engineering",
                 "model_architecture_and_loss",
                 "training_configuration",
@@ -353,7 +351,7 @@ class MLPlanAgent(BaseAgent):
             raise MLPlanError(
                 f"Invalid ML plan structure: {str(e)}\n"
                 f"The plan must include all required sections: "
-                f"summary, feature_engineering, model_architecture_and_loss, "
+                f"feature_engineering, model_architecture_and_loss, "
                 f"training_configuration, and evaluation."
             ) from e
 

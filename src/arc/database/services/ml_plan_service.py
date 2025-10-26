@@ -33,14 +33,15 @@ class MLPlanService(BaseService):
         """
         sql = """
             INSERT INTO plans (
-                plan_id, version, user_context, source_tables,
+                plan_id, name, version, user_context, source_tables,
                 plan_yaml, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         self.db_manager.system_execute(
             sql,
             [
                 plan.plan_id,
+                plan.name,
                 plan.version,
                 plan.user_context,
                 plan.source_tables,
@@ -61,7 +62,7 @@ class MLPlanService(BaseService):
             MLPlan object if found, None otherwise
         """
         sql = """
-            SELECT plan_id, version, user_context, source_tables,
+            SELECT plan_id, name, version, user_context, source_tables,
                    plan_yaml, status, created_at, updated_at
             FROM plans
             WHERE plan_id = ?
@@ -74,6 +75,7 @@ class MLPlanService(BaseService):
         row = result.rows[0]
         return MLPlan(
             plan_id=row["plan_id"],
+            name=row["name"],
             version=row["version"],
             user_context=row["user_context"],
             source_tables=row["source_tables"],
@@ -159,7 +161,7 @@ class MLPlanService(BaseService):
             Most recent MLPlan for the tables, or None if not found
         """
         sql = """
-            SELECT plan_id, version, user_context, source_tables,
+            SELECT plan_id, name, version, user_context, source_tables,
                    plan_yaml, status, created_at, updated_at
             FROM plans
             WHERE source_tables = ?
@@ -174,6 +176,42 @@ class MLPlanService(BaseService):
         row = result.rows[0]
         return MLPlan(
             plan_id=row["plan_id"],
+            name=row["name"],
+            version=row["version"],
+            user_context=row["user_context"],
+            source_tables=row["source_tables"],
+            plan_yaml=row["plan_yaml"],
+            status=row["status"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def get_latest_plan_by_name(self, name: str) -> MLPlan | None:
+        """Get the most recent plan by name.
+
+        Args:
+            name: Plan name
+
+        Returns:
+            Most recent MLPlan with the given name, or None if not found
+        """
+        sql = """
+            SELECT plan_id, name, version, user_context, source_tables,
+                   plan_yaml, status, created_at, updated_at
+            FROM plans
+            WHERE name = ?
+            ORDER BY version DESC
+            LIMIT 1
+        """
+        result = self.db_manager.system_query(sql, [name])
+
+        if not result.rows:
+            return None
+
+        row = result.rows[0]
+        return MLPlan(
+            plan_id=row["plan_id"],
+            name=row["name"],
             version=row["version"],
             user_context=row["user_context"],
             source_tables=row["source_tables"],
@@ -261,7 +299,7 @@ class MLPlanService(BaseService):
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         sql = f"""
-            SELECT plan_id, version, user_context, source_tables,
+            SELECT plan_id, name, version, user_context, source_tables,
                    plan_yaml, status, created_at, updated_at
             FROM plans
             {where_clause}
@@ -275,6 +313,7 @@ class MLPlanService(BaseService):
         return [
             MLPlan(
                 plan_id=row["plan_id"],
+                name=row["name"],
                 version=row["version"],
                 user_context=row["user_context"],
                 source_tables=row["source_tables"],
