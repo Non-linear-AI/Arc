@@ -96,7 +96,6 @@ class MLDataTool(BaseTool):
         auto_confirm: bool = False,
         plan_id: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
-        skip_data_profiling: bool = False,
     ) -> ToolResult:
         """Generate YAML configuration from instruction using LLM.
 
@@ -110,8 +109,6 @@ class MLDataTool(BaseTool):
             auto_confirm: Skip interactive confirmation workflow
             plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
                 feature engineering guidance (SECONDARY baseline)
-            skip_data_profiling: If True, skip automatic data profiling
-                (useful when data insights are already in instruction)
 
         Note on instruction vs plan_id precedence:
             - instruction: PRIMARY driver - user's immediate, specific data
