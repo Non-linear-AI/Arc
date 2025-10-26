@@ -377,7 +377,7 @@ class MLPlanTool(BaseTool):
                             # but agent needs context)
                             return ToolResult(
                                 success=True,
-                                output="ML plan cancelled by user.",
+                                output="✗ ML plan cancelled by user.",
                                 metadata={"cancelled": True, "suppress_output": True},
                             )
                     else:

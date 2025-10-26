@@ -235,7 +235,7 @@ class MLModelTool(BaseTool):
                             )
                         return ToolResult(
                             success=True,
-                            output="Model generation cancelled by user.",
+                            output="✗ Model generation cancelled by user.",
                             metadata={"cancelled": True},
                         )
                     model_yaml = final_yaml
