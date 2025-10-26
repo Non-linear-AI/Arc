@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ class MLModelAgent(BaseAgent):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ):
         """Initialize model generator agent.
 
@@ -32,9 +34,11 @@ class MLModelAgent(BaseAgent):
             api_key: API key for LLM interactions
             base_url: Optional base URL
             model: Optional model name
+            progress_callback: Optional callback to report progress/tool usage
         """
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
+        self.progress_callback = progress_callback
         # Note: knowledge_loader is now initialized in BaseAgent
 
     def get_template_directory(self) -> Path:
@@ -190,6 +194,7 @@ class MLModelAgent(BaseAgent):
                 },
                 max_iterations=3,
                 conversation_history=None,  # Fresh start
+                progress_callback=self.progress_callback,
             )
 
             return model_spec, model_yaml, conversation_history
@@ -225,6 +230,7 @@ class MLModelAgent(BaseAgent):
                 },
                 max_iterations=3,
                 conversation_history=conversation_history,
+                progress_callback=self.progress_callback,
             )
 
             return model_spec, model_yaml, updated_history

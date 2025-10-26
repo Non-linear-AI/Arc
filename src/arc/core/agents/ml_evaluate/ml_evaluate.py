@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ class MLEvaluateAgent(BaseAgent):
         api_key: str,
         base_url: str | None = None,
         model: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ):
         """Initialize evaluator generator agent.
 
@@ -56,9 +58,11 @@ class MLEvaluateAgent(BaseAgent):
             api_key: API key for LLM interactions
             base_url: Optional base URL
             model: Optional model name
+            progress_callback: Optional callback to report progress/tool usage
         """
         super().__init__(services, api_key, base_url, model)
         self.example_repository = ExampleRepository()
+        self.progress_callback = progress_callback
         # Note: knowledge_loader is now initialized in BaseAgent
 
     def get_template_directory(self) -> Path:
@@ -225,6 +229,7 @@ class MLEvaluateAgent(BaseAgent):
                 },
                 max_iterations=3,
                 conversation_history=None,  # Fresh start
+                progress_callback=self.progress_callback,
             )
 
             return evaluator_spec, evaluator_yaml, conversation_history
@@ -263,6 +268,7 @@ class MLEvaluateAgent(BaseAgent):
                 },
                 max_iterations=3,
                 conversation_history=conversation_history,
+                progress_callback=self.progress_callback,
             )
 
             return evaluator_spec, evaluator_yaml, updated_history

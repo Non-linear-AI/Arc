@@ -209,12 +209,6 @@ class MLModelTool(BaseTool):
                     "to generate a model specification."
                 )
 
-            # Show generation status
-            if printer:
-                printer.print(
-                    "[dim]Generating Arc-Graph model specification...[/dim]"
-                )
-
             # Generate model using agent
             agent = MLModelAgent(
                 self.services,
@@ -222,6 +216,12 @@ class MLModelTool(BaseTool):
                 self.base_url,
                 self.model,
             )
+
+            # Set progress callback for this invocation
+            if printer:
+                agent.progress_callback = printer.print
+            else:
+                agent.progress_callback = None
 
             # Agent will discover relevant knowledge using list_knowledge and
             # read_knowledge tools based on task context and descriptions
@@ -234,6 +234,11 @@ class MLModelTool(BaseTool):
                     ml_plan_architecture=ml_plan_architecture,
                     recommended_knowledge_ids=None,  # Let agent discover via tools
                 )
+
+                # Show completion message
+                if printer:
+                    printer.print("[dim]✓ Model generated successfully[/dim]")
+
             except Exception as exc:
                 # Import here to avoid circular imports
                 from arc.core.agents.ml_model import MLModelError
@@ -592,12 +597,6 @@ class MLTrainTool(BaseTool):
             except Exception as exc:
                 return _error_in_section(f"Failed to retrieve model '{model_id}': {exc}")
 
-            # Show generation status
-            if printer:
-                printer.print(
-                    "[dim]Generating Arc-Graph trainer specification...[/dim]"
-                )
-
             # Load plan from database if plan_id is provided
             ml_plan_training_config = None
             if plan_id:
@@ -616,6 +615,12 @@ class MLTrainTool(BaseTool):
                 self.model,
             )
 
+            # Set progress callback for this invocation
+            if printer:
+                agent.progress_callback = printer.print
+            else:
+                agent.progress_callback = None
+
             try:
                 (
                     trainer_spec,
@@ -629,6 +634,11 @@ class MLTrainTool(BaseTool):
                     ml_plan_training_config=ml_plan_training_config,
                     recommended_knowledge_ids=None,  # Let agent discover via tools
                 )
+
+                # Show completion message
+                if printer:
+                    printer.print("[dim]✓ Trainer generated successfully[/dim]")
+
             except Exception as exc:
                 from arc.core.agents.ml_train import MLTrainError
 
@@ -1366,12 +1376,6 @@ class MLEvaluateTool(BaseTool):
                 # If schema check fails, default to assuming target exists
                 target_column_exists = True
 
-            # Show generation status
-            if printer:
-                printer.print(
-                    "[dim]Generating Arc-Graph evaluator specification...[/dim]"
-                )
-
             # Load plan from database if plan_id is provided
             ml_plan_evaluation = None
             if plan_id:
@@ -1392,6 +1396,12 @@ class MLEvaluateTool(BaseTool):
                 self.model,
             )
 
+            # Set progress callback for this invocation
+            if printer:
+                agent.progress_callback = printer.print
+            else:
+                agent.progress_callback = None
+
             try:
                 (
                     evaluator_spec,
@@ -1408,6 +1418,11 @@ class MLEvaluateTool(BaseTool):
                     ml_plan_evaluation=ml_plan_evaluation,
                     recommended_knowledge_ids=None,  # Let agent discover via tools
                 )
+
+                # Show completion message
+                if printer:
+                    printer.print("[dim]✓ Evaluator generated successfully[/dim]")
+
             except Exception as exc:
                 from arc.core.agents.ml_evaluate import MLEvaluateError
 
