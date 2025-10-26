@@ -227,9 +227,8 @@ class MLRuntime:
     ):  # -> DataProcessor
         """Register a data processor in the database.
 
-        Uses version control to handle duplicates:
-        - If a processor with the same name and identical spec exists, returns it
-        - If a processor with the same name but different spec exists, creates new version
+        Always creates a new version for each registration to maintain
+        full history of all generation attempts.
 
         Args:
             name: Data processor name
@@ -242,8 +241,6 @@ class MLRuntime:
         Raises:
             MLRuntimeError: If registration fails
         """
-        import yaml
-
         from arc.database.models.data_processor import DataProcessor
 
         _validate_model_name(name)
@@ -251,53 +248,32 @@ class MLRuntime:
         # Convert spec to YAML string for storage
         spec_yaml = spec.to_yaml()
 
-        # Check if data processor with same spec already exists
-        existing_processor = self.services.data_processors.get_latest_data_processor_by_name(
-            name
+        # Get next version (always create new version)
+        next_version = self.services.data_processors.get_next_version_for_name(name)
+        base_slug = _slugify_name(name)
+        processor_id = f"{base_slug}-v{next_version}"
+
+        # Create DataProcessor
+        now = datetime.now(UTC)
+        processor = DataProcessor(
+            id=processor_id,
+            name=name,
+            version=next_version,
+            spec=spec_yaml,
+            description=description or spec.description,
+            created_at=now,
+            updated_at=now,
         )
 
-        # Use semantic YAML comparison instead of string comparison
-        # This handles whitespace differences and formatting variations
-        spec_matches = False
-        if existing_processor:
-            try:
-                existing_spec_dict = yaml.safe_load(existing_processor.spec)
-                new_spec_dict = yaml.safe_load(spec_yaml)
-                spec_matches = existing_spec_dict == new_spec_dict
-            except yaml.YAMLError:
-                # If YAML parsing fails, fall back to string comparison
-                spec_matches = existing_processor.spec.strip() == spec_yaml.strip()
+        # Save to database
+        try:
+            self.services.data_processors.create_data_processor(processor)
+        except DatabaseError as exc:
+            raise MLRuntimeError(
+                f"Failed to register data processor: {exc}"
+            ) from exc
 
-        if spec_matches:
-            # Reuse existing processor (idempotent registration)
-            return existing_processor
-        else:
-            # Create new version (spec changed or first time)
-            next_version = self.services.data_processors.get_next_version_for_name(name)
-            base_slug = _slugify_name(name)
-            processor_id = f"{base_slug}-v{next_version}"
-
-            # Create DataProcessor
-            now = datetime.now(UTC)
-            processor = DataProcessor(
-                id=processor_id,
-                name=name,
-                version=next_version,
-                spec=spec_yaml,
-                description=description or spec.description,
-                created_at=now,
-                updated_at=now,
-            )
-
-            # Save to database
-            try:
-                self.services.data_processors.create_data_processor(processor)
-            except DatabaseError as exc:
-                raise MLRuntimeError(
-                    f"Failed to register data processor: {exc}"
-                ) from exc
-
-            return processor
+        return processor
 
     def load_data_processor(
         self,

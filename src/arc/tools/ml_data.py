@@ -312,22 +312,6 @@ class MLDataTool(BaseTool):
                 from arc.ml.runtime import MLRuntime, MLRuntimeError
 
                 runtime = MLRuntime(self.services, artifacts_dir="artifacts")
-
-                # Check if processor with same spec already exists (for user feedback)
-                existing_processor = self.services.data_processors.get_latest_data_processor_by_name(
-                    name
-                )
-                spec_yaml = spec.to_yaml()
-                is_reusing_existing = False
-
-                if existing_processor:
-                    try:
-                        existing_spec_dict = yaml.safe_load(existing_processor.spec)
-                        new_spec_dict = yaml.safe_load(spec_yaml)
-                        is_reusing_existing = existing_spec_dict == new_spec_dict
-                    except yaml.YAMLError:
-                        is_reusing_existing = existing_processor.spec.strip() == spec_yaml.strip()
-
                 try:
                     processor = runtime.register_data_processor(
                         name=name, spec=spec, description=spec.description
@@ -335,16 +319,10 @@ class MLDataTool(BaseTool):
                     # Display registration confirmation in the Data Processor section
                     if printer:
                         printer.print("")
-                        if is_reusing_existing:
-                            printer.print(
-                                f"[dim]✓ Data processor '{name}' already exists with "
-                                f"identical spec, reusing {processor.id}[/dim]"
-                            )
-                        else:
-                            printer.print(
-                                f"[dim]✓ Data processor '{name}' registered to database "
-                                f"({processor.id} • {len(spec.steps)} steps)[/dim]"
-                            )
+                        printer.print(
+                            f"[dim]✓ Data processor '{name}' registered to database "
+                            f"({processor.id} • {len(spec.steps)} steps)[/dim]"
+                        )
                 except MLRuntimeError as e:
                     return _error_in_section(
                         f"Failed to register data processor: {str(e)}"
