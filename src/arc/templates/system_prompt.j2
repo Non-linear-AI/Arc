@@ -36,16 +36,20 @@ For any ML task (build, create, train, design, predict, classify, forecast), fol
    - CRITICAL: Extract plan_id from ml_plan tool result and pass it to subsequent ML tools
    - IMPORTANT: The ml_plan tool returns recommended_knowledge_ids in its metadata. Extract these IDs and pass them to subsequent ML tools (ml_data, ml_model, ml_train, ml_evaluate) via their recommended_knowledge_ids parameter
 
-3. **Feature Engineering (ml_data)**
+3. **Feature Engineering (ml_data)** ← REQUIRED if plan includes feature engineering
    - Action: Use ml_data to create feature-engineered tables following the plan's guidance
    - Parameters: Pass plan_id and recommended_knowledge_ids from ml_plan result
    - Examples: normalization, aggregations, one-hot encoding, derived features, joins
    - Output: New table(s) with engineered features ready for model training
+   - **CRITICAL**: This step creates the table and column names that ml_model will reference
+   - **When to skip**: ONLY if user explicitly requests using raw/unprocessed data
 
-4. **Model Definition (ml_model)**
+4. **Model Definition (ml_model)** ← MUST use data from step 3 (or raw data if step 3 skipped)
    - Action: Generate and register model specification
-   - Parameters: Pass plan_id and recommended_knowledge_ids from ml_plan result
-   - Reference: Use processed tables from step 3
+   - Parameters: Pass plan_id, recommended_knowledge_ids, AND data_table name from ml_data output
+   - **CRITICAL DEPENDENCY**: Model input columns MUST match the output columns from ml_data
+   - If plan includes feature engineering → ml_data MUST run BEFORE ml_model
+   - If using raw data → pass original table name to ml_model
 
 5. **Training (ml_train)**
    - Action: Generate trainer spec and launch training job
@@ -140,6 +144,25 @@ Use create_todo_list to track multi-step work.
 - Mark as completed only when fully done
 - Keep exactly one step as in_progress at a time
 
+# Dependency Checking
+
+Before calling certain tools, verify dependencies are met:
+
+**Before calling ml_model:**
+1. Check: Does the ML plan include feature engineering (normalization, scaling, encoding, etc.)?
+2. If YES → Has ml_data been run to create the processed table?
+   - If NO → Run ml_data FIRST to create processed data
+   - If YES → Use the processed table name from ml_data output
+3. If NO (raw data only) → Use original table name
+
+**Before calling ml_train:**
+1. Check: Has ml_model been run to create the model specification?
+2. If NO → Run ml_model first
+
+**Before calling ml_evaluate:**
+1. Check: Has ml_train completed successfully?
+2. If NO → Cannot evaluate until training is done
+
 # Common Tool Patterns
 
 Understanding how tools work together:
@@ -147,7 +170,8 @@ Understanding how tools work together:
 - **Data Exploration then Plan**: schema_discovery → database_query (gather insights) → ml_plan (with insights in instruction)
 - **Full ML Pipeline**: schema_discovery → database_query → ml_plan → ml_data → ml_model → ml_train → ml_evaluate
 - **View before Edit**: view_file → edit_file (or create_file if new)
-- **Feature Engineering**: ml_plan recommends features → ml_data creates tables → ml_model uses processed data
+- **Feature Engineering BEFORE Model**: ml_plan recommends features → ml_data creates tables → ml_model uses processed data (CRITICAL: model depends on ml_data output)
+- **Skip Feature Engineering**: Only if user explicitly wants raw data → ml_model uses original table (rare case)
 - **Data Transformation**: Always use ml_data for write operations
 - **Job Monitoring**: ml_train returns job_id → database_query jobs table → check status
 - **Model Iteration**: ml_evaluate shows poor metrics → ml_plan with feedback → repeat workflow
