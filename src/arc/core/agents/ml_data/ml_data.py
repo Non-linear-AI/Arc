@@ -121,37 +121,16 @@ class MLDataAgent(BaseAgent):
                 source_tables, database, include_row_counts=not skip_data_profiling
             )
 
-            # Pre-load recommended knowledge content
-            recommended_knowledge = ""
+            # Don't pre-load knowledge - let agent discover what's available using tools
+            # This prevents errors from non-existent knowledge IDs and gives agent flexibility
+            recommended_knowledge_guidance = ""
             if recommended_knowledge_ids:
-                # Scan metadata once for all knowledge IDs (performance optimization)
-                metadata_map = self.knowledge_loader.scan_metadata()
-
-                for knowledge_id in recommended_knowledge_ids:
-                    content = self.knowledge_loader.load_knowledge(knowledge_id, "data")
-                    if content:
-                        # Get metadata for display
-                        metadata = metadata_map.get(knowledge_id)
-                        if metadata and self.progress_callback:
-                            self.progress_callback(
-                                f"[dim]▸ Using knowledge: {metadata.name}[/dim]"
-                            )
-                        recommended_knowledge += (
-                            f"\n\n# Data Processing Knowledge: {knowledge_id}"
-                            f"\n\n{content}"
-                        )
-                    else:
-                        # Warn user if recommended knowledge fails to load
-                        import logging
-
-                        if self.progress_callback:
-                            self.progress_callback(
-                                f"[yellow]⚠  Warning: Recommended knowledge "
-                                f"'{knowledge_id}' not found[/yellow]"
-                            )
-                        logging.getLogger(__name__).warning(
-                            f"Could not load recommended knowledge: {knowledge_id}"
-                        )
+                recommended_knowledge_guidance = (
+                    f"\n\nRecommended knowledge IDs from ML Plan: "
+                    f"{', '.join(recommended_knowledge_ids)}\n"
+                    f"Note: Use list_available_knowledge first to see what exists, "
+                    f"then read relevant documents."
+                )
 
             # Build system message with all context
             system_message = self._render_template(
@@ -161,7 +140,7 @@ class MLDataAgent(BaseAgent):
                     "schema_info": schema_info,
                     "source_tables": source_tables or [],
                     "existing_yaml": existing_yaml,
-                    "recommended_knowledge": recommended_knowledge,
+                    "recommended_knowledge": recommended_knowledge_guidance,
                 },
             )
 
@@ -170,16 +149,14 @@ class MLDataAgent(BaseAgent):
                 user_message = (
                     f"Edit the existing data processing specification with "
                     f"these changes: {instruction}. "
-                    "The recommended data processing knowledge is provided in "
-                    "the system message. Only use the knowledge exploration "
-                    "tools if you need additional guidance."
+                    "If you need data processing guidance, first use list_available_knowledge "
+                    "to see what's available, then read_knowledge_content for relevant documents."
                 )
             else:
                 user_message = (
                     "Generate the data processing specification. "
-                    "The recommended data processing knowledge is provided in "
-                    "the system message. Only use the knowledge exploration "
-                    "tools if you need additional guidance."
+                    "If you need data processing guidance, first use list_available_knowledge "
+                    "to see what's available, then read_knowledge_content for relevant documents."
                 )
 
             # Get ML tools from BaseAgent

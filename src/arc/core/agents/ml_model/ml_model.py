@@ -116,32 +116,16 @@ class MLModelAgent(BaseAgent):
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Pre-load recommended knowledge content
-        recommended_knowledge = ""
+        # Don't pre-load knowledge - let agent discover what's available using tools
+        # This prevents errors from non-existent knowledge IDs and gives agent flexibility
+        recommended_knowledge_guidance = ""
         if recommended_knowledge_ids:
-            # Scan metadata once for all knowledge IDs (performance optimization)
-            metadata_map = self.knowledge_loader.scan_metadata()
-
-            for knowledge_id in recommended_knowledge_ids:
-                content = self.knowledge_loader.load_knowledge(knowledge_id, "model")
-                if content:
-                    # Get metadata for display
-                    metadata = metadata_map.get(knowledge_id)
-                    if metadata:
-                        print(f"  ▸ Using knowledge: {metadata.name}")
-                    recommended_knowledge += (
-                        f"\n\n# Architecture Knowledge: {knowledge_id}\n\n{content}"
-                    )
-                else:
-                    # Warn user if recommended knowledge fails to load
-                    import logging
-
-                    print(
-                        f"  ⚠ Warning: Recommended knowledge '{knowledge_id}' not found"
-                    )
-                    logging.getLogger(__name__).warning(
-                        f"Could not load recommended knowledge: {knowledge_id}"
-                    )
+            recommended_knowledge_guidance = (
+                f"\n\nRecommended knowledge IDs from ML Plan: "
+                f"{', '.join(recommended_knowledge_ids)}\n"
+                f"Note: Use list_available_knowledge first to see what exists, "
+                f"then read relevant documents."
+            )
 
         # Build system message with all context
         system_message = self._render_template(
@@ -152,7 +136,7 @@ class MLModelAgent(BaseAgent):
                 "data_profile": data_profile,
                 "available_components": self._get_model_components(),
                 "ml_plan_architecture": ml_plan_architecture,
-                "recommended_knowledge": recommended_knowledge,
+                "recommended_knowledge": recommended_knowledge_guidance,
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,
                 "is_editing": existing_yaml is not None,
@@ -164,16 +148,14 @@ class MLModelAgent(BaseAgent):
             user_message = (
                 f"Edit the existing Arc-Graph specification with these changes: "
                 f"{editing_instructions}. "
-                "The recommended architecture knowledge is provided in the "
-                "system message. Only use the knowledge exploration tools if "
-                "you need additional architectural guidance."
+                "If you need architecture guidance, first use list_available_knowledge "
+                "to see what's available, then read_knowledge_content for relevant documents."
             )
         else:
             user_message = (
                 f"Generate the Arc-Graph model specification for '{name}'. "
-                "The recommended architecture knowledge is provided in the "
-                "system message. Only use the knowledge exploration tools if "
-                "you need additional architectural guidance."
+                "If you need architecture guidance, first use list_available_knowledge "
+                "to see what's available, then read_knowledge_content for relevant documents."
             )
 
         # Get ML tools from BaseAgent

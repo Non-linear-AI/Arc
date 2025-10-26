@@ -218,7 +218,8 @@ class KnowledgeLoader:
                 self._content_cache[cache_key] = content
                 return content
 
-        logger.warning(f"Knowledge not found: {knowledge_id} (phase: {phase})")
+        # Knowledge not found is normal - agent will discover what's available via tools
+        logger.debug(f"Knowledge not found: {knowledge_id} (phase: {phase})")
         # Cache the negative result to avoid repeated lookups
         self._content_cache[cache_key] = None
         return None
