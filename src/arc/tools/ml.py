@@ -339,130 +339,130 @@ class MLModelTool(BaseTool):
                 metadata=result_metadata,
             )
 
-        def _create_validator(self):
-            """Create validator function for the workflow.
+    def _create_validator(self):
+        """Create validator function for the workflow.
 
-            Returns:
-                Function that validates YAML and returns list of error strings
-            """
+        Returns:
+            Function that validates YAML and returns list of error strings
+        """
 
-            def validate(yaml_str: str) -> list[str]:
-                try:
-                    model_dict = yaml.safe_load(yaml_str)
-                    validate_model_dict(model_dict)
-                    return []  # No errors
-                except yaml.YAMLError as e:
-                    return [f"Invalid YAML: {e}"]
-                except ModelValidationError as e:
-                    return [f"Validation error: {e}"]
-                except Exception as e:
-                    return [f"Unexpected error: {e}"]
-
-            return validate
-
-        def _create_editor(self, user_context: str | None = None):
-            """Create editor function for AI-assisted editing in the workflow.
-
-            Args:
-                user_context: User context description
-
-            Returns:
-                Async function that edits YAML based on user feedback and returns
-                tuple of (edited_yaml, updated_conversation_history)
-            """
-
-            async def edit(
-                yaml_content: str,
-                feedback: str,
-                context: dict[str, Any],
-                conversation_history: list[dict[str, str]] | None = None,
-            ) -> tuple[str | None, list[dict[str, str]] | None]:
-                agent = MLModelAgent(
-                    self.services,
-                    self.api_key,
-                    self.base_url,
-                    self.model,
-                )
-
-                try:
-                    _model_spec, edited_yaml, updated_history = await agent.generate_model(
-                        name=context["model_name"],
-                        user_context=user_context or "",
-                        table_name=context["table_name"],
-                        target_column=context.get("target_column"),
-                        existing_yaml=yaml_content,
-                        editing_instructions=feedback,
-                        conversation_history=conversation_history,
-                    )
-
-                    return edited_yaml, updated_history
-                except Exception as e:
-                    if self.ui:
-                        self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
-                    return None, None
-
-            return edit
-
-        def _save_model_to_db(
-            self,
-            name: str,
-            yaml_content: str,
-            description: str,
-            plan_id: str | None = None,
-        ) -> Model:
-            """Save generated model directly to DB (no file needed).
-
-            Args:
-                name: Model name
-                yaml_content: YAML specification as string
-                description: Model description
-                plan_id: Optional ML plan ID that guided this model generation
-
-            Returns:
-                Created Model object with model_id
-
-            Raises:
-                ValueError: If YAML is invalid or DB save fails
-            """
-            from datetime import UTC, datetime
-
-            from arc.database.models.model import Model
-            from arc.graph.model import ModelSpec
-            from arc.ml.runtime import _slugify_name
-
-            # Validate YAML first
+        def validate(yaml_str: str) -> list[str]:
             try:
-                model_spec = ModelSpec.from_yaml(yaml_content)
-                _ = model_spec.get_input_names()
-                _ = model_spec.get_output_names()
-            except Exception as exc:
-                raise ValueError(f"Invalid model YAML: {exc}") from exc
+                model_dict = yaml.safe_load(yaml_str)
+                validate_model_dict(model_dict)
+                return []  # No errors
+            except yaml.YAMLError as e:
+                return [f"Invalid YAML: {e}"]
+            except ModelValidationError as e:
+                return [f"Validation error: {e}"]
+            except Exception as e:
+                return [f"Unexpected error: {e}"]
 
-            # Get next version
-            latest = self.services.models.get_latest_model_by_name(name)
-            version = 1 if latest is None else latest.version + 1
+        return validate
 
-            # Create model ID
-            base_slug = _slugify_name(name)
-            model_id = f"{base_slug}-v{version}"
+    def _create_editor(self, user_context: str | None = None):
+        """Create editor function for AI-assisted editing in the workflow.
 
-            # Create model object
-            now = datetime.now(UTC)
-            model = Model(
-                id=model_id,
-                type="ml.model_spec",
-                name=name,
-                version=version,
-                description=description,
-                spec=yaml_content,
-                created_at=now,
-                updated_at=now,
-                plan_id=plan_id,  # Link to ML plan if provided
+        Args:
+            user_context: User context description
+
+        Returns:
+            Async function that edits YAML based on user feedback and returns
+            tuple of (edited_yaml, updated_conversation_history)
+        """
+
+        async def edit(
+            yaml_content: str,
+            feedback: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> tuple[str | None, list[dict[str, str]] | None]:
+            agent = MLModelAgent(
+                self.services,
+                self.api_key,
+                self.base_url,
+                self.model,
             )
 
-            # Save to DB
-            self.services.models.create_model(model)
-            return model
+            try:
+                _model_spec, edited_yaml, updated_history = await agent.generate_model(
+                    name=context["model_name"],
+                    user_context=user_context or "",
+                    table_name=context["table_name"],
+                    target_column=context.get("target_column"),
+                    existing_yaml=yaml_content,
+                    editing_instructions=feedback,
+                    conversation_history=conversation_history,
+                )
+
+                return edited_yaml, updated_history
+            except Exception as e:
+                if self.ui:
+                    self.ui.show_system_error(f"❌ AI editing failed: {str(e)}")
+                return None, None
+
+        return edit
+
+    def _save_model_to_db(
+        self,
+        name: str,
+        yaml_content: str,
+        description: str,
+        plan_id: str | None = None,
+    ) -> Model:
+        """Save generated model directly to DB (no file needed).
+
+        Args:
+            name: Model name
+            yaml_content: YAML specification as string
+            description: Model description
+            plan_id: Optional ML plan ID that guided this model generation
+
+        Returns:
+            Created Model object with model_id
+
+        Raises:
+            ValueError: If YAML is invalid or DB save fails
+        """
+        from datetime import UTC, datetime
+
+        from arc.database.models.model import Model
+        from arc.graph.model import ModelSpec
+        from arc.ml.runtime import _slugify_name
+
+        # Validate YAML first
+        try:
+            model_spec = ModelSpec.from_yaml(yaml_content)
+            _ = model_spec.get_input_names()
+            _ = model_spec.get_output_names()
+        except Exception as exc:
+            raise ValueError(f"Invalid model YAML: {exc}") from exc
+
+        # Get next version
+        latest = self.services.models.get_latest_model_by_name(name)
+        version = 1 if latest is None else latest.version + 1
+
+        # Create model ID
+        base_slug = _slugify_name(name)
+        model_id = f"{base_slug}-v{version}"
+
+        # Create model object
+        now = datetime.now(UTC)
+        model = Model(
+            id=model_id,
+            type="ml.model_spec",
+            name=name,
+            version=version,
+            description=description,
+            spec=yaml_content,
+            created_at=now,
+            updated_at=now,
+            plan_id=plan_id,  # Link to ML plan if provided
+        )
+
+        # Save to DB
+        self.services.models.create_model(model)
+        return model
 
 
 class MLTrainTool(BaseTool):
@@ -2237,7 +2237,9 @@ class MLPlanTool(BaseTool):
                         try:
                             from datetime import UTC, datetime
 
-                            from arc.database.models.ml_plan import MLPlan as MLPlanModel
+                            from arc.database.models.ml_plan import (
+                                MLPlan as MLPlanModel,
+                            )
                             from arc.ml.runtime import _slugify_name
 
                             # Convert plan to dict for storage
@@ -2302,7 +2304,9 @@ class MLPlanTool(BaseTool):
 
                     # Display plan and run confirmation workflow
                     if self.ui:
-                        from arc.utils.ml_plan_workflow import MLPlanConfirmationWorkflow
+                        from arc.utils.ml_plan_workflow import (
+                            MLPlanConfirmationWorkflow,
+                        )
 
                         try:
                             workflow = MLPlanConfirmationWorkflow(self.ui)
