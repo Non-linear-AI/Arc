@@ -11,6 +11,14 @@ from arc.tools.base import BaseTool, ToolResult
 logger = logging.getLogger(__name__)
 
 
+# Sentinel value to indicate "use default timeout"
+class _UseDefault:
+    pass
+
+
+USE_DEFAULT_TIMEOUT = _UseDefault()
+
+
 class ToolRegistry:
     """Registry for managing and dispatching tool executions.
 
@@ -82,13 +90,14 @@ class ToolRegistry:
     async def execute(
         self,
         tool_call: ArcToolCall,
-        timeout: int | None = None,
+        timeout: int | None | _UseDefault = USE_DEFAULT_TIMEOUT,
     ) -> ToolResult:
         """Execute a tool call with timeout and error handling.
 
         Args:
             tool_call: Tool call to execute
-            timeout: Optional timeout override (uses default_timeout if None)
+            timeout: Timeout in seconds. Use None for no timeout, or omit to use
+                default_timeout. Pass explicit int value to override.
 
         Returns:
             ToolResult with execution result or error
@@ -115,13 +124,26 @@ class ToolRegistry:
 
         # Execute tool with timeout
         tool = self.tools[tool_call.name]
-        timeout_value = timeout if timeout is not None else self.default_timeout
+
+        # Determine timeout value:
+        # - USE_DEFAULT_TIMEOUT (not passed) -> use self.default_timeout
+        # - None (explicitly passed) -> no timeout
+        # - int value -> use that value
+        if isinstance(timeout, _UseDefault):
+            timeout_value = self.default_timeout
+        else:
+            timeout_value = timeout
 
         try:
-            result = await asyncio.wait_for(
-                tool.execute(**args),
-                timeout=timeout_value,
-            )
+            if timeout_value is None:
+                # No timeout - wait indefinitely
+                result = await tool.execute(**args)
+            else:
+                # Use timeout
+                result = await asyncio.wait_for(
+                    tool.execute(**args),
+                    timeout=timeout_value,
+                )
             return result
         except TimeoutError:
             # Treat timeouts as cancellations - don't retry, ask user instead

@@ -646,7 +646,14 @@ class ArcAgent:
                 )
 
         # Use tool registry for execution
-        return await self.tool_registry.execute(tool_call)
+        # ML tools should not have timeouts since they wait for user input
+        ml_tools = {"ml_plan", "ml_model", "ml_train", "ml_evaluate", "ml_data"}
+        if tool_call.name in ml_tools:
+            # No timeout for ML tools (they wait for user interaction)
+            return await self.tool_registry.execute(tool_call, timeout=None)
+        else:
+            # Use default timeout for other tools
+            return await self.tool_registry.execute(tool_call)
 
     async def _execute_tool_call(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call (alias for _execute_tool)."""
