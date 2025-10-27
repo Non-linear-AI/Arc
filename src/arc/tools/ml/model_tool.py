@@ -158,7 +158,8 @@ class MLModelTool(BaseTool):
             else:
                 agent.progress_callback = None
 
-            # Agent will discover relevant knowledge using list_knowledge and
+            # Agent will use recommended knowledge IDs from ML plan if provided,
+            # otherwise discover relevant knowledge using list_knowledge and
             # read_knowledge tools based on task context and descriptions
             try:
                 (
@@ -171,7 +172,7 @@ class MLModelTool(BaseTool):
                     table_name=str(data_table),
                     target_column=target_column,
                     ml_plan_architecture=ml_plan_architecture,
-                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
                 # Show completion message

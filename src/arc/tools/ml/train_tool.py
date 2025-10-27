@@ -181,7 +181,7 @@ class MLTrainTool(BaseTool):
                     model_id=model_record.id,
                     model_spec_yaml=model_record.spec,
                     ml_plan_training_config=ml_plan_training_config,
-                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
                 # Show completion message
@@ -716,7 +716,7 @@ class MLTrainTool(BaseTool):
                     model_id=model_record.id,
                     model_spec_yaml=model_record.spec,
                     existing_yaml=yaml_content,
-                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    recommended_knowledge_ids=None,  # Editing uses conversation_history
                     conversation_history=conversation_history,
                 )
                 return edited_yaml, updated_history
