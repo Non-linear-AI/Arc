@@ -27,7 +27,6 @@ class TestKnowledgeMetadata:
             "description": "Test description",
             "keywords": ["dcn", "feature-crossing"],
             "problem_type": "classification",
-            "phases": ["model"],
             "complexity": "intermediate",
             "domain": "recommendation",
         }
@@ -38,7 +37,8 @@ class TestKnowledgeMetadata:
         assert metadata.name == "Deep & Cross Network"
         assert metadata.type == "architecture"
         assert metadata.keywords == ["dcn", "feature-crossing"]
-        assert "model" in metadata.phases
+        assert metadata.complexity == "intermediate"
+        assert metadata.domain == "recommendation"
 
     def test_metadata_to_dict(self):
         """Test converting metadata to dict."""
@@ -69,7 +69,6 @@ class TestKnowledgeMetadata:
             "type": "pattern",
             "description": "Test description",
             "keywords": ["k1", "k2"],
-            "phases": ["model", "trainer"],
         }
 
         metadata = KnowledgeMetadata(data)
@@ -77,6 +76,7 @@ class TestKnowledgeMetadata:
 
         assert "test" in str_repr
         assert "pattern" in str_repr
+        assert "k1, k2" in str_repr
         assert "Test description" in str_repr
 
 
