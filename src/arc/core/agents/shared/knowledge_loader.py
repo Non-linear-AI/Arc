@@ -232,7 +232,7 @@ class KnowledgeLoader:
         Args:
             base_path: Base path to search (builtin or user)
             knowledge_id: Knowledge ID
-            phase: Phase to load
+            phase: Phase to load (e.g., "general", "model", "train", "evaluate", "data")
 
         Returns:
             Knowledge content or None if not found
@@ -240,6 +240,17 @@ class KnowledgeLoader:
         knowledge_dir = base_path / knowledge_id
 
         if not knowledge_dir.exists():
+            return None
+
+        # If phase is "general", go directly to guide.md
+        if phase == "general":
+            general_guide = knowledge_dir / "guide.md"
+            if general_guide.exists():
+                try:
+                    return general_guide.read_text()
+                except Exception as e:
+                    logger.error(f"Failed to read {general_guide}: {e}")
+                    return None
             return None
 
         # Try phase-specific guide first (e.g., model-guide.md)
@@ -261,6 +272,38 @@ class KnowledgeLoader:
                 return None
 
         return None
+
+    def get_available_phases(self, knowledge_id: str) -> list[str]:
+        """Get list of actually available phases for a knowledge document.
+
+        Checks which guide files exist (both phase-specific and general).
+
+        Args:
+            knowledge_id: Knowledge document ID
+
+        Returns:
+            List of available phases (e.g., ["general", "model", "train"])
+        """
+        available_phases = []
+
+        # Check both user and builtin paths
+        for base_path in [self.user_path, self.builtin_path]:
+            knowledge_dir = base_path / knowledge_id
+            if not knowledge_dir.exists():
+                continue
+
+            # Check for general guide
+            if (knowledge_dir / "guide.md").exists():
+                if "general" not in available_phases:
+                    available_phases.append("general")
+
+            # Check for phase-specific guides
+            for phase in ["model", "train", "evaluate", "data"]:
+                phase_guide = knowledge_dir / f"{phase}-guide.md"
+                if phase_guide.exists() and phase not in available_phases:
+                    available_phases.append(phase)
+
+        return available_phases
 
     def format_metadata_for_llm(self) -> str:
         """Format all metadata as a string for LLM context.

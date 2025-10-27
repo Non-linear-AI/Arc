@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
@@ -27,7 +26,6 @@ class MLPlanAgent(BaseAgent):
         base_url: str | None = None,
         model: str | None = None,
         progress_callback: Any | None = None,
-        verbose: bool = False,
     ):
         """Initialize ML plan agent.
 
@@ -37,13 +35,10 @@ class MLPlanAgent(BaseAgent):
             base_url: Optional base URL
             model: Optional model name
             progress_callback: Optional callback for reporting progress/errors
-            verbose: If True, show detailed tool results. If False, show
-                only tool calls.
         """
         super().__init__(services, api_key, base_url, model)
         self.progress_callback = progress_callback
         # Note: knowledge_loader is now initialized in BaseAgent
-        self.verbose = verbose
 
     def get_template_directory(self) -> Path:
         """Get the template directory for ML planning.
@@ -187,9 +182,7 @@ class MLPlanAgent(BaseAgent):
         # Use the template to generate clear instructions for the LLM
         system_message = self._render_template(self.get_template_name(), context)
         user_message = (
-            "Please analyze this ML problem and generate a comprehensive plan. "
-            "Use the knowledge exploration tools if you need to understand specific "
-            "architectural patterns."
+            "Please analyze this ML problem and generate a comprehensive plan."
         )
 
         # Get all tools from BaseAgent (knowledge + database)
@@ -214,10 +207,11 @@ class MLPlanAgent(BaseAgent):
                 system_message=system_message,
                 user_message=user_message,
                 tools=tools,
-                tool_executor=self._execute_tool,
+                tool_executor=self._execute_ml_tool,
                 validator_func=validator,
                 validation_context=context,
                 max_iterations=max_iterations,
+                progress_callback=self.progress_callback,
             )
 
             return analysis_result
@@ -389,77 +383,6 @@ class MLPlanAgent(BaseAgent):
         except Exception as e:
             return {"error": f"Failed to analyze target column: {str(e)}"}
 
-    async def _execute_tool(self, tool_name: str, arguments: str) -> str:
-        """Execute ML Plan tools with progress reporting.
-
-        Wraps BaseAgent's _execute_ml_tool() with progress callbacks.
-
-        Args:
-            tool_name: Name of the tool to execute
-            arguments: JSON string of tool arguments
-
-        Returns:
-            Tool execution result as string
-        """
-        args = json.loads(arguments)
-
-        # Report tool call
-        if self.progress_callback:
-            self._report_tool_call(tool_name, args)
-
-        # Execute using BaseAgent's implementation
-        result = await self._execute_ml_tool(tool_name, arguments)
-
-        # Report result (only in verbose mode)
-        if self.verbose and self.progress_callback and result:
-            self._report_tool_result(tool_name, result, args)
-
-        return result
-
-    def _report_tool_call(self, tool_name: str, args: dict):
-        """Report tool call with readable description."""
-        if tool_name == "list_available_knowledge":
-            self.progress_callback("[dim]▸ Listing available knowledges[/dim]")
-
-        elif tool_name == "read_knowledge_content":
-            knowledge_id = args.get("knowledge_id", "")
-            self.progress_callback(f"[dim]▸ Reading knowledge: {knowledge_id}[/dim]")
-
-        elif tool_name == "database_query":
-            query = args.get("query", "")
-            # Show condensed query if too long
-            query_display = query[:97] + "..." if len(query) > 100 else query
-            self.progress_callback(f"[dim]▸ Query: {query_display}[/dim]")
-
-    def _report_tool_result(self, tool_name: str, result: str, args: dict):  # noqa: ARG002
-        """Display tool result in readable format."""
-        if tool_name == "database_query":
-            # DatabaseQueryTool already formats nicely, just indent it
-            self.progress_callback("    Result:")
-            for line in result.split("\n"):
-                if line.strip():
-                    self.progress_callback(f"    {line}")
-
-        elif tool_name == "list_available_knowledge":
-            # Show available patterns
-            self.progress_callback("    Available:")
-            for line in result.split("\n"):
-                if line.strip() and line.startswith("-"):
-                    self.progress_callback(f"    {line}")
-
-        elif tool_name == "read_knowledge_content":
-            # Show preview of knowledge content
-            lines = [line for line in result.split("\n") if line.strip()]
-            self.progress_callback("    Preview:")
-            for line in lines[:8]:
-                # Truncate long lines
-                display_line = line if len(line) <= 100 else line[:97] + "..."
-                self.progress_callback(f"    {display_line}")
-            if len(lines) > 8:
-                self.progress_callback(f"    ... ({len(lines) - 8} more lines)")
-
-        # Add blank line for readability
-        self.progress_callback("")
-
-    # Note: Handler methods (_handle_list_knowledge, _handle_read_knowledge,
-    # _handle_database_query) are now inherited from BaseAgent
+    # Note: Tool execution and handler methods (_execute_ml_tool,
+    # _handle_list_knowledge, _handle_read_knowledge, _handle_database_query)
+    # are now inherited from BaseAgent

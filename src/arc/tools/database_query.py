@@ -78,7 +78,7 @@ class DatabaseQueryTool(BaseTool):
 
             # Format results using Rich Table (like /sql command)
             if result.empty():
-                output = f"{display_query}\nNo results returned."
+                output = "No results returned."
             else:
                 import json
 
@@ -93,7 +93,7 @@ class DatabaseQueryTool(BaseTool):
                 metadata["row_count"] = row_count
 
                 if not first_row:
-                    output = f"{display_query}\nNo results returned."
+                    output = "No results returned."
                 else:
                     # Build Rich table for clean display (will be dimmed via
                     # Padding wrapper)
@@ -140,39 +140,27 @@ class DatabaseQueryTool(BaseTool):
                     else:
                         summary = f"{total_rows} {row_text} returned"
 
-                    # Build text output for agent
-                    # Show column headers
-                    column_names = list(first_row.keys())
-                    header_line = " | ".join(column_names)
-                    separator = "-" * len(header_line)
-
-                    # Format rows as text
-                    text_rows = []
+                    # Build JSON output for agent
+                    # Convert rows to list of dictionaries
+                    json_rows = []
                     for row_idx, row in enumerate(result):
                         if row_idx >= max_rows:
-                            text_rows.append("...")
                             break
-                        row_values = []
-                        for value in row.values():
-                            if value is None:
-                                row_values.append("NULL")
-                            elif isinstance(value, (dict, list)):
-                                row_values.append(
-                                    json.dumps(value, separators=(",", ":"))
-                                )
-                            else:
-                                row_values.append(str(value))
-                        text_rows.append(" | ".join(row_values))
+                        row_dict = {}
+                        for key, value in row.items():
+                            # Keep None as null in JSON
+                            row_dict[key] = value
+                        json_rows.append(row_dict)
 
-                    # Build complete text output
-                    result_text = [header_line, separator] + text_rows
+                    # Format as JSON (compact)
+                    json_output = json.dumps(json_rows, default=str)
+
+                    # Add truncation note if needed
+                    truncation_note = ""
                     if total_rows > max_rows:
-                        result_text.append(f"({total_rows - max_rows} more rows)")
+                        truncation_note = f"\n(Showing {max_rows} of {total_rows} rows)"
 
-                    agent_output = (
-                        f"{display_query}\n{total_rows} {row_text}:\n"
-                        + "\n".join(result_text)
-                    )
+                    agent_output = json_output + truncation_note
 
                     # Return metadata for Rich rendering (minimal style)
                     metadata["rich_table"] = table

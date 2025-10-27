@@ -127,6 +127,8 @@ class SchemaDiscoveryTool(BaseTool):
             ToolResult with table list
         """
         try:
+            import json
+
             from rich import box
             from rich.table import Table
 
@@ -141,7 +143,7 @@ class SchemaDiscoveryTool(BaseTool):
 
             total = len(tables)
 
-            # Build Rich table for table list
+            # Build Rich table for display
             table = Table(
                 show_header=True,
                 header_style="bold",
@@ -153,45 +155,39 @@ class SchemaDiscoveryTool(BaseTool):
             table.add_column("Table", no_wrap=False)
             table.add_column("Columns", no_wrap=False, justify="right")
 
-            # Add rows (limit to 5 for table list)
-            max_rows = 5
-            for idx, tbl in enumerate(tables):
-                if idx >= max_rows:
-                    table.add_row("...", "...", style="dim")
-                    break
+            # Build JSON output for agent (all tables)
+            table_list = []
+            for tbl in tables:
                 column_count = len(schema_info.get_columns_for_table(tbl.name))
-                table.add_row(tbl.name, str(column_count))
+                table_list.append({
+                    "table": tbl.name,
+                    "columns": column_count
+                })
+                # Add to Rich table (limit to 5 for display)
+                if len(table_list) <= 5:
+                    table.add_row(tbl.name, str(column_count))
 
-            # Prepare summary
-            if total > max_rows:
-                summary = f"Showing {max_rows} of {total} tables"
+            if total > 5:
+                table.add_row("...", "...", style="dim")
+
+            # Format as JSON (compact)
+            json_output = json.dumps(table_list)
+
+            # Prepare summary for UI
+            if total > 5:
+                summary = f"Showing 5 of {total} tables"
             else:
                 table_text = "table" if total == 1 else "tables"
                 summary = f"{total} {table_text}"
-
-            # Build text output for the agent
-            table_list = [
-                f"- {tbl.name} "
-                f"({len(schema_info.get_columns_for_table(tbl.name))} columns)"
-                for tbl in tables[:5]
-            ]
-            if total > 5:
-                table_list.append(f"... and {total - 5} more")
-
-            agent_output = (
-                f"Found {total} table{'s' if total != 1 else ''} in "
-                f"{target_db} database:\n" + "\n".join(table_list)
-            )
 
             metadata = {
                 "table_count": total,
                 "target_db": target_db,
                 "rich_table": table,
                 "summary": summary,
-                "agent_output": agent_output,
             }
 
-            return ToolResult.success_result(agent_output, metadata=metadata)
+            return ToolResult.success_result(json_output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to list tables: {str(e)}")
@@ -207,6 +203,8 @@ class SchemaDiscoveryTool(BaseTool):
             ToolResult with table structure details
         """
         try:
+            import json
+
             from rich import box
             from rich.table import Table
 
@@ -234,7 +232,7 @@ class SchemaDiscoveryTool(BaseTool):
                     },
                 )
 
-            # Build Rich table for schema display
+            # Build Rich table for display
             table = Table(
                 show_header=True,
                 header_style="bold",
@@ -246,32 +244,29 @@ class SchemaDiscoveryTool(BaseTool):
             table.add_column("Column", no_wrap=False)
             table.add_column("Type", no_wrap=False)
 
-            # Add rows (limit to 5 for schema display)
-            max_rows = 5
-            for idx, col in enumerate(columns):
-                if idx >= max_rows:
-                    table.add_row("...", "...", style="dim")
-                    break
-                table.add_row(col.column_name, col.data_type)
+            # Build JSON output for agent (all columns)
+            column_list = []
+            for col in columns:
+                column_list.append({
+                    "column": col.column_name,
+                    "type": col.data_type
+                })
+                # Add to Rich table (limit to 5 for display)
+                if len(column_list) <= 5:
+                    table.add_row(col.column_name, col.data_type)
 
-            # Prepare summary
-            if total_cols > max_rows:
-                summary = f"Showing {max_rows} of {total_cols} columns"
+            if total_cols > 5:
+                table.add_row("...", "...", style="dim")
+
+            # Format as JSON (compact)
+            json_output = json.dumps(column_list)
+
+            # Prepare summary for UI
+            if total_cols > 5:
+                summary = f"Showing 5 of {total_cols} columns"
             else:
                 col_text = "column" if total_cols == 1 else "columns"
                 summary = f"{total_cols} {col_text}"
-
-            # Build text output for the agent
-            column_list = [
-                f"- {col.column_name}: {col.data_type}" for col in columns[:5]
-            ]
-            if total_cols > 5:
-                column_list.append(f"... and {total_cols - 5} more columns")
-
-            agent_output = (
-                f"Table '{table_name}' ({total_cols} columns):\n"
-                + "\n".join(column_list)
-            )
 
             metadata = {
                 "table_name": table_name,
@@ -279,10 +274,9 @@ class SchemaDiscoveryTool(BaseTool):
                 "target_db": target_db,
                 "rich_table": table,
                 "summary": summary,
-                "agent_output": agent_output,
             }
 
-            return ToolResult.success_result(agent_output, metadata=metadata)
+            return ToolResult.success_result(json_output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to describe table: {str(e)}")

@@ -53,6 +53,18 @@ class BaseAgent(abc.ABC):
 
         self.knowledge_loader = KnowledgeLoader()
 
+    @staticmethod
+    def _is_verbose_mode() -> bool:
+        """Check if verbose/debug mode is enabled globally.
+
+        Returns:
+            True if ARC_VERBOSE environment variable or verbose setting is enabled
+        """
+        from arc.core.config import SettingsManager
+
+        settings_manager = SettingsManager()
+        return settings_manager.get_verbose_mode()
+
     @abc.abstractmethod
     def get_template_directory(self) -> Path:
         """Get the template directory for this agent.
@@ -505,7 +517,7 @@ class BaseAgent(abc.ABC):
             try:
                 # Inner loop for tool call conversation
                 # (separate from validation retries)
-                max_tool_rounds = 10  # Allow up to 10 rounds of tool calls
+                max_tool_rounds = 20  # Allow up to 20 rounds of tool calls
                 for _tool_round in range(max_tool_rounds):
                     # Call LLM with tool support
                     response_msg = await asyncio.wait_for(
@@ -514,6 +526,12 @@ class BaseAgent(abc.ABC):
 
                     # Handle tool calls
                     if response_msg.tool_calls:
+                        # Output assistant message if present (only in verbose mode)
+                        if self._is_verbose_mode() and progress_callback and response_msg.content:
+                            assistant_msg = response_msg.content.strip()
+                            if assistant_msg:
+                                progress_callback(f"[dim]ℹ {assistant_msg}[/dim]")
+
                         # Add assistant message with tool calls
                         messages.append(
                             {
@@ -561,17 +579,17 @@ class BaseAgent(abc.ABC):
                                             == "list_available_knowledge"
                                         ):
                                             progress_callback(
-                                                "[dim]▸ Listing knowledge...[/dim]"
+                                                "[dim]▸ Listing knowledges[/dim]"
                                             )
                                         elif (
                                             tool_call.function.name
                                             == "read_knowledge_content"
                                         ):
                                             knowledge_id = args.get("knowledge_id", "")
-                                            domain = args.get("domain", "model")
+                                            phase = args.get("phase", "model")
                                             progress_callback(
                                                 f"[dim]▸ Reading: {knowledge_id} "
-                                                f"({domain})[/dim]"
+                                                f"({phase})[/dim]"
                                             )
                                         else:
                                             # For other tools, show name & brief args
@@ -698,6 +716,13 @@ class BaseAgent(abc.ABC):
             except Exception as e:
                 last_error = f"Generation error: {str(e)}"
                 if attempt < max_iterations - 1:
+                    # Add error to conversation so LLM can learn from it
+                    error_msg = (
+                        f"An error occurred during execution:\n{last_error}\n\n"
+                        f"Please adjust your approach and try again."
+                    )
+                    messages.append({"role": "user", "content": error_msg})
+
                     # Report generation error to UI if callback provided
                     if progress_callback:
                         msg = (
@@ -816,19 +841,20 @@ class BaseAgent(abc.ABC):
                             "'feature-interaction', 'sequence-generation')"
                         ),
                     },
-                    "domain": {
+                    "phase": {
                         "type": "string",
                         "description": (
-                            "The domain of knowledge to read (default: 'model'). "
-                            "Options: 'model' (architectures), "
-                            "'train' (training strategies), 'evaluate' (metrics), "
-                            "'data' (feature engineering patterns)"
+                            "The phase of knowledge to read. "
+                            "Options: 'general' (general guide), "
+                            "'model' (model architectures), "
+                            "'train' (training strategies), 'evaluate' (evaluation metrics), "
+                            "'data' (data processing patterns). "
+                            "Use list_available_knowledge to see which phases are available."
                         ),
-                        "enum": ["model", "train", "evaluate", "data"],
-                        "default": "model",
+                        "enum": ["general", "model", "train", "evaluate", "data"],
                     },
                 },
-                "required": ["knowledge_id"],
+                "required": ["knowledge_id", "phase"],
             },
         )
 
@@ -855,7 +881,7 @@ class BaseAgent(abc.ABC):
             return self._handle_list_knowledge()
         elif tool_name == "read_knowledge_content":
             return self._handle_read_knowledge(
-                args.get("knowledge_id"), args.get("domain", "model")
+                args.get("knowledge_id"), args.get("phase")
             )
         else:
             return f"Unknown tool: {tool_name}"
@@ -864,29 +890,39 @@ class BaseAgent(abc.ABC):
         """Handle list_available_knowledge tool call.
 
         Returns:
-            Formatted list of available knowledge with metadata
+            JSON list of available knowledge with id, description, and available phases.
+            Phases can include "general" (guide.md) and/or specific phases like
+            "model", "train", "evaluate" (phase-specific guides).
         """
         metadata_map = self.knowledge_loader.scan_metadata()
 
         if not metadata_map:
-            return "No knowledge documents available."
+            return "[]"
 
-        lines = ["Available Architecture and Pattern Knowledge:\n"]
+        knowledge_list = []
         for knowledge_id, metadata in metadata_map.items():
-            lines.append(f"- **{knowledge_id}**: {metadata.name}")
-            lines.append(f"  Description: {metadata.description}")
-            if metadata.keywords:
-                lines.append(f"  Keywords: {', '.join(metadata.keywords)}")
-            lines.append("")
+            # Scan filesystem to determine actually available phases
+            # This includes both "general" and specialized phases
+            available_phases = self.knowledge_loader.get_available_phases(knowledge_id)
 
-        return "\n".join(lines)
+            # If no guides found at all, skip this knowledge
+            if not available_phases:
+                continue
 
-    def _handle_read_knowledge(self, knowledge_id: str, domain: str = "model") -> str:
+            knowledge_list.append({
+                "id": knowledge_id,
+                "description": metadata.description or metadata.name,
+                "phases": available_phases
+            })
+
+        return json.dumps(knowledge_list)
+
+    def _handle_read_knowledge(self, knowledge_id: str, phase: str | None = None) -> str:
         """Handle read_knowledge_content tool call.
 
         Args:
             knowledge_id: Knowledge document ID
-            domain: Knowledge domain (model, train, evaluate, data)
+            phase: Knowledge phase (general, model, train, evaluate, data)
 
         Returns:
             Knowledge content or error message
@@ -894,15 +930,19 @@ class BaseAgent(abc.ABC):
         if not knowledge_id:
             return "Error: knowledge_id parameter is required"
 
-        # Validate domain parameter
-        valid_domains = ["model", "train", "evaluate", "data"]
-        if domain not in valid_domains:
+        if not phase:
+            return "Error: phase parameter is required"
+
+        # Validate phase parameter
+        valid_phases = ["general", "model", "train", "evaluate", "data"]
+        if phase not in valid_phases:
             return (
-                f"Error: Invalid domain '{domain}'. "
-                f"Must be one of: {', '.join(valid_domains)}"
+                f"Error: Invalid phase '{phase}'. "
+                f"Must be one of: {', '.join(valid_phases)}"
             )
 
-        content = self.knowledge_loader.load_knowledge(knowledge_id, domain)
+        # Load knowledge content with specified phase
+        content = self.knowledge_loader.load_knowledge(knowledge_id, phase)
 
         if content:
             # Add header for context
@@ -915,7 +955,7 @@ class BaseAgent(abc.ABC):
             return f"{header}\n\n{content}"
         else:
             return (
-                f"Error: Knowledge '{knowledge_id}' not found in domain '{domain}'. "
+                f"Error: Knowledge '{knowledge_id}' not found for phase '{phase}'. "
                 f"Use list_available_knowledge to see available options."
             )
 

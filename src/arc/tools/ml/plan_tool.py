@@ -83,7 +83,6 @@ class MLPlanTool(BaseTool):
                 self.api_key,
                 self.base_url,
                 self.model,
-                verbose=verbose,
             )
 
             try:
@@ -146,7 +145,6 @@ class MLPlanTool(BaseTool):
                 self.base_url,
                 self.model,
                 progress_callback=_progress_callback if printer else None,
-                verbose=verbose,
             )
 
             try:
