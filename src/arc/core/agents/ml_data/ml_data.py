@@ -378,6 +378,15 @@ class MLDataAgent(BaseAgent):
                     "error": f"Execution order validation failed: {str(e)}",
                 }
 
+            # Validate table lifecycle (catch drop-then-use errors)
+            try:
+                spec.validate_table_lifecycle()
+            except ValueError as e:
+                return {
+                    "valid": False,
+                    "error": f"Table lifecycle validation failed: {str(e)}",
+                }
+
             return {"valid": True, "object": spec, "error": None}
 
         except AgentError as e:
