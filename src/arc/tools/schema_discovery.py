@@ -159,10 +159,7 @@ class SchemaDiscoveryTool(BaseTool):
             table_list = []
             for tbl in tables:
                 column_count = len(schema_info.get_columns_for_table(tbl.name))
-                table_list.append({
-                    "table": tbl.name,
-                    "columns": column_count
-                })
+                table_list.append({"table": tbl.name, "columns": column_count})
                 # Add to Rich table (limit to 5 for display)
                 if len(table_list) <= 5:
                     table.add_row(tbl.name, str(column_count))
@@ -247,10 +244,7 @@ class SchemaDiscoveryTool(BaseTool):
             # Build JSON output for agent (all columns)
             column_list = []
             for col in columns:
-                column_list.append({
-                    "column": col.column_name,
-                    "type": col.data_type
-                })
+                column_list.append({"column": col.column_name, "type": col.data_type})
                 # Add to Rich table (limit to 5 for display)
                 if len(column_list) <= 5:
                     table.add_row(col.column_name, col.data_type)

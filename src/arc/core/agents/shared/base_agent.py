@@ -52,6 +52,8 @@ class BaseAgent(abc.ABC):
         from arc.core.agents.shared.knowledge_loader import KnowledgeLoader
 
         self.knowledge_loader = KnowledgeLoader()
+        # Track loaded knowledge (id, phase) tuples to avoid re-listing them
+        self._loaded_knowledge: set[tuple[str, str]] = set()
 
     @staticmethod
     def _is_verbose_mode() -> bool:
@@ -527,7 +529,11 @@ class BaseAgent(abc.ABC):
                     # Handle tool calls
                     if response_msg.tool_calls:
                         # Output assistant message if present (only in verbose mode)
-                        if self._is_verbose_mode() and progress_callback and response_msg.content:
+                        if (
+                            self._is_verbose_mode()
+                            and progress_callback
+                            and response_msg.content
+                        ):
                             assistant_msg = response_msg.content.strip()
                             if assistant_msg:
                                 progress_callback(f"[dim]ℹ {assistant_msg}[/dim]")
@@ -847,9 +853,11 @@ class BaseAgent(abc.ABC):
                             "The phase of knowledge to read. "
                             "Options: 'general' (general guide), "
                             "'model' (model architectures), "
-                            "'train' (training strategies), 'evaluate' (evaluation metrics), "
+                            "'train' (training strategies), "
+                            "'evaluate' (evaluation metrics), "
                             "'data' (data processing patterns). "
-                            "Use list_available_knowledge to see which phases are available."
+                            "Use list_available_knowledge to see "
+                            "which phases are available."
                         ),
                         "enum": ["general", "model", "train", "evaluate", "data"],
                     },
@@ -893,6 +901,7 @@ class BaseAgent(abc.ABC):
             JSON list of available knowledge with id, description, and available phases.
             Phases can include "general" (guide.md) and/or specific phases like
             "model", "train", "evaluate" (phase-specific guides).
+            Excludes knowledge that has already been loaded into the system context.
         """
         metadata_map = self.knowledge_loader.scan_metadata()
 
@@ -909,15 +918,30 @@ class BaseAgent(abc.ABC):
             if not available_phases:
                 continue
 
-            knowledge_list.append({
-                "id": knowledge_id,
-                "description": metadata.description or metadata.name,
-                "phases": available_phases
-            })
+            # Filter out phases that have already been loaded
+            remaining_phases = [
+                phase
+                for phase in available_phases
+                if (knowledge_id, phase) not in self._loaded_knowledge
+            ]
+
+            # If all phases have been loaded, skip this knowledge entirely
+            if not remaining_phases:
+                continue
+
+            knowledge_list.append(
+                {
+                    "id": knowledge_id,
+                    "description": metadata.description or metadata.name,
+                    "phases": remaining_phases,
+                }
+            )
 
         return json.dumps(knowledge_list)
 
-    def _handle_read_knowledge(self, knowledge_id: str, phase: str | None = None) -> str:
+    def _handle_read_knowledge(
+        self, knowledge_id: str, phase: str | None = None
+    ) -> str:
         """Handle read_knowledge_content tool call.
 
         Args:

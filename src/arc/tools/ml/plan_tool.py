@@ -38,7 +38,7 @@ class MLPlanTool(BaseTool):
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
         conversation_history: str | None = None,  # noqa: ARG002
-        verbose: bool = False,
+        verbose: bool = False,  # noqa: ARG002
     ) -> ToolResult:
         # Early validation for common errors (before any section printing)
         if not self.api_key:

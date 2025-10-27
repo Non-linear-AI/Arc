@@ -118,7 +118,7 @@ class TestMLPlanAgent:
 
     @pytest.mark.asyncio
     async def test_execute_tool_with_progress(self, ml_plan_agent):
-        """Test that tool execution works (progress reporting now handled by BaseAgent)."""
+        """Test tool execution (progress reporting handled by BaseAgent)."""
         # Test list_available_knowledge
         result = await ml_plan_agent._execute_ml_tool("list_available_knowledge", "{}")
         assert result is not None
@@ -134,7 +134,7 @@ class TestMLPlanAgent:
 
     @pytest.mark.asyncio
     async def test_execute_tool_database_query_progress(self, ml_plan_agent):
-        """Test database query tool execution works (progress reporting handled by BaseAgent)."""
+        """Test database query execution (progress handled by BaseAgent)."""
         # Mock the database tool to avoid actual query
         with patch("arc.tools.database_query.DatabaseQueryTool") as mock_tool_class:
             mock_tool = MagicMock()

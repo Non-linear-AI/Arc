@@ -293,9 +293,10 @@ class KnowledgeLoader:
                 continue
 
             # Check for general guide
-            if (knowledge_dir / "guide.md").exists():
-                if "general" not in available_phases:
-                    available_phases.append("general")
+            if (
+                knowledge_dir / "guide.md"
+            ).exists() and "general" not in available_phases:
+                available_phases.append("general")
 
             # Check for phase-specific guides
             for phase in ["model", "train", "evaluate", "data"]:
