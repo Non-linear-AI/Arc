@@ -10,25 +10,16 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from arc.core.client import ArcClient, ArcToolCall
 from arc.core.config import SettingsManager
-from arc.tools import (
-    BashTool,
-    CreateFileTool,
-    CreateTodoListTool,
-    DatabaseQueryTool,
-    EditFileTool,
-    MLDataTool,
-    MLEvaluateTool,
-    MLModelTool,
-    MLPlanTool,
-    MLTrainTool,
-    ReadKnowledgeTool,
-    SchemaDiscoveryTool,
-    SearchTool,
-    TodoManager,
-    ToolResult,
-    UpdateTodoListTool,
-    ViewFileTool,
-)
+from arc.tools.base import ToolResult
+from arc.tools.bash import BashTool
+from arc.tools.database_query import DatabaseQueryTool
+from arc.tools.file_editor import CreateFileTool, EditFileTool, ViewFileTool
+from arc.tools.knowledge import ReadKnowledgeTool
+from arc.tools.ml import MLEvaluateTool, MLModelTool, MLPlanTool, MLTrainTool
+from arc.tools.ml_data import MLDataTool
+from arc.tools.schema_discovery import SchemaDiscoveryTool
+from arc.tools.search import SearchTool
+from arc.tools.todo import CreateTodoListTool, TodoManager, UpdateTodoListTool
 from arc.utils import TokenCounter
 
 
