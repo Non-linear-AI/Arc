@@ -81,8 +81,8 @@ wheels = [
 ]
 
 [[package]]
-name = "arc"
-version = "0.1.0"
+name = "arc-ml"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "adbc-driver-snowflake" },

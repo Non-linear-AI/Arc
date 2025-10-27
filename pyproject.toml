@@ -1,15 +1,36 @@
 [project]
-name = "arc"
-version = "0.1.0"
-description = "Add your description here"
+name = "arc-ml"
+version = "0.1.1"
+description = "AI-native machine learning tool that bridges natural language questions and predictive models using declarative Arc-Graph schemas"
 readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "Non-linear AI", email = "nonlinearai.org@gmail.com"}
+]
+maintainers = [
+    {name = "Non-linear AI", email = "nonlinearai.org@gmail.com"}
+]
 requires-python = ">=3.12"
+keywords = [
+    "machine-learning",
+    "ml",
+    "ai",
+    "pytorch",
+    "declarative-ml",
+    "arc-graph",
+    "llm",
+    "natural-language",
+    "data-science",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "openai>=1.30.0",
@@ -31,6 +52,12 @@ dependencies = [
     "adbc-driver-snowflake>=1.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/non-linear-ai/arc"
+Repository = "https://github.com/non-linear-ai/arc"
+Issues = "https://github.com/non-linear-ai/arc/issues"
+Documentation = "https://github.com/non-linear-ai/arc/blob/main/README.md"
+
 [project.scripts]
 arc = "arc.ui.cli_wrapper:cli_main"
 
@@ -44,8 +71,24 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.8.11,<0.9.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["arc*"]
+
+[tool.setuptools.package-data]
+arc = [
+    "templates/*.yaml",
+    "templates/*.j2",
+    "core/agents/*/templates/*.j2",
+    "core/agents/*/templates/**/*.md",
+    "core/agents/shared/examples/*.yaml",
+    "resources/**/*.md",
+    "resources/**/*.yaml",
+    "graph/*.md",
+]
 
 [tool.uv]
 index-url = "https://pypi.org/simple"
@@ -54,6 +97,12 @@ index-url = "https://pypi.org/simple"
 name = "pypi"
 url = "https://pypi.org/simple"
 default = true
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
 
 [tool.ruff]
 line-length = 88
