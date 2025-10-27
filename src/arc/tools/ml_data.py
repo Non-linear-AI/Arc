@@ -186,6 +186,10 @@ class MLDataTool(BaseTool):
                     plan = MLPlan.from_dict(ml_plan)
                     # Extract feature engineering guidance for data processing
                     ml_plan_feature_engineering = plan.feature_engineering
+
+                    # Extract stage-specific knowledge IDs from plan
+                    if not recommended_knowledge_ids:
+                        recommended_knowledge_ids = plan.knowledge.get("data", [])
                 except ValueError as e:
                     return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
                 except Exception as e:
@@ -218,6 +222,13 @@ class MLDataTool(BaseTool):
                 else:
                     self.generator_agent.progress_callback = None
 
+                # Preload stage-specific knowledge from plan
+                preloaded_knowledge = None
+                if recommended_knowledge_ids:
+                    preloaded_knowledge = self.generator_agent.knowledge_loader.load_multiple(
+                        recommended_knowledge_ids, phase="model"
+                    )
+
                 # Generate using LLM (generator_agent is guaranteed to exist)
                 (
                     spec,
@@ -228,7 +239,7 @@ class MLDataTool(BaseTool):
                     name=name,
                     source_tables=source_tables,
                     database=database,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    preloaded_knowledge=preloaded_knowledge,
                 )
 
                 # Show completion message
