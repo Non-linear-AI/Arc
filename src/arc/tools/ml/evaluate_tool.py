@@ -210,18 +210,11 @@ class MLEvaluateTool(BaseTool):
                 # If schema check fails, default to assuming target exists
                 target_column_exists = True
 
-            # Load plan from database if plan_id is provided
-            ml_plan_evaluation = None
-            if plan_id:
-                ml_plan, plan = _load_ml_plan(self.services, plan_id)
-                if ml_plan is None:
-                    # plan contains error message
-                    return _error_in_section(plan)
-                ml_plan_evaluation = plan.evaluation
-
-                # Extract recommended knowledge IDs if not explicitly provided
-                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
-                    recommended_knowledge_ids = plan.recommended_knowledge_ids
+            # Note: ml_evaluate is now an ad hoc tool, not part of the core ML workflow.
+            # It does not use ML Plan evaluation guidance since that field has been removed.
+            # Plans now focus on: feature_engineering, model_architecture_and_loss,
+            # and training_and_validation. Evaluation metrics are specified in the
+            # training configuration for validation monitoring.
 
             # Generate evaluator spec via LLM
             # Agent will discover relevant knowledge using tools
@@ -253,7 +246,7 @@ class MLEvaluateTool(BaseTool):
                     dataset=str(evaluate_table),
                     target_column=str(target_column),
                     target_column_exists=target_column_exists,
-                    ml_plan_evaluation=ml_plan_evaluation,
+                    ml_plan_evaluation=None,  # No longer using plan.evaluation
                     recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
