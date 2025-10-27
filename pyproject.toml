@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.scripts]
-arc = "arc.ui.cli:cli"
+arc = "arc.ui.cli_wrapper:cli_main"
 
 [dependency-groups]
 dev = [
