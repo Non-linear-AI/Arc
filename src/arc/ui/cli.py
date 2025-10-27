@@ -75,9 +75,27 @@ def chat(
     # Get configuration
     settings_manager = SettingsManager()
 
+    # Check raw settings to detect missing values before applying defaults
+    raw_settings = settings_manager.load_user_settings()
+    missing_model = "model" not in raw_settings and not os.getenv("ARC_MODEL")
+    missing_base_url = "baseURL" not in raw_settings and not os.getenv("ARC_BASE_URL")
+
     api_key = api_key or settings_manager.get_api_key()
     base_url = base_url or settings_manager.get_base_url()
     model = model or settings_manager.get_current_model()
+
+    # Show warnings if using default values
+    if missing_model and not click.get_current_context().params.get("model"):
+        ui.show_warning(
+            "Model not configured. Using default 'gpt-4o'. "
+            "Set a model using /config or ARC_MODEL environment variable."
+        )
+
+    if missing_base_url and not click.get_current_context().params.get("base_url"):
+        ui.show_warning(
+            "Base URL not configured. Using default 'https://api.openai.com/v1'. "
+            "Set baseURL using /config or ARC_BASE_URL environment variable."
+        )
 
     # Save command line settings if provided
     if api_key and click.get_current_context().params.get("api_key"):
