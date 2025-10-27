@@ -19,12 +19,12 @@ class MLPlan:
     name: str
     feature_engineering: str
     model_architecture_and_loss: str
-    training_configuration: str
-    evaluation: str
+    training_and_validation: str  # Renamed from training_configuration
 
-    # Optional knowledge recommendations
-    # Agent can read knowledge but chooses which to recommend based on task
-    recommended_knowledge_ids: list[str] = field(default_factory=list)
+    # Stage-specific knowledge recommendations
+    # Maps workflow stage to list of knowledge IDs to preload for that stage
+    knowledge: dict[str, list[str]] = field(default_factory=dict)
+    # Example: {"data": ["feature_eng"], "model": ["mlp"], "training": ["optimizer_guide"]}
 
     # Metadata
     version: int = 1
@@ -51,13 +51,21 @@ class MLPlan:
         Returns:
             MLPlan instance
         """
+        # Support both old and new field names for backward compatibility
+        training_field = analysis.get("training_and_validation") or analysis.get("training_configuration", "")
+        knowledge_field = analysis.get("knowledge", {})
+
+        # Fall back to old recommended_knowledge_ids if knowledge dict not present
+        if not knowledge_field and "recommended_knowledge_ids" in analysis:
+            # Convert old format to new format (put all in "general" bucket)
+            knowledge_field = {"general": analysis["recommended_knowledge_ids"]}
+
         return cls(
             name=analysis.get("name", ""),
             feature_engineering=analysis.get("feature_engineering", ""),
             model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
-            training_configuration=analysis.get("training_configuration", ""),
-            evaluation=analysis.get("evaluation", ""),
-            recommended_knowledge_ids=analysis.get("recommended_knowledge_ids", []),
+            training_and_validation=training_field,
+            knowledge=knowledge_field,
             version=version,
             stage=stage,
             reason_for_update=reason,
@@ -69,9 +77,8 @@ class MLPlan:
             "name": self.name,
             "feature_engineering": self.feature_engineering,
             "model_architecture_and_loss": self.model_architecture_and_loss,
-            "training_configuration": self.training_configuration,
-            "evaluation": self.evaluation,
-            "recommended_knowledge_ids": self.recommended_knowledge_ids,
+            "training_and_validation": self.training_and_validation,
+            "knowledge": self.knowledge,
             "version": self.version,
             "stage": self.stage,
             "reason_for_update": self.reason_for_update,
@@ -85,13 +92,20 @@ class MLPlan:
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
 
+        # Support both old and new field names for backward compatibility
+        training_field = data.get("training_and_validation") or data.get("training_configuration", "")
+        knowledge_field = data.get("knowledge", {})
+
+        # Fall back to old recommended_knowledge_ids if knowledge dict not present
+        if not knowledge_field and "recommended_knowledge_ids" in data:
+            knowledge_field = {"general": data["recommended_knowledge_ids"]}
+
         return cls(
             name=data["name"],
             feature_engineering=data["feature_engineering"],
             model_architecture_and_loss=data["model_architecture_and_loss"],
-            training_configuration=data["training_configuration"],
-            evaluation=data["evaluation"],
-            recommended_knowledge_ids=data.get("recommended_knowledge_ids", []),
+            training_and_validation=training_field,
+            knowledge=knowledge_field,
             version=data.get("version", 1),
             stage=data.get("stage", "initial"),
             reason_for_update=data.get("reason_for_update"),
@@ -108,8 +122,7 @@ class MLPlan:
             "name": self.name,
             "feature_engineering": self.feature_engineering,
             "model_architecture_and_loss": self.model_architecture_and_loss,
-            "training_configuration": self.training_configuration,
-            "evaluation": self.evaluation,
+            "training_and_validation": self.training_and_validation,
         }
 
     def format_for_display(self) -> str:
@@ -131,24 +144,19 @@ class MLPlan:
                 "**Model Architecture & Loss**",
                 self.model_architecture_and_loss,
                 "",
-                "**Training Configuration**",
-                self.training_configuration,
-                "",
-                "**Evaluation**",
-                self.evaluation,
+                "**Training & Validation**",
+                self.training_and_validation,
             ]
         )
 
         # Show knowledge at the end if present
-        if self.recommended_knowledge_ids:
-            knowledge_str = ", ".join(self.recommended_knowledge_ids)
-            lines.extend(
-                [
-                    "",
-                    "**Knowledge**",
-                    knowledge_str,
-                ]
-            )
+        if self.knowledge:
+            lines.append("")
+            lines.append("**Knowledge**")
+            for stage, knowledge_ids in self.knowledge.items():
+                if knowledge_ids:
+                    knowledge_str = ", ".join(knowledge_ids)
+                    lines.append(f"  {stage}: {knowledge_str}")
 
         return "\n".join(lines)
 
@@ -160,7 +168,6 @@ class MLPlanDiff:
     feature_engineering_changed: bool = False
     architecture_changed: bool = False
     training_config_changed: bool = False
-    evaluation_changed: bool = False
 
     # Store old/new values for changed sections
     old_feature_engineering: str = ""
@@ -169,8 +176,6 @@ class MLPlanDiff:
     new_architecture: str = ""
     old_training_config: str = ""
     new_training_config: str = ""
-    old_evaluation: str = ""
-    new_evaluation: str = ""
 
     def has_changes(self) -> bool:
         """Check if there are any changes."""
@@ -178,7 +183,6 @@ class MLPlanDiff:
             self.feature_engineering_changed
             or self.architecture_changed
             or self.training_config_changed
-            or self.evaluation_changed
         )
 
     def format_for_display(self, new_plan: MLPlan) -> str:
@@ -251,12 +255,12 @@ class MLPlanDiff:
                 ]
             )
 
-        # Training Config
+        # Training & Validation
         if self.training_config_changed:
             lines.extend(
                 [
-                    "**Training Configuration** *(Changed)*",
-                    new_plan.training_configuration,
+                    "**Training & Validation** *(Changed)*",
+                    new_plan.training_and_validation,
                     "",
                     "<details><summary>Show previous version</summary>",
                     "",
@@ -269,32 +273,8 @@ class MLPlanDiff:
         else:
             lines.extend(
                 [
-                    "**Training Configuration**",
-                    new_plan.training_configuration,
-                    "",
-                ]
-            )
-
-        # Evaluation
-        if self.evaluation_changed:
-            lines.extend(
-                [
-                    "**Evaluation** *(Changed)*",
-                    new_plan.evaluation,
-                    "",
-                    "<details><summary>Show previous version</summary>",
-                    "",
-                    self.old_evaluation,
-                    "",
-                    "</details>",
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "**Evaluation**",
-                    new_plan.evaluation,
+                    "**Training & Validation**",
+                    new_plan.training_and_validation,
                     "",
                 ]
             )
@@ -342,14 +322,9 @@ def compute_plan_diff(old_plan: dict | MLPlan, new_plan: MLPlan) -> MLPlanDiff:
         diff.old_architecture = old_plan.model_architecture_and_loss
         diff.new_architecture = new_plan.model_architecture_and_loss
 
-    if old_plan.training_configuration != new_plan.training_configuration:
+    if old_plan.training_and_validation != new_plan.training_and_validation:
         diff.training_config_changed = True
-        diff.old_training_config = old_plan.training_configuration
-        diff.new_training_config = new_plan.training_configuration
-
-    if old_plan.evaluation != new_plan.evaluation:
-        diff.evaluation_changed = True
-        diff.old_evaluation = old_plan.evaluation
-        diff.new_evaluation = new_plan.evaluation
+        diff.old_training_config = old_plan.training_and_validation
+        diff.new_training_config = new_plan.training_and_validation
 
     return diff

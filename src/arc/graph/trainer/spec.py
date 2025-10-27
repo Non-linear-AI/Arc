@@ -132,6 +132,10 @@ class TrainerSpec:
     early_stopping_patience: int | None = None
     device: str = "auto"
 
+    # Validation metrics to track (optional - for monitoring)
+    # Example: ["accuracy", "auroc", "f1"]
+    metrics: list[str] | None = None
+
     @classmethod
     def from_yaml(cls, yaml_str: str) -> TrainerSpec:
         """Parse TrainerSpec from YAML string.
@@ -181,6 +185,7 @@ class TrainerSpec:
             validation_split=config_data.get("validation_split", 0.2),
             early_stopping_patience=config_data.get("early_stopping_patience"),
             device=config_data.get("device", "auto"),
+            metrics=config_data.get("metrics"),
         )
 
     @classmethod
@@ -206,16 +211,22 @@ class TrainerSpec:
         Returns:
             YAML string representation of the trainer specification
         """
+        config = {
+            "epochs": self.epochs,
+            "batch_size": self.batch_size,
+            "learning_rate": self.learning_rate,
+            "validation_split": self.validation_split,
+            "device": self.device,
+        }
+
+        # Add metrics if specified
+        if self.metrics is not None:
+            config["metrics"] = self.metrics
+
         data = {
             "model_ref": self.model_ref,
             "optimizer": asdict(self.optimizer),
-            "config": {
-                "epochs": self.epochs,
-                "batch_size": self.batch_size,
-                "learning_rate": self.learning_rate,
-                "validation_split": self.validation_split,
-                "device": self.device,
-            },
+            "config": config,
         }
 
         # Only include early_stopping_patience if it's set
