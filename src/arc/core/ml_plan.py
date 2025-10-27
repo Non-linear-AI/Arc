@@ -152,11 +152,14 @@ class MLPlan:
         # Show knowledge at the end if present
         if self.knowledge:
             lines.append("")
-            lines.append("**Knowledge**")
-            for stage, knowledge_ids in self.knowledge.items():
+            lines.append("**Knowledge Recommendations**")
+            # Show stage-specific knowledge in a readable format
+            for stage in ["data", "model", "training"]:
+                knowledge_ids = self.knowledge.get(stage, [])
                 if knowledge_ids:
                     knowledge_str = ", ".join(knowledge_ids)
-                    lines.append(f"  {stage}: {knowledge_str}")
+                    stage_name = stage.title()  # Capitalize first letter
+                    lines.append(f"  • {stage_name}: {knowledge_str}")
 
         return "\n".join(lines)
 

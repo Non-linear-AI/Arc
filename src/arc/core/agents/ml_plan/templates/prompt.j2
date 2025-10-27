@@ -52,7 +52,7 @@ Your previous response had the following error:
 
 Please fix this error:
 1. Return valid YAML only (no markdown code fences like ```yaml)
-2. Include all required sections: feature_engineering, model_architecture_and_loss, training_configuration, evaluation
+2. Include all required sections: feature_engineering, model_architecture_and_loss, training_and_validation
 3. Ensure proper YAML formatting with correct indentation
 {% endif %}
 
@@ -88,7 +88,7 @@ Your plan should be:
 - **Specific**: Use exact dimensions, specific PyTorch modules (torch.nn.Linear, torch.nn.BatchNorm1d), and precise hyperparameters
 - **Implementable**: Design for Arc-Graph YAML specification using standard PyTorch modules (torch.nn.*, torch.*)
 - **Data-driven**: Base recommendations on dataset characteristics (size, feature types, class balance)
-- **Complete**: Cover feature preprocessing, architecture, training, and evaluation with specific details
+- **Complete**: Cover feature preprocessing, architecture, and training/validation with specific details
 
 Key principles:
 - Specify exact values with reasoning (e.g., "batch size 32 for 10K samples balancing noise and memory")
