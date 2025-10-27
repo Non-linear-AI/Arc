@@ -81,69 +81,6 @@ wheels = [
 ]
 
 [[package]]
-name = "arc"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "adbc-driver-snowflake" },
-    { name = "click" },
-    { name = "duckdb" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "numpy" },
-    { name = "openai" },
-    { name = "pandas" },
-    { name = "pluggy" },
-    { name = "prompt-toolkit" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "rich" },
-    { name = "sqlfluff" },
-    { name = "tensorboard" },
-    { name = "tiktoken" },
-    { name = "torch" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-watcher" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "adbc-driver-snowflake", specifier = ">=1.0.0" },
-    { name = "click", specifier = ">=8.1.0" },
-    { name = "duckdb", specifier = ">=1.0.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "jinja2", specifier = ">=3.1.0" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "openai", specifier = ">=1.30.0" },
-    { name = "pandas", specifier = ">=2.0.0" },
-    { name = "pluggy", specifier = ">=1.0.0" },
-    { name = "prompt-toolkit", specifier = ">=3.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "sqlfluff", specifier = ">=3.0.0" },
-    { name = "tensorboard", specifier = ">=2.0.0" },
-    { name = "tiktoken", specifier = ">=0.7.0" },
-    { name = "torch", specifier = ">=2.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-    { name = "pytest-cov", specifier = ">=5.0.0" },
-    { name = "pytest-watcher", specifier = ">=0.4.0" },
-    { name = "ruff", specifier = ">=0.6.0" },
-]
-
-[[package]]
 name = "certifi"
 version = "2025.8.3"
 source = { registry = "https://pypi.org/simple" }
@@ -601,6 +538,69 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6c/4f/ccdb8ad3a38e583f214547fd2f7ff1fc160c43a75af88e6aec213404b96a/networkx-3.5.tar.gz", hash = "sha256:d4c6f9cf81f52d69230866796b82afbccdec3db7ae4fbd1b65ea750feed50037", size = 2471065, upload-time = "2025-05-29T11:35:07.804Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/8d/776adee7bbf76365fdd7f2552710282c79a4ead5d2a46408c9043a2b70ba/networkx-3.5-py3-none-any.whl", hash = "sha256:0030d386a9a06dee3565298b4a734b68589749a544acbb6c412dc9e2489ec6ec", size = 2034406, upload-time = "2025-05-29T11:35:04.961Z" },
+]
+
+[[package]]
+name = "nl-arc"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "adbc-driver-snowflake" },
+    { name = "click" },
+    { name = "duckdb" },
+    { name = "httpx" },
+    { name = "jinja2" },
+    { name = "numpy" },
+    { name = "openai" },
+    { name = "pandas" },
+    { name = "pluggy" },
+    { name = "prompt-toolkit" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "sqlfluff" },
+    { name = "tensorboard" },
+    { name = "tiktoken" },
+    { name = "torch" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-watcher" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "adbc-driver-snowflake", specifier = ">=1.0.0" },
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "duckdb", specifier = ">=1.0.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "jinja2", specifier = ">=3.1.0" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "openai", specifier = ">=1.30.0" },
+    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pluggy", specifier = ">=1.0.0" },
+    { name = "prompt-toolkit", specifier = ">=3.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "sqlfluff", specifier = ">=3.0.0" },
+    { name = "tensorboard", specifier = ">=2.0.0" },
+    { name = "tiktoken", specifier = ">=0.7.0" },
+    { name = "torch", specifier = ">=2.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "pytest-watcher", specifier = ">=0.4.0" },
+    { name = "ruff", specifier = ">=0.6.0" },
 ]
 
 [[package]]
