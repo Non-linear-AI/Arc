@@ -127,15 +127,17 @@ class MLTrainAgent(BaseAgent):
         loaded_knowledge_ids = []
         if recommended_knowledge_ids:
             for knowledge_id in recommended_knowledge_ids:
-                content = self.knowledge_loader.load_knowledge(knowledge_id, "train")
-                if content:
+                content, actual_phase = self.knowledge_loader.load_knowledge(
+                    knowledge_id, "train"
+                )
+                if content and actual_phase:
                     # Successfully loaded - add to system context
                     recommended_knowledge += (
                         f"\n\n# Training Knowledge: {knowledge_id}\n\n{content}"
                     )
                     loaded_knowledge_ids.append(knowledge_id)
-                    # Track in base agent to exclude from list_available_knowledge
-                    self._loaded_knowledge.add((knowledge_id, "train"))
+                    # Track actual phase that was loaded (not requested phase)
+                    self._loaded_knowledge.add((knowledge_id, actual_phase))
                 # If missing, silently skip (already logged at debug level)
 
         # Build system message with all context

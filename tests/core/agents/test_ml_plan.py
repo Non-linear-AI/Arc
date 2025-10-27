@@ -55,9 +55,9 @@ class TestMLPlanAgent:
 
     def test_handle_read_knowledge_valid(self, ml_plan_agent):
         """Test reading valid knowledge document."""
-        # Mock knowledge loader
+        # Mock knowledge loader - now returns tuple (content, actual_phase)
         ml_plan_agent.knowledge_loader.load_knowledge = MagicMock(
-            return_value="# MLP Guide\n\nBest practices for MLPs..."
+            return_value=("# MLP Guide\n\nBest practices for MLPs...", "model")
         )
         ml_plan_agent.knowledge_loader.scan_metadata = MagicMock(
             return_value={"mlp": MagicMock(name="Multi-Layer Perceptron Guide")}
@@ -70,7 +70,10 @@ class TestMLPlanAgent:
 
     def test_handle_read_knowledge_invalid(self, ml_plan_agent):
         """Test reading non-existent knowledge."""
-        ml_plan_agent.knowledge_loader.load_knowledge = MagicMock(return_value=None)
+        # Mock returns tuple (None, None) for not found
+        ml_plan_agent.knowledge_loader.load_knowledge = MagicMock(
+            return_value=(None, None)
+        )
 
         result = ml_plan_agent._handle_read_knowledge("invalid", "model")
 

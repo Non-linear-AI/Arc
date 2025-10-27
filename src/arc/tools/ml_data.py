@@ -225,6 +225,7 @@ class MLDataTool(BaseTool):
                     conversation_history,  # Store for interactive editing workflow
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=enhanced_instruction,
+                    name=name,
                     source_tables=source_tables,
                     database=database,
                     recommended_knowledge_ids=recommended_knowledge_ids,
@@ -254,6 +255,7 @@ class MLDataTool(BaseTool):
                     )
 
                     context_dict = {
+                        "name": name,
                         "instruction": str(enhanced_instruction),
                         "source_tables": source_tables,
                         "database": database,
@@ -285,8 +287,10 @@ class MLDataTool(BaseTool):
 
                 runtime = MLRuntime(self.services, artifacts_dir="artifacts")
                 try:
+                    # Use spec.description if available, otherwise use name
+                    description = spec.description if spec.description else name
                     processor = runtime.register_data_processor(
-                        name=name, spec=spec, description=spec.description
+                        name=name, spec=spec, description=description
                     )
                     # Display registration confirmation in the Data Processor section
                     if printer:
@@ -477,6 +481,7 @@ class MLDataTool(BaseTool):
                     updated_history,
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=feedback,  # User's change request
+                    name=context.get("name", ""),
                     source_tables=context.get("source_tables"),
                     database=context.get("database", "user"),
                     existing_yaml=yaml_content,

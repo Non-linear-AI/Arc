@@ -24,7 +24,6 @@ class KnowledgeMetadata:
         self.problem_type = data.get("problem_type", "")
         self.recommended_patterns = data.get("recommended_patterns", [])
         self.related_knowledge = data.get("related_knowledge", [])
-        self.phases = data.get("phases", [])
         self.complexity = data.get("complexity", "")
         self.domain = data.get("domain", "")
         self.data_types = data.get("data_types", [])
@@ -38,18 +37,17 @@ class KnowledgeMetadata:
             "description": self.description,
             "keywords": self.keywords,
             "problem_type": self.problem_type,
-            "phases": self.phases,
             "complexity": self.complexity,
             "domain": self.domain,
         }
 
     def __str__(self) -> str:
         """String representation for LLM context."""
+        keywords_str = ', '.join(self.keywords) if self.keywords else 'none'
         return (
             f"- {self.id} (type: {self.type})\n"
             f"  {self.description}\n"
-            f"  Keywords: {', '.join(self.keywords)}\n"
-            f"  Phases: {', '.join(self.phases)}"
+            f"  Keywords: {keywords_str}"
         )
 
 
@@ -177,7 +175,37 @@ class KnowledgeLoader:
         metadata_map = self.scan_metadata()
         return list(metadata_map.values())
 
-    def load_knowledge(self, knowledge_id: str, phase: str = "model") -> str | None:
+    def load_multiple(
+        self, knowledge_ids: list[str], phase: str = "model"
+    ) -> list[dict[str, str]]:
+        """Load multiple knowledge documents.
+
+        Args:
+            knowledge_ids: List of knowledge IDs to load
+            phase: Which phase guide to read (default: 'model')
+
+        Returns:
+            List of dicts with keys: 'id', 'name', 'content'
+            Only includes successfully loaded knowledge docs
+        """
+        results = []
+        metadata_map = self.scan_metadata()
+
+        for knowledge_id in knowledge_ids:
+            content, _ = self.load_knowledge(knowledge_id, phase)
+            if content:
+                metadata = metadata_map.get(knowledge_id)
+                results.append({
+                    "id": knowledge_id,
+                    "name": metadata.name if metadata else knowledge_id,
+                    "content": content
+                })
+
+        return results
+
+    def load_knowledge(
+        self, knowledge_id: str, phase: str = "model"
+    ) -> tuple[str | None, str | None]:
         """Load specific knowledge document with caching.
 
         Checks user path first, then builtin path.
@@ -189,44 +217,58 @@ class KnowledgeLoader:
             phase: Which phase guide to read (default: 'model')
 
         Returns:
-            Content of the knowledge document, or None if not found
+            Tuple of (content, actual_phase):
+            - content: Content of the knowledge document, or None if not found
+            - actual_phase: The phase that was actually loaded (may differ from
+              requested phase if fallback to general occurred), or None if not found
         """
         # Check cache first
         cache_key = (knowledge_id, phase)
         if cache_key in self._content_cache:
-            return self._content_cache[cache_key]
+            cached_content = self._content_cache[cache_key]
+            # For backward compatibility, check if cached value is tuple or just content
+            if isinstance(cached_content, tuple):
+                return cached_content
+            # Old cache format - return content with phase
+            return cached_content, phase if cached_content else None
 
         # Try user knowledge first (allows override)
         if self.user_path.exists():
-            content = self._load_knowledge_from_path(
+            content, actual_phase = self._load_knowledge_from_path(
                 self.user_path, knowledge_id, phase
             )
             if content is not None:
-                logger.debug(f"Loaded user knowledge: {knowledge_id} ({phase})")
+                logger.debug(
+                    f"Loaded user knowledge: {knowledge_id} "
+                    f"(requested: {phase}, actual: {actual_phase})"
+                )
                 # Cache the result
-                self._content_cache[cache_key] = content
-                return content
+                self._content_cache[cache_key] = (content, actual_phase)
+                return content, actual_phase
 
         # Fall back to builtin knowledge
         if self.builtin_path.exists():
-            content = self._load_knowledge_from_path(
+            content, actual_phase = self._load_knowledge_from_path(
                 self.builtin_path, knowledge_id, phase
             )
             if content is not None:
-                logger.debug(f"Loaded builtin knowledge: {knowledge_id} ({phase})")
+                logger.debug(
+                    f"Loaded builtin knowledge: {knowledge_id} "
+                    f"(requested: {phase}, actual: {actual_phase})"
+                )
                 # Cache the result
-                self._content_cache[cache_key] = content
-                return content
+                self._content_cache[cache_key] = (content, actual_phase)
+                return content, actual_phase
 
         # Knowledge not found is normal - agent will discover what's available via tools
         logger.debug(f"Knowledge not found: {knowledge_id} (phase: {phase})")
         # Cache the negative result to avoid repeated lookups
-        self._content_cache[cache_key] = None
-        return None
+        self._content_cache[cache_key] = (None, None)
+        return None, None
 
     def _load_knowledge_from_path(
         self, base_path: Path, knowledge_id: str, phase: str
-    ) -> str | None:
+    ) -> tuple[str | None, str | None]:
         """Load knowledge from a specific base path.
 
         Args:
@@ -235,43 +277,46 @@ class KnowledgeLoader:
             phase: Phase to load (e.g., "general", "model", "train", "evaluate", "data")
 
         Returns:
-            Knowledge content or None if not found
+            Tuple of (content, actual_phase):
+            - content: Knowledge content or None if not found
+            - actual_phase: The phase that was actually loaded (may differ from
+              requested if fallback occurred), or None if not found
         """
         knowledge_dir = base_path / knowledge_id
 
         if not knowledge_dir.exists():
-            return None
+            return None, None
 
         # If phase is "general", go directly to guide.md
         if phase == "general":
             general_guide = knowledge_dir / "guide.md"
             if general_guide.exists():
                 try:
-                    return general_guide.read_text()
+                    return general_guide.read_text(), "general"
                 except Exception as e:
                     logger.error(f"Failed to read {general_guide}: {e}")
-                    return None
-            return None
+                    return None, None
+            return None, None
 
         # Try phase-specific guide first (e.g., model-guide.md)
         phase_guide = knowledge_dir / f"{phase}-guide.md"
         if phase_guide.exists():
             try:
-                return phase_guide.read_text()
+                return phase_guide.read_text(), phase
             except Exception as e:
                 logger.error(f"Failed to read {phase_guide}: {e}")
-                return None
+                return None, None
 
         # Fall back to general guide.md
         general_guide = knowledge_dir / "guide.md"
         if general_guide.exists():
             try:
-                return general_guide.read_text()
+                return general_guide.read_text(), "general"
             except Exception as e:
                 logger.error(f"Failed to read {general_guide}: {e}")
-                return None
+                return None, None
 
-        return None
+        return None, None
 
     def get_available_phases(self, knowledge_id: str) -> list[str]:
         """Get list of actually available phases for a knowledge document.

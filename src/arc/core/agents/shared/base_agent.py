@@ -519,7 +519,7 @@ class BaseAgent(abc.ABC):
             try:
                 # Inner loop for tool call conversation
                 # (separate from validation retries)
-                max_tool_rounds = 20  # Allow up to 20 rounds of tool calls
+                max_tool_rounds = 15  # Allow up to 15 rounds of tool calls
                 for _tool_round in range(max_tool_rounds):
                     # Call LLM with tool support
                     response_msg = await asyncio.wait_for(
@@ -966,9 +966,15 @@ class BaseAgent(abc.ABC):
             )
 
         # Load knowledge content with specified phase
-        content = self.knowledge_loader.load_knowledge(knowledge_id, phase)
+        content, actual_phase = self.knowledge_loader.load_knowledge(
+            knowledge_id, phase
+        )
 
-        if content:
+        if content and actual_phase:
+            # Track the actual phase that was loaded (not requested phase)
+            # This prevents re-listing when fallback to general occurs
+            self._loaded_knowledge.add((knowledge_id, actual_phase))
+
             # Add header for context
             metadata_map = self.knowledge_loader.scan_metadata()
             metadata = metadata_map.get(knowledge_id)
