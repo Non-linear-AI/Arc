@@ -69,6 +69,20 @@ Use these tools sparingly. Only use them when the provided schema is insufficien
 Apply the user's requested changes while preserving the existing structure and quality standards. Pay close attention to dependencies.
 {% endif %}
 
+{% if preloaded_knowledge -%}
+# Recommended Knowledge
+
+The ML Plan has recommended the following knowledge for the data processing stage:
+
+{% for doc in preloaded_knowledge %}
+## {{ doc.name }}
+
+{{ doc.content }}
+
+{% endfor %}
+**Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your data pipeline.
+{% endif %}
+
 # YAML Structure
 
 Your output must be a valid YAML document matching this exact structure:
