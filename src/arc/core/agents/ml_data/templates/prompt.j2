@@ -59,9 +59,9 @@ Apply the requested changes while preserving overall structure and quality.
 ```
 
 **Step Types:**
-- `table`: Creates a persistent table from SELECT query. Include step name in outputs array.
-- `view`: Creates a temporary view for intermediate transformations. Views are automatically cleaned up after pipeline execution. Do NOT include in outputs array.
-- `execute`: Executes DDL/DML with no result set (DROP TABLE, INSERT, etc.)
+- `table`: Creates a persistent table from SELECT query. Use for final outputs or large intermediate results.
+- `view`: Creates a persistent view (virtual table) for intermediate transformations. Views are lightweight and persist in the database. Can be included in outputs array if needed by downstream processes.
+- `execute`: Executes DDL/DML with no result set (DROP TABLE, DROP VIEW, INSERT, etc.)
 
 # SQL Dialect
 
@@ -148,7 +148,7 @@ SELECT u.id, t.total FROM "users" u LEFT JOIN "totals" t ON u.id = t.user_id
 - `SELECT *` - Use explicit columns instead
 - Unquoted table names - Always use `"table_name"`
 - Circular dependencies between steps
-- Table steps not listed in outputs array
+- Output table steps not listed in outputs array
 
 {% if not existing_yaml %}
 # Example
@@ -193,7 +193,7 @@ steps:
 outputs: [user_features]
 ```
 
-Note: The `clean_data` view is temporary and automatically cleaned up after execution.
+Note: The `clean_data` view is a persistent view that remains in the database. To clean up views, add explicit DROP VIEW steps.
 {% endif %}
 
 # Output Format

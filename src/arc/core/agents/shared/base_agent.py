@@ -630,7 +630,9 @@ class BaseAgent(abc.ABC):
                             raw_content, validation_context
                         )
                     else:
-                        validation_result = validator_func(raw_content, validation_context)
+                        validation_result = validator_func(
+                            raw_content, validation_context
+                        )
 
                     if validation_result["valid"]:
                         return validation_result["object"], raw_content, messages
@@ -746,7 +748,7 @@ class BaseAgent(abc.ABC):
                 "Use this to verify data characteristics, check column existence, "
                 "analyze distributions, validate assumptions, or gather statistics. "
                 "Only SELECT, DESCRIBE, and SHOW queries are allowed. "
-                "Results are limited to 10 rows for brevity."
+                "Results are limited to 5 rows for brevity."
             ),
             parameters={
                 "type": "object",
@@ -910,6 +912,7 @@ class BaseAgent(abc.ABC):
             header = f"# Knowledge: {knowledge_id}"
             if metadata:
                 header += f" - {metadata.name}"
+
             return f"{header}\n\n{content}"
         else:
             return (
@@ -975,7 +978,14 @@ class BaseAgent(abc.ABC):
                 # Return the formatted output (already brief from the tool)
                 return result.output
             else:
-                return f"Query Error: {result.output}"
+                # Error information is in result.error, not result.output
+                error_msg = result.error or "Unknown error"
+                if result.recovery_actions:
+                    return (
+                        f"Query Error: {error_msg}\n\n"
+                        f"Suggested action: {result.recovery_actions}"
+                    )
+                return f"Query Error: {error_msg}"
 
         except TimeoutError:
             return (

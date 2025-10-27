@@ -26,7 +26,6 @@ class DataSourceExecutionResult:
     created_tables: list[str]
     execution_time: float
     step_count: int
-    intermediate_views_cleaned: int
     steps_executed: list[tuple[str, str]]  # [(step_name, step_type), ...]
     progress_log: list[tuple[str, str]]  # [(message, level), ...]
 
@@ -54,7 +53,10 @@ async def dry_run_data_source_pipeline(
         Tuple of (success: bool, error_message: str | None)
     """
     if target_db not in ["system", "user"]:
-        return False, f"Invalid target database: {target_db}. Must be 'system' or 'user'."
+        return (
+            False,
+            f"Invalid target database: {target_db}. Must be 'system' or 'user'.",
+        )
 
     # Get execution order (topologically sorted)
     try:
@@ -101,11 +103,11 @@ async def dry_run_data_source_pipeline(
 
     except Exception as e:
         # Error during execution - try to rollback
-        try:
-            execute_fn("ROLLBACK")
-        except Exception:
+        import contextlib
+
+        with contextlib.suppress(Exception):
             # Rollback failed, but we're already handling an error
-            pass
+            execute_fn("ROLLBACK")
 
         # Return the error message
         error_msg = str(e)
@@ -153,7 +155,6 @@ async def execute_data_source_pipeline(
         ) from e
 
     step_count = len(ordered_steps)
-    intermediate_views = []  # Track views that need cleanup
     steps_executed = []  # Track executed steps
     progress_log = []  # Accumulate progress messages
 
@@ -183,83 +184,61 @@ async def execute_data_source_pipeline(
         progress_callback("🤖 Executing pipeline...", "info")
         progress_log.append(("🤖 Executing pipeline...", "info"))
 
-    try:
-        for i, step in enumerate(ordered_steps, 1):
-            # Get step type from the step itself (defaults to 'table' if not set)
-            step_type = getattr(step, "type", "table")
-            steps_executed.append((step.name, step_type))
+    for i, step in enumerate(ordered_steps, 1):
+        # Get step type from the step itself (defaults to 'table' if not set)
+        step_type = getattr(step, "type", "table")
+        steps_executed.append((step.name, step_type))
 
-            # Report progress: step
-            step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
-            if progress_callback:
-                progress_callback(step_msg, "step")
-                progress_log.append((step_msg, "step"))
+        # Report progress: step
+        step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
+        if progress_callback:
+            progress_callback(step_msg, "step")
+            progress_log.append((step_msg, "step"))
 
-            # Substitute variables in SQL
-            sql = spec.substitute_vars(step.sql)
+        # Substitute variables in SQL
+        sql = spec.substitute_vars(step.sql)
 
-            # Strip trailing semicolons (they cause syntax errors in
-            # CREATE TABLE/VIEW AS)
-            sql = sql.rstrip().rstrip(";").rstrip()
+        # Strip trailing semicolons (they cause syntax errors in
+        # CREATE TABLE/VIEW AS)
+        sql = sql.rstrip().rstrip(";").rstrip()
 
-            # Quote step name for safe SQL execution (not used for execute type)
-            quoted_name = quote_sql_identifier(step.name)
+        # Quote step name for safe SQL execution (not used for execute type)
+        quoted_name = quote_sql_identifier(step.name)
 
-            try:
-                if step_type == "execute":
-                    # Execute directly without wrapping (DDL/DML statements)
-                    # These don't create artifacts - just run the SQL as-is
-                    if target_db == "system":
-                        db_manager.system_execute(sql)
-                    else:
-                        db_manager.user_execute(sql)
-                elif step_type == "view":
-                    # Create temporary view for intermediate steps
-                    # Use CREATE OR REPLACE to handle re-runs
-                    create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
-                    intermediate_views.append(step.name)  # Track for cleanup
-                    if target_db == "system":
-                        db_manager.system_execute(create_sql)
-                    else:
-                        db_manager.user_execute(create_sql)
-                elif step_type == "table":
-                    # Create persistent table for output steps
-                    # Use CREATE OR REPLACE to handle re-runs
-                    create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
-                    if target_db == "system":
-                        db_manager.system_execute(create_sql)
-                    else:
-                        db_manager.user_execute(create_sql)
+        try:
+            if step_type == "execute":
+                # Execute directly without wrapping (DDL/DML statements)
+                # These don't create artifacts - just run the SQL as-is
+                if target_db == "system":
+                    db_manager.system_execute(sql)
                 else:
-                    raise DataSourceExecutionError(
-                        f"Unknown step type '{step_type}' for step '{step.name}'"
-                    )
-
-            except Exception as step_error:
+                    db_manager.user_execute(sql)
+            elif step_type == "view":
+                # Create persistent view for intermediate steps
+                # Use CREATE OR REPLACE to handle re-runs
+                # Views persist in the database and are not automatically cleaned up
+                create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
+                if target_db == "system":
+                    db_manager.system_execute(create_sql)
+                else:
+                    db_manager.user_execute(create_sql)
+            elif step_type == "table":
+                # Create persistent table for output steps
+                # Use CREATE OR REPLACE to handle re-runs
+                create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
+                if target_db == "system":
+                    db_manager.system_execute(create_sql)
+                else:
+                    db_manager.user_execute(create_sql)
+            else:
                 raise DataSourceExecutionError(
-                    f"Failed to execute step '{step.name}': {str(step_error)}"
-                ) from step_error
+                    f"Unknown step type '{step_type}' for step '{step.name}'"
+                )
 
-    finally:
-        # Clean up intermediate views
-        cleaned_count = 0
-        if intermediate_views:
-            for view_name in intermediate_views:
-                try:
-                    # Quote view name for safe cleanup
-                    quoted_view = quote_sql_identifier(view_name)
-                    cleanup_sql = f"DROP VIEW IF EXISTS {quoted_view}"
-                    if target_db == "system":
-                        db_manager.system_execute(cleanup_sql)
-                    else:
-                        db_manager.user_execute(cleanup_sql)
-                    cleaned_count += 1
-                except Exception:
-                    # Don't fail the entire pipeline if cleanup fails
-                    warning_msg = f"Could not clean up view '{view_name}'"
-                    if progress_callback:
-                        progress_callback(warning_msg, "warning")
-                        progress_log.append((warning_msg, "warning"))
+        except Exception as step_error:
+            raise DataSourceExecutionError(
+                f"Failed to execute step '{step.name}': {str(step_error)}"
+            ) from step_error
 
     # Calculate execution time
     execution_time = time.time() - start_time
@@ -285,7 +264,6 @@ async def execute_data_source_pipeline(
         created_tables=spec.outputs.copy(),
         execution_time=execution_time,
         step_count=step_count,
-        intermediate_views_cleaned=cleaned_count,
         steps_executed=steps_executed,
         progress_log=progress_log,
     )
