@@ -177,7 +177,7 @@ class MLDataAgent(BaseAgent):
                 tool_executor=self._execute_ml_tool,
                 validator_func=self._validate_data_processing_comprehensive,
                 validation_context={"schema_info": schema_info},
-                max_iterations=3,
+                max_iterations=5,  # Increased from 3 to give more retry chances
                 conversation_history=None,  # Fresh start
                 progress_callback=self.progress_callback,
             )
@@ -216,7 +216,7 @@ class MLDataAgent(BaseAgent):
                 validation_context={
                     "schema_info": None
                 },  # Already in conversation history
-                max_iterations=3,
+                max_iterations=5,  # Increased from 3 to give more retry chances
                 conversation_history=conversation_history,
                 progress_callback=self.progress_callback,
             )
@@ -358,6 +358,24 @@ class MLDataAgent(BaseAgent):
                 return {
                     "valid": False,
                     "error": f"Failed to parse into DataSourceSpec: {str(e)}",
+                }
+
+            # Validate dependencies (catch circular dependencies in retry loop)
+            try:
+                spec.validate_dependencies()
+            except ValueError as e:
+                return {
+                    "valid": False,
+                    "error": f"Dependency validation failed: {str(e)}",
+                }
+
+            # Validate execution order (catch other structural issues)
+            try:
+                _ = spec.get_execution_order()
+            except ValueError as e:
+                return {
+                    "valid": False,
+                    "error": f"Execution order validation failed: {str(e)}",
                 }
 
             return {"valid": True, "object": spec, "error": None}
