@@ -332,16 +332,16 @@ class MLDataAgent(BaseAgent):
                 "error": str(e),
             }
 
-    def _validate_data_processing_comprehensive(
+    async def _validate_data_processing_comprehensive(
         self,
         yaml_content: str,
-        context: dict[str, Any],  # noqa: ARG002
+        context: dict[str, Any],
     ) -> dict[str, Any]:
         """Comprehensive validation of generated data processing spec.
 
         Args:
             yaml_content: Generated YAML string
-            context: Generation context for validation
+            context: Generation context for validation (includes schema_info with database)
 
         Returns:
             Dictionary with validation results:
@@ -376,6 +376,23 @@ class MLDataAgent(BaseAgent):
                 return {
                     "valid": False,
                     "error": f"Execution order validation failed: {str(e)}",
+                }
+
+            # DuckDB dry-run validation (catch runtime errors like table not found)
+            # Extract database from context
+            schema_info = context.get("schema_info", {})
+            database = schema_info.get("database", "user")
+
+            from arc.ml.data_source_executor import dry_run_data_source_pipeline
+
+            success, error = await dry_run_data_source_pipeline(
+                spec, database, self.services.db_manager
+            )
+
+            if not success:
+                return {
+                    "valid": False,
+                    "error": f"Dry-run validation failed: {error}",
                 }
 
             return {"valid": True, "object": spec, "error": None}

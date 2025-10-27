@@ -35,6 +35,88 @@ class DataSourceExecutionError(Exception):
     """Exception raised when data source pipeline execution fails."""
 
 
+async def dry_run_data_source_pipeline(
+    spec: DataSourceSpec,
+    target_db: str,
+    db_manager: DatabaseManager,
+) -> tuple[bool, str | None]:
+    """Dry-run a DataSourceSpec pipeline using DuckDB transactions.
+
+    This executes all steps in a transaction and then rolls back,
+    catching runtime errors without modifying the database.
+
+    Args:
+        spec: DataSourceSpec containing steps and outputs
+        target_db: Target database ("system" or "user")
+        db_manager: DatabaseManager instance for execution
+
+    Returns:
+        Tuple of (success: bool, error_message: str | None)
+    """
+    if target_db not in ["system", "user"]:
+        return False, f"Invalid target database: {target_db}. Must be 'system' or 'user'."
+
+    # Get execution order (topologically sorted)
+    try:
+        ordered_steps = spec.get_execution_order()
+    except ValueError as e:
+        return False, f"Failed to determine execution order: {e}"
+
+    # Choose execute method based on target database
+    execute_fn = (
+        db_manager.system_execute if target_db == "system" else db_manager.user_execute
+    )
+
+    try:
+        # Start transaction
+        execute_fn("BEGIN TRANSACTION")
+
+        # Execute all steps in the transaction
+        for step in ordered_steps:
+            sql = spec.substitute_vars(step.sql)
+            sql = sql.rstrip().rstrip(";").rstrip()
+
+            quoted_name = quote_sql_identifier(step.name)
+
+            if step.type == "execute":
+                # Execute directly without wrapping
+                execute_fn(sql)
+            elif step.type == "view":
+                # Create temporary view
+                create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
+                execute_fn(create_sql)
+            elif step.type == "table":
+                # Create persistent table
+                create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
+                execute_fn(create_sql)
+            else:
+                # Unknown type - rollback and fail
+                execute_fn("ROLLBACK")
+                return False, f"Unknown step type '{step.type}' for step '{step.name}'"
+
+        # If we got here, all steps executed successfully
+        # Rollback to undo all changes
+        execute_fn("ROLLBACK")
+        return True, None
+
+    except Exception as e:
+        # Error during execution - try to rollback
+        try:
+            execute_fn("ROLLBACK")
+        except Exception:
+            # Rollback failed, but we're already handling an error
+            pass
+
+        # Return the error message
+        error_msg = str(e)
+        # Try to extract which step failed (if error contains step name)
+        for step in ordered_steps:
+            if step.name in error_msg:
+                return False, f"Step '{step.name}' failed during dry-run: {error_msg}"
+
+        return False, f"Dry-run failed: {error_msg}"
+
+
 async def execute_data_source_pipeline(
     spec: DataSourceSpec,
     target_db: str,

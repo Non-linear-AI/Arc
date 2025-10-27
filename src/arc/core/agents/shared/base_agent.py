@@ -622,7 +622,15 @@ class BaseAgent(abc.ABC):
 
                 # Validate if validator provided
                 if validator_func and validation_context:
-                    validation_result = validator_func(raw_content, validation_context)
+                    # Check if validator is async (coroutine function)
+                    import inspect
+
+                    if inspect.iscoroutinefunction(validator_func):
+                        validation_result = await validator_func(
+                            raw_content, validation_context
+                        )
+                    else:
+                        validation_result = validator_func(raw_content, validation_context)
 
                     if validation_result["valid"]:
                         return validation_result["object"], raw_content, messages
