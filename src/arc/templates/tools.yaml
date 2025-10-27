@@ -234,16 +234,23 @@ tools:
       Include data insights in the instruction parameter for better plan quality.
 
       Use for:
-      - Initial plan creation: Provide instruction with ML problem description AND data insights
+      - Initial plan creation: Provide name, instruction with ML problem description AND data insights
         from exploration (e.g., "Build classifier for X. Data insights: 1000 samples, binary
         classification (70/30 split), 5 numeric features with range 0-100, no missing values.")
-      - Plan revision: Provide instruction describing the requested changes
+      - Plan revision: Use existing plan's name and provide instruction describing the requested changes
         (e.g., "change the model architecture to use 4 layers", "use different features")
 
+      The name parameter is used for versioning (e.g., 'diabetes-classifier' becomes 'diabetes-classifier-v1').
       The instruction parameter is used for both initial creation and revisions.
     parameters:
       type: object
       properties:
+        name:
+          type: string
+          description: |
+            Name for the ML plan, used for versioning and identification (e.g., 'diabetes-classifier',
+            'fraud-detection-model'). This name will be used to track plan versions in the database.
+            Choose a descriptive, kebab-case name suitable for versioning.
         instruction:
           type: string
           description: |
@@ -263,6 +270,7 @@ tools:
           type: string
           description: Comma-separated list of database tables to analyze (e.g., 'users,transactions' or 'pidd')
       required:
+        - name
         - instruction
         - source_tables
 

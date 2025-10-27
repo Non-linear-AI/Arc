@@ -56,7 +56,6 @@ class MLDataAgent(BaseAgent):
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
-        skip_data_profiling: bool = False,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Generate or edit data processing YAML from instruction.
 
@@ -72,8 +71,6 @@ class MLDataAgent(BaseAgent):
             recommended_knowledge_ids: Optional list of knowledge IDs
                 recommended by ML Plan
             conversation_history: Optional conversation history for editing workflow
-            skip_data_profiling: If True, skip automatic data profiling (row counts)
-                (useful when data insights are already in instruction)
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string, conversation_history)
@@ -90,7 +87,6 @@ class MLDataAgent(BaseAgent):
                 database=database,
                 existing_yaml=existing_yaml,
                 recommended_knowledge_ids=recommended_knowledge_ids,
-                skip_data_profiling=skip_data_profiling,
             )
         else:
             # Continue conversation - just append feedback
@@ -106,7 +102,6 @@ class MLDataAgent(BaseAgent):
         database: str = "user",
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
-        skip_data_profiling: bool = False,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -116,9 +111,9 @@ class MLDataAgent(BaseAgent):
         """
         try:
             # Get schema information for available tables
-            # Skip row counts when profiling is disabled or for faster response
+            # Skip row counts by default - agent can query if needed
             schema_info = await self._get_schema_context(
-                source_tables, database, include_row_counts=not skip_data_profiling
+                source_tables, database, include_row_counts=False
             )
 
             # Pre-load recommended knowledge content (handle missing gracefully)
@@ -337,16 +332,17 @@ class MLDataAgent(BaseAgent):
                 "error": str(e),
             }
 
-    def _validate_data_processing_comprehensive(
+    async def _validate_data_processing_comprehensive(
         self,
         yaml_content: str,
-        context: dict[str, Any],  # noqa: ARG002
+        context: dict[str, Any],
     ) -> dict[str, Any]:
         """Comprehensive validation of generated data processing spec.
 
         Args:
             yaml_content: Generated YAML string
-            context: Generation context for validation
+            context: Generation context for validation (includes schema_info
+                with database)
 
         Returns:
             Dictionary with validation results:
@@ -363,6 +359,41 @@ class MLDataAgent(BaseAgent):
                 return {
                     "valid": False,
                     "error": f"Failed to parse into DataSourceSpec: {str(e)}",
+                }
+
+            # Validate dependencies (catch circular dependencies in retry loop)
+            try:
+                spec.validate_dependencies()
+            except ValueError as e:
+                return {
+                    "valid": False,
+                    "error": f"Dependency validation failed: {str(e)}",
+                }
+
+            # Validate execution order (catch other structural issues)
+            try:
+                _ = spec.get_execution_order()
+            except ValueError as e:
+                return {
+                    "valid": False,
+                    "error": f"Execution order validation failed: {str(e)}",
+                }
+
+            # DuckDB dry-run validation (catch runtime errors like table not found)
+            # Extract database from context
+            schema_info = context.get("schema_info", {})
+            database = schema_info.get("database", "user")
+
+            from arc.ml.data_source_executor import dry_run_data_source_pipeline
+
+            success, error = await dry_run_data_source_pipeline(
+                spec, database, self.services.db_manager
+            )
+
+            if not success:
+                return {
+                    "valid": False,
+                    "error": f"Dry-run validation failed: {error}",
                 }
 
             return {"valid": True, "object": spec, "error": None}

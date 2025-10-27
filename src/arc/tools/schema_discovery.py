@@ -127,34 +127,71 @@ class SchemaDiscoveryTool(BaseTool):
             ToolResult with table list
         """
         try:
+            from rich import box
+            from rich.table import Table
+
             schema_info = self.services.schema.get_schema_info(target_db)
             tables = schema_info.tables
 
             if not tables:
-                output = f"No tables found in {target_db} database."
-                metadata = {"table_count": 0}
+                return ToolResult.success_result(
+                    f"No tables found in {target_db} database.",
+                    metadata={"table_count": 0, "target_db": target_db},
+                )
+
+            total = len(tables)
+
+            # Build Rich table for table list
+            table = Table(
+                show_header=True,
+                header_style="bold",
+                border_style="color(240)",
+                box=box.HORIZONTALS,
+            )
+
+            # Add columns
+            table.add_column("Table", no_wrap=False)
+            table.add_column("Columns", no_wrap=False, justify="right")
+
+            # Add rows (limit to 5 for table list)
+            max_rows = 5
+            for idx, tbl in enumerate(tables):
+                if idx >= max_rows:
+                    table.add_row("...", "...", style="dim")
+                    break
+                column_count = len(schema_info.get_columns_for_table(tbl.name))
+                table.add_row(tbl.name, str(column_count))
+
+            # Prepare summary
+            if total > max_rows:
+                summary = f"Showing {max_rows} of {total} tables"
             else:
-                total = len(tables)
-                # Show first 5 tables
-                show_count = min(5, total)
-                output = ""
+                table_text = "table" if total == 1 else "tables"
+                summary = f"{total} {table_text}"
 
-                for i, table in enumerate(tables[:show_count]):
-                    column_count = len(schema_info.get_columns_for_table(table.name))
-                    output += f"• {table.name} [dim]({column_count} cols)[/dim]"
-                    # Add 3 tables per line
-                    if (i + 1) % 3 == 0 or i == show_count - 1:
-                        output += "\n"
-                    else:
-                        output += " "
+            # Build text output for the agent
+            table_list = [
+                f"- {tbl.name} "
+                f"({len(schema_info.get_columns_for_table(tbl.name))} columns)"
+                for tbl in tables[:5]
+            ]
+            if total > 5:
+                table_list.append(f"... and {total - 5} more")
 
-                # Add "… and N more" if there are more tables
-                if total > show_count:
-                    output += f"… and {total - show_count} more"
+            agent_output = (
+                f"Found {total} table{'s' if total != 1 else ''} in "
+                f"{target_db} database:\n" + "\n".join(table_list)
+            )
 
-                metadata = {"table_count": total}
+            metadata = {
+                "table_count": total,
+                "target_db": target_db,
+                "rich_table": table,
+                "summary": summary,
+                "agent_output": agent_output,
+            }
 
-            return ToolResult.success_result(output, metadata=metadata)
+            return ToolResult.success_result(agent_output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to list tables: {str(e)}")
@@ -170,6 +207,9 @@ class SchemaDiscoveryTool(BaseTool):
             ToolResult with table structure details
         """
         try:
+            from rich import box
+            from rich.table import Table
+
             schema_info = self.services.schema.get_schema_info(target_db)
 
             # Check if table exists
@@ -183,32 +223,66 @@ class SchemaDiscoveryTool(BaseTool):
             # Get table details
             columns = schema_info.get_columns_for_table(table_name)
             total_cols = len(columns)
-            show_count = min(5, total_cols)
 
-            output = ""
+            if not columns:
+                return ToolResult.success_result(
+                    f"Table '{table_name}' has no columns.",
+                    metadata={
+                        "table_name": table_name,
+                        "column_count": 0,
+                        "target_db": target_db,
+                    },
+                )
 
-            if columns:
-                # Group columns by data type
-                type_groups = {}
-                for col in columns[:show_count]:
-                    dtype = col.data_type
-                    if dtype not in type_groups:
-                        type_groups[dtype] = []
-                    type_groups[dtype].append(col.column_name)
+            # Build Rich table for schema display
+            table = Table(
+                show_header=True,
+                header_style="bold",
+                border_style="color(240)",
+                box=box.HORIZONTALS,
+            )
 
-                # Output grouped by type
-                for dtype, col_names in type_groups.items():
-                    output += f"• {', '.join(col_names)} [dim]({dtype})[/dim]\n"
+            # Add columns
+            table.add_column("Column", no_wrap=False)
+            table.add_column("Type", no_wrap=False)
 
-                # Add "… and N more" if there are more columns
-                if total_cols > show_count:
-                    output += f"… and {total_cols - show_count} more columns"
+            # Add rows (limit to 5 for schema display)
+            max_rows = 5
+            for idx, col in enumerate(columns):
+                if idx >= max_rows:
+                    table.add_row("...", "...", style="dim")
+                    break
+                table.add_row(col.column_name, col.data_type)
+
+            # Prepare summary
+            if total_cols > max_rows:
+                summary = f"Showing {max_rows} of {total_cols} columns"
+            else:
+                col_text = "column" if total_cols == 1 else "columns"
+                summary = f"{total_cols} {col_text}"
+
+            # Build text output for the agent
+            column_list = [
+                f"- {col.column_name}: {col.data_type}" for col in columns[:5]
+            ]
+            if total_cols > 5:
+                column_list.append(f"... and {total_cols - 5} more columns")
+
+            agent_output = (
+                f"Table '{table_name}' ({total_cols} columns):\n"
+                + "\n".join(column_list)
+            )
 
             metadata = {
                 "table_name": table_name,
                 "column_count": total_cols,
+                "target_db": target_db,
+                "rich_table": table,
+                "summary": summary,
+                "agent_output": agent_output,
             }
-            return ToolResult.success_result(output, metadata=metadata)
+
+            return ToolResult.success_result(agent_output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to describe table: {str(e)}")

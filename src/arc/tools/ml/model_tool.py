@@ -85,6 +85,7 @@ class MLModelTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
+                printer.print("")  # Empty line after task
 
             # Helper to show error and return
             def _error_in_section(message: str) -> ToolResult:
@@ -234,7 +235,7 @@ class MLModelTool(BaseTool):
                             )
                         return ToolResult(
                             success=True,
-                            output="Model generation cancelled by user.",
+                            output="✗ Model generation cancelled by user.",
                             metadata={"cancelled": True},
                         )
                     model_yaml = final_yaml

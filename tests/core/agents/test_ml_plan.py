@@ -126,9 +126,7 @@ class TestMLPlanAgent:
 
         # Test list_available_knowledge
         await ml_plan_agent._execute_tool("list_available_knowledge", "{}")
-        assert any(
-            "Listing available architectures" in msg for msg in progress_messages
-        )
+        assert any("Listing available knowledges" in msg for msg in progress_messages)
         assert any("Available:" in msg for msg in progress_messages)
 
         # Test read_knowledge_content

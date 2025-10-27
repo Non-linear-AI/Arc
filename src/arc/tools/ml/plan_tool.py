@@ -32,13 +32,13 @@ class MLPlanTool(BaseTool):
     async def execute(
         self,
         *,
+        name: str | None = None,
         instruction: str | None = None,
         source_tables: str | None = None,
         previous_plan: dict | None = None,
         section_to_update: str | None = None,
         conversation_history: str | None = None,  # noqa: ARG002
         verbose: bool = False,
-        skip_data_profiling: bool = False,
     ) -> ToolResult:
         # Early validation for common errors (before any section printing)
         if not self.api_key:
@@ -52,9 +52,9 @@ class MLPlanTool(BaseTool):
                 "ML planning service unavailable. Database services not initialized."
             )
 
-        if not instruction or not source_tables:
+        if not name or not instruction or not source_tables:
             return ToolResult.error_result(
-                "Parameters 'instruction' and 'source_tables' "
+                "Parameters 'name', 'instruction', and 'source_tables' "
                 "are required for ML planning."
             )
 
@@ -122,6 +122,7 @@ class MLPlanTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
+                printer.print("")  # Empty line after task
 
             # Helper to show error and return
             def _error_in_section(message: str) -> ToolResult:
@@ -161,9 +162,7 @@ class MLPlanTool(BaseTool):
                 current_instruction = instruction
 
                 # Get version from database to avoid conflicts
-                latest_plan = self.services.ml_plans.get_latest_plan_for_tables(
-                    str(source_tables)
-                )
+                latest_plan = self.services.ml_plans.get_latest_plan_by_name(str(name))
                 version = latest_plan.version + 1 if latest_plan else 1
 
                 while True:
@@ -177,8 +176,11 @@ class MLPlanTool(BaseTool):
                             if current_instruction != instruction
                             else None,
                             stream=False,
-                            skip_data_profiling=skip_data_profiling,
                         )
+
+                        # Inject the passed-in name into the analysis result
+                        # (LLM doesn't generate it since we already have it)
+                        analysis["name"] = str(name)
 
                         # Show completion message
                         if printer:
@@ -232,14 +234,14 @@ class MLPlanTool(BaseTool):
                                 plan_dict, default_flow_style=False, sort_keys=False
                             )
 
-                            # Create database model - use first table for plan ID
-                            first_table = source_tables.split(",")[0].strip()
-                            base_slug = _slugify_name(f"{first_table}-plan")
+                            # Create database model - use name for plan ID
+                            base_slug = _slugify_name(str(name))
                             plan_id = f"{base_slug}-v{version}"
 
                             now = datetime.now(UTC)
                             db_plan = MLPlanModel(
                                 plan_id=plan_id,
+                                name=str(name),
                                 version=version,
                                 user_context=str(instruction),
                                 source_tables=str(source_tables),
@@ -364,19 +366,14 @@ class MLPlanTool(BaseTool):
                                     )
                             # Print cancellation message inside section
                             if printer:
-                                printer.print(
-                                    "ML plan cancelled. What would you like to "
-                                    "do instead?"
-                                )
+                                printer.print("")  # Empty line
+                                printer.print("[dim]✗ ML plan cancelled by user.[/dim]")
                             # Return to main agent with context message
                             # (Message already displayed in section,
                             # but agent needs context)
                             return ToolResult(
                                 success=True,
-                                output=(
-                                    "ML plan cancelled. What would you like to "
-                                    "do instead?"
-                                ),
+                                output="✗ ML plan cancelled by user.",
                                 metadata={"cancelled": True, "suppress_output": True},
                             )
                     else:

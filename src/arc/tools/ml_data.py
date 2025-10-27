@@ -96,7 +96,6 @@ class MLDataTool(BaseTool):
         auto_confirm: bool = False,
         plan_id: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
-        skip_data_profiling: bool = False,
     ) -> ToolResult:
         """Generate YAML configuration from instruction using LLM.
 
@@ -110,8 +109,6 @@ class MLDataTool(BaseTool):
             auto_confirm: Skip interactive confirmation workflow
             plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
                 feature engineering guidance (SECONDARY baseline)
-            skip_data_profiling: If True, skip automatic data profiling
-                (useful when data insights are already in instruction)
 
         Note on instruction vs plan_id precedence:
             - instruction: PRIMARY driver - user's immediate, specific data
@@ -211,6 +208,7 @@ class MLDataTool(BaseTool):
             # Show task description
             if printer:
                 printer.print(f"[dim]Task: {instruction}[/dim]")
+                printer.print("")  # Empty line after task
 
             try:
                 # Set progress callback for this invocation
@@ -229,7 +227,6 @@ class MLDataTool(BaseTool):
                     instruction=enhanced_instruction,
                     source_tables=source_tables,
                     database=database,
-                    skip_data_profiling=skip_data_profiling,
                     recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
@@ -237,28 +234,8 @@ class MLDataTool(BaseTool):
                 if printer:
                     printer.print("[dim]✓ Data processor generated successfully[/dim]")
 
-                # Validate the generated spec before confirmation workflow
-                try:
-                    # Parse and validate structure
-                    from arc.graph.features.data_source import DataSourceSpec
-
-                    validation_result = DataSourceSpec.validate_yaml_string(
-                        yaml_content
-                    )
-                    if not validation_result.success:
-                        return _error_in_section(
-                            f"Generated data processor failed validation: "
-                            f"{validation_result.error}"
-                        )
-
-                    # Validate dependencies and execution order
-                    spec.validate_dependencies()
-                    _ = spec.get_execution_order()
-
-                except Exception as e:
-                    return _error_in_section(
-                        f"Data processor validation failed: {str(e)}"
-                    )
+                # Spec is already validated by agent (with retries)
+                # No need for redundant validation here
 
                 # Interactive confirmation workflow
                 # (unless auto_confirm is True or no UI available)
@@ -419,10 +396,10 @@ class MLDataTool(BaseTool):
                 )
 
             except Exception as e:
+                # Preserve validation error details for main LLM
+                error_msg = str(e)
                 return _error_in_section(
-                    f"Failed to generate YAML using LLM: {str(e)}. "
-                    "Please check your API key and network connection, "
-                    "or try simplifying your request."
+                    f"Failed to generate data processor after 3 attempts: {error_msg}"
                 )
 
     async def execute(self, **kwargs) -> ToolResult:

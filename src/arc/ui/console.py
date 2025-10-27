@@ -11,6 +11,7 @@ from typing import Any
 
 from rich import box
 from rich.align import Align
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
@@ -219,12 +220,12 @@ class InteractiveInterface:
             p.print("ML Commands")
             ml_commands = [
                 (
-                    "/ml plan --context DESC --data-table TABLE --target-column COL",
+                    "/ml plan --name NAME --instruction DESC --source-tables TABLES",
                     "Create ML workflow plan (feature engineering, architecture, "
                     "training, evaluation)",
                 ),
                 (
-                    "/ml revise-plan --feedback FEEDBACK",
+                    "/ml revise-plan --instruction CHANGES [--name NAME]",
                     "Revise the current ML plan based on feedback or training results",
                 ),
                 (
@@ -345,25 +346,51 @@ class InteractiveInterface:
         # Append metadata to label if present
         if result.metadata:
             metadata_parts = []
-            # Show table name first if present (for describe_table)
-            if "table_name" in result.metadata:
-                metadata_parts.append(result.metadata["table_name"])
-            if "row_count" in result.metadata:
-                row_text = "row" if result.metadata["row_count"] == 1 else "rows"
-                metadata_parts.append(f"{result.metadata['row_count']} {row_text}")
-            if "table_count" in result.metadata:
-                table_text = (
-                    "table" if result.metadata["table_count"] == 1 else "tables"
-                )
-                metadata_parts.append(f"{result.metadata['table_count']} {table_text}")
-            if "column_count" in result.metadata:
-                col_text = "col" if result.metadata["column_count"] == 1 else "cols"
-                metadata_parts.append(f"{result.metadata['column_count']} {col_text}")
-            # Show execution time at the end, only if >= 1 second
-            if "execution_time" in result.metadata:
-                exec_time = result.metadata["execution_time"]
-                if exec_time >= 1.0:
-                    metadata_parts.append(f"{exec_time:.3f}s")
+
+            # Special handling for database_query and schema_discovery tools
+            if tool_name == "database_query":
+                # Show database name with "db:" prefix
+                if "target_db" in result.metadata:
+                    metadata_parts.append(f"db: {result.metadata['target_db']}")
+                # Show execution time only if >= 1 second
+                if "execution_time" in result.metadata:
+                    exec_time = result.metadata["execution_time"]
+                    if exec_time >= 1.0:
+                        metadata_parts.append(f"{exec_time:.1f}s")
+            elif tool_name == "schema_discovery":
+                # Show table name if present, otherwise show database with "db:" prefix
+                if "table_name" in result.metadata:
+                    # When describing a specific table, just show table name
+                    metadata_parts.append(result.metadata["table_name"])
+                elif "target_db" in result.metadata:
+                    # When listing tables, show database with "db:" prefix
+                    metadata_parts.append(f"db: {result.metadata['target_db']}")
+            else:
+                # Default metadata handling for other tools
+                # Show table name first if present (for describe_table)
+                if "table_name" in result.metadata:
+                    metadata_parts.append(result.metadata["table_name"])
+                if "row_count" in result.metadata:
+                    row_text = "row" if result.metadata["row_count"] == 1 else "rows"
+                    metadata_parts.append(f"{result.metadata['row_count']} {row_text}")
+                if "table_count" in result.metadata:
+                    table_text = (
+                        "table" if result.metadata["table_count"] == 1 else "tables"
+                    )
+                    metadata_parts.append(
+                        f"{result.metadata['table_count']} {table_text}"
+                    )
+                if "column_count" in result.metadata:
+                    col_text = "col" if result.metadata["column_count"] == 1 else "cols"
+                    metadata_parts.append(
+                        f"{result.metadata['column_count']} {col_text}"
+                    )
+                # Show execution time at the end, only if >= 1 second
+                if "execution_time" in result.metadata:
+                    exec_time = result.metadata["execution_time"]
+                    if exec_time >= 1.0:
+                        metadata_parts.append(f"{exec_time:.3f}s")
+
             if metadata_parts:
                 label += f" [dim]({', '.join(metadata_parts)})[/dim]"
 
@@ -380,6 +407,44 @@ class InteractiveInterface:
                 and content.strip()
             ):
                 self._print_todo_with_inline_progress(label, content, printer=p)
+            # Handle database_query with Rich table (minimal style like /sql,
+            # but dimmed)
+            elif (
+                tool_name == "database_query"
+                and result.metadata
+                and "rich_table" in result.metadata
+            ):
+                # Print label (header)
+                p.print(f"{label}")
+                # Print query if available
+                if "query" in result.metadata:
+                    p.print(f"[dim]{result.metadata['query']}[/dim]")
+                # Print Rich table wrapped in dim style using Padding
+                dimmed_table = Padding(
+                    result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
+                )
+                p.print(dimmed_table)
+                # Print summary
+                if "summary" in result.metadata:
+                    p.print(f"[dim]{result.metadata['summary']}[/dim]")
+            # Handle schema_discovery with Rich table (similar to
+            # database_query, no query)
+            elif (
+                tool_name == "schema_discovery"
+                and result.metadata
+                and "rich_table" in result.metadata
+            ):
+                # Print label (header)
+                p.print(f"{label}")
+                # Print Rich table wrapped in dim style using Padding (no query
+                # for schema)
+                dimmed_table = Padding(
+                    result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
+                )
+                p.print(dimmed_table)
+                # Print summary
+                if "summary" in result.metadata:
+                    p.print(f"[dim]{result.metadata['summary']}[/dim]")
             else:
                 p.print(f"{label}")
                 if content.strip():

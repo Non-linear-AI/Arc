@@ -22,13 +22,14 @@ class DatabaseQueryTool(BaseTool):
         self.services = services
 
     async def execute(
-        self, query: str, target_db: str = "system", validate_schema: bool = True
+        self, query: str, target_db: str = "user", validate_schema: bool = True
     ) -> ToolResult:
         """Execute a SQL query against the specified database.
 
         Args:
             query: SQL query to execute
-            target_db: Target database - "system" (read-only) or "user" (full access)
+            target_db: Target database - "user" (default, full access) or
+                "system" (read-only)
             validate_schema: Whether to validate query against database schema
 
         Returns:
@@ -73,12 +74,17 @@ class DatabaseQueryTool(BaseTool):
             display_query = query if len(query) <= 100 else query[:97] + "..."
 
             # Prepare metadata for section title
-            metadata = {"execution_time": execution_time}
+            metadata = {"execution_time": execution_time, "target_db": target_db}
 
-            # Format results for output
+            # Format results using Rich Table (like /sql command)
             if result.empty():
                 output = f"{display_query}\nNo results returned."
             else:
+                import json
+
+                from rich import box
+                from rich.table import Table
+
                 # Get basic result information
                 row_count = result.count()
                 first_row = result.first()
@@ -89,79 +95,91 @@ class DatabaseQueryTool(BaseTool):
                 if not first_row:
                     output = f"{display_query}\nNo results returned."
                 else:
-                    column_names = list(first_row.keys())
-                    show_row_count = min(5, row_count)
+                    # Build Rich table for clean display (will be dimmed via
+                    # Padding wrapper)
+                    table = Table(
+                        show_header=True,
+                        header_style="bold",
+                        border_style="color(240)",
+                        box=box.HORIZONTALS,
+                    )
 
-                    # Start output with query only
-                    output = f"{display_query}\n"
+                    # Add columns from first row
+                    for column_name in first_row:
+                        table.add_column(str(column_name), no_wrap=False)
 
-                    # Format based on result shape
-                    if row_count == 1:
-                        # Single row: use key=value format
-                        values = []
-                        for key, value in first_row.items():
+                    # Add data rows (limit to allow aggregation results)
+                    max_rows = 100
+                    for row_count_idx, row in enumerate(result):
+                        if row_count_idx >= max_rows:
+                            table.add_row(*["..." for _ in first_row], style="dim")
+                            break
+
+                        # Convert all values to strings and handle None
+                        row_values = []
+                        for value in row.values():
                             if value is None:
-                                formatted_val = "NULL"
-                            elif isinstance(value, float):
-                                formatted_val = f"{value:.3g}"
+                                row_values.append("[dim]NULL[/dim]")
+                            elif isinstance(value, (dict, list)):
+                                # Format JSON-like objects
+                                row_values.append(
+                                    json.dumps(
+                                        value, indent=None, separators=(",", ":")
+                                    )
+                                )
                             else:
-                                formatted_val = str(value)
-                            values.append(f"{key}={formatted_val}")
-                        output += ", ".join(values)
+                                row_values.append(str(value))
+
+                        table.add_row(*row_values)
+
+                    # Store Rich table in metadata for rendering
+                    total_rows = result.count()
+                    row_text = "row" if total_rows == 1 else "rows"
+                    if total_rows > max_rows:
+                        summary = f"Showing {max_rows} of {total_rows} rows"
                     else:
-                        # Multiple rows: use table format
-                        # Determine column widths (max 20 chars per column)
-                        col_widths = {}
-                        for col in column_names[:5]:  # Max 5 columns
-                            col_widths[col] = min(20, max(len(col), 8))
+                        summary = f"{total_rows} {row_text} returned"
 
-                        # Show first 5 columns
-                        display_cols = column_names[:5]
+                    # Build text output for agent
+                    # Show column headers
+                    column_names = list(first_row.keys())
+                    header_line = " | ".join(column_names)
+                    separator = "-" * len(header_line)
 
-                        # Build table header
-                        header_parts = []
-                        for col in display_cols:
-                            header_parts.append(col.ljust(col_widths[col]))
-                        if len(column_names) > 5:
-                            header_parts.append(f"… ({len(column_names)} columns)")
-                        output += " │ ".join(header_parts) + "\n"
+                    # Format rows as text
+                    text_rows = []
+                    for row_idx, row in enumerate(result):
+                        if row_idx >= max_rows:
+                            text_rows.append("...")
+                            break
+                        row_values = []
+                        for value in row.values():
+                            if value is None:
+                                row_values.append("NULL")
+                            elif isinstance(value, (dict, list)):
+                                row_values.append(
+                                    json.dumps(value, separators=(",", ":"))
+                                )
+                            else:
+                                row_values.append(str(value))
+                        text_rows.append(" | ".join(row_values))
 
-                        # Build table rows (show first 5 rows)
-                        for i, row in enumerate(result):
-                            if i >= show_row_count:
-                                break
-                            row_parts = []
-                            for col in display_cols:
-                                value = row.get(col)
-                                if value is None:
-                                    formatted = "NULL"
-                                elif isinstance(value, float):
-                                    formatted = f"{value:.3g}"
-                                elif isinstance(value, str):
-                                    # Don't truncate short strings or column name fields
-                                    should_truncate = len(value) > col_widths[col]
-                                    is_short_string = len(value) <= 30
-                                    is_column_name_field = col.lower() in {
-                                        "column_name",
-                                        "table_name",
-                                        "name",
-                                    }
-                                    if (
-                                        should_truncate
-                                        and not is_short_string
-                                        and not is_column_name_field
-                                    ):
-                                        formatted = value[: col_widths[col] - 3] + "..."
-                                    else:
-                                        formatted = value
-                                else:
-                                    formatted = str(value)
-                                row_parts.append(formatted.ljust(col_widths[col]))
-                            output += " │ ".join(row_parts) + "\n"
+                    # Build complete text output
+                    result_text = [header_line, separator] + text_rows
+                    if total_rows > max_rows:
+                        result_text.append(f"({total_rows - max_rows} more rows)")
 
-                        # Add "… and N more rows" if truncated
-                        if row_count > show_row_count:
-                            output += f"… and {row_count - show_row_count} more rows"
+                    agent_output = (
+                        f"{display_query}\n{total_rows} {row_text}:\n"
+                        + "\n".join(result_text)
+                    )
+
+                    # Return metadata for Rich rendering (minimal style)
+                    metadata["rich_table"] = table
+                    metadata["summary"] = summary
+                    metadata["query"] = display_query
+                    metadata["agent_output"] = agent_output
+                    output = agent_output
 
             # Add schema warnings if any
             if schema_warnings:

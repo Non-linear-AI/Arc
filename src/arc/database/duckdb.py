@@ -565,6 +565,26 @@ class DuckDBDatabase(Database):
                     self.execute("ALTER TABLE plans DROP COLUMN data_table")
                     self.execute("ALTER TABLE plans DROP COLUMN target_column")
 
+            # Migrate plans table to add name column (for name-based versioning)
+            with suppress(Exception):
+                # Check if name column exists
+                check_result = self.query("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'plans' AND column_name = 'name'
+                """)
+
+                if not check_result.rows:
+                    # name column doesn't exist, add it
+                    self.execute("ALTER TABLE plans ADD COLUMN name TEXT")
+
+                    # For existing plans, derive name from plan_id (remove -vN suffix)
+                    self.execute("""
+                        UPDATE plans
+                        SET name = REGEXP_REPLACE(plan_id, '-v[0-9]+$', '')
+                        WHERE name IS NULL
+                    """)
+
             # Training tracking tables
             self.execute("""
                 CREATE TABLE IF NOT EXISTS training_runs (

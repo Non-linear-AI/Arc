@@ -59,7 +59,6 @@ class MLPlanAgent(BaseAgent):
         source_tables: str,
         instruction: str | None = None,
         stream: bool = False,
-        skip_data_profiling: bool = False,
     ):
         """Analyze ML problem and provide comprehensive plan.
 
@@ -68,8 +67,6 @@ class MLPlanAgent(BaseAgent):
             source_tables: Comma-separated source table names for data exploration
             instruction: Optional instruction for initial generation or refinement
             stream: Whether to stream the output (default: False)
-            skip_data_profiling: If True, skip automatic data profiling
-                (useful when data insights are already in user_context)
 
         Returns:
             If stream=False: Dictionary containing plan fields
@@ -79,20 +76,11 @@ class MLPlanAgent(BaseAgent):
             MLPlanError: If analysis fails
         """
 
-        # Get data profiles for all source tables (unless skipped)
-        if skip_data_profiling:
-            data_profiles = {}
-        else:
-            table_list = [t.strip() for t in source_tables.split(",")]
-            data_profiles = await self._get_multiple_data_profiles(table_list)
-
         # Build analysis context
         context = {
             "user_context": user_context,
-            "data_profiles": data_profiles,
             "source_tables": source_tables,
             "instruction": instruction,
-            "skip_data_profiling": skip_data_profiling,
         }
 
         # Generate analysis using LLM
@@ -297,7 +285,6 @@ class MLPlanAgent(BaseAgent):
                 # If response starts with explanatory text before YAML,
                 # find where the YAML begins (first required field at line start)
                 required_fields = [
-                    "summary:",
                     "feature_engineering:",
                     "model_architecture_and_loss:",
                     "training_configuration:",
@@ -322,7 +309,6 @@ class MLPlanAgent(BaseAgent):
 
             # Validate required fields
             required_fields = [
-                "summary",
                 "feature_engineering",
                 "model_architecture_and_loss",
                 "training_configuration",
@@ -353,131 +339,9 @@ class MLPlanAgent(BaseAgent):
             raise MLPlanError(
                 f"Invalid ML plan structure: {str(e)}\n"
                 f"The plan must include all required sections: "
-                f"summary, feature_engineering, model_architecture_and_loss, "
+                f"feature_engineering, model_architecture_and_loss, "
                 f"training_configuration, and evaluation."
             ) from e
-
-    async def _get_multiple_data_profiles(
-        self, table_names: list[str]
-    ) -> dict[str, Any]:
-        """Get data profiles for multiple tables.
-
-        Args:
-            table_names: List of table names
-
-        Returns:
-            Dictionary mapping table names to their profiles
-        """
-        profiles = {}
-        for table_name in table_names:
-            profile = await self._get_single_table_profile(table_name)
-            profiles[table_name] = profile
-        return profiles
-
-    async def _get_single_table_profile(self, table_name: str) -> dict[str, Any]:
-        """Get data profile for a single table.
-
-        Args:
-            table_name: Database table name
-
-        Returns:
-            Data profile for the table
-        """
-        try:
-            # Use ML data service for dataset information
-            dataset_info = self.services.ml_data.get_dataset_info(table_name)
-
-            if dataset_info is None:
-                return {
-                    "error": f"Table {table_name} not found or invalid",
-                    "summary": f"Table {table_name} not found",
-                    "feature_count": 0,
-                    "feature_types": {},
-                }
-
-            # Get all columns from the table
-            all_columns = dataset_info.columns
-
-            # Count feature types and gather detailed statistics
-            feature_types = {}
-            column_details = []
-
-            for col in all_columns:
-                col_type = col.get("type", "unknown")
-                feature_types[col_type] = feature_types.get(col_type, 0) + 1
-
-                # Build detailed column info
-                col_detail = {
-                    "name": col.get("name"),
-                    "type": col_type,
-                }
-
-                # Add null percentage if available
-                if "null_count" in col and "total_count" in col:
-                    null_pct = (col["null_count"] / col["total_count"]) * 100
-                    col_detail["null_pct"] = f"{null_pct:.1f}%"
-                elif "null_pct" in col:
-                    col_detail["null_pct"] = f"{col['null_pct']:.1f}%"
-
-                # Add cardinality for categorical/string columns
-                if "unique_count" in col:
-                    col_detail["cardinality"] = col["unique_count"]
-
-                # Add min/max for numerical columns
-                if col_type in ("INTEGER", "DOUBLE", "FLOAT", "BIGINT"):
-                    if "min" in col:
-                        col_detail["min"] = col["min"]
-                    if "max" in col:
-                        col_detail["max"] = col["max"]
-                    if "mean" in col:
-                        col_detail["mean"] = f"{col['mean']:.2f}"
-
-                # Add sample values if available
-                if "sample_values" in col and col["sample_values"]:
-                    # Limit to first 3 sample values
-                    samples = col["sample_values"][:3]
-                    col_detail["samples"] = samples
-
-                column_details.append(col_detail)
-
-            # Build enhanced summary with statistics
-            total_cols = len(all_columns)
-            numeric_cols = sum(
-                count
-                for dtype, count in feature_types.items()
-                if dtype in ("INTEGER", "DOUBLE", "FLOAT", "BIGINT")
-            )
-            categorical_cols = sum(
-                count
-                for dtype, count in feature_types.items()
-                if dtype in ("VARCHAR", "STRING", "TEXT")
-            )
-
-            summary_parts = [
-                f"Table '{table_name}' with {total_cols} columns",
-                f"({numeric_cols} numerical, {categorical_cols} categorical)",
-            ]
-
-            # Base profile structure with enhanced information
-            profile = {
-                "table_name": dataset_info.name,
-                "feature_columns": all_columns,
-                "column_details": column_details,
-                "total_columns": total_cols,
-                "feature_count": total_cols,
-                "feature_types": feature_types,
-                "summary": " ".join(summary_parts),
-            }
-
-            return profile
-
-        except Exception as e:
-            return {
-                "error": f"Failed to analyze table {table_name}: {str(e)}",
-                "summary": f"Error analyzing table {table_name}",
-                "feature_count": 0,
-                "feature_types": {},
-            }
 
     async def _analyze_target_column(
         self, table_name: str, target_column: str
@@ -555,7 +419,7 @@ class MLPlanAgent(BaseAgent):
     def _report_tool_call(self, tool_name: str, args: dict):
         """Report tool call with readable description."""
         if tool_name == "list_available_knowledge":
-            self.progress_callback("[dim]▸ Listing available architectures[/dim]")
+            self.progress_callback("[dim]▸ Listing available knowledges[/dim]")
 
         elif tool_name == "read_knowledge_content":
             knowledge_id = args.get("knowledge_id", "")

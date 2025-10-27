@@ -499,6 +499,7 @@ class BaseAgent(abc.ABC):
             messages.append({"role": "user", "content": user_message})
 
         last_error = None
+        validation_attempts = []  # Track all validation attempt errors
 
         for attempt in range(max_iterations):
             try:
@@ -621,12 +622,27 @@ class BaseAgent(abc.ABC):
 
                 # Validate if validator provided
                 if validator_func and validation_context:
-                    validation_result = validator_func(raw_content, validation_context)
+                    # Check if validator is async (coroutine function)
+                    import inspect
+
+                    if inspect.iscoroutinefunction(validator_func):
+                        validation_result = await validator_func(
+                            raw_content, validation_context
+                        )
+                    else:
+                        validation_result = validator_func(
+                            raw_content, validation_context
+                        )
 
                     if validation_result["valid"]:
                         return validation_result["object"], raw_content, messages
                     else:
                         last_error = validation_result["error"]
+                        # Track this validation attempt
+                        validation_attempts.append(
+                            f"Attempt {attempt + 1}/{max_iterations}: {last_error}"
+                        )
+
                         if attempt < max_iterations - 1:
                             # Add error feedback for retry
                             error_msg = (
@@ -652,10 +668,12 @@ class BaseAgent(abc.ABC):
                                 )
                             continue
                         else:
+                            # Include all validation attempts in final error
+                            all_attempts = "\n".join(validation_attempts)
                             raise AgentError(
                                 f"Failed to generate valid content after "
-                                f"{max_iterations} attempts. "
-                                f"Final error: {last_error}"
+                                f"{max_iterations} attempts.\n\n"
+                                f"Validation attempts:\n{all_attempts}"
                             )
                 else:
                     # No validation, return as-is
@@ -729,8 +747,7 @@ class BaseAgent(abc.ABC):
                 "Execute read-only SQL queries on the user database to analyze data. "
                 "Use this to verify data characteristics, check column existence, "
                 "analyze distributions, validate assumptions, or gather statistics. "
-                "Only SELECT, DESCRIBE, and SHOW queries are allowed. "
-                "Results are limited to 10 rows for brevity."
+                "Only SELECT, DESCRIBE, and SHOW queries are allowed."
             ),
             parameters={
                 "type": "object",
@@ -749,7 +766,7 @@ class BaseAgent(abc.ABC):
         )
 
     def _create_list_knowledge_tool(self) -> Any:
-        """Create list knowledge tool for browsing available architectures.
+        """Create list knowledge tool for browsing available knowledges.
 
         Returns:
             ArcTool for listing available knowledge documents
@@ -894,6 +911,7 @@ class BaseAgent(abc.ABC):
             header = f"# Knowledge: {knowledge_id}"
             if metadata:
                 header += f" - {metadata.name}"
+
             return f"{header}\n\n{content}"
         else:
             return (
@@ -959,7 +977,14 @@ class BaseAgent(abc.ABC):
                 # Return the formatted output (already brief from the tool)
                 return result.output
             else:
-                return f"Query Error: {result.output}"
+                # Error information is in result.error, not result.output
+                error_msg = result.error or "Unknown error"
+                if result.recovery_actions:
+                    return (
+                        f"Query Error: {error_msg}\n\n"
+                        f"Suggested action: {result.recovery_actions}"
+                    )
+                return f"Query Error: {error_msg}"
 
         except TimeoutError:
             return (
