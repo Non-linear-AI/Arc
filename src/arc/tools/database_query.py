@@ -136,11 +136,41 @@ class DatabaseQueryTool(BaseTool):
                     else:
                         summary = f"{total_rows} {row_text} returned"
 
+                    # Build text output for agent
+                    # Show column headers
+                    column_names = list(first_row.keys())
+                    header_line = " | ".join(column_names)
+                    separator = "-" * len(header_line)
+
+                    # Format rows as text
+                    text_rows = []
+                    for row_idx, row in enumerate(result):
+                        if row_idx >= max_rows:
+                            text_rows.append("...")
+                            break
+                        row_values = []
+                        for value in row.values():
+                            if value is None:
+                                row_values.append("NULL")
+                            elif isinstance(value, (dict, list)):
+                                row_values.append(json.dumps(value, separators=(",", ":")))
+                            else:
+                                row_values.append(str(value))
+                        text_rows.append(" | ".join(row_values))
+
+                    # Build complete text output
+                    result_text = [header_line, separator] + text_rows
+                    if total_rows > max_rows:
+                        result_text.append(f"({total_rows - max_rows} more rows)")
+
+                    agent_output = f"{display_query}\n{total_rows} {row_text}:\n" + "\n".join(result_text)
+
                     # Return metadata for Rich rendering (minimal style)
                     metadata["rich_table"] = table
                     metadata["summary"] = summary
                     metadata["query"] = display_query
-                    output = "[RICH_TABLE]"
+                    metadata["agent_output"] = agent_output
+                    output = agent_output
 
             # Add schema warnings if any
             if schema_warnings:
