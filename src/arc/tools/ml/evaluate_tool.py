@@ -219,6 +219,10 @@ class MLEvaluateTool(BaseTool):
                     return _error_in_section(plan)
                 ml_plan_evaluation = plan.evaluation
 
+                # Extract recommended knowledge IDs if not explicitly provided
+                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.recommended_knowledge_ids
+
             # Generate evaluator spec via LLM
             # Agent will discover relevant knowledge using tools
             from arc.core.agents.ml_evaluate import MLEvaluateAgent

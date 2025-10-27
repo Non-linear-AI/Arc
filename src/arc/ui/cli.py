@@ -576,6 +576,7 @@ async def _ml_train(
             instruction=training_instruction,
             model_id=model_id,
             train_table=train_table,
+            plan_id=plan_id,  # Pass plan_id to extract knowledge IDs
         )
 
         if not result.success:
@@ -884,6 +885,7 @@ async def _ml_evaluate(
             "instruction": True,
             "trainer-id": True,
             "data-table": True,
+            "plan-id": True,  # Optional ML plan ID for knowledge
         },
     )
 
@@ -891,6 +893,7 @@ async def _ml_evaluate(
     instruction = options.get("instruction")
     trainer_id = options.get("trainer-id")
     data_table = options.get("data-table")
+    plan_id = options.get("plan-id")
 
     if not name or not instruction or not trainer_id or not data_table:
         raise CommandError(
@@ -927,6 +930,7 @@ async def _ml_evaluate(
             instruction=instruction,
             trainer_id=trainer_id,
             evaluate_table=data_table,
+            plan_id=plan_id,  # Pass plan_id to extract knowledge IDs
         )
 
         if not result.success:

@@ -134,8 +134,12 @@ class MLModelTool(BaseTool):
                 if not target_column:
                     target_column = ml_plan.get("target_column")
 
-                # CRITICAL: Extract architecture guidance from ML plan
+                # CRITICAL: Extract architecture guidance and knowledge from ML plan
                 ml_plan_architecture = plan.model_architecture_and_loss
+
+                # Extract recommended knowledge IDs if not explicitly provided
+                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.recommended_knowledge_ids
 
             # Validate required parameters
             if not name or not data_table or not target_column:

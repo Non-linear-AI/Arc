@@ -155,6 +155,10 @@ class MLTrainTool(BaseTool):
                     return _error_in_section(plan)
                 ml_plan_training_config = plan.training_configuration
 
+                # Extract recommended knowledge IDs if not explicitly provided
+                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.recommended_knowledge_ids
+
             # Generate trainer spec via LLM
             # Agent will discover relevant knowledge using tools
             agent = MLTrainAgent(
