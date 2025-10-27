@@ -480,6 +480,7 @@ class MLDataTool(BaseTool):
                     source_tables=context.get("source_tables"),
                     database=context.get("database", "user"),
                     existing_yaml=yaml_content,
+                    recommended_knowledge_ids=None,  # Editing uses conversation_history
                     conversation_history=conversation_history,  # Continue conversation
                 )
                 return edited_yaml, updated_history
