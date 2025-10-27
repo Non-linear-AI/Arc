@@ -2,7 +2,7 @@
 
 This guide covers the manual process for building and publishing Arc to PyPI (Python Package Index).
 
-**Important**: The package is published as `arc-ml` (to avoid naming conflicts), but users still run the `arc` command after installation.
+**Important**: The package is published as `nl-arc` (to avoid naming conflicts), but users still run the `arc` command after installation.
 
 ## Prerequisites
 
@@ -111,7 +111,7 @@ uv publish --index testpypi
 # Successfully published 2 files
 ```
 
-**View your package**: https://test.pypi.org/project/arc-ml/
+**View your package**: https://test.pypi.org/project/nl-arc/
 
 ### Step 5: Test Installation from TestPyPI
 
@@ -124,9 +124,9 @@ source test-env/bin/activate  # On Windows: test-env\Scripts\activate
 
 # Install from TestPyPI
 # Note: TestPyPI doesn't have all dependencies, so use --index-url with fallback
-pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ arc-ml
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ nl-arc
 
-# Test the installation (note: command is still "arc" despite package name being "arc-ml")
+# Test the installation (note: command is still "arc" despite package name being "nl-arc")
 arc --help
 arc chat  # Test interactive mode
 
@@ -139,10 +139,10 @@ rm -rf test-env
 
 ```bash
 # Test import without installing
-uv run --with arc-ml --no-project -- python -c "import arc; print('Success!')"
+uv run --with nl-arc --no-project -- python -c "import arc; print('Success!')"
 
 # Force refresh (if testing updated version)
-uv run --with arc-ml --refresh-package arc-ml --no-project -- arc --help
+uv run --with nl-arc --refresh-package nl-arc --no-project -- arc --help
 ```
 
 ### Step 6: Publish to Production PyPI
@@ -162,7 +162,7 @@ uv publish
 # Successfully published 2 files
 ```
 
-**View your package**: https://pypi.org/project/arc-ml/
+**View your package**: https://pypi.org/project/nl-arc/
 
 ### Step 7: Create Git Tag
 
@@ -188,7 +188,7 @@ gh release create v0.2.0 --title "v0.2.0" --notes "Release notes here..."
 - [ ] Build package: `uv build`
 - [ ] Set TestPyPI token: `export UV_PUBLISH_TOKEN="..."`
 - [ ] Publish to TestPyPI: `uv publish --index testpypi`
-- [ ] Test installation from TestPyPI: `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ arc-ml`
+- [ ] Test installation from TestPyPI: `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ nl-arc`
 - [ ] Set PyPI token: `export UV_PUBLISH_TOKEN="..."`
 - [ ] Publish to PyPI: `uv publish`
 - [ ] Create git tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
@@ -199,9 +199,9 @@ gh release create v0.2.0 --title "v0.2.0" --notes "Release notes here..."
 
 ### Package Name vs. Command Name
 
-The package is named `arc-ml` (to avoid conflicts on PyPI), but the command users run is still `arc`:
+The package is named `nl-arc` (to avoid conflicts on PyPI), but the command users run is still `arc`:
 
-- **Install with**: `pip install arc-ml`
+- **Install with**: `pip install nl-arc`
 - **Run with**: `arc chat`
 
 This is configured in `pyproject.toml` under `[project.scripts]`.
