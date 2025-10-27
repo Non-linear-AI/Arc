@@ -11,7 +11,6 @@ from typing import Any
 
 from rich import box
 from rich.align import Align
-from rich.console import Group
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -378,10 +377,14 @@ class InteractiveInterface:
                     table_text = (
                         "table" if result.metadata["table_count"] == 1 else "tables"
                     )
-                    metadata_parts.append(f"{result.metadata['table_count']} {table_text}")
+                    metadata_parts.append(
+                        f"{result.metadata['table_count']} {table_text}"
+                    )
                 if "column_count" in result.metadata:
                     col_text = "col" if result.metadata["column_count"] == 1 else "cols"
-                    metadata_parts.append(f"{result.metadata['column_count']} {col_text}")
+                    metadata_parts.append(
+                        f"{result.metadata['column_count']} {col_text}"
+                    )
                 # Show execution time at the end, only if >= 1 second
                 if "execution_time" in result.metadata:
                     exec_time = result.metadata["execution_time"]
@@ -404,7 +407,8 @@ class InteractiveInterface:
                 and content.strip()
             ):
                 self._print_todo_with_inline_progress(label, content, printer=p)
-            # Handle database_query with Rich table (minimal style like /sql, but dimmed)
+            # Handle database_query with Rich table (minimal style like /sql,
+            # but dimmed)
             elif (
                 tool_name == "database_query"
                 and result.metadata
@@ -423,7 +427,8 @@ class InteractiveInterface:
                 # Print summary
                 if "summary" in result.metadata:
                     p.print(f"[dim]{result.metadata['summary']}[/dim]")
-            # Handle schema_discovery with Rich table (similar to database_query, no query)
+            # Handle schema_discovery with Rich table (similar to
+            # database_query, no query)
             elif (
                 tool_name == "schema_discovery"
                 and result.metadata
@@ -431,7 +436,8 @@ class InteractiveInterface:
             ):
                 # Print label (header)
                 p.print(f"{label}")
-                # Print Rich table wrapped in dim style using Padding (no query for schema)
+                # Print Rich table wrapped in dim style using Padding (no query
+                # for schema)
                 dimmed_table = Padding(
                     result.metadata["rich_table"], (0, 0, 0, 0), style="dim"
                 )

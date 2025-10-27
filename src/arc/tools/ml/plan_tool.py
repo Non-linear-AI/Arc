@@ -162,9 +162,7 @@ class MLPlanTool(BaseTool):
                 current_instruction = instruction
 
                 # Get version from database to avoid conflicts
-                latest_plan = self.services.ml_plans.get_latest_plan_by_name(
-                    str(name)
-                )
+                latest_plan = self.services.ml_plans.get_latest_plan_by_name(str(name))
                 version = latest_plan.version + 1 if latest_plan else 1
 
                 while True:

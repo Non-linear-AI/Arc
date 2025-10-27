@@ -72,7 +72,7 @@ You have access to tools to help you make informed architectural decisions:
 3. **database_query**: Execute read-only SQL queries to analyze the data
    - Parameters: query (required, SELECT/DESCRIBE/SHOW only)
    - Use this to check class distributions, identify imbalances, understand cardinality, or compute statistics
-   - Returns: Query results (limited to 10 rows) with execution time
+   - Returns: Query results (limited to 5 rows) with execution time
    - Example: `SELECT target_col, COUNT(*) FROM table GROUP BY target_col`
 
 **Tool Usage:**
@@ -110,6 +110,40 @@ Use database queries to:
 - Understand feature cardinality
 - Compute data statistics
 - Verify data characteristics
+
+## Schema Reference
+
+Your output must validate against this structure:
+
+```json
+{
+  "type": "object",
+  "required": ["feature_engineering", "model_architecture_and_loss", "training_configuration", "evaluation"],
+  "properties": {
+    "feature_engineering": {
+      "type": "string",
+      "description": "Describe feature processing with specific techniques. Include scaling method (StandardScaler, MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, validation split strategy, and data leakage prevention measures."
+    },
+    "model_architecture_and_loss": {
+      "type": "string",
+      "description": "Describe the neural network architecture with exact layer specifications. Use bracket notation for the architecture flow [Input → Layer1 → Activation → Layer2 → ...]. Specify the loss function and explain why this architecture is appropriate. Include exact dimensions, activation functions, and regularization layers (BatchNorm, Dropout)."
+    },
+    "training_configuration": {
+      "type": "string",
+      "description": "Describe the training setup with specific optimizer (Adam, SGD) and parameters (lr, betas, weight_decay), learning rate schedule if applicable (CosineAnnealingLR, StepLR), batch size, epoch count, early stopping patience, and gradient clipping if needed."
+    },
+    "evaluation": {
+      "type": "string",
+      "description": "Describe evaluation metrics with specific library references (torchmetrics.AUROC, sklearn.metrics.f1_score). Include primary and secondary metrics, specify parameters (threshold, average method), and explain why these metrics fit the task."
+    },
+    "recommended_knowledge_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Optional list of knowledge document IDs that informed this plan. Only include knowledge you actually read and found useful."
+    }
+  }
+}
+```
 
 ## Output Format
 

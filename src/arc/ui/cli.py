@@ -324,7 +324,9 @@ async def _ml_plan(
     verbose = options.get("verbose", False)
 
     if not name or not instruction or not source_tables:
-        raise CommandError("/ml plan requires --name, --instruction, and --source-tables")
+        raise CommandError(
+            "/ml plan requires --name, --instruction, and --source-tables"
+        )
 
     # Execute ML plan tool
     result = await agent.ml_plan_tool.execute(

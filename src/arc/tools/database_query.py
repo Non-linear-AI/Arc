@@ -28,7 +28,8 @@ class DatabaseQueryTool(BaseTool):
 
         Args:
             query: SQL query to execute
-            target_db: Target database - "user" (default, full access) or "system" (read-only)
+            target_db: Target database - "user" (default, full access) or
+                "system" (read-only)
             validate_schema: Whether to validate query against database schema
 
         Returns:
@@ -94,7 +95,8 @@ class DatabaseQueryTool(BaseTool):
                 if not first_row:
                     output = f"{display_query}\nNo results returned."
                 else:
-                    # Build Rich table for clean display (will be dimmed via Padding wrapper)
+                    # Build Rich table for clean display (will be dimmed via
+                    # Padding wrapper)
                     table = Table(
                         show_header=True,
                         header_style="bold",
@@ -121,7 +123,9 @@ class DatabaseQueryTool(BaseTool):
                             elif isinstance(value, (dict, list)):
                                 # Format JSON-like objects
                                 row_values.append(
-                                    json.dumps(value, indent=None, separators=(",", ":"))
+                                    json.dumps(
+                                        value, indent=None, separators=(",", ":")
+                                    )
                                 )
                             else:
                                 row_values.append(str(value))
@@ -153,7 +157,9 @@ class DatabaseQueryTool(BaseTool):
                             if value is None:
                                 row_values.append("NULL")
                             elif isinstance(value, (dict, list)):
-                                row_values.append(json.dumps(value, separators=(",", ":")))
+                                row_values.append(
+                                    json.dumps(value, separators=(",", ":"))
+                                )
                             else:
                                 row_values.append(str(value))
                         text_rows.append(" | ".join(row_values))
@@ -163,7 +169,10 @@ class DatabaseQueryTool(BaseTool):
                     if total_rows > max_rows:
                         result_text.append(f"({total_rows - max_rows} more rows)")
 
-                    agent_output = f"{display_query}\n{total_rows} {row_text}:\n" + "\n".join(result_text)
+                    agent_output = (
+                        f"{display_query}\n{total_rows} {row_text}:\n"
+                        + "\n".join(result_text)
+                    )
 
                     # Return metadata for Rich rendering (minimal style)
                     metadata["rich_table"] = table

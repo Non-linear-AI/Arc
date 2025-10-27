@@ -341,7 +341,8 @@ class MLDataAgent(BaseAgent):
 
         Args:
             yaml_content: Generated YAML string
-            context: Generation context for validation (includes schema_info with database)
+            context: Generation context for validation (includes schema_info
+                with database)
 
         Returns:
             Dictionary with validation results:
