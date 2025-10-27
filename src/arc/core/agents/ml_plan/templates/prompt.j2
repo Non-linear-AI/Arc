@@ -72,7 +72,6 @@ You have access to tools to help you make informed architectural decisions:
 3. **database_query**: Execute read-only SQL queries to analyze the data
    - Parameters: query (required, SELECT/DESCRIBE/SHOW only)
    - Use this to check class distributions, identify imbalances, understand cardinality, or compute statistics
-   - Returns: Query results (limited to 5 rows) with execution time
    - Example: `SELECT target_col, COUNT(*) FROM table GROUP BY target_col`
 
 **Tool Usage:**

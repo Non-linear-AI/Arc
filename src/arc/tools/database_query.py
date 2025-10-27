@@ -108,8 +108,8 @@ class DatabaseQueryTool(BaseTool):
                     for column_name in first_row:
                         table.add_column(str(column_name), no_wrap=False)
 
-                    # Add data rows (limit to 5 for agent context)
-                    max_rows = 5
+                    # Add data rows (limit to allow aggregation results)
+                    max_rows = 100
                     for row_count_idx, row in enumerate(result):
                         if row_count_idx >= max_rows:
                             table.add_row(*["..." for _ in first_row], style="dim")

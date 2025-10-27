@@ -747,8 +747,7 @@ class BaseAgent(abc.ABC):
                 "Execute read-only SQL queries on the user database to analyze data. "
                 "Use this to verify data characteristics, check column existence, "
                 "analyze distributions, validate assumptions, or gather statistics. "
-                "Only SELECT, DESCRIBE, and SHOW queries are allowed. "
-                "Results are limited to 5 rows for brevity."
+                "Only SELECT, DESCRIBE, and SHOW queries are allowed."
             ),
             parameters={
                 "type": "object",

@@ -32,6 +32,30 @@ Generate a YAML configuration that:
 
 {% endfor %}{% else %}No table schema information available. Use the database_query tool to explore available tables and their columns.
 {% endif %}
+
+# Available Tools
+
+You have access to tools for data exploration when needed:
+
+1. **database_query**: Execute read-only SQL queries to explore the data
+   - Use when you need to verify data characteristics, check distributions, or understand the schema
+   - Only use if the schema information above doesn't provide sufficient detail
+   - Example: `SELECT outcome, COUNT(*) as count FROM "pidd" GROUP BY outcome`
+
+2. **list_available_knowledge**: List all available data processing knowledge documents
+   - Use when you need to see what data processing patterns are available
+   - Only use if you need additional guidance beyond what's provided
+
+3. **read_knowledge_content**: Read specific data processing knowledge documents
+   - Use when you need additional guidance beyond what's provided above
+   - Only use if necessary for complex transformations
+
+**Tool Usage Guidance:**
+- The schema information above should be sufficient for most cases
+- Use database_query sparingly - only for essential checks (e.g., class balance for stratified sampling)
+- Focus on generating the pipeline spec, not extensive data analysis
+- **IMPORTANT**: Tool results remain in your conversation context - once you've queried data or read knowledge, reference those previous results instead of re-querying
+
 {% if existing_yaml %}
 # Current Configuration
 
