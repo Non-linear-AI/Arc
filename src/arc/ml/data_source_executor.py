@@ -91,12 +91,6 @@ async def execute_data_source_pipeline(
         if sql_errors:
             validation_errors.append(f"Step '{step.name}': " + "; ".join(sql_errors))
 
-    # Validate table lifecycle (catch drop-then-use errors)
-    try:
-        spec.validate_table_lifecycle()
-    except ValueError as e:
-        validation_errors.append(str(e))
-
     # Fail early if validation errors found
     if validation_errors:
         error_msg = "Pipeline validation failed:\n  " + "\n  ".join(validation_errors)
