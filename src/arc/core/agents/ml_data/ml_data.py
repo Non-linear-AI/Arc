@@ -177,7 +177,7 @@ class MLDataAgent(BaseAgent):
                 tool_executor=self._execute_ml_tool,
                 validator_func=self._validate_data_processing_comprehensive,
                 validation_context={"schema_info": schema_info},
-                max_iterations=5,  # Increased from 3 to give more retry chances
+                max_iterations=3,
                 conversation_history=None,  # Fresh start
                 progress_callback=self.progress_callback,
             )
@@ -216,7 +216,7 @@ class MLDataAgent(BaseAgent):
                 validation_context={
                     "schema_info": None
                 },  # Already in conversation history
-                max_iterations=5,  # Increased from 3 to give more retry chances
+                max_iterations=3,
                 conversation_history=conversation_history,
                 progress_callback=self.progress_callback,
             )

@@ -499,6 +499,7 @@ class BaseAgent(abc.ABC):
             messages.append({"role": "user", "content": user_message})
 
         last_error = None
+        validation_attempts = []  # Track all validation attempt errors
 
         for attempt in range(max_iterations):
             try:
@@ -627,6 +628,11 @@ class BaseAgent(abc.ABC):
                         return validation_result["object"], raw_content, messages
                     else:
                         last_error = validation_result["error"]
+                        # Track this validation attempt
+                        validation_attempts.append(
+                            f"Attempt {attempt + 1}/{max_iterations}: {last_error}"
+                        )
+
                         if attempt < max_iterations - 1:
                             # Add error feedback for retry
                             error_msg = (
@@ -652,10 +658,12 @@ class BaseAgent(abc.ABC):
                                 )
                             continue
                         else:
+                            # Include all validation attempts in final error
+                            all_attempts = "\n".join(validation_attempts)
                             raise AgentError(
                                 f"Failed to generate valid content after "
-                                f"{max_iterations} attempts. "
-                                f"Final error: {last_error}"
+                                f"{max_iterations} attempts.\n\n"
+                                f"Validation attempts:\n{all_attempts}"
                             )
                 else:
                     # No validation, return as-is

@@ -396,10 +396,10 @@ class MLDataTool(BaseTool):
                 )
 
             except Exception as e:
+                # Preserve validation error details for main LLM
+                error_msg = str(e)
                 return _error_in_section(
-                    f"Failed to generate YAML using LLM: {str(e)}. "
-                    "Please check your API key and network connection, "
-                    "or try simplifying your request."
+                    f"Failed to generate data processor after 3 attempts: {error_msg}"
                 )
 
     async def execute(self, **kwargs) -> ToolResult:
