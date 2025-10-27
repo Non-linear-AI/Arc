@@ -169,14 +169,22 @@ class SchemaDiscoveryTool(BaseTool):
                 table_text = "table" if total == 1 else "tables"
                 summary = f"{total} {table_text}"
 
+            # Build text output for the agent
+            table_list = [f"- {tbl.name} ({len(schema_info.get_columns_for_table(tbl.name))} columns)" for tbl in tables[:5]]
+            if total > 5:
+                table_list.append(f"... and {total - 5} more")
+
+            agent_output = f"Found {total} table{'s' if total != 1 else ''} in {target_db} database:\n" + "\n".join(table_list)
+
             metadata = {
                 "table_count": total,
                 "target_db": target_db,
                 "rich_table": table,
                 "summary": summary,
+                "agent_output": agent_output,
             }
 
-            return ToolResult.success_result("[RICH_TABLE]", metadata=metadata)
+            return ToolResult.success_result(agent_output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to list tables: {str(e)}")
@@ -242,15 +250,23 @@ class SchemaDiscoveryTool(BaseTool):
                 col_text = "column" if total_cols == 1 else "columns"
                 summary = f"{total_cols} {col_text}"
 
+            # Build text output for the agent
+            column_list = [f"- {col.column_name}: {col.data_type}" for col in columns[:5]]
+            if total_cols > 5:
+                column_list.append(f"... and {total_cols - 5} more columns")
+
+            agent_output = f"Table '{table_name}' ({total_cols} columns):\n" + "\n".join(column_list)
+
             metadata = {
                 "table_name": table_name,
                 "column_count": total_cols,
                 "target_db": target_db,
                 "rich_table": table,
                 "summary": summary,
+                "agent_output": agent_output,
             }
 
-            return ToolResult.success_result("[RICH_TABLE]", metadata=metadata)
+            return ToolResult.success_result(agent_output, metadata=metadata)
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to describe table: {str(e)}")
