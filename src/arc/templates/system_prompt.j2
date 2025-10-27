@@ -29,17 +29,17 @@ For any ML task (build, create, train, design, predict, classify, forecast), fol
 
 2. **Plan (ml_plan)**
    - Action: Use ml_plan tool with data insights from step 1
-   - Purpose: Generate comprehensive plan covering feature engineering, model architecture, training configuration, and evaluation strategy
+   - Purpose: Generate comprehensive plan covering feature engineering, model architecture, and training/validation strategy
    - Include data insights in the instruction parameter (e.g., "Build classifier for outcome prediction. Data insights: 768 samples, binary classification (500 positive, 268 negative), 8 numeric features with values 0-200 range, no missing values.")
    - User reviews and approves this plan before proceeding
    - Output: Tool returns plan_id in both output message and metadata.plan_id
    - Extract plan_id from ml_plan tool result and pass it to subsequent ML tools
-   - The ml_plan tool returns recommended_knowledge_ids in its metadata. Extract these IDs and pass them to subsequent ML tools (ml_data, ml_model, ml_train, ml_evaluate) via their recommended_knowledge_ids parameter
+   - The ml_plan tool returns stage-specific knowledge recommendations in metadata.knowledge (e.g., {"data": [...], "model": [...], "training": [...]}) which are automatically preloaded by each ML stage
 
 3. **Feature Engineering (ml_data)**
    - Required for all ML workflows (this step creates the table and column names that ml_model will reference)
    - Action: Use ml_data to create processed tables following the plan's guidance
-   - Parameters: Pass plan_id and recommended_knowledge_ids from ml_plan result
+   - Parameters: Pass plan_id from ml_plan result
    - Examples:
      * Complex preprocessing: normalization, aggregations, one-hot encoding, derived features, joins
      * Minimal preprocessing: data validation, null filtering, train/test split (when plan says "use raw features")
@@ -49,19 +49,14 @@ For any ML task (build, create, train, design, predict, classify, forecast), fol
 4. **Model Definition (ml_model)**
    - Dependency: Requires ml_data to complete first (model input columns reference the output columns from ml_data)
    - Action: Generate and register model specification
-   - Parameters: Pass plan_id, recommended_knowledge_ids, and data_table name from ml_data output
+   - Parameters: Pass plan_id and data_table name from ml_data output
 
 5. **Training (ml_train)**
    - Dependency: Requires ml_model to complete first (needs model specification to train)
    - Action: Generate trainer spec and launch training job
-   - Parameters: Pass plan_id and recommended_knowledge_ids from ml_plan result
+   - Parameters: Pass plan_id from ml_plan result
    - Output: Trained model artifacts and job ID
-
-6. **Evaluation (ml_evaluate)**
-   - Dependency: Requires ml_train to complete successfully (evaluates the trained model)
-   - Action: Evaluate trained model on test set
-   - Parameters: Pass plan_id and recommended_knowledge_ids from ml_plan result
-   - Output: Metrics, visualizations in TensorBoard
+   - Note: Validation metrics are tracked during training as specified in the plan's training_and_validation section
 
 **When to use ml_plan:**
 - Any request to build, train, design, or create a new model
@@ -70,7 +65,7 @@ For any ML task (build, create, train, design, predict, classify, forecast), fol
 
 **When to skip ml_plan:**
 - Querying existing models/jobs (use database_query)
-- Evaluating already-trained models (use ml_evaluate directly)
+- Evaluating already-trained models on hold-out test sets (use ml_evaluate directly - this is ad hoc testing, not part of the core workflow)
 - Viewing training logs or results (use database_query)
 
 **Example end-to-end workflow:**
@@ -80,11 +75,12 @@ User: "Can we predict customer churn from the users table?"
 1. schema_discovery → Shows table structure: user_id, age, tenure, purchase_count, user_type, churned
 2. database_query → "SELECT COUNT(*), AVG(age), AVG(tenure) FROM users" → 10,000 users, avg age 35, avg tenure 2.5 years
 3. database_query → "SELECT churned, COUNT(*) FROM users GROUP BY churned" → 7000 active, 3000 churned (30% churn rate)
-4. ml_plan → Instruction: "Build churn prediction model. Data insights: 10k samples, binary classification (30% churn rate), numeric features age (avg 35) and tenure (avg 2.5 years), categorical user_type, no missing values." → Returns plan_id and recommended_knowledge_ids in result
-5. ml_data (plan_id, recommended_knowledge_ids) → Creates `users_processed` table with engineered features from `users` table following plan guidance
-6. ml_model (plan_id, recommended_knowledge_ids) → Generates model spec using `users_processed` as input, binary classification output, follows plan architecture and MLP patterns
-7. ml_train (plan_id, recommended_knowledge_ids) → Trains model following plan training config, outputs job_id and model artifacts
-8. ml_evaluate (plan_id, recommended_knowledge_ids) → Evaluates on test set following plan metrics, shows accuracy/precision/recall
+4. ml_plan → Instruction: "Build churn prediction model. Data insights: 10k samples, binary classification (30% churn rate), numeric features age (avg 35) and tenure (avg 2.5 years), categorical user_type, no missing values." → Returns plan_id and stage-specific knowledge recommendations
+5. ml_data (plan_id) → Creates `users_processed` table with engineered features from `users` table following plan guidance (knowledge automatically preloaded)
+6. ml_model (plan_id) → Generates model spec using `users_processed` as input, binary classification output, follows plan architecture (knowledge automatically preloaded)
+7. ml_train (plan_id) → Trains model following plan training config, outputs job_id and model artifacts, validation metrics tracked during training (knowledge automatically preloaded)
+
+Note: ml_evaluate is used separately for ad hoc testing on hold-out test sets after training is complete. Validation metrics are already tracked during training.
 
 ## Data Operations
 
@@ -151,12 +147,13 @@ Use create_todo_list to track multi-step work.
 Understanding how tools work together:
 
 - **Data Exploration then Plan**: schema_discovery → database_query (gather insights) → ml_plan (with insights in instruction)
-- **Full ML Pipeline**: schema_discovery → database_query → ml_plan → ml_data → ml_model → ml_train → ml_evaluate
+- **Core ML Pipeline**: schema_discovery → database_query → ml_plan → ml_data → ml_model → ml_train (validation metrics tracked during training)
+- **Ad Hoc Testing**: After training completes → ml_evaluate (optional, for comprehensive hold-out test set evaluation)
 - **View before Edit**: view_file → edit_file (or create_file if new)
 - **Data then Model**: ml_plan recommends features → ml_data creates processed tables → ml_model uses processed data (model depends on ml_data output)
 - **Data Transformation**: All write operations use ml_data
 - **Job Monitoring**: ml_train returns job_id → database_query jobs table → check status
-- **Model Iteration**: ml_evaluate shows poor metrics → ml_plan with feedback → repeat workflow
+- **Model Iteration**: Training shows poor metrics → ml_plan with feedback → repeat workflow
 
 # Available Tools Reference
 

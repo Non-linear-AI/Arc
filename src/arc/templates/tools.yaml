@@ -228,7 +228,8 @@ tools:
     description: |
       Create or revise comprehensive ML workflow plan for a modeling task. This tool
       analyzes data, user requirements, and creates a detailed plan covering feature
-      engineering, model architecture, training strategy, and evaluation metrics.
+      engineering, model architecture, and training/validation strategy (including
+      validation metrics to track during training).
 
       IMPORTANT: Use this tool AFTER exploring the data with schema_discovery and database_query.
       Include data insights in the instruction parameter for better plan quality.
@@ -364,16 +365,26 @@ tools:
   - name: ml_evaluate
     description: |
       Generate Arc-Graph evaluator specification and launch evaluation job on test data.
+      This is an AD HOC tool for evaluating trained models on separate test datasets.
+      It is NOT part of the core ML workflow (plan → data → model → train). Validation
+      metrics are already tracked during training.
+
       This unified tool:
       1) Generates evaluator spec via LLM based on evaluation goals,
       2) Presents interactive confirmation workflow,
       3) Auto-registers evaluator to database after approval,
       4) Launches evaluation job and returns immediately with job_id.
+
       Evaluation runs asynchronously in the background. Monitor progress via /ml jobs status
       and view metrics in TensorBoard. Supports classification metrics (accuracy, precision,
       recall, F1, confusion matrix, PR curves, ROC curves) and regression metrics (MSE, MAE,
-      R², scatter plots). If plan_id is provided, the agent loads the plan from database and
-      uses its evaluation guidance.
+      R², scatter plots).
+
+      Use this tool when you need to:
+      - Evaluate a trained model on a hold-out test set
+      - Compare multiple models on the same test data
+      - Generate comprehensive evaluation reports with visualizations
+      - Perform threshold tuning or calibration analysis
     parameters:
       type: object
       properties:
@@ -394,9 +405,9 @@ tools:
         plan_id:
           type: string
           description: |
-            Optional ML plan ID to use for evaluation (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            evaluation guidance (evaluation section).
+            Optional ML plan ID (e.g., 'pidd-plan-v1'). When provided, used only
+            for context/metadata tracking. The plan no longer contains evaluation
+            guidance - evaluation is now ad hoc and independent of the plan.
         recommended_knowledge_ids:
           type: array
           items:
