@@ -9,7 +9,7 @@ from arc.database import DatabaseManager
 from arc.database.services import ServiceContainer
 
 
-class TestMLAgentForTesting(BaseAgent):
+class MLAgentForTesting(BaseAgent):
     """Concrete BaseAgent subclass for testing."""
 
     def get_template_directory(self):
@@ -22,7 +22,7 @@ def test_agent():
     """Create a test agent with in-memory databases."""
     db_manager = DatabaseManager(":memory:", ":memory:")
     services = ServiceContainer(db_manager)
-    return TestMLAgentForTesting(services, "test_api_key")
+    return MLAgentForTesting(services, "test_api_key")
 
 
 class TestMLTools:
