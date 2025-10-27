@@ -219,6 +219,10 @@ class MLEvaluateTool(BaseTool):
                     return _error_in_section(plan)
                 ml_plan_evaluation = plan.evaluation
 
+                # Extract recommended knowledge IDs if not explicitly provided
+                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.recommended_knowledge_ids
+
             # Generate evaluator spec via LLM
             # Agent will discover relevant knowledge using tools
             from arc.core.agents.ml_evaluate import MLEvaluateAgent
@@ -250,7 +254,7 @@ class MLEvaluateTool(BaseTool):
                     target_column=str(target_column),
                     target_column_exists=target_column_exists,
                     ml_plan_evaluation=ml_plan_evaluation,
-                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
                 # Show completion message
@@ -684,7 +688,7 @@ class MLEvaluateTool(BaseTool):
                     target_column=context["target_column"],
                     target_column_exists=target_column_exists,
                     existing_yaml=yaml_content,
-                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    recommended_knowledge_ids=None,  # Editing uses conversation_history
                     conversation_history=conversation_history,
                 )
                 return edited_yaml, updated_history

@@ -129,6 +129,8 @@ class MLDataAgent(BaseAgent):
                             f"\n\n{content}"
                         )
                         loaded_knowledge_ids.append(knowledge_id)
+                        # Track in base agent to exclude from list_available_knowledge
+                        self._loaded_knowledge.add((knowledge_id, "data"))
                     # If missing, silently skip (already logged at debug level)
 
             # Build system message with all context

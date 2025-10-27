@@ -187,6 +187,26 @@ class SettingsManager:
         settings = self.load_user_settings()
         return settings.get("tensorboardMode")
 
+    def get_verbose_mode(self) -> bool:
+        """Get verbose/debug mode setting.
+
+        Returns:
+            True if verbose mode is enabled via environment variable or settings
+
+        Note:
+            Checks ARC_VERBOSE environment variable first, then settings file.
+            Accepts: "1", "true", "yes" (case-insensitive)
+        """
+        # First check environment variable
+        verbose_env = os.getenv("ARC_VERBOSE", "").lower()
+        if verbose_env in ("1", "true", "yes"):
+            return True
+
+        # Then check settings file
+        settings = self.load_user_settings()
+        verbose_setting = settings.get("verbose", False)
+        return bool(verbose_setting)
+
     def set_tensorboard_mode(self, mode: str) -> None:
         """Set TensorBoard launch mode preference.
 

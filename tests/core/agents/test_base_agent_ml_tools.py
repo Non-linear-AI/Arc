@@ -59,11 +59,14 @@ class TestListKnowledgeTool:
 
     def test_handle_list_knowledge(self, test_agent):
         """Test listing knowledge works."""
+        import json
+
         result = test_agent._handle_list_knowledge()
         assert result is not None
         assert isinstance(result, str)
-        assert "Available" in result
-        assert "knowledge" in result.lower()
+        # Should be valid JSON
+        knowledge_list = json.loads(result)
+        assert isinstance(knowledge_list, list)
 
     def test_list_knowledge_includes_builtin(self, test_agent):
         """Test that builtin knowledge is listed."""
@@ -164,11 +167,14 @@ class TestExecuteMLTool:
     @pytest.mark.asyncio
     async def test_execute_ml_tool_list_knowledge(self, test_agent):
         """Test executing list_knowledge tool via dispatcher."""
+        import json
 
         result = await test_agent._execute_ml_tool("list_available_knowledge", "{}")
         assert result is not None
         assert isinstance(result, str)
-        assert "Available" in result
+        # Should be valid JSON
+        knowledge_list = json.loads(result)
+        assert isinstance(knowledge_list, list)
 
     @pytest.mark.asyncio
     async def test_execute_ml_tool_database_query(self, test_agent):

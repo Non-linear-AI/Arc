@@ -134,8 +134,12 @@ class MLModelTool(BaseTool):
                 if not target_column:
                     target_column = ml_plan.get("target_column")
 
-                # CRITICAL: Extract architecture guidance from ML plan
+                # CRITICAL: Extract architecture guidance and knowledge from ML plan
                 ml_plan_architecture = plan.model_architecture_and_loss
+
+                # Extract recommended knowledge IDs if not explicitly provided
+                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.recommended_knowledge_ids
 
             # Validate required parameters
             if not name or not data_table or not target_column:
@@ -158,7 +162,8 @@ class MLModelTool(BaseTool):
             else:
                 agent.progress_callback = None
 
-            # Agent will discover relevant knowledge using list_knowledge and
+            # Agent will use recommended knowledge IDs from ML plan if provided,
+            # otherwise discover relevant knowledge using list_knowledge and
             # read_knowledge tools based on task context and descriptions
             try:
                 (
@@ -171,7 +176,7 @@ class MLModelTool(BaseTool):
                     table_name=str(data_table),
                     target_column=target_column,
                     ml_plan_architecture=ml_plan_architecture,
-                    recommended_knowledge_ids=None,  # Let agent discover via tools
+                    recommended_knowledge_ids=recommended_knowledge_ids,
                 )
 
                 # Show completion message

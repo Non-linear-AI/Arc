@@ -44,11 +44,14 @@ class TestMLPlanAgent:
 
     def test_handle_list_knowledge(self, ml_plan_agent):
         """Test listing available knowledge."""
+        import json
+
         result = ml_plan_agent._handle_list_knowledge()
 
-        assert "Available" in result
-        assert "Knowledge" in result
         assert isinstance(result, str)
+        # Should be valid JSON
+        knowledge_list = json.loads(result)
+        assert isinstance(knowledge_list, list)
 
     def test_handle_read_knowledge_valid(self, ml_plan_agent):
         """Test reading valid knowledge document."""
@@ -115,39 +118,23 @@ class TestMLPlanAgent:
 
     @pytest.mark.asyncio
     async def test_execute_tool_with_progress(self, ml_plan_agent):
-        """Test that tool execution reports progress."""
-        progress_messages = []
-
-        def progress_callback(msg):
-            progress_messages.append(msg)
-
-        ml_plan_agent.progress_callback = progress_callback
-        ml_plan_agent.verbose = True  # Enable verbose mode to see results
-
+        """Test tool execution (progress reporting handled by BaseAgent)."""
         # Test list_available_knowledge
-        await ml_plan_agent._execute_tool("list_available_knowledge", "{}")
-        assert any("Listing available knowledges" in msg for msg in progress_messages)
-        assert any("Available:" in msg for msg in progress_messages)
+        result = await ml_plan_agent._execute_ml_tool("list_available_knowledge", "{}")
+        assert result is not None
+        assert isinstance(result, str)
 
         # Test read_knowledge_content
-        progress_messages.clear()
-        await ml_plan_agent._execute_tool(
-            "read_knowledge_content", '{"knowledge_id": "mlp", "domain": "model"}'
+        result = await ml_plan_agent._execute_ml_tool(
+            "read_knowledge_content", '{"knowledge_id": "mlp", "phase": "model"}'
         )
-        assert any("Reading knowledge: mlp" in msg for msg in progress_messages)
-        assert any("Preview:" in msg for msg in progress_messages)
+        assert result is not None
+        assert isinstance(result, str)
+        assert "mlp" in result.lower() or "feedforward" in result.lower()
 
     @pytest.mark.asyncio
     async def test_execute_tool_database_query_progress(self, ml_plan_agent):
-        """Test database query tool reports query and result."""
-        progress_messages = []
-
-        def progress_callback(msg):
-            progress_messages.append(msg)
-
-        ml_plan_agent.progress_callback = progress_callback
-        ml_plan_agent.verbose = True  # Enable verbose mode to see results
-
+        """Test database query execution (progress handled by BaseAgent)."""
         # Mock the database tool to avoid actual query
         with patch("arc.tools.database_query.DatabaseQueryTool") as mock_tool_class:
             mock_tool = MagicMock()
@@ -158,11 +145,10 @@ class TestMLPlanAgent:
             mock_tool_class.return_value = mock_tool
 
             query = "SELECT target, COUNT(*) FROM table GROUP BY target"
-            await ml_plan_agent._execute_tool(
+            result = await ml_plan_agent._execute_ml_tool(
                 "database_query", f'{{"query": "{query}"}}'
             )
 
-            # Check that progress shows query and result
-            assert any("Query:" in msg and query in msg for msg in progress_messages)
-            assert any("Result:" in msg for msg in progress_messages)
-            assert any("Query result: 10 rows" in msg for msg in progress_messages)
+            # Check that tool executed successfully
+            assert result is not None
+            assert "Query result: 10 rows" in result
