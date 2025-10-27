@@ -576,35 +576,51 @@ class DataSourceSpec:
         Raises:
             ValueError: If circular dependencies are detected
         """
-        # Use DFS to detect cycles
+        # Use DFS to detect cycles with path tracking
         visited = set()
         rec_stack = set()
+        path = []  # Track current path for cycle detection
 
-        def has_cycle(step_name: str) -> bool:
+        def has_cycle(step_name: str) -> tuple[bool, list[str]]:
             visited.add(step_name)
             rec_stack.add(step_name)
+            path.append(step_name)
 
             step = next((s for s in self.steps if s.name == step_name), None)
             if step is None:
-                return False
+                path.pop()
+                rec_stack.remove(step_name)
+                return False, []
 
             for dep in step.depends_on:
                 # Skip table references (not step names)
-                if dep not in {s.name for s in self.steps}:
+                step_names = {s.name for s in self.steps}
+                if dep not in step_names:
                     continue
 
                 if dep not in visited:
-                    if has_cycle(dep):
-                        return True
+                    cycle_found, cycle_path = has_cycle(dep)
+                    if cycle_found:
+                        return True, cycle_path
                 elif dep in rec_stack:
-                    return True
+                    # Found cycle - extract the cycle from path
+                    cycle_start = path.index(dep)
+                    cycle_path = path[cycle_start:] + [dep]
+                    return True, cycle_path
 
+            path.pop()
             rec_stack.remove(step_name)
-            return False
+            return False, []
 
         for step in self.steps:
-            if step.name not in visited and has_cycle(step.name):
-                raise ValueError("Circular dependency detected in steps")
+            if step.name not in visited:
+                cycle_found, cycle_path = has_cycle(step.name)
+                if cycle_found:
+                    cycle_str = " → ".join(cycle_path)
+                    raise ValueError(
+                        f"Circular dependency detected: {cycle_str}. "
+                        f"Step '{cycle_path[0]}' depends on itself through this chain."
+                    )
 
     def get_execution_order(self) -> list[DataSourceStep]:
         """Get steps in topological order for execution.
