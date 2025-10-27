@@ -59,6 +59,7 @@ class MLModelAgent(BaseAgent):
         editing_instructions: str | None = None,
         ml_plan_architecture: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Generate Arc model specification based on data and user context.
@@ -71,8 +72,8 @@ class MLModelAgent(BaseAgent):
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
             ml_plan_architecture: Optional ML plan architecture guidance
-            recommended_knowledge_ids: Optional list of knowledge IDs
-                recommended by ML Plan
+            recommended_knowledge_ids: Optional list of knowledge IDs (deprecated)
+            preloaded_knowledge: Optional list of preloaded knowledge docs
             conversation_history: Optional conversation history for editing workflow
 
         Returns:
@@ -93,6 +94,7 @@ class MLModelAgent(BaseAgent):
                 editing_instructions=editing_instructions,
                 ml_plan_architecture=ml_plan_architecture,
                 recommended_knowledge_ids=recommended_knowledge_ids,
+                preloaded_knowledge=preloaded_knowledge,
             )
         else:
             # Continue conversation - just append feedback
@@ -111,6 +113,7 @@ class MLModelAgent(BaseAgent):
         editing_instructions: str | None = None,
         ml_plan_architecture: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -120,23 +123,31 @@ class MLModelAgent(BaseAgent):
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Pre-load recommended knowledge content (handle missing gracefully)
-        recommended_knowledge = ""
-        loaded_knowledge_ids = []
-        if recommended_knowledge_ids:
+        # Use preloaded knowledge if provided, otherwise fall back to old method
+        if preloaded_knowledge:
+            # New method: knowledge already loaded by tool
+            loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
+            for doc in preloaded_knowledge:
+                self._loaded_knowledge.add((doc["id"], "model"))
+        elif recommended_knowledge_ids:
+            # Old method: load knowledge here (deprecated but backward compatible)
+            preloaded_knowledge = []
+            loaded_knowledge_ids = []
             for knowledge_id in recommended_knowledge_ids:
                 content, actual_phase = self.knowledge_loader.load_knowledge(
                     knowledge_id, "model"
                 )
                 if content and actual_phase:
-                    # Successfully loaded - add to system context
-                    recommended_knowledge += (
-                        f"\n\n# Architecture Knowledge: {knowledge_id}\n\n{content}"
-                    )
+                    preloaded_knowledge.append({
+                        "id": knowledge_id,
+                        "name": knowledge_id,
+                        "content": content
+                    })
                     loaded_knowledge_ids.append(knowledge_id)
-                    # Track actual phase that was loaded (not requested phase)
                     self._loaded_knowledge.add((knowledge_id, actual_phase))
-                # If missing, silently skip (already logged at debug level)
+        else:
+            preloaded_knowledge = []
+            loaded_knowledge_ids = []
 
         # Build system message with all context
         system_message = self._render_template(
@@ -147,7 +158,7 @@ class MLModelAgent(BaseAgent):
                 "data_profile": data_profile,
                 "available_components": self._get_model_components(),
                 "ml_plan_architecture": ml_plan_architecture,
-                "recommended_knowledge": recommended_knowledge,
+                "preloaded_knowledge": preloaded_knowledge,
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,
                 "is_editing": existing_yaml is not None,

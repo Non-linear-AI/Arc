@@ -305,13 +305,17 @@ loss:
 - **NLLLoss training**: LogSoftmax activation required (operates on log-probabilities)
 - **Value range constraints**: Tanh (-1 to 1) or Sigmoid (0 to 1) for specific output ranges
 
-{% if recommended_knowledge -%}
-## Recommended Architecture Knowledge
+{% if preloaded_knowledge -%}
+## Recommended Knowledge
 
-The following architecture knowledge has been pre-loaded based on ML Plan recommendations:
+The ML Plan has recommended the following knowledge for the model architecture stage:
 
-{{ recommended_knowledge }}
+{% for doc in preloaded_knowledge %}
+### {{ doc.name }}
 
+{{ doc.content }}
+
+{% endfor %}
 **Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your specification.
 {% endif %}
 

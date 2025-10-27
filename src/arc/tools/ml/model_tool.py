@@ -137,9 +137,9 @@ class MLModelTool(BaseTool):
                 # CRITICAL: Extract architecture guidance and knowledge from ML plan
                 ml_plan_architecture = plan.model_architecture_and_loss
 
-                # Extract recommended knowledge IDs if not explicitly provided
-                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
-                    recommended_knowledge_ids = plan.recommended_knowledge_ids
+                # Extract stage-specific knowledge IDs from plan
+                if not recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.knowledge.get("model", [])
 
             # Validate required parameters
             if not name or not data_table or not target_column:
@@ -162,9 +162,14 @@ class MLModelTool(BaseTool):
             else:
                 agent.progress_callback = None
 
-            # Agent will use recommended knowledge IDs from ML plan if provided,
-            # otherwise discover relevant knowledge using list_knowledge and
-            # read_knowledge tools based on task context and descriptions
+            # Preload stage-specific knowledge from plan
+            preloaded_knowledge = None
+            if recommended_knowledge_ids:
+                preloaded_knowledge = agent.knowledge_loader.load_multiple(
+                    recommended_knowledge_ids, phase="model"
+                )
+
+            # Generate model specification
             try:
                 (
                     model_spec,
@@ -176,7 +181,7 @@ class MLModelTool(BaseTool):
                     table_name=str(data_table),
                     target_column=target_column,
                     ml_plan_architecture=ml_plan_architecture,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    preloaded_knowledge=preloaded_knowledge,
                 )
 
                 # Show completion message
