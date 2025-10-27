@@ -65,6 +65,7 @@ class MLTrainAgent(BaseAgent):
         existing_yaml: str | None = None,
         ml_plan_training_config: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
     ) -> tuple[TrainerSpec, str, list[dict[str, str]]]:
         """Generate Arc trainer specification based on model and instruction.
@@ -78,8 +79,8 @@ class MLTrainAgent(BaseAgent):
             model_spec_yaml: Model specification YAML content
             existing_yaml: Optional existing YAML to edit (editing mode)
             ml_plan_training_config: Optional training config from ML plan
-            recommended_knowledge_ids: Optional list of knowledge IDs
-                recommended by ML Plan
+            recommended_knowledge_ids: Optional list of knowledge IDs (deprecated)
+            preloaded_knowledge: Optional list of preloaded knowledge docs
             conversation_history: Optional conversation history for editing workflow
 
         Returns:
@@ -99,6 +100,7 @@ class MLTrainAgent(BaseAgent):
                 existing_yaml=existing_yaml,
                 ml_plan_training_config=ml_plan_training_config,
                 recommended_knowledge_ids=recommended_knowledge_ids,
+                preloaded_knowledge=preloaded_knowledge,
             )
         else:
             # Continue conversation - just append feedback
@@ -116,29 +118,38 @@ class MLTrainAgent(BaseAgent):
         existing_yaml: str | None = None,
         ml_plan_training_config: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
     ) -> tuple[TrainerSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
         This path is used for initial generation or when starting a new conversation.
         It builds the complete system message with knowledge loading.
         """
-        # Pre-load recommended knowledge content (handle missing gracefully)
-        recommended_knowledge = ""
-        loaded_knowledge_ids = []
-        if recommended_knowledge_ids:
+        # Use preloaded knowledge if provided, otherwise fall back to old method
+        if preloaded_knowledge:
+            # New method: knowledge already loaded by tool
+            loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
+            for doc in preloaded_knowledge:
+                self._loaded_knowledge.add((doc["id"], "training"))
+        elif recommended_knowledge_ids:
+            # Old method: load knowledge here (deprecated but backward compatible)
+            preloaded_knowledge = []
+            loaded_knowledge_ids = []
             for knowledge_id in recommended_knowledge_ids:
                 content, actual_phase = self.knowledge_loader.load_knowledge(
                     knowledge_id, "train"
                 )
                 if content and actual_phase:
-                    # Successfully loaded - add to system context
-                    recommended_knowledge += (
-                        f"\n\n# Training Knowledge: {knowledge_id}\n\n{content}"
-                    )
+                    preloaded_knowledge.append({
+                        "id": knowledge_id,
+                        "name": knowledge_id,
+                        "content": content
+                    })
                     loaded_knowledge_ids.append(knowledge_id)
-                    # Track actual phase that was loaded (not requested phase)
                     self._loaded_knowledge.add((knowledge_id, actual_phase))
-                # If missing, silently skip (already logged at debug level)
+        else:
+            preloaded_knowledge = []
+            loaded_knowledge_ids = []
 
         # Build system message with all context
         system_message = self._render_template(
@@ -153,7 +164,7 @@ class MLTrainAgent(BaseAgent):
                 "examples": self._get_trainer_examples(instruction),
                 "existing_yaml": existing_yaml,
                 "ml_plan_training_config": ml_plan_training_config,
-                "recommended_knowledge": recommended_knowledge,
+                "preloaded_knowledge": preloaded_knowledge,
             },
         )
 

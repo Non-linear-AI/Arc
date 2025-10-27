@@ -153,11 +153,11 @@ class MLTrainTool(BaseTool):
                 if ml_plan is None:
                     # plan contains error message
                     return _error_in_section(plan)
-                ml_plan_training_config = plan.training_configuration
+                ml_plan_training_config = plan.training_and_validation
 
-                # Extract recommended knowledge IDs if not explicitly provided
-                if not recommended_knowledge_ids and plan.recommended_knowledge_ids:
-                    recommended_knowledge_ids = plan.recommended_knowledge_ids
+                # Extract stage-specific knowledge IDs from plan
+                if not recommended_knowledge_ids:
+                    recommended_knowledge_ids = plan.knowledge.get("training", [])
 
             # Generate trainer spec via LLM
             # Agent will discover relevant knowledge using tools
@@ -174,6 +174,13 @@ class MLTrainTool(BaseTool):
             else:
                 agent.progress_callback = None
 
+            # Preload stage-specific knowledge from plan
+            preloaded_knowledge = None
+            if recommended_knowledge_ids:
+                preloaded_knowledge = agent.knowledge_loader.load_multiple(
+                    recommended_knowledge_ids, phase="model"
+                )
+
             try:
                 (
                     trainer_spec,
@@ -185,7 +192,7 @@ class MLTrainTool(BaseTool):
                     model_id=model_record.id,
                     model_spec_yaml=model_record.spec,
                     ml_plan_training_config=ml_plan_training_config,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    preloaded_knowledge=preloaded_knowledge,
                 )
 
                 # Show completion message

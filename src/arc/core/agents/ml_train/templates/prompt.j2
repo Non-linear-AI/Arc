@@ -57,13 +57,17 @@ The ML Plan provides the following training configuration guidance (use as basel
 The user instruction above may build upon this plan or request modifications.
 
 {% endif %}
-{% if recommended_knowledge -%}
-## Recommended Training Knowledge
+{% if preloaded_knowledge -%}
+## Recommended Knowledge
 
-The following training knowledge has been pre-loaded based on ML Plan recommendations:
+The ML Plan has recommended the following knowledge for the training stage:
 
-{{ recommended_knowledge }}
+{% for doc in preloaded_knowledge %}
+### {{ doc.name }}
 
+{{ doc.content }}
+
+{% endfor %}
 **Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your trainer specification.
 {% endif %}
 
