@@ -67,6 +67,36 @@ def validate_trainer_dict(data: dict[str, Any]) -> None:
         except ValueError as e:
             raise TrainerValidationError(f"trainer.optimizer.params: {e}") from e
 
+    # Validate loss (required)
+    loss = _require(data, "loss", "trainer.loss required")
+    if not isinstance(loss, dict):
+        raise TrainerValidationError("trainer.loss must be a mapping")
+
+    loss_type = _require(loss, "type", "trainer.loss.type required")
+    if not isinstance(loss_type, str):
+        raise TrainerValidationError("trainer.loss.type must be a string")
+
+    # Validate loss type is supported
+    try:
+        get_loss_class(loss_type)
+    except ValueError as e:
+        raise TrainerValidationError(f"trainer.loss: {e}") from e
+
+    # Validate loss inputs if present
+    if "inputs" in loss and loss["inputs"] is not None:
+        loss_inputs = loss["inputs"]
+        if not isinstance(loss_inputs, dict):
+            raise TrainerValidationError("trainer.loss.inputs must be a mapping")
+
+        # Validate each loss input is a string
+        for input_name, source_ref in loss_inputs.items():
+            if not isinstance(source_ref, str):
+                type_name = type(source_ref).__name__
+                raise TrainerValidationError(
+                    f"trainer.loss.inputs.{input_name} must be a string, "
+                    f"got: {type_name}"
+                )
+
     # Validate config (optional)
     if "config" in data and data["config"] is not None:
         config = data["config"]

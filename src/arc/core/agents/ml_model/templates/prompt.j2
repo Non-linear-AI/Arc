@@ -123,7 +123,15 @@ Your output must validate against this Arc-Graph schema:
 }
 ```
 
-**Note**: The schema above now includes a `training` section for training configuration. This unified format combines model architecture with training hyperparameters.
+**Note**: The schema above includes both `loss` and `training` sections. Loss defines the loss function used during training. Training defines optimizer and hyperparameters.
+
+**IMPORTANT ARCHITECTURAL NOTE**:
+- **Loss is separate from model architecture** to maintain clear separation of concerns
+- **Model YAML** (stored in database): Contains only inputs, graph, outputs (pure architecture)
+- **Trainer YAML** (stored in database): Contains model_ref, loss, optimizer, and training config
+- **Unified YAML** (for generation): Contains all sections together for a complete specification
+
+This structure allows the same model architecture to be trained with different loss functions and training configurations.
 
 ## Arc-Graph Foundation
 

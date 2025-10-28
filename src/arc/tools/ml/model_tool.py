@@ -207,9 +207,17 @@ class MLModelTool(BaseTool):
                     f"Unexpected error during model generation: {exc}"
                 )
 
-            # Parse unified YAML to extract model and training sections
+            # Parse unified YAML to extract model, loss, and training sections
             try:
                 full_spec = yaml.safe_load(unified_yaml)
+
+                # Extract loss config (moved to training section)
+                loss_config = full_spec.pop("loss", None)
+                if not loss_config:
+                    return _error_in_section(
+                        "Generated YAML missing required 'loss' section. "
+                        "The unified specification must include loss function."
+                    )
 
                 # Extract training config
                 training_config = full_spec.pop("training", None)
@@ -219,10 +227,10 @@ class MLModelTool(BaseTool):
                         "The unified specification must include both model and training config."
                     )
 
-                # Validate model portion
+                # Validate model portion (without loss - loss now goes to trainer)
                 validate_model_dict(full_spec)
 
-                # Convert back to YAML for model-only storage
+                # Convert back to YAML for model-only storage (without loss)
                 model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
 
             except (yaml.YAMLError, ModelValidationError) as exc:
@@ -275,6 +283,9 @@ class MLModelTool(BaseTool):
 
                     # Re-parse the edited YAML
                     full_spec = yaml.safe_load(final_unified_yaml)
+                    loss_config = full_spec.pop("loss", None)
+                    if not loss_config:
+                        return _error_in_section("Edited YAML missing 'loss' section")
                     training_config = full_spec.pop("training", None)
                     if not training_config:
                         return _error_in_section(
@@ -324,9 +335,10 @@ class MLModelTool(BaseTool):
             # Create trainer spec and launch training
             trainer_name = name  # Use same name for trainer
             try:
-                # Build trainer YAML from training config + model reference
+                # Build trainer YAML from loss + training config + model reference
                 trainer_dict = {
                     "model_ref": model_id,
+                    "loss": loss_config,
                     **training_config,
                 }
                 trainer_yaml = yaml.dump(trainer_dict, default_flow_style=False, sort_keys=False)

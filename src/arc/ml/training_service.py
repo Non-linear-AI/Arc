@@ -638,11 +638,11 @@ class TrainingService:
 
         trainer_spec = config.trainer_spec
 
-        # Extract loss from model spec (loss is in model, not trainer)
-        if not config.model_spec or not config.model_spec.loss:
-            raise ValueError("Model spec must define a loss function")
+        # Extract loss from trainer spec (loss is now in trainer, not model)
+        if not trainer_spec.loss:
+            raise ValueError("Trainer spec must define a loss function")
 
-        model_loss = config.model_spec.loss
+        model_loss = trainer_spec.loss
 
         # Create training config
         base_training_config = trainer_spec.get_training_config()
@@ -760,29 +760,17 @@ class TrainingService:
         try:
             logger.info(f"Starting training execution for job {job_id}")
 
-            # Setup training configuration - extract from TrainerSpec or use defaults
-            if config.trainer_spec:
-                trainer_spec = config.trainer_spec
-            else:
-                # Create default trainer spec if none provided (no loss - it's in model)
-                from arc.graph.trainer import OptimizerConfig, TrainerSpec
+            # Setup training configuration - extract from TrainerSpec (required)
+            if not config.trainer_spec:
+                raise ValueError("Training job config must have trainer_spec")
 
-                trainer_spec = TrainerSpec(
-                    model_ref=config.model_id,  # Reference the model
-                    optimizer=OptimizerConfig(
-                        type="torch.optim.Adam", lr=config.learning_rate
-                    ),
-                    epochs=config.epochs,
-                    batch_size=config.batch_size,
-                    learning_rate=config.learning_rate,
-                    validation_split=config.validation_split,
-                )
+            trainer_spec = config.trainer_spec
 
-            # Extract loss from model spec (loss is in model, not trainer)
-            if not config.model_spec or not config.model_spec.loss:
-                raise ValueError("Model spec must define a loss function")
+            # Extract loss from trainer spec (loss is now in trainer, not model)
+            if not trainer_spec.loss:
+                raise ValueError("Trainer spec must define a loss function")
 
-            model_loss = config.model_spec.loss
+            model_loss = trainer_spec.loss
 
             # Create a bridge config that has all the fields the trainer expects
             base_training_config = trainer_spec.get_training_config()
