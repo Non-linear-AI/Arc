@@ -15,7 +15,7 @@ from arc.tools.bash import BashTool
 from arc.tools.database_query import DatabaseQueryTool
 from arc.tools.file_editor import CreateFileTool, EditFileTool, ViewFileTool
 from arc.tools.knowledge import ReadKnowledgeTool
-from arc.tools.ml import MLEvaluateTool, MLModelTool, MLPlanTool, MLTrainTool
+from arc.tools.ml import MLEvaluateTool, MLModelTool, MLPlanTool
 from arc.tools.ml_data import MLDataTool
 from arc.tools.schema_discovery import SchemaDiscoveryTool
 from arc.tools.search import SearchTool
@@ -173,13 +173,6 @@ class ArcAgent:
         )
         self.ml_model_tool = MLModelTool(
             services,
-            self.api_key,
-            self.base_url,
-            model,
-            self.ui_interface,
-        )
-        self.ml_train_tool = MLTrainTool(
-            services,
             services.ml_runtime,
             self.api_key,
             self.base_url,
@@ -209,7 +202,6 @@ class ArcAgent:
         self.tool_registry.register("schema_discovery", self.schema_discovery_tool)
         self.tool_registry.register("ml_plan", self.ml_plan_tool)
         self.tool_registry.register("ml_model", self.ml_model_tool)
-        self.tool_registry.register("ml_train", self.ml_train_tool)
         self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
         self.tool_registry.register("ml_data", self.ml_data_tool)
 
@@ -596,7 +588,7 @@ class ArcAgent:
         """Execute a tool call using the tool registry."""
         # Use tool registry for execution
         # ML tools should not have timeouts since they wait for user input
-        ml_tools = {"ml_plan", "ml_model", "ml_train", "ml_evaluate", "ml_data"}
+        ml_tools = {"ml_plan", "ml_model", "ml_evaluate", "ml_data"}
         if tool_call.name in ml_tools:
             # No timeout for ML tools (they wait for user interaction)
             return await self.tool_registry.execute(tool_call, timeout=None)
@@ -633,8 +625,6 @@ class ArcAgent:
             self.ml_plan_tool.model = model
         if getattr(self, "ml_model_tool", None):
             self.ml_model_tool.model = model
-        if getattr(self, "ml_train_tool", None):
-            self.ml_train_tool.model = model
         if getattr(self, "ml_evaluate_tool", None):
             self.ml_evaluate_tool.model = model
 
