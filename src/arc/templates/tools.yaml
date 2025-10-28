@@ -277,90 +277,43 @@ tools:
 
   - name: ml_model
     description: |
-      Generate Arc-Graph model YAML using the model generator agent. If plan_id is provided,
-      the agent will load the plan from the database and use its architecture guidance.
+      Generate unified model + training specification and launch training. This tool:
+      1) Generates model architecture AND training config in a single unified YAML
+      2) Presents interactive confirmation workflow
+      3) Auto-registers model to database after approval
+      4) Creates trainer from training config
+      5) Launches training immediately
+
+      This tool replaces the old separate ml_model + ml_train workflow. If plan_id is provided,
+      uses unified model_plan guidance (architecture + training).
     parameters:
       type: object
       properties:
         name:
           type: string
-          description: Model name to include in the specification
+          description: Experiment name (used for both model and trainer)
         instruction:
           type: string
-          description: Description of the intended model behavior and requirements
+          description: Description of model architecture and training requirements
         data_table:
           type: string
           description: Database table to profile for generation
+        train_table:
+          type: string
+          description: Training data table (defaults to data_table if not provided)
         target_column:
           type: string
           description: Target column for prediction
         plan_id:
           type: string
           description: |
-            Optional ML plan ID to use for model generation (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            architecture guidance (model_architecture_and_loss section).
-        recommended_knowledge_ids:
-          type: array
-          items:
-            type: string
-          description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform model generation decisions.
+            Optional ML plan ID (e.g., 'pidd-plan-v1'). When provided, loads plan
+            from database and uses its unified model_plan guidance.
       required:
         - name
         - instruction
         - data_table
         - target_column
-
-  - name: ml_train
-    description: |
-      Generate Arc-Graph trainer specification and launch training. This unified tool:
-      1) Generates trainer spec via LLM based on model and training goals,
-      2) Presents interactive confirmation workflow,
-      3) Auto-registers trainer to database after approval,
-      4) Launches training after user confirmation.
-      All training configuration (epochs, batch_size, learning_rate, etc.) must be specified
-      in the generated trainer YAML - no runtime overrides are supported.
-      If plan_id is provided, the agent loads the plan from database and uses its training guidance.
-    parameters:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Trainer name for the specification
-        instruction:
-          type: string
-          description: |
-            Training goals, constraints, and requirements. Include all training configuration
-            details (epochs, batch size, learning rate, validation strategy, etc.) as these
-            will be encoded in the trainer YAML.
-        model_id:
-          type: string
-          description: Model ID with version (e.g., 'my_model-v1')
-        train_table:
-          type: string
-          description: Training data table name
-        plan_id:
-          type: string
-          description: |
-            Optional ML plan ID to use for training (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            training guidance (training_configuration section).
-        recommended_knowledge_ids:
-          type: array
-          items:
-            type: string
-          description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform training decisions.
-      required:
-        - name
-        - instruction
-        - model_id
-        - train_table
 
   - name: ml_evaluate
     description: |
