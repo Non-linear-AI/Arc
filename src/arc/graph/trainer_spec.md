@@ -449,16 +449,11 @@ Explicit `model_ref` enables:
 This separation enables powerful workflows:
 
 ```bash
-# One model, different training strategies
-/ml create-model --name diabetes --schema diabetes_model.yaml
-/ml create-trainer --name diabetes_fast --schema fast_trainer.yaml --model diabetes
-/ml create-trainer --name diabetes_production --schema prod_trainer.yaml --model diabetes
+# Unified workflow: ml_model generates model + training spec and launches training
+/ml model --name diabetes --instruction "Binary classification model with fast training for experiments" --data-table train_data --target-column outcome
 
-# Quick training for experiments
-/ml train --model diabetes --trainer diabetes_fast --data train_data --target outcome
-
-# Production training with full hyperparameter tuning
-/ml train --model diabetes --trainer diabetes_production --data train_data --target outcome
+# For advanced use cases: create trainer separately (via /ml create-trainer) and use low-level runtime
+# Note: The unified ml_model tool is the recommended approach
 ```
 
 ## **7. Future Extensions**

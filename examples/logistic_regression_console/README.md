@@ -23,16 +23,19 @@ This example shows how to register and train a simple logistic regression model 
    /sql CREATE TABLE iris AS SELECT column0 AS pregnancies, column1 AS glucose, column2 AS blood_pressure, column3 AS skin_thickness, column4 AS insulin, column5 AS bmi, column6 AS diabetes_pedigree, column7 AS age, column8 AS outcome FROM iris_raw;
    ```
 
-3. Register the Arc-Graph model (the schema is provided in `model.yaml`):
+3. Use the chat interface to create a model and launch training:
 
    ```text
-   /ml create-model --name "pima_classifier" --schema "examples/logistic_regression_console/model.yaml"
+   Build a binary classification model using the iris table to predict outcome.
+   Use logistic regression with glucose, bmi, and age as features.
    ```
 
-4. Launch training:
+   The agent will guide you through the ML workflow (ml_plan → ml_data → ml_model).
 
+   Alternatively, you can use the low-level CLI commands:
    ```text
-   /ml train --model "pima_classifier" --data "iris"
+   # This creates model + trainer and launches training in one step
+   /ml model --name "pima_classifier" --instruction "Binary classification for diabetes prediction" --data-table "iris" --target-column "outcome"
    ```
 
 5. Inspect job progress:

@@ -14,8 +14,7 @@ trap 'rm -f "$COMMAND_FILE"' EXIT
 cat > "$COMMAND_FILE" <<EOF
 /sql CREATE TABLE iris_raw AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv');
 /sql CREATE TABLE iris AS SELECT column0 as pregnancies, column1 as glucose, column2 as blood_pressure, column3 as skin_thickness, column4 as insulin, column5 as bmi, column6 as diabetes_pedigree, column7 as age, column8 as outcome FROM iris_raw;
-/ml create-model --name "pima_classifier" --schema "$MODEL_PATH"
-/ml train --model "pima_classifier" --data "iris"
+/ml model --name "pima_classifier" --instruction "Binary classification model for diabetes prediction using logistic regression" --data-table "iris" --target-column "outcome"
 /ml jobs list
 /exit
 EOF
