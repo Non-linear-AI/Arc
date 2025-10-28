@@ -51,21 +51,12 @@ class MLPlan:
         Returns:
             MLPlan instance
         """
-        # Support both old and new field names for backward compatibility
-        training_field = analysis.get("training_and_validation") or analysis.get("training_configuration", "")
-        knowledge_field = analysis.get("knowledge", {})
-
-        # Fall back to old recommended_knowledge_ids if knowledge dict not present
-        if not knowledge_field and "recommended_knowledge_ids" in analysis:
-            # Convert old format to new format (put all in "general" bucket)
-            knowledge_field = {"general": analysis["recommended_knowledge_ids"]}
-
         return cls(
             name=analysis.get("name", ""),
             feature_engineering=analysis.get("feature_engineering", ""),
             model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
-            training_and_validation=training_field,
-            knowledge=knowledge_field,
+            training_and_validation=analysis.get("training_and_validation", ""),
+            knowledge=analysis.get("knowledge", {}),
             version=version,
             stage=stage,
             reason_for_update=reason,
@@ -92,20 +83,12 @@ class MLPlan:
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
 
-        # Support both old and new field names for backward compatibility
-        training_field = data.get("training_and_validation") or data.get("training_configuration", "")
-        knowledge_field = data.get("knowledge", {})
-
-        # Fall back to old recommended_knowledge_ids if knowledge dict not present
-        if not knowledge_field and "recommended_knowledge_ids" in data:
-            knowledge_field = {"general": data["recommended_knowledge_ids"]}
-
         return cls(
             name=data["name"],
             feature_engineering=data["feature_engineering"],
             model_architecture_and_loss=data["model_architecture_and_loss"],
-            training_and_validation=training_field,
-            knowledge=knowledge_field,
+            training_and_validation=data["training_and_validation"],
+            knowledge=data.get("knowledge", {}),
             version=data.get("version", 1),
             stage=data.get("stage", "initial"),
             reason_for_update=data.get("reason_for_update"),
