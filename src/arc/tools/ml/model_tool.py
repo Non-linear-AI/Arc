@@ -150,6 +150,13 @@ class MLModelTool(BaseTool):
                     "to generate a model specification."
                 )
 
+            # Validate train_table is provided (required for training launch)
+            if not train_table:
+                return _error_in_section(
+                    "Parameter 'train_table' is required for launching training. "
+                    "Specify the table containing training data."
+                )
+
             # Generate model using agent
             agent = MLModelAgent(
                 self.services,
