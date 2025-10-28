@@ -1,7 +1,8 @@
-"""ML Model tool for generating Arc-Graph model specifications."""
+"""ML Model tool for generating Arc-Graph model + training specifications and launching training."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -11,27 +12,33 @@ if TYPE_CHECKING:
 
 from arc.core.agents.ml_model import MLModelAgent
 from arc.graph.model import ModelValidationError, validate_model_dict
+from arc.graph.trainer import TrainerSpec
+from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.tools.base import BaseTool, ToolResult
 from arc.tools.ml._utils import _load_ml_plan
 from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 
 class MLModelTool(BaseTool):
-    """Tool for generating Arc-Graph model specifications via LLM."""
+    """Tool for generating unified model + training specs and launching training."""
 
     def __init__(
         self,
         services,
+        runtime: MLRuntime,
         api_key: str | None,
         base_url: str | None,
         model: str | None,
         ui_interface,
+        tensorboard_manager=None,
     ) -> None:
         self.services = services
+        self.runtime = runtime
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
         self.ui = ui_interface
+        self.tensorboard_manager = tensorboard_manager
 
     async def execute(
         self,
@@ -39,48 +46,41 @@ class MLModelTool(BaseTool):
         name: str | None = None,
         instruction: str | None = None,
         data_table: str | None = None,
+        train_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
         plan_id: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
     ) -> ToolResult:
-        """Generate Arc-Graph model specification via LLM.
+        """Generate unified model + training specification and launch training.
 
         Args:
-            name: Model name
-            instruction: User's instruction for model architecture (PRIMARY driver)
+            name: Model/experiment name
+            instruction: User's instruction for model architecture + training (PRIMARY driver)
             data_table: Database table to profile for generation
+            train_table: Training data table (defaults to data_table if not provided)
             target_column: Target column for prediction
             auto_confirm: Skip confirmation workflows (for testing only)
-            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
-                model_architecture_and_loss guidance (SECONDARY baseline)
+            plan_id: Optional ML plan ID containing unified model_plan guidance
 
-        Note on instruction vs plan_id precedence:
-            - instruction: PRIMARY driver - user's immediate, specific
-              architecture request
-            - plan_id: SECONDARY baseline - loads plan from DB for
-              architectural guidance
-            - When there's a conflict, instruction takes precedence
-            - Example: If instruction says "use 3 hidden layers" but plan says
-              "use 2 layers", the model spec should use 3 hidden layers
-              (instruction wins)
-            - The LLM agent should use plan as baseline architectural guidance
-              and augment/override it with specifics from instruction
+        Note: This tool now generates BOTH model architecture AND training configuration
+        in a single unified YAML, then immediately launches training.
 
         Returns:
-            ToolResult with model registration details
+            ToolResult with model registration and training job details
         """
+        # Default train_table to data_table if not provided
+        if not train_table:
+            train_table = data_table
+
         # Show section title first, before any validation
         # Build metadata for section title
         metadata_parts = []
         if plan_id:
             metadata_parts.append(plan_id)
-        if recommended_knowledge_ids:
-            metadata_parts.extend(recommended_knowledge_ids)
 
         # Use context manager for section printing
         with self._section_printer(
-            self.ui, "ML Model", metadata=metadata_parts
+            self.ui, "ML Model + Training", metadata=metadata_parts
         ) as printer:
             # Show task description
             if printer:
@@ -119,7 +119,8 @@ class MLModelTool(BaseTool):
                 )
 
             # Load plan from database if plan_id is provided
-            ml_plan_architecture = None
+            model_plan = None
+            recommended_knowledge_ids = None
             if plan_id:
                 ml_plan, plan = _load_ml_plan(self.services, plan_id)
                 if ml_plan is None:
@@ -133,13 +134,14 @@ class MLModelTool(BaseTool):
                     data_table = ml_plan.get("data_table")
                 if not target_column:
                     target_column = ml_plan.get("target_column")
+                if not train_table:
+                    train_table = ml_plan.get("train_table") or data_table
 
-                # CRITICAL: Extract architecture guidance and knowledge from ML plan
-                ml_plan_architecture = plan.model_architecture_and_loss
+                # CRITICAL: Extract unified model plan (architecture + training) and knowledge
+                model_plan = plan.model_plan
 
                 # Extract stage-specific knowledge IDs from plan
-                if not recommended_knowledge_ids:
-                    recommended_knowledge_ids = plan.knowledge.get("model", [])
+                recommended_knowledge_ids = plan.knowledge.get("model", [])
 
             # Validate required parameters
             if not name or not data_table or not target_column:
@@ -169,18 +171,18 @@ class MLModelTool(BaseTool):
                     recommended_knowledge_ids, phase="model"
                 )
 
-            # Generate model specification
+            # Generate unified model + training specification
             try:
                 (
                     model_spec,
-                    model_yaml,
+                    unified_yaml,
                     conversation_history,
                 ) = await agent.generate_model(
                     name=str(name),
                     user_context=instruction,  # Use instruction as user_context
                     table_name=str(data_table),
                     target_column=target_column,
-                    ml_plan_architecture=ml_plan_architecture,
+                    model_plan=model_plan,
                     preloaded_knowledge=preloaded_knowledge,
                 )
 
@@ -198,17 +200,31 @@ class MLModelTool(BaseTool):
                     f"Unexpected error during model generation: {exc}"
                 )
 
-            # Validate the generated model using Arc-Graph validator
+            # Parse unified YAML to extract model and training sections
             try:
-                model_dict = yaml.safe_load(model_yaml)
-                validate_model_dict(model_dict)
+                full_spec = yaml.safe_load(unified_yaml)
+
+                # Extract training config
+                training_config = full_spec.pop("training", None)
+                if not training_config:
+                    return _error_in_section(
+                        "Generated YAML missing required 'training' section. "
+                        "The unified specification must include both model and training config."
+                    )
+
+                # Validate model portion
+                validate_model_dict(full_spec)
+
+                # Convert back to YAML for model-only storage
+                model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
+
             except (yaml.YAMLError, ModelValidationError) as exc:
-                return _error_in_section(f"Model validation failed: {exc}")
+                return _error_in_section(f"Specification validation failed: {exc}")
             except Exception as exc:
                 # Log unexpected errors with full traceback
                 import logging
 
-                logging.exception("Unexpected error during model validation")
+                logging.exception("Unexpected error during specification validation")
                 return _error_in_section(
                     f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
                 )
@@ -219,19 +235,20 @@ class MLModelTool(BaseTool):
                     validator_func=self._create_validator(),
                     editor_func=self._create_editor(instruction),
                     ui_interface=self.ui,
-                    yaml_type_name="model",
-                    yaml_suffix=".arc-model.yaml",
+                    yaml_type_name="experiment",
+                    yaml_suffix=".arc-experiment.yaml",
                 )
 
                 context_dict = {
                     "model_name": str(name),
                     "table_name": str(data_table),
+                    "train_table": str(train_table),
                     "target_column": target_column,
                 }
 
                 try:
-                    proceed, final_yaml = await workflow.run_workflow(
-                        model_yaml,
+                    proceed, final_unified_yaml = await workflow.run_workflow(
+                        unified_yaml,
                         context_dict,
                         None,  # No file path
                         conversation_history,  # Pass conversation history for editing
@@ -241,14 +258,23 @@ class MLModelTool(BaseTool):
                         if printer:
                             printer.print("")  # Empty line
                             printer.print(
-                                "[dim]✗ Model generation cancelled by user.[/dim]"
+                                "[dim]✗ Experiment cancelled by user.[/dim]"
                             )
                         return ToolResult(
                             success=True,
-                            output="✗ Model generation cancelled by user.",
+                            output="✗ Experiment cancelled by user.",
                             metadata={"cancelled": True},
                         )
-                    model_yaml = final_yaml
+
+                    # Re-parse the edited YAML
+                    full_spec = yaml.safe_load(final_unified_yaml)
+                    training_config = full_spec.pop("training", None)
+                    if not training_config:
+                        return _error_in_section(
+                            "Edited YAML missing 'training' section"
+                        )
+                    model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
+                    unified_yaml = final_unified_yaml
                 finally:
                     workflow.cleanup()
 
@@ -265,7 +291,7 @@ class MLModelTool(BaseTool):
             except Exception as exc:
                 return _error_in_section(f"Failed to save model to DB: {exc}")
 
-            # Display registration confirmation in the ML Model section
+            # Display registration confirmation
             if printer:
                 printer.print("")  # Empty line before confirmation
                 printer.print(
@@ -283,8 +309,104 @@ class MLModelTool(BaseTool):
                 "model_id": model_id,
                 "model_name": name,
                 "yaml_content": model_yaml,
+                "unified_yaml": unified_yaml,
                 "from_ml_plan": ml_plan is not None,
+                "training_launched": False,  # Will update if training launches
             }
+
+            # Create trainer spec and launch training
+            trainer_name = name  # Use same name for trainer
+            try:
+                # Build trainer YAML from training config + model reference
+                trainer_dict = {
+                    "model_ref": model_id,
+                    **training_config,
+                }
+                trainer_yaml = yaml.dump(trainer_dict, default_flow_style=False, sort_keys=False)
+
+                # Create trainer record in database
+                trainer_record = self.runtime.create_trainer(
+                    name=trainer_name,
+                    spec_yaml=trainer_yaml,
+                    plan_id=plan_id,
+                )
+                trainer_id = trainer_record.name
+
+                if printer:
+                    printer.print("")
+                    printer.print(f"[dim]✓ Trainer '{trainer_name}' created[/dim]")
+
+                result_metadata["trainer_id"] = trainer_id
+                result_metadata["trainer_yaml"] = trainer_yaml
+
+            except Exception as exc:
+                return _error_in_section(f"Failed to create trainer: {exc}")
+
+            # Launch training
+            if printer:
+                printer.print("")
+                printer.print(f"→ Launching training with trainer '{trainer_name}'...")
+
+            try:
+                job_id = await asyncio.to_thread(
+                    self.runtime.train_with_trainer,
+                    trainer_name=trainer_name,
+                    train_table=str(train_table),
+                )
+
+                lines.append("")
+                lines.append("✓ Training job submitted successfully.")
+                lines.append(f"Training table: {train_table}")
+                lines.append(f"Job ID: {job_id}")
+
+                # Show training success message
+                if printer:
+                    printer.print("")
+                    printer.print("[dim]✓ Training job submitted successfully.[/dim]")
+                    printer.print(f"[dim]Training table: {train_table}[/dim]")
+                    printer.print(f"[dim]Job ID: {job_id}[/dim]")
+
+                # Show job monitoring instructions
+                if printer:
+                    printer.print("")
+                    printer.print("[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]")
+                    printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
+                    printer.print(f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]")
+
+                result_metadata["training_launched"] = True
+                result_metadata["job_id"] = job_id
+
+                # Handle TensorBoard launch
+                if not auto_confirm and self.ui:
+                    if self.tensorboard_manager:
+                        try:
+                            self.tensorboard_manager.launch_for_job(job_id)
+                            if printer:
+                                printer.print("")
+                                printer.print("[dim][green]✓ TensorBoard launched[/green][/dim]")
+                        except Exception:
+                            if printer:
+                                printer.print("")
+                                printer.print(
+                                    "[dim]ℹ️  TensorBoard auto-launch not available[/dim]"
+                                )
+
+            except MLRuntimeError as exc:
+                # Training launch failed but model + trainer were created
+                if printer:
+                    printer.print("⚠ Training Validation Failed")
+                    printer.print("")
+                    printer.print(f"[red]{exc}[/red]")
+                    printer.print("")
+                    printer.print(f"[dim]Note: Model and trainer were registered successfully[/dim]")
+
+                lines.append("")
+                lines.append("⚠ Training Validation Failed")
+                lines.append("")
+                lines.append(f"{exc}")
+
+                result_metadata["training_launch_failed"] = True
+                result_metadata["training_error"] = str(exc)
 
             return ToolResult(
                 success=True,
