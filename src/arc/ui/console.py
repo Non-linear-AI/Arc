@@ -270,7 +270,6 @@ class InteractiveInterface:
             "update_todo_list": "Update Plan",
             "database_query": "SQL Query",
             "schema_discovery": "Schema Discovery",
-            "ml_train": "Train Model",
             "ml_predict": "Predict",
             "ml_evaluate": "Evaluate Model",
             "ml_model": "Model Generator",
@@ -307,7 +306,6 @@ class InteractiveInterface:
         elif tool_name in ["database_query", "schema_discovery"]:
             return "blue"  # Database/system operations
         elif tool_name in [
-            "ml_train",
             "ml_predict",
             "ml_evaluate",
             "ml_model",
@@ -330,7 +328,6 @@ class InteractiveInterface:
         # These tools print their output progressively within their own sections
         # and don't need console.py to create a duplicate section
         TOOLS_WITH_OWN_SECTIONS = {
-            "ml_train",  # MLTrainTool shows output in "ML Train" section
             "ml_model",  # MLModelTool shows output in "ML Model" section
             "ml_evaluate",  # MLEvaluateTool shows output in "ML Evaluator" section
             "ml_plan",  # MLPlanTool shows output in "ML Plan" section
