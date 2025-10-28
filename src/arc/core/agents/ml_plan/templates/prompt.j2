@@ -52,7 +52,7 @@ Your previous response had the following error:
 
 Please fix this error:
 1. Return valid YAML only (no markdown code fences like ```yaml)
-2. Include all required sections: feature_engineering, model_architecture_and_loss, training_and_validation
+2. Include all required sections: data_plan, model_plan
 3. Ensure proper YAML formatting with correct indentation
 {% endif %}
 
@@ -117,19 +117,15 @@ Your output must validate against this structure:
 ```json
 {
   "type": "object",
-  "required": ["feature_engineering", "model_architecture_and_loss", "training_and_validation"],
+  "required": ["data_plan", "model_plan"],
   "properties": {
-    "feature_engineering": {
+    "data_plan": {
       "type": "string",
-      "description": "Describe feature processing with specific techniques. Include scaling method (StandardScaler, MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, train/validation split strategy, and data leakage prevention measures."
+      "description": "Describe feature processing with specific techniques for the ml_data stage. Include scaling method (StandardScaler, MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, train/validation split strategy, and data leakage prevention measures."
     },
-    "model_architecture_and_loss": {
+    "model_plan": {
       "type": "string",
-      "description": "Describe the neural network architecture with exact layer specifications. Use bracket notation for the architecture flow [Input → Layer1 → Activation → Layer2 → ...]. Specify the loss function and explain why this architecture is appropriate. Include exact dimensions, activation functions, and regularization layers (BatchNorm, Dropout)."
-    },
-    "training_and_validation": {
-      "type": "string",
-      "description": "Describe the training setup with specific optimizer (Adam, SGD) and parameters (lr, betas, weight_decay), learning rate schedule if applicable (CosineAnnealingLR, StepLR), batch size, epoch count, early stopping patience on validation metrics, and gradient clipping if needed. Include which validation metrics to track (e.g., AUROC, F1, accuracy) for monitoring training progress."
+      "description": "UNIFIED guidance for ml_model stage (which now handles both architecture AND training). Describe: (1) Neural network architecture with exact layer specifications using bracket notation [Input → Layer1 → Activation → Layer2 → ...], loss function selection. (2) Training setup with specific optimizer (Adam, SGD), parameters (lr, weight_decay), batch size, epoch count, early stopping patience, validation metrics to track (AUROC, F1, accuracy). This single section guides the entire model training workflow."
     },
     "knowledge": {
       "type": "object",
@@ -190,15 +186,15 @@ knowledge:
 For a binary classification task with 768 samples, 8 numeric features, and 35% class imbalance:
 
 ```yaml
-feature_engineering: >-
+data_plan: >-
   Apply StandardScaler to all 8 numeric features (Pregnancies, Glucose, BloodPressure,
   SkinThickness, Insulin, BMI, DiabetesPedigreeFunction, Age). No missing values detected.
   Use 20% stratified validation split to maintain class balance. Fit scaler on training set
   only, then transform both train and validation to prevent data leakage. Random seed 42
   for reproducibility.
 
-model_architecture_and_loss: >-
-  3-layer MLP architecture for tabular binary classification: [Linear(8,128), BatchNorm1d(128),
+model_plan: >-
+  Architecture: 3-layer MLP for tabular binary classification: [Linear(8,128), BatchNorm1d(128),
   ReLU, Dropout(0.4), Linear(128,64), BatchNorm1d(64), ReLU, Dropout(0.3), Linear(64,32),
   BatchNorm1d(32), ReLU, Dropout(0.2), Linear(32,1)]. Use BCEWithLogitsLoss which combines
   sigmoid and binary cross-entropy for numerical stability. Architecture uses decreasing
@@ -206,20 +202,16 @@ model_architecture_and_loss: >-
   for training stability. Dropout rates decrease in deeper layers (0.4→0.3→0.2) to balance
   regularization. Final layer outputs logits (no activation) as required by BCEWithLogitsLoss.
 
-training_and_validation: >-
-  Adam optimizer with lr=0.001, betas=(0.9, 0.999), weight_decay=1e-4 for L2 regularization.
-  CosineAnnealingLR scheduler with T_max=100 to gradually reduce learning rate. Batch size 32
+  Training: Adam optimizer with lr=0.001, weight_decay=1e-4 for L2 regularization. Batch size 32
   balances gradient noise and memory (768 samples → 24 batches). Train for 100 epochs with
-  early stopping patience 15 on validation loss to prevent overfitting. Gradient clipping at
-  norm 1.0 to prevent exploding gradients. Track validation metrics: AUROC (primary), F1, accuracy,
-  precision, and recall for monitoring progress. AUROC chosen as primary metric because it evaluates
-  model calibration across all thresholds, critical for imbalanced classification (65/35 split).
+  early stopping patience 15 on validation loss to prevent overfitting. Track validation metrics:
+  AUROC (primary), F1, accuracy, precision, and recall. AUROC chosen as primary metric because
+  it evaluates model calibration across all thresholds, critical for imbalanced classification.
 
 knowledge:
   data: []
   model:
     - mlp
-  training: []
 ```
 
 **Output instructions:**
