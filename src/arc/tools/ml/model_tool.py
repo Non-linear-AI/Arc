@@ -207,24 +207,24 @@ class MLModelTool(BaseTool):
                     f"Unexpected error during model generation: {exc}"
                 )
 
-            # Parse unified YAML to extract model, loss, and training sections
+            # Parse unified YAML to extract model and training sections
             try:
                 full_spec = yaml.safe_load(unified_yaml)
 
-                # Extract loss config (moved to training section)
-                loss_config = full_spec.pop("loss", None)
-                if not loss_config:
-                    return _error_in_section(
-                        "Generated YAML missing required 'loss' section. "
-                        "The unified specification must include loss function."
-                    )
-
-                # Extract training config
+                # Extract training config (which contains loss)
                 training_config = full_spec.pop("training", None)
                 if not training_config:
                     return _error_in_section(
                         "Generated YAML missing required 'training' section. "
                         "The unified specification must include both model and training config."
+                    )
+
+                # Extract loss from within training
+                loss_config = training_config.pop("loss", None)
+                if not loss_config:
+                    return _error_in_section(
+                        "Generated YAML missing required 'training.loss' section. "
+                        "The training configuration must include a loss function."
                     )
 
                 # Validate model portion (without loss - loss now goes to trainer)
@@ -283,14 +283,14 @@ class MLModelTool(BaseTool):
 
                     # Re-parse the edited YAML
                     full_spec = yaml.safe_load(final_unified_yaml)
-                    loss_config = full_spec.pop("loss", None)
-                    if not loss_config:
-                        return _error_in_section("Edited YAML missing 'loss' section")
                     training_config = full_spec.pop("training", None)
                     if not training_config:
                         return _error_in_section(
                             "Edited YAML missing 'training' section"
                         )
+                    loss_config = training_config.pop("loss", None)
+                    if not loss_config:
+                        return _error_in_section("Edited YAML missing 'training.loss' section")
                     model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
                     unified_yaml = final_unified_yaml
                 finally:

@@ -88,18 +88,18 @@ Your output must validate against this Arc-Graph schema:
         }
       }
     },
-    "loss": {
-      "type": "object",
-      "properties": {
-        "type": { "type": "string" },
-        "inputs": { "type": "object" },
-        "params": { "type": "object" }
-      },
-      "required": ["type"]
-    },
     "training": {
       "type": "object",
       "properties": {
+        "loss": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "inputs": { "type": "object" },
+            "params": { "type": "object" }
+          },
+          "required": ["type"]
+        },
         "optimizer": {
           "type": "object",
           "properties": {
@@ -116,20 +116,20 @@ Your output must validate against this Arc-Graph schema:
         "metrics": { "type": "array", "items": { "type": "string" } },
         "device": { "type": "string", "enum": ["auto", "cpu", "cuda", "mps"] }
       },
-      "required": ["optimizer", "epochs", "batch_size"]
+      "required": ["loss", "optimizer", "epochs", "batch_size"]
     }
   },
-  "required": ["inputs", "graph", "outputs", "loss", "training"]
+  "required": ["inputs", "graph", "outputs", "training"]
 }
 ```
 
-**Note**: The schema above includes both `loss` and `training` sections. Loss defines the loss function used during training. Training defines optimizer and hyperparameters.
+**Note**: The schema above includes a `training` section that contains both `loss` and `optimizer`. Loss defines the loss function used during training, and optimizer defines the optimization algorithm and hyperparameters.
 
 **IMPORTANT ARCHITECTURAL NOTE**:
-- **Loss is separate from model architecture** to maintain clear separation of concerns
+- **Loss is part of training configuration** to maintain clear separation of concerns
 - **Model YAML** (stored in database): Contains only inputs, graph, outputs (pure architecture)
 - **Trainer YAML** (stored in database): Contains model_ref, loss, optimizer, and training config
-- **Unified YAML** (for generation): Contains all sections together for a complete specification
+- **Unified YAML** (for generation): Contains all sections together with loss nested inside training
 
 This structure allows the same model architecture to be trained with different loss functions and training configurations.
 
@@ -224,14 +224,20 @@ outputs:
 
 ### **Loss Function Design**
 
-Define the loss function for training{% if data_profile.target_analysis %} based on the target column analysis{% endif %}:
+Define the loss function for training{% if data_profile.target_analysis %} based on the target column analysis{% endif %} as part of the training configuration:
 
 ```yaml
-loss:
-  type: torch.nn.functional.binary_cross_entropy_with_logits  # Loss function type
-  inputs:
-    input: prediction                     # Must reference an output field name
-    target: target                        # Target column name from dataset
+training:
+  loss:
+    type: torch.nn.functional.binary_cross_entropy_with_logits  # Loss function type
+    inputs:
+      input: prediction                   # Must reference an output field name
+      target: target                      # Target column name from dataset
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 32
 ```
 
 **Common Loss Functions**:
@@ -283,11 +289,17 @@ outputs:
   logits: output_layer.output           # For training loss
   probabilities: probabilities.output   # For evaluation (REQUIRED!)
 
-loss:
-  type: torch.nn.BCEWithLogitsLoss
-  inputs:
-    input: logits                       # Use logits, not probabilities
-    target: target_column_name
+training:
+  loss:
+    type: torch.nn.BCEWithLogitsLoss
+    inputs:
+      input: logits                     # Use logits, not probabilities
+      target: target_column_name
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 32
 ```
 
 **Why This Matters**: Evaluation metrics (accuracy, precision, recall, F1) require probabilities in [0, 1] range. If you forget the sigmoid transformation, evaluation will fail or produce incorrect results.
@@ -321,11 +333,17 @@ outputs:
   logits: output_layer.output           # For training loss
   probabilities: probabilities.output   # For evaluation (REQUIRED!)
 
-loss:
-  type: torch.nn.CrossEntropyLoss
-  inputs:
-    input: logits                       # Use logits, not probabilities
-    target: target_column_name
+training:
+  loss:
+    type: torch.nn.CrossEntropyLoss
+    inputs:
+      input: logits                     # Use logits, not probabilities
+      target: target_column_name
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 32
 ```
 
 **Why This Matters**: Multi-class evaluation metrics require class probabilities that sum to 1. The softmax transformation ensures this property.
@@ -414,9 +432,9 @@ You have access to the following tools for exploration when needed:
 1. **Schema Compliance**: Valid Arc-Graph unified YAML structure (model + training)
 2. **Node Names**: Use descriptive names appropriate for the task
 3. **Input Specification**: Use EXACT column names from available columns (see Input Design section)
-4. **Complete Structure**: inputs → graph → outputs → loss → training (all sections required)
-5. **Loss Function**: {% if data_profile.target_analysis %}Include appropriate loss based on target analysis ({{ data_profile.target_analysis.unique_values }} unique values){% else %}Include appropriate loss function for the task{% endif %}
-6. **Training Configuration**: Include optimizer, epochs, batch_size, validation_split, and metrics
+4. **Complete Structure**: inputs → graph → outputs → training (all sections required, with loss nested inside training)
+5. **Loss Function**: {% if data_profile.target_analysis %}Include appropriate loss based on target analysis ({{ data_profile.target_analysis.unique_values }} unique values) inside training section{% else %}Include appropriate loss function for the task inside training section{% endif %}
+6. **Training Configuration**: Include loss, optimizer, epochs, batch_size, validation_split, and metrics within training section
 7. **Follow Guidance**: If architecture/training guidance is provided above, follow those best practices
 8. **Unified Workflow**: This tool now generates BOTH model architecture AND training config in a single YAML
 
@@ -449,13 +467,12 @@ graph:
 outputs:
   logits: output.output
 
-loss:
-  type: torch.nn.BCEWithLogitsLoss
-  inputs:
-    input: logits
-    target: outcome
-
 training:
+  loss:
+    type: torch.nn.BCEWithLogitsLoss
+    inputs:
+      input: logits
+      target: outcome
   optimizer:
     type: torch.optim.Adam
     lr: 0.001
