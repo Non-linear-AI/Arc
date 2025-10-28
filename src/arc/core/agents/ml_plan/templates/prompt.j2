@@ -138,17 +138,12 @@ Your output must validate against this structure:
         "data": {
           "type": "array",
           "items": {"type": "string"},
-          "description": "Knowledge IDs for feature engineering stage"
+          "description": "Knowledge IDs for data processing stage"
         },
         "model": {
           "type": "array",
           "items": {"type": "string"},
-          "description": "Knowledge IDs for model architecture stage"
-        },
-        "training": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Knowledge IDs for training stage"
+          "description": "Knowledge IDs for model architecture + training stage (unified)"
         }
       }
     }
@@ -188,7 +183,7 @@ knowledge:
     - optimizer_guide
 ```
 
-**knowledge** (optional): Stage-specific knowledge recommendations. Map each workflow stage (data, model, training) to relevant knowledge IDs. Only include knowledge you actually read and found useful for each stage.
+**knowledge** (optional): Stage-specific knowledge recommendations. Map each workflow stage (data, model) to relevant knowledge IDs. Only include knowledge you actually read and found useful for each stage. Note: "model" stage now includes both architecture and training knowledge since they are unified.
 
 ## Example Output
 

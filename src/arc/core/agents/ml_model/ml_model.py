@@ -57,27 +57,27 @@ class MLModelAgent(BaseAgent):
         target_column: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
-        ml_plan_architecture: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
+        model_plan: str | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
-        """Generate Arc model specification based on data and user context.
+        """Generate unified model + training specification.
 
         Args:
             name: Model name for the specification
-            user_context: User description of desired model
+            user_context: User description of desired model and training
             table_name: Database table name for data exploration
             target_column: Optional target column name for task-aware generation
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
-            ml_plan_architecture: Optional ML plan architecture guidance
-            recommended_knowledge_ids: Optional list of knowledge IDs (deprecated)
+            model_plan: Optional ML plan guidance (architecture + training unified)
             preloaded_knowledge: Optional list of preloaded knowledge docs
             conversation_history: Optional conversation history for editing workflow
 
         Returns:
-            Tuple of (parsed ModelSpec object, YAML string, conversation_history)
+            Tuple of (parsed ModelSpec object, unified YAML string, conversation_history)
+            Note: The YAML includes both model and training sections, but only ModelSpec
+            is returned for backward compatibility. Training config extracted separately by tool.
 
         Raises:
             MLModelError: If generation fails
@@ -92,8 +92,7 @@ class MLModelAgent(BaseAgent):
                 target_column=target_column,
                 existing_yaml=existing_yaml,
                 editing_instructions=editing_instructions,
-                ml_plan_architecture=ml_plan_architecture,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                model_plan=model_plan,
                 preloaded_knowledge=preloaded_knowledge,
             )
         else:
@@ -111,8 +110,7 @@ class MLModelAgent(BaseAgent):
         target_column: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
-        ml_plan_architecture: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
+        model_plan: str | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
@@ -157,7 +155,7 @@ class MLModelAgent(BaseAgent):
                 "user_intent": user_context,
                 "data_profile": data_profile,
                 "available_components": self._get_model_components(),
-                "ml_plan_architecture": ml_plan_architecture,
+                "model_plan": model_plan,
                 "preloaded_knowledge": preloaded_knowledge,
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,

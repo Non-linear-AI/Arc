@@ -23,15 +23,15 @@ Generate an Arc-Graph specification for:
 - **Available Columns**: {{ (data_profile.feature_columns | map(attribute='name') | list) | join(", ") }} ({{ data_profile.feature_count }} total){% if data_profile.target_analysis %}
 - **Target Column**: {{ data_profile.target_analysis.column_name }} ({{ data_profile.target_analysis.data_type }}{% if data_profile.target_analysis.is_numeric %}, numeric, {{ data_profile.target_analysis.unique_values }} unique values{% else %}, categorical, sample values: {{ data_profile.target_analysis.sample_values | join(", ") }}{% endif %}){% endif %}
 {% endif %}
-{% if ml_plan_architecture %}
+{% if model_plan %}
 
-## ML PLAN ARCHITECTURE GUIDANCE
+## ML PLAN GUIDANCE
 
-The following architecture and loss function design was recommended by the ML Plan tool after analyzing the data characteristics and task requirements:
+The ML Plan tool has analyzed the data characteristics and task requirements and provides the following unified guidance for model architecture and training:
 
-{{ ml_plan_architecture }}
+{{ model_plan }}
 
-**CRITICAL**: This guidance from the ML Plan represents a carefully considered design. Follow this architecture closely when generating the Arc-Graph specification.
+**CRITICAL**: This guidance from the ML Plan represents a carefully considered design. Follow both the architecture AND training recommendations when generating the unified specification.
 {% endif %}
 
 ## Arc-Graph Schema Validation
@@ -96,11 +96,34 @@ Your output must validate against this Arc-Graph schema:
         "params": { "type": "object" }
       },
       "required": ["type"]
+    },
+    "training": {
+      "type": "object",
+      "properties": {
+        "optimizer": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "pattern": "^torch\\.optim\\.[A-Z][a-zA-Z0-9]*$" },
+            "lr": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+            "params": { "type": "object" }
+          },
+          "required": ["type", "lr"]
+        },
+        "epochs": { "type": "integer", "minimum": 1 },
+        "batch_size": { "type": "integer", "minimum": 1 },
+        "validation_split": { "type": "number", "minimum": 0, "maximum": 1, "exclusiveMaximum": true },
+        "early_stopping_patience": { "type": "integer", "minimum": 1 },
+        "metrics": { "type": "array", "items": { "type": "string" } },
+        "device": { "type": "string", "enum": ["auto", "cpu", "cuda", "mps"] }
+      },
+      "required": ["optimizer", "epochs", "batch_size"]
     }
   },
-  "required": ["inputs", "graph", "outputs", "loss"]
+  "required": ["inputs", "graph", "outputs", "loss", "training"]
 }
 ```
+
+**Note**: The schema above now includes a `training` section for training configuration. This unified format combines model architecture with training hyperparameters.
 
 ## Arc-Graph Foundation
 
@@ -305,6 +328,48 @@ loss:
 - **NLLLoss training**: LogSoftmax activation required (operates on log-probabilities)
 - **Value range constraints**: Tanh (-1 to 1) or Sigmoid (0 to 1) for specific output ranges
 
+### **Training Configuration Design**
+
+The unified specification now includes a `training:` section with optimizer and hyperparameters.
+
+**Optimizer Selection**:
+- **torch.optim.Adam** - Good default, adaptive learning rate (recommended starting point)
+- **torch.optim.AdamW** - Adam with weight decay, better regularization for large models
+- **torch.optim.SGD** - Simple optimizer, add momentum=0.9 for better convergence
+
+**Learning Rate Guidelines**:
+- Small models (< 1M params): 0.001 - 0.01
+- Medium models (1M-10M params): 0.0001 - 0.001
+- Add weight_decay (1e-5 to 1e-4) for regularization
+
+**Batch Size Selection**:
+- Small datasets (< 1000 samples): 16-32
+- Medium datasets (1K-100K): 32-128
+- Large datasets (> 100K): 128-512
+- Consider GPU memory constraints
+
+**Training Duration**:
+- Start with 50-100 epochs for small datasets
+- Use early_stopping_patience (10-20 epochs) to prevent overfitting
+- Monitor validation loss to determine if more epochs needed
+
+**Validation Split**:
+- Typical: 0.2 (20% of data for validation)
+- Small datasets: 0.15-0.25
+- Large datasets: 0.1-0.2
+
+**Metrics Selection**:
+- Binary classification: [accuracy, auroc, f1, precision, recall]
+- Multi-class: [accuracy, f1]
+- Regression: [mse, mae, r2]
+
+**CRITICAL Training Configuration Requirements**:
+1. `validation_split` MUST be a decimal (0.2 not 20, not a column name)
+2. `epochs` and `batch_size` MUST be integers (positive numbers)
+3. `lr` (learning rate) MUST be a positive float
+4. Include `early_stopping_patience` to prevent overfitting
+5. Include `metrics` array appropriate for the task type
+
 {% if preloaded_knowledge -%}
 ## Recommended Knowledge
 
@@ -338,12 +403,14 @@ You have access to the following tools for exploration when needed:
 **Tool Usage Guidance**: The recommended knowledge above should be sufficient for most cases. Only use these tools if you genuinely need additional information that isn't provided in the system message. **IMPORTANT**: Tool results remain in your conversation context - once you've read a knowledge document, don't re-read it; reference the previous result.
 
 ## Requirements
-1. **Schema Compliance**: Valid Arc-Graph YAML structure
+1. **Schema Compliance**: Valid Arc-Graph unified YAML structure (model + training)
 2. **Node Names**: Use descriptive names appropriate for the task
 3. **Input Specification**: Use EXACT column names from available columns (see Input Design section)
-4. **Complete Structure**: inputs → graph → outputs → loss (loss section required)
+4. **Complete Structure**: inputs → graph → outputs → loss → training (all sections required)
 5. **Loss Function**: {% if data_profile.target_analysis %}Include appropriate loss based on target analysis ({{ data_profile.target_analysis.unique_values }} unique values){% else %}Include appropriate loss function for the task{% endif %}
-6. **Follow Guidance**: If architecture guidance is provided above, follow those best practices
+6. **Training Configuration**: Include optimizer, epochs, batch_size, validation_split, and metrics
+7. **Follow Guidance**: If architecture/training guidance is provided above, follow those best practices
+8. **Unified Workflow**: This tool now generates BOTH model architecture AND training config in a single YAML
 
 ## Output Format
 
@@ -364,7 +431,34 @@ inputs:
 graph:
   - name: layer1
     type: torch.nn.Linear
-    ...
+    params: {in_features: 8, out_features: 16}
+    inputs: {input: features}
+  - name: output
+    type: torch.nn.Linear
+    params: {in_features: 16, out_features: 1}
+    inputs: {input: layer1.output}
+
+outputs:
+  logits: output.output
+
+loss:
+  type: torch.nn.BCEWithLogitsLoss
+  inputs:
+    input: logits
+    target: outcome
+
+training:
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+    params:
+      weight_decay: 1e-5
+  epochs: 50
+  batch_size: 32
+  validation_split: 0.2
+  early_stopping_patience: 10
+  metrics: [accuracy, auroc, f1]
+  device: auto
 ```
 
 **INCORRECT** response formats:

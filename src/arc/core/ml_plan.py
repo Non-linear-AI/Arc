@@ -15,16 +15,15 @@ class MLPlan:
     based on training results, evaluation metrics, or user feedback.
     """
 
-    # Core plan content - Technical Decisions only
+    # Core plan content - Separated by workflow stage
     name: str
-    feature_engineering: str
-    model_architecture_and_loss: str
-    training_and_validation: str  # Renamed from training_configuration
+    data_plan: str  # Feature engineering guidance for ml_data
+    model_plan: str  # Model architecture + training guidance for ml_model (unified)
 
     # Stage-specific knowledge recommendations
     # Maps workflow stage to list of knowledge IDs to preload for that stage
     knowledge: dict[str, list[str]] = field(default_factory=dict)
-    # Example: {"data": ["feature_eng"], "model": ["mlp"], "training": ["optimizer_guide"]}
+    # Example: {"data": ["feature_eng"], "model": ["mlp", "adam_optimizer"]}
 
     # Metadata
     version: int = 1
@@ -53,9 +52,8 @@ class MLPlan:
         """
         return cls(
             name=analysis.get("name", ""),
-            feature_engineering=analysis.get("feature_engineering", ""),
-            model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
-            training_and_validation=analysis.get("training_and_validation", ""),
+            data_plan=analysis.get("data_plan", ""),
+            model_plan=analysis.get("model_plan", ""),
             knowledge=analysis.get("knowledge", {}),
             version=version,
             stage=stage,
@@ -66,9 +64,8 @@ class MLPlan:
         """Convert to dictionary for serialization."""
         return {
             "name": self.name,
-            "feature_engineering": self.feature_engineering,
-            "model_architecture_and_loss": self.model_architecture_and_loss,
-            "training_and_validation": self.training_and_validation,
+            "data_plan": self.data_plan,
+            "model_plan": self.model_plan,
             "knowledge": self.knowledge,
             "version": self.version,
             "stage": self.stage,
@@ -85,9 +82,8 @@ class MLPlan:
 
         return cls(
             name=data["name"],
-            feature_engineering=data["feature_engineering"],
-            model_architecture_and_loss=data["model_architecture_and_loss"],
-            training_and_validation=data["training_and_validation"],
+            data_plan=data["data_plan"],
+            model_plan=data["model_plan"],
             knowledge=data.get("knowledge", {}),
             version=data.get("version", 1),
             stage=data.get("stage", "initial"),
@@ -96,16 +92,14 @@ class MLPlan:
         )
 
     def to_generation_context(self) -> dict[str, Any]:
-        """Convert to context dict for model generation.
+        """Convert to context dict for generation tools.
 
-        This is the format expected by MLModelSpecGeneratorTool's
-        analysis_result parameter.
+        Returns the plan content split by workflow stage.
         """
         return {
             "name": self.name,
-            "feature_engineering": self.feature_engineering,
-            "model_architecture_and_loss": self.model_architecture_and_loss,
-            "training_and_validation": self.training_and_validation,
+            "data_plan": self.data_plan,
+            "model_plan": self.model_plan,
         }
 
     def format_for_display(self) -> str:
@@ -121,14 +115,11 @@ class MLPlan:
             [
                 f"**Plan** {self.name}",
                 "",
-                "**Feature Engineering**",
-                self.feature_engineering,
+                "**Data Plan (Feature Engineering)**",
+                self.data_plan,
                 "",
-                "**Model Architecture & Loss**",
-                self.model_architecture_and_loss,
-                "",
-                "**Training & Validation**",
-                self.training_and_validation,
+                "**Model Plan (Architecture + Training)**",
+                self.model_plan,
             ]
         )
 
@@ -137,7 +128,7 @@ class MLPlan:
             lines.append("")
             lines.append("**Knowledge Recommendations**")
             # Show stage-specific knowledge in a readable format
-            for stage in ["data", "model", "training"]:
+            for stage in ["data", "model"]:
                 knowledge_ids = self.knowledge.get(stage, [])
                 if knowledge_ids:
                     knowledge_str = ", ".join(knowledge_ids)
