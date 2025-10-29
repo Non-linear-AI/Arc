@@ -221,34 +221,26 @@ class InteractiveInterface:
             ml_commands = [
                 (
                     "/ml plan --name NAME --instruction DESC --source-tables TABLES",
-                    "Create ML workflow plan (feature engineering, architecture, "
-                    "training, evaluation)",
+                    "Create ML workflow plan (data processing + model + training)",
                 ),
                 (
                     "/ml revise-plan --instruction CHANGES [--name NAME]",
                     "Revise the current ML plan based on feedback or training results",
                 ),
                 (
-                    "/ml model --name NAME [--context DESC] "
-                    "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
-                    "Generate an Arc-Graph model specification "
-                    "(--context optional with --plan-id)",
+                    "/ml data --name NAME --instruction INST --source-tables TABLES",
+                    "Generate data processing pipeline from natural language",
                 ),
                 (
-                    "/ml train --name NAME --model-id ID --data TABLE "
-                    "--instruction DESC",
-                    "Generate trainer specification and launch training",
+                    "/ml model --name NAME --instruction DESC "
+                    "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
+                    "Generate model + trainer and launch training",
                 ),
                 (
                     "/ml evaluate --name NAME --instruction DESC "
                     "--trainer-id TRAINER_ID --data-table TABLE",
                     "Generate evaluator and run model evaluation",
                 ),
-                (
-                    "/ml data --name NAME --instruction INST --data-tables TABLES",
-                    "Generate data processing pipeline from natural language",
-                ),
-                ("/ml train --model NAME --data TABLE", "Launch a training job"),
                 (
                     "/ml predict --model NAME --data TABLE --output TABLE",
                     "Run inference and save predictions",

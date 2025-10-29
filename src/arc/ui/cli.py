@@ -261,7 +261,7 @@ async def handle_ml_command(
 
     if len(tokens) < 2:
         ui.show_system_error(
-            "Usage: /ml <plan|revise-plan|train|predict|jobs|model|evaluate|data> ..."
+            "Usage: /ml <plan|revise-plan|data|model|evaluate|predict|jobs> ..."
         )
         return
 
