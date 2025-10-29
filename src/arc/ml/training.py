@@ -21,6 +21,32 @@ from torch.utils.data import DataLoader
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_optimizer_params(params: dict) -> dict:
+    """Convert optimizer parameters to proper numeric types.
+
+    YAML 1.1 parses scientific notation like '1e-5' as strings.
+    This function converts string parameters to floats where appropriate.
+
+    Args:
+        params: Dictionary of optimizer parameters (may contain strings)
+
+    Returns:
+        Dictionary with numeric values properly converted
+    """
+    sanitized = {}
+    for key, value in params.items():
+        if isinstance(value, str):
+            try:
+                # Try to convert string to float (handles scientific notation)
+                sanitized[key] = float(value)
+            except (ValueError, TypeError):
+                # Not a numeric string, keep as is
+                sanitized[key] = value
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
 def _get_optimizer(
     optimizer_type: str,
     parameters,
@@ -38,6 +64,9 @@ def _get_optimizer(
     Returns:
         PyTorch optimizer instance
     """
+    # Sanitize parameters to handle YAML string-to-float conversion issues
+    kwargs = _sanitize_optimizer_params(kwargs)
+
     optimizer_type = optimizer_type.lower()
 
     if optimizer_type == "adam":
