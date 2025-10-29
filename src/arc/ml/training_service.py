@@ -981,6 +981,17 @@ class TrainingService:
                 f"Checkpoint directory set to: {checkpoint_dir} for job {job_id}"
             )
 
+            # Get TensorBoard log directory from tracking service
+            tensorboard_log_dir = None
+            if self.tracking_service:
+                try:
+                    run = self.tracking_service.get_run_by_job_id(job_id)
+                    if run and run.tensorboard_enabled and run.tensorboard_log_dir:
+                        tensorboard_log_dir = Path(run.tensorboard_log_dir)
+                        logger.info(f"TensorBoard logging directory: {tensorboard_log_dir}")
+                except Exception as e:
+                    logger.warning(f"Failed to get TensorBoard log directory: {e}")
+
             # Run training
             logger.info(f"Starting model training for job {job_id}")
             result, optimizer = train_model(
@@ -991,6 +1002,7 @@ class TrainingService:
                 callback=progress_callback,
                 checkpoint_dir=checkpoint_dir,
                 stop_event=cancel_event,
+                tensorboard_log_dir=tensorboard_log_dir,
             )
             logger.info(
                 f"Training completed for job {job_id}, success: {result.success}"

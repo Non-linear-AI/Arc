@@ -210,6 +210,7 @@ def train_model(
     callback: ProgressCallback | None = None,
     checkpoint_dir: Path | None = None,
     stop_event: Event | None = None,
+    tensorboard_log_dir: Path | None = None,
 ) -> tuple[TrainingResult, torch.optim.Optimizer]:
     """Execute training loop for a model.
 
@@ -221,6 +222,7 @@ def train_model(
         callback: Optional progress callback
         checkpoint_dir: Optional directory for saving checkpoints
         stop_event: Optional event to signal training cancellation
+        tensorboard_log_dir: Optional directory for TensorBoard logging
 
     Returns:
         Tuple of (training result, optimizer instance)
@@ -232,6 +234,42 @@ def train_model(
     device = _normalize_device(device_str)
     epochs = getattr(training_config, "epochs", 10)
     learning_rate = getattr(training_config, "learning_rate", 0.001)
+
+    # Initialize TensorBoard writer if logging is enabled
+    tensorboard_writer = None
+    if tensorboard_log_dir:
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+            tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
+            tensorboard_writer = SummaryWriter(log_dir=str(tensorboard_log_dir))
+            logger.info(f"TensorBoard logging enabled: {tensorboard_log_dir}")
+        except ImportError:
+            logger.warning("TensorBoard not available. Install with: pip install tensorboard")
+        except Exception as e:
+            logger.warning(f"Failed to initialize TensorBoard: {e}")
+
+    # Initialize metrics tracker if validation data is provided
+    metrics_tracker = None
+    if val_loader:
+        try:
+            from arc.ml.metrics import create_metrics_for_task
+
+            # Infer task type from training config or loss function
+            loss_fn_name = getattr(training_config, "loss_function", "mse").lower()
+            if "mse" in loss_fn_name or "mae" in loss_fn_name or "l1" in loss_fn_name:
+                task_type = "regression"
+            elif "cross_entropy" in loss_fn_name or "nll" in loss_fn_name:
+                task_type = "classification"
+            elif "bce" in loss_fn_name:
+                task_type = "binary_classification"
+            else:
+                # Default to classification for unknown loss functions
+                task_type = "classification"
+
+            metrics_tracker = create_metrics_for_task(task_type)
+            logger.info(f"Initialized metrics tracker for {task_type} task")
+        except Exception as e:
+            logger.warning(f"Failed to initialize metrics tracker: {e}")
 
     # Move model to device
     model = model.to(device)
@@ -256,6 +294,7 @@ def train_model(
     val_losses = []
     best_val_loss = float("inf")
     best_epoch = 0
+    global_step = 0  # Track global step for TensorBoard logging
 
     # Early stopping
     early_stopping_patience = getattr(training_config, "early_stopping_patience", None)
@@ -357,6 +396,14 @@ def train_model(
                 # Track loss
                 batch_loss = loss.item()
                 epoch_train_loss += batch_loss
+                global_step += 1
+
+                # Log to TensorBoard
+                if tensorboard_writer and global_step % 10 == 0:  # Log every 10 steps
+                    tensorboard_writer.add_scalar("train/batch_loss", batch_loss, global_step)
+                    # Log learning rate
+                    current_lr = optimizer.param_groups[0]["lr"]
+                    tensorboard_writer.add_scalar("train/learning_rate", current_lr, global_step)
 
                 # Notify batch end
                 if callback:
@@ -368,10 +415,15 @@ def train_model(
 
             # Validation
             avg_val_loss = None
+            val_metrics = {}
             if val_loader:
                 model.eval()
                 epoch_val_loss = 0.0
                 num_val_batches = len(val_loader)
+
+                # Collect all predictions and targets for metrics computation
+                all_predictions = []
+                all_targets = []
 
                 with torch.no_grad():
                     for batch in val_loader:
@@ -403,8 +455,89 @@ def train_model(
                         loss = loss_fn(outputs, targets)
                         epoch_val_loss += loss.item()
 
+                        # Collect predictions and targets for metrics
+                        if metrics_tracker:
+                            all_predictions.append(outputs.cpu())
+                            all_targets.append(targets.cpu())
+
                 avg_val_loss = epoch_val_loss / num_val_batches
                 val_losses.append(avg_val_loss)
+
+                # Compute validation metrics
+                if metrics_tracker and all_predictions:
+                    try:
+                        all_predictions_tensor = torch.cat(all_predictions, dim=0)
+                        all_targets_tensor = torch.cat(all_targets, dim=0)
+
+                        # Compute metrics
+                        metrics_results = metrics_tracker.compute_metrics(
+                            all_predictions_tensor, all_targets_tensor
+                        )
+
+                        # Extract metric values
+                        for metric_name, metric_result in metrics_results.items():
+                            val_metrics[metric_name] = metric_result.value
+
+                        # Log visualizations to TensorBoard for classification tasks
+                        if tensorboard_writer and "accuracy" in val_metrics:
+                            try:
+                                from arc.ml.visualization import TensorBoardVisualizer
+
+                                viz = TensorBoardVisualizer(tensorboard_writer)
+
+                                # Get probabilities for binary classification
+                                if all_predictions_tensor.shape[-1] == 2:
+                                    # Softmax output
+                                    probs = torch.softmax(all_predictions_tensor, dim=1)[:, 1]
+                                elif all_predictions_tensor.shape[-1] == 1:
+                                    # Sigmoid output
+                                    probs = torch.sigmoid(all_predictions_tensor.squeeze())
+                                else:
+                                    probs = None
+
+                                # Log PR curve for binary classification
+                                if probs is not None and len(torch.unique(all_targets_tensor)) == 2:
+                                    viz.log_pr_curve(
+                                        all_targets_tensor,
+                                        probs,
+                                        tag="validation/pr_curve",
+                                        step=epoch,
+                                    )
+                                    viz.log_roc_curve(
+                                        all_targets_tensor,
+                                        probs,
+                                        tag="validation/roc",
+                                        step=epoch,
+                                    )
+
+                                # Log confusion matrix
+                                if all_predictions_tensor.shape[-1] > 1:
+                                    predictions_class = torch.argmax(
+                                        all_predictions_tensor, dim=1
+                                    )
+                                else:
+                                    predictions_class = (probs > 0.5).long()
+
+                                viz.log_confusion_matrix(
+                                    all_targets_tensor,
+                                    predictions_class,
+                                    tag="validation/confusion_matrix",
+                                    step=epoch,
+                                )
+
+                                # Log per-class performance
+                                viz.log_class_performance(
+                                    all_targets_tensor,
+                                    predictions_class,
+                                    tag="validation/class_performance",
+                                    step=epoch,
+                                )
+
+                            except Exception as e:
+                                logger.warning(f"Failed to log visualizations: {e}")
+
+                    except Exception as e:
+                        logger.warning(f"Failed to compute validation metrics: {e}")
 
                 # Track best model
                 if avg_val_loss < best_val_loss:
@@ -434,6 +567,22 @@ def train_model(
             if avg_val_loss is not None:
                 metrics["val_loss"] = avg_val_loss
 
+            # Add validation metrics
+            for metric_name, metric_value in val_metrics.items():
+                metrics[f"val_{metric_name}"] = metric_value
+
+            # Log epoch metrics to TensorBoard
+            if tensorboard_writer:
+                tensorboard_writer.add_scalar("epoch/train_loss", avg_train_loss, epoch)
+                if avg_val_loss is not None:
+                    tensorboard_writer.add_scalar("epoch/val_loss", avg_val_loss, epoch)
+
+                # Log validation metrics
+                for metric_name, metric_value in val_metrics.items():
+                    tensorboard_writer.add_scalar(
+                        f"epoch/val_{metric_name}", metric_value, epoch
+                    )
+
             # Notify epoch end
             if callback:
                 callback.on_epoch_end(epoch, metrics)
@@ -458,6 +607,14 @@ def train_model(
         if callback:
             callback.on_training_end(final_metrics)
 
+        # Close TensorBoard writer
+        if tensorboard_writer:
+            try:
+                tensorboard_writer.close()
+                logger.info("TensorBoard writer closed")
+            except Exception as e:
+                logger.warning(f"Failed to close TensorBoard writer: {e}")
+
         result = TrainingResult(
             success=True,
             train_losses=train_losses,
@@ -477,6 +634,13 @@ def train_model(
 
         if callback:
             callback.on_training_end({})
+
+        # Close TensorBoard writer
+        if tensorboard_writer:
+            try:
+                tensorboard_writer.close()
+            except Exception:
+                pass  # Ignore errors during cleanup
 
         result = TrainingResult(
             success=False,

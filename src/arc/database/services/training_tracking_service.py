@@ -80,9 +80,9 @@ class TrainingTrackingService(BaseService):
                 run_name, description,
                 tensorboard_enabled, tensorboard_log_dir,
                 metric_log_frequency, checkpoint_frequency,
-                status, training_config, original_config, current_config,
+                status, training_config,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
 
             params = [
@@ -96,9 +96,7 @@ class TrainingTrackingService(BaseService):
                 metric_log_frequency,
                 checkpoint_frequency,
                 TrainingStatus.PENDING.value,
-                config_json,  # training_config (new column)
-                config_json,  # original_config
-                config_json,  # current_config
+                config_json,  # training_config
                 now,
                 now,
             ]
@@ -123,9 +121,6 @@ class TrainingTrackingService(BaseService):
                 artifact_path=None,
                 final_metrics=None,
                 training_config=config_json,
-                original_config=config_json,
-                current_config=config_json,
-                config_history=None,
                 created_at=now,
                 updated_at=now,
             )
@@ -297,49 +292,6 @@ class TrainingTrackingService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to update run artifact {run_id}: {e}") from e
 
-    def update_run_config(self, run_id: str, new_config: dict[str, Any]) -> None:
-        """Update training run configuration and add to history.
-
-        Args:
-            run_id: Training run ID
-            new_config: New configuration dictionary
-
-        Raises:
-            DatabaseError: If update fails
-        """
-        try:
-            # Get current run to access config history
-            run = self.get_run_by_id(run_id)
-            if not run:
-                raise DatabaseError(f"Run {run_id} not found")
-
-            # Build config history
-            history = []
-            if run.config_history:
-                history = json.loads(run.config_history)
-
-            if run.current_config:
-                history.append(
-                    {
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "config": run.current_config,
-                    }
-                )
-
-            new_config_json = json.dumps(new_config)
-            history_json = json.dumps(history)
-            now = datetime.now(UTC)
-
-            sql = """
-            UPDATE training_runs
-            SET current_config = ?, config_history = ?, updated_at = ?
-            WHERE run_id = ?
-            """
-
-            params = [new_config_json, history_json, now, run_id]
-            self.db_manager.system_execute(sql, params)
-        except Exception as e:
-            raise DatabaseError(f"Failed to update run config {run_id}: {e}") from e
 
     def delete_run(self, run_id: str) -> bool:
         """Delete a training run (manually deletes metrics and checkpoints).
@@ -747,15 +699,6 @@ class TrainingTrackingService(BaseService):
                 ),
                 training_config=(
                     str(row["training_config"]) if row.get("training_config") else None
-                ),
-                original_config=(
-                    str(row["original_config"]) if row.get("original_config") else None
-                ),
-                current_config=(
-                    str(row["current_config"]) if row.get("current_config") else None
-                ),
-                config_history=(
-                    str(row["config_history"]) if row.get("config_history") else None
                 ),
                 created_at=self._parse_timestamp(row["created_at"]),
                 updated_at=self._parse_timestamp(row["updated_at"]),

@@ -546,9 +546,6 @@ class DuckDBDatabase(Database):
                     artifact_path VARCHAR,
                     final_metrics JSON,
                     training_config JSON,
-                    original_config JSON,
-                    current_config JSON,
-                    config_history JSON,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );

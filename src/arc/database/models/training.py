@@ -143,9 +143,6 @@ class TrainingRun:
     artifact_path: str | None
     final_metrics: str | None  # JSON string
     training_config: str | None  # JSON string - snapshot of training config used
-    original_config: str | None  # JSON string
-    current_config: str | None  # JSON string
-    config_history: str | None  # JSON string
     created_at: datetime
     updated_at: datetime
 
