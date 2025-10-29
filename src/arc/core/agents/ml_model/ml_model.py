@@ -121,28 +121,12 @@ class MLModelAgent(BaseAgent):
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Use preloaded knowledge if provided, otherwise fall back to old method
+        # Use preloaded knowledge if provided
         if preloaded_knowledge:
-            # New method: knowledge already loaded by tool
+            # Knowledge already loaded by tool
             loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
             for doc in preloaded_knowledge:
                 self._loaded_knowledge.add((doc["id"], "model"))
-        elif recommended_knowledge_ids:
-            # Old method: load knowledge here (deprecated but backward compatible)
-            preloaded_knowledge = []
-            loaded_knowledge_ids = []
-            for knowledge_id in recommended_knowledge_ids:
-                content, actual_phase = self.knowledge_loader.load_knowledge(
-                    knowledge_id, "model"
-                )
-                if content and actual_phase:
-                    preloaded_knowledge.append({
-                        "id": knowledge_id,
-                        "name": knowledge_id,
-                        "content": content
-                    })
-                    loaded_knowledge_ids.append(knowledge_id)
-                    self._loaded_knowledge.add((knowledge_id, actual_phase))
         else:
             preloaded_knowledge = []
             loaded_knowledge_ids = []
