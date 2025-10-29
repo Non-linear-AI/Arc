@@ -118,13 +118,32 @@ def _get_loss_function(loss_type: str, **kwargs) -> nn.Module:
     """Get PyTorch loss function by name.
 
     Args:
-        loss_type: Type of loss function
+        loss_type: Type of loss function (can be simple name or full path like
+                   "torch.nn.functional.binary_cross_entropy_with_logits")
         **kwargs: Additional loss parameters
 
     Returns:
         PyTorch loss function
     """
+    # Normalize loss type: strip PyTorch path prefixes if present
     loss_type = loss_type.lower()
+    # Remove various PyTorch prefixes
+    for prefix in ["torch.nn.functional.", "torch.nn.", "torch.functional.", "torch."]:
+        if loss_type.startswith(prefix):
+            loss_type = loss_type.replace(prefix, "", 1)
+            break
+
+    # Handle both functional names and class names
+    # Map class names to their functional equivalents
+    class_to_functional = {
+        "mseloss": "mse",
+        "l1loss": "mae",
+        "bceloss": "bce",
+        "bcewithlogitsloss": "bce_with_logits",
+        "crossentropyloss": "cross_entropy",
+        "nllloss": "nll",
+    }
+    loss_type = class_to_functional.get(loss_type, loss_type)
 
     if loss_type in ("mse", "mean_squared_error"):
         return nn.MSELoss(**kwargs)
