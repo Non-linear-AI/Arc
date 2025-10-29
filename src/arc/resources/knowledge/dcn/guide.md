@@ -129,7 +129,7 @@ training:
   epochs: 50
   batch_size: 64
   validation_split: 0.2
-  metrics: [accuracy, auroc]
+  metrics: [accuracy, auroc, f1]
 ```
 
 ## Configuration Guidelines
@@ -174,7 +174,7 @@ Example: If input=100, deep=[512,256,128]:
     epochs: 50
     batch_size: 64
     validation_split: 0.2
-    metrics: [accuracy, auroc]
+    metrics: [accuracy, auroc, f1]
   ```
 
 ### Recommendation Scoring
@@ -194,7 +194,7 @@ Example: If input=100, deep=[512,256,128]:
     epochs: 50
     batch_size: 64
     validation_split: 0.2
-    metrics: [mse, mae]
+    metrics: [mse, mae, r2]
   ```
 
 ## Best Practices

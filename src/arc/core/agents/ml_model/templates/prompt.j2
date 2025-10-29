@@ -238,6 +238,8 @@ training:
     lr: 0.001
   epochs: 50
   batch_size: 32
+  validation_split: 0.2
+  metrics: [accuracy, auroc, f1]
 ```
 
 **Common Loss Functions**:
@@ -300,6 +302,8 @@ training:
     lr: 0.001
   epochs: 50
   batch_size: 32
+  validation_split: 0.2
+  metrics: [accuracy, auroc, f1]
 ```
 
 **Why This Matters**: Evaluation metrics (accuracy, precision, recall, F1) require probabilities in [0, 1] range. If you forget the sigmoid transformation, evaluation will fail or produce incorrect results.
@@ -344,6 +348,8 @@ training:
     lr: 0.001
   epochs: 50
   batch_size: 32
+  validation_split: 0.2
+  metrics: [accuracy, f1]
 ```
 
 **Why This Matters**: Multi-class evaluation metrics require class probabilities that sum to 1. The softmax transformation ensures this property.
@@ -393,8 +399,8 @@ The unified specification now includes a `training:` section with optimizer and 
 1. `validation_split` MUST be a decimal (0.2 not 20, not a column name)
 2. `epochs` and `batch_size` MUST be integers (positive numbers)
 3. `lr` (learning rate) MUST be a positive float
-4. Include `early_stopping_patience` to prevent overfitting
-5. Include `metrics` array appropriate for the task type
+4. `metrics` MUST be an array appropriate for the task type
+5. All five core parameters are required: loss, optimizer, epochs, batch_size, validation_split, metrics
 
 {% if preloaded_knowledge -%}
 ## Recommended Knowledge
@@ -434,7 +440,7 @@ You have access to the following tools for exploration when needed:
 3. **Input Specification**: Use EXACT column names from available columns (see Input Design section)
 4. **Complete Structure**: inputs → graph → outputs → training (all sections required, with loss nested inside training)
 5. **Loss Function**: {% if data_profile.target_analysis %}Include appropriate loss based on target analysis ({{ data_profile.target_analysis.unique_values }} unique values) inside training section{% else %}Include appropriate loss function for the task inside training section{% endif %}
-6. **Training Configuration**: Include loss, optimizer, epochs, batch_size, validation_split, and metrics within training section
+6. **Training Configuration**: Include all required fields within training section: loss, optimizer (with type and lr), epochs, batch_size, validation_split, and metrics
 7. **Follow Guidance**: If architecture/training guidance is provided above, follow those best practices
 8. **Unified Workflow**: This tool now generates BOTH model architecture AND training config in a single YAML
 
@@ -483,9 +489,7 @@ training:
   epochs: 50
   batch_size: 32
   validation_split: 0.2
-  early_stopping_patience: 10
   metrics: [accuracy, auroc, f1]
-  device: auto
 ```
 
 **INCORRECT** response formats:

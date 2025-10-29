@@ -88,7 +88,7 @@ training:
   epochs: 50
   batch_size: 32
   validation_split: 0.2
-  metrics: [accuracy, auroc, f1]
+  metrics: [accuracy, auroc, f1, precision, recall]
 ```
 
 ### 2. Multi-Class Classification MLP
@@ -226,7 +226,7 @@ training:
   epochs: 50
   batch_size: 32
   validation_split: 0.2
-  metrics: [mse, mae, r2]
+  metrics: [mse, mae]
 ```
 
 ## Configuration Guidelines
@@ -431,9 +431,7 @@ training:
   epochs: 50
   batch_size: 32
   validation_split: 0.2
-  early_stopping_patience: 10
   metrics: [accuracy, auroc, f1, precision, recall]
-  device: auto
 ```
 
 ## When to Use MLP
