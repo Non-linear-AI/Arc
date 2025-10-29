@@ -85,8 +85,8 @@ def parse_args():
 
     parser.add_argument(
         "--artifacts-dir",
-        default="~/.arc/artifacts",
-        help="Directory for training artifacts (default: ~/.arc/artifacts)"
+        default=".arc/artifacts",
+        help="Directory for training artifacts (default: .arc/artifacts, project-local)"
     )
 
     parser.add_argument(
@@ -216,8 +216,12 @@ def main():
         logger.info(f"User database: {user_db_path}")
         db_manager = DatabaseManager(str(system_db_path), str(user_db_path))
 
-        # Initialize artifacts directory
-        artifacts_dir = Path(args.artifacts_dir).expanduser()
+        # Initialize artifacts directory (expand ~ if present, otherwise keep as-is)
+        artifacts_path = Path(args.artifacts_dir)
+        if str(artifacts_path).startswith('~'):
+            artifacts_dir = artifacts_path.expanduser()
+        else:
+            artifacts_dir = artifacts_path
         logger.info(f"Artifacts directory: {artifacts_dir}")
 
         # Initialize service container
@@ -244,6 +248,8 @@ def main():
         logger.info(f"Target column: {args.target_column}")
         if args.validation_table:
             logger.info(f"Validation table: {args.validation_table}")
+        else:
+            logger.info("Validation: Using 20% of training data for validation")
         logger.info("=" * 80)
 
         # Initialize ML Runtime
@@ -269,8 +275,20 @@ def main():
         if args.tensorboard:
             try:
                 tensorboard_manager = TensorBoardManager()
-                # CRITICAL: Use relative path to match where training service saves logs
-                tensorboard_logdir = Path(f"tensorboard/run_{job_id}")
+
+                # Get actual TensorBoard log directory from training run database
+                tensorboard_logdir = None
+                try:
+                    run = services.training_tracking.get_run_by_job_id(job_id)
+                    if run and run.tensorboard_log_dir:
+                        tensorboard_logdir = Path(run.tensorboard_log_dir)
+                except Exception:
+                    pass  # Fall through to default
+
+                # Fallback to default if not found
+                if tensorboard_logdir is None:
+                    tensorboard_logdir = Path(f"tensorboard/run_{job_id}")
+
                 url, pid = tensorboard_manager.launch(job_id, tensorboard_logdir, port=args.tensorboard_port)
                 logger.info("✓ TensorBoard launched")
                 logger.info(f"  • URL: {url}")
@@ -280,7 +298,7 @@ def main():
             except Exception as e:
                 logger.warning(f"Failed to launch TensorBoard: {e}")
                 logger.info("You can launch TensorBoard manually:")
-                logger.info(f"  tensorboard --logdir tensorboard/run_{job_id}")
+                logger.info(f"  tensorboard --logdir {tensorboard_logdir if tensorboard_logdir else f'tensorboard/run_{job_id}'}")
                 logger.info("")
 
         # Monitor if requested

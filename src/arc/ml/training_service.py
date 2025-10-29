@@ -427,17 +427,20 @@ class TrainingService:
                         "learning_rate": config.learning_rate,
                         "validation_split": config.validation_split,
                     }
-                    # Set up TensorBoard log directory
+                    # Set up TensorBoard log directory (project-local, relative path)
                     tensorboard_log_dir = None
                     if config.artifacts_dir:
+                        # Keep relative paths relative for project-local storage
+                        artifacts_path = Path(config.artifacts_dir)
                         tensorboard_log_dir = str(
-                            Path(config.artifacts_dir).parent
+                            artifacts_path.parent
                             / "tensorboard"
                             / f"run_{job_id}"
                         )
                     else:
+                        # Default to project-local .arc directory
                         tensorboard_log_dir = str(
-                            Path.home() / ".arc" / "training_logs" / f"run_{job_id}"
+                            Path(".arc") / "tensorboard" / f"run_{job_id}"
                         )
 
                     run = self.tracking_service.create_run(
@@ -911,8 +914,10 @@ class TrainingService:
                 )
             raise
 
+        # Create validation loader
         val_loader = None
         if config.validation_table:
+            # Use separate validation table if provided
             try:
                 # First try as a registered dataset
                 val_loader = data_processor.create_dataloader_from_dataset(
@@ -944,6 +949,44 @@ class TrainingService:
                     f"Validation data loader created from table "
                     f"'{config.validation_table}' for job {job_id}"
                 )
+        elif config.validation_split > 0:
+            # Split training data for validation
+            from torch.utils.data import DataLoader, random_split
+
+            dataset = train_loader.dataset
+            total_size = len(dataset)
+            val_size = int(total_size * config.validation_split)
+            train_size = total_size - val_size
+
+            logger.info(
+                f"Splitting training data: {train_size} train, {val_size} validation "
+                f"(split: {config.validation_split}) for job {job_id}"
+            )
+
+            train_dataset, val_dataset = random_split(
+                dataset, [train_size, val_size],
+                generator=torch.Generator().manual_seed(42)  # Reproducible split
+            )
+
+            # Recreate train_loader with split dataset
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=training_config.batch_size,
+                shuffle=training_config.shuffle,
+                num_workers=getattr(training_config, 'num_workers', 0),
+                pin_memory=getattr(training_config, 'pin_memory', False),
+            )
+
+            # Create validation loader
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=training_config.batch_size,
+                shuffle=False,  # Never shuffle validation
+                num_workers=getattr(training_config, 'num_workers', 0),
+                pin_memory=getattr(training_config, 'pin_memory', False),
+            )
+
+            logger.info(f"Validation loader created from training split for job {job_id}")
 
         # Run dry-run validation before starting training
         logger.info(f"Running dry-run validation for job {job_id}")

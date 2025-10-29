@@ -213,10 +213,9 @@ class TensorBoardVisualizer:
 
             # Format as text table
             if class_names is None:
-                class_names = [f"Class {i}" for i in classes]
+                class_names = [f"Class {int(i)}" for i in classes]
 
             # Create text representation
-            fmt = ".3f" if normalize else "d"
             text = "Confusion Matrix:\n\n"
             text += "Predicted →\n"
             header = " | ".join(f"{name:^10}" for name in class_names)
@@ -225,7 +224,12 @@ class TensorBoardVisualizer:
 
             for i, true_name in enumerate(class_names):
                 row = f"{true_name:^10} | "
-                row += " | ".join(f"{cm[i, j]:{fmt}^10}" for j in range(n_classes))
+                if normalize:
+                    # Format as percentage with 1 decimal place
+                    row += " | ".join(f"{cm[i, j]:^10.1%}" for j in range(n_classes))
+                else:
+                    # Format as integer
+                    row += " | ".join(f"{cm[i, j]:^10d}" for j in range(n_classes))
                 text += row + "\n"
 
             # Log as text

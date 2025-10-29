@@ -80,7 +80,7 @@ class TensorBoardManager:
         # Find available port
         actual_port = self._find_available_port(port)
 
-        # Launch TensorBoard process
+        # Launch TensorBoard process with live update settings
         try:
             process = subprocess.Popen(
                 [
@@ -90,6 +90,10 @@ class TensorBoardManager:
                     "--port",
                     str(actual_port),
                     "--bind_all",
+                    "--reload_interval",
+                    "5",  # Reload every 5 seconds for live updates
+                    "--reload_multifile",
+                    "true",  # Enable multifile reload
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

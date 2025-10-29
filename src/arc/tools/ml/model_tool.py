@@ -639,8 +639,19 @@ class MLModelTool(BaseTool):
 
         from arc.core.config import SettingsManager
 
-        # CRITICAL FIX: Use relative path to match where training service saves logs
-        logdir = Path(f"tensorboard/run_{job_id}")
+        # Get actual TensorBoard log directory from training run database
+        logdir = None
+        if self.services and hasattr(self.services, 'training_tracking'):
+            try:
+                run = self.services.training_tracking.get_run_by_job_id(job_id)
+                if run and run.tensorboard_log_dir:
+                    logdir = Path(run.tensorboard_log_dir)
+            except Exception:
+                pass  # Fall through to default
+
+        # Fallback to default if not found in database
+        if logdir is None:
+            logdir = Path(f"tensorboard/run_{job_id}")
 
         try:
             settings = SettingsManager()
@@ -654,6 +665,7 @@ class MLModelTool(BaseTool):
                 section_printer.print(f"  • URL: [bold]{url}[/bold]")
                 section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
                 section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
+                section_printer.print(f"[dim]  • Updates every 5s (click 🔄 in TensorBoard UI to refresh)[/dim]")
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
@@ -696,7 +708,21 @@ class MLModelTool(BaseTool):
             job_id: Training job identifier
             section_printer: Section printer for indented output
         """
-        logdir = f"tensorboard/run_{job_id}"
+        from pathlib import Path
+
+        # Get actual TensorBoard log directory from training run database
+        logdir = None
+        if self.services and hasattr(self.services, 'training_tracking'):
+            try:
+                run = self.services.training_tracking.get_run_by_job_id(job_id)
+                if run and run.tensorboard_log_dir:
+                    logdir = run.tensorboard_log_dir
+            except Exception:
+                pass  # Fall through to default
+
+        # Fallback to default if not found in database
+        if logdir is None:
+            logdir = f"tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
             section_printer.print("[dim][cyan]ℹ View training results:[/cyan][/dim]")

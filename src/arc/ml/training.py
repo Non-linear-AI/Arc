@@ -474,9 +474,13 @@ def train_model(
                             all_predictions_tensor, all_targets_tensor
                         )
 
-                        # Extract metric values
+                        # Extract metric values - ensure they're Python floats
                         for metric_name, metric_result in metrics_results.items():
-                            val_metrics[metric_name] = metric_result.value
+                            value = metric_result.value
+                            # Convert torch.Tensor to Python float if needed
+                            if isinstance(value, torch.Tensor):
+                                value = value.item()
+                            val_metrics[metric_name] = value
 
                         # Log visualizations to TensorBoard for classification tasks
                         if tensorboard_writer and "accuracy" in val_metrics:
