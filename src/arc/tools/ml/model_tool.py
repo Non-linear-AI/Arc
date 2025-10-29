@@ -250,8 +250,8 @@ class MLModelTool(BaseTool):
                     validator_func=self._create_validator(),
                     editor_func=self._create_editor(instruction),
                     ui_interface=self.ui,
-                    yaml_type_name="experiment",
-                    yaml_suffix=".arc-experiment.yaml",
+                    yaml_type_name="training configuration",
+                    yaml_suffix=".arc-training.yaml",
                 )
 
                 context_dict = {
@@ -273,11 +273,11 @@ class MLModelTool(BaseTool):
                         if printer:
                             printer.print("")  # Empty line
                             printer.print(
-                                "[dim]✗ Experiment cancelled by user.[/dim]"
+                                "[dim]✗ Training cancelled by user.[/dim]"
                             )
                         return ToolResult(
                             success=True,
-                            output="✗ Experiment cancelled by user.",
+                            output="✗ Training cancelled by user.",
                             metadata={"cancelled": True},
                         )
 
