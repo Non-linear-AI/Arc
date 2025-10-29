@@ -32,7 +32,12 @@ from arc.ml.builder import ArcModel, ModelBuilder
 from arc.ml.callbacks import TensorBoardLogger
 from arc.ml.data import DataProcessor
 from arc.ml.dry_run_validator import DryRunValidator, ValidationError, ValidationReport
-from arc.ml.training import ProgressCallback, TrainingResult, train_model
+from arc.ml.training import (
+    ProgressCallback,
+    TrainingResult,
+    _sanitize_optimizer_params,
+    train_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -684,7 +689,7 @@ class TrainingService:
             seed=tc.get("seed"),
             # Optimizer config
             optimizer=optimizer_config.get("type", "adam"),
-            optimizer_params=optimizer_config.get("params", {}),
+            optimizer_params=_sanitize_optimizer_params(optimizer_config.get("params", {})),
             # Loss config
             loss_function=model_loss.type,
             loss_params=model_loss.params,
@@ -818,7 +823,7 @@ class TrainingService:
                 seed=tc.get("seed"),
                 # Optimizer config
                 optimizer=optimizer_config.get("type", "adam"),
-                optimizer_params=optimizer_config.get("params", {}),
+                optimizer_params=_sanitize_optimizer_params(optimizer_config.get("params", {})),
                 # Loss config
                 loss_function=model_loss.type,
                 loss_params=model_loss.params,
