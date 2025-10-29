@@ -101,19 +101,19 @@ class TensorBoardVisualizer:
         y_scores: np.ndarray | torch.Tensor,
         tag: str = "roc_curve",
         step: int = 0,
+        plot_curve: bool = True,
     ) -> None:
-        """Log ROC AUC score to TensorBoard.
+        """Log ROC curve and AUC score to TensorBoard.
 
-        Computes and logs the ROC AUC as a scalar metric.
-        Note: TensorBoard doesn't have a native ROC curve widget,
-        so we log the AUC value. The PR curve (which is related)
-        is available in the PR CURVES tab.
+        Computes and logs the ROC AUC as a scalar metric and optionally
+        plots the full ROC curve as an image.
 
         Args:
             y_true: True binary labels (0 or 1)
             y_scores: Predicted probabilities for positive class
             tag: Tag name for the metric in TensorBoard
             step: Global step value for logging
+            plot_curve: Whether to plot the full ROC curve (default: True)
         """
         if not self.enabled or self.writer is None:
             return
@@ -158,6 +158,72 @@ class TensorBoardVisualizer:
 
             # Log AUC as scalar
             self.writer.add_scalar(f"{tag}/auc", auc, step)
+
+            # Plot ROC curve if requested
+            if plot_curve:
+                try:
+                    import io
+
+                    import matplotlib
+                    import matplotlib.pyplot as plt
+
+                    # Use non-interactive backend
+                    matplotlib.use("Agg")
+
+                    # Create figure
+                    fig, ax = plt.subplots(figsize=(8, 8))
+
+                    # Plot ROC curve
+                    ax.plot(
+                        fpr,
+                        tpr,
+                        color="darkorange",
+                        lw=2,
+                        label=f"ROC curve (AUC = {auc:.3f})",
+                    )
+
+                    # Plot diagonal (random classifier)
+                    ax.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--", label="Random")
+
+                    # Configure plot
+                    ax.set_xlim([0.0, 1.0])
+                    ax.set_ylim([0.0, 1.05])
+                    ax.set_xlabel("False Positive Rate", fontsize=12)
+                    ax.set_ylabel("True Positive Rate", fontsize=12)
+                    ax.set_title("Receiver Operating Characteristic (ROC) Curve", fontsize=14)
+                    ax.legend(loc="lower right", fontsize=10)
+                    ax.grid(True, alpha=0.3)
+                    ax.set_aspect("equal")
+
+                    fig.tight_layout()
+
+                    # Convert matplotlib figure to image tensor for TensorBoard
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+                    buf.seek(0)
+
+                    # Read image and convert to numpy array
+                    from PIL import Image
+                    image = Image.open(buf)
+                    image_array = np.array(image)
+
+                    # TensorBoard expects (C, H, W) format
+                    if image_array.ndim == 3:
+                        image_array = np.transpose(image_array, (2, 0, 1))
+
+                    # Log image to TensorBoard
+                    self.writer.add_image(f"{tag}/curve", image_array, step, dataformats="CHW")
+
+                    plt.close(fig)
+                    buf.close()
+
+                except ImportError:
+                    logger.debug(
+                        "Matplotlib or PIL not available for ROC curve plot. "
+                        "Install with: pip install matplotlib pillow"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to plot ROC curve: {e}")
 
             logger.debug(
                 f"TensorBoard: Logged ROC AUC={auc:.3f} for '{tag}' at step {step}"
@@ -239,6 +305,145 @@ class TensorBoardVisualizer:
 
         except Exception as e:
             logger.warning(f"Failed to log confusion matrix: {e}")
+
+    def log_confusion_matrix_heatmap(
+        self,
+        y_true: np.ndarray | torch.Tensor,
+        y_pred: np.ndarray | torch.Tensor,
+        class_names: list[str] | None = None,
+        tag: str = "confusion_matrix_heatmap",
+        step: int = 0,
+        normalize: bool = False,
+    ) -> None:
+        """Log confusion matrix as a heatmap image to TensorBoard.
+
+        Creates a beautiful matplotlib heatmap visualization of the confusion
+        matrix, which is much easier to interpret than the text version.
+
+        Args:
+            y_true: True class labels
+            y_pred: Predicted class labels
+            class_names: Optional class names for axis labels
+            tag: Tag name for the image in TensorBoard
+            step: Global step value for logging
+            normalize: Whether to normalize the matrix (default: False)
+        """
+        if not self.enabled or self.writer is None:
+            return
+
+        try:
+            import io
+
+            import matplotlib
+            import matplotlib.pyplot as plt
+
+            # Use non-interactive backend
+            matplotlib.use("Agg")
+
+            # Convert to numpy if needed
+            if isinstance(y_true, torch.Tensor):
+                y_true = y_true.cpu().numpy()
+            if isinstance(y_pred, torch.Tensor):
+                y_pred = y_pred.cpu().numpy()
+
+            # Flatten arrays
+            y_true = y_true.flatten()
+            y_pred = y_pred.flatten()
+
+            # Compute confusion matrix manually
+            classes = np.unique(np.concatenate([y_true, y_pred]))
+            n_classes = len(classes)
+            cm = np.zeros((n_classes, n_classes), dtype=int)
+
+            for i, true_class in enumerate(classes):
+                for j, pred_class in enumerate(classes):
+                    cm[i, j] = np.sum((y_true == true_class) & (y_pred == pred_class))
+
+            # Store raw counts for annotations
+            cm_counts = cm.copy()
+
+            if normalize:
+                cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
+
+            # Set up class names
+            if class_names is None:
+                class_names = [f"Class {int(i)}" for i in classes]
+
+            # Create figure
+            fig, ax = plt.subplots(figsize=(max(8, n_classes * 1.5), max(6, n_classes * 1.2)))
+
+            # Create heatmap
+            im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+            ax.figure.colorbar(im, ax=ax)
+
+            # Configure axes
+            ax.set(
+                xticks=np.arange(n_classes),
+                yticks=np.arange(n_classes),
+                xticklabels=class_names,
+                yticklabels=class_names,
+                xlabel="Predicted Label",
+                ylabel="True Label",
+                title="Confusion Matrix" + (" (Normalized)" if normalize else ""),
+            )
+
+            # Rotate x-axis labels for readability
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+            # Add text annotations
+            thresh = cm.max() / 2.0
+            for i in range(n_classes):
+                for j in range(n_classes):
+                    if normalize:
+                        # Show percentage and raw count
+                        text = f"{cm[i, j]:.1%}\n({cm_counts[i, j]})"
+                    else:
+                        # Show raw count only
+                        text = f"{cm[i, j]}"
+
+                    ax.text(
+                        j,
+                        i,
+                        text,
+                        ha="center",
+                        va="center",
+                        color="white" if cm[i, j] > thresh else "black",
+                        fontsize=10 if n_classes <= 5 else 8,
+                    )
+
+            fig.tight_layout()
+
+            # Convert matplotlib figure to image tensor for TensorBoard
+            buf = io.BytesIO()
+            plt.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+            buf.seek(0)
+
+            # Read image and convert to numpy array
+            from PIL import Image
+            image = Image.open(buf)
+            image_array = np.array(image)
+
+            # TensorBoard expects (C, H, W) format
+            if image_array.ndim == 3:
+                image_array = np.transpose(image_array, (2, 0, 1))
+
+            # Log image to TensorBoard
+            self.writer.add_image(tag, image_array, step, dataformats="CHW")
+
+            plt.close(fig)
+            buf.close()
+
+            logger.debug(
+                f"TensorBoard: Logged confusion matrix heatmap '{tag}' at step {step}"
+            )
+
+        except ImportError:
+            logger.warning(
+                "Matplotlib or PIL not available for confusion matrix heatmap. "
+                "Install with: pip install matplotlib pillow"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log confusion matrix heatmap: {e}")
 
     def log_prediction_distribution(
         self,

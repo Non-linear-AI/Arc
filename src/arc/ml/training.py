@@ -274,6 +274,29 @@ def train_model(
     # Move model to device
     model = model.to(device)
 
+    # Log model graph to TensorBoard
+    if tensorboard_writer:
+        try:
+            # Get a sample batch to trace the model
+            sample_batch = next(iter(train_loader))
+            if isinstance(sample_batch, (tuple, list)):
+                sample_features = sample_batch[0]
+            else:
+                sample_features = sample_batch["features"]
+
+            # Move to device
+            if isinstance(sample_features, dict):
+                sample_features = {k: v.to(device) for k, v in sample_features.items()}
+            else:
+                sample_features = sample_features.to(device)
+
+            # Log the model graph
+            tensorboard_writer.add_graph(model, sample_features)
+            logger.debug("Logged model architecture graph to TensorBoard")
+
+        except Exception as e:
+            logger.warning(f"Failed to log model graph: {e}")
+
     # Create optimizer
     optimizer_type = getattr(training_config, "optimizer", "adam")
     optimizer_params = getattr(training_config, "optimizer_params", {})
@@ -386,6 +409,46 @@ def train_model(
 
                 # Backward pass
                 loss.backward()
+
+                # Log gradient statistics before clipping (every 50 steps to reduce overhead)
+                if tensorboard_writer and global_step % 50 == 0:
+                    try:
+                        grad_norms = []
+                        grad_max = []
+                        grad_min = []
+                        for name, param in model.named_parameters():
+                            if param.grad is not None:
+                                grad_norm = param.grad.norm().item()
+                                grad_norms.append(grad_norm)
+                                grad_max.append(param.grad.max().item())
+                                grad_min.append(param.grad.min().item())
+
+                                # Log per-layer gradient norms (for detailed debugging)
+                                tensorboard_writer.add_scalar(
+                                    f"gradients/{name}/norm", grad_norm, global_step
+                                )
+
+                        if grad_norms:
+                            # Log aggregate gradient statistics
+                            import numpy as np
+                            tensorboard_writer.add_scalar(
+                                "gradients/global_norm", np.sqrt(sum(g**2 for g in grad_norms)), global_step
+                            )
+                            tensorboard_writer.add_scalar(
+                                "gradients/mean_norm", np.mean(grad_norms), global_step
+                            )
+                            tensorboard_writer.add_scalar(
+                                "gradients/max_norm", max(grad_norms), global_step
+                            )
+                            tensorboard_writer.add_scalar(
+                                "gradients/max_value", max(grad_max), global_step
+                            )
+                            tensorboard_writer.add_scalar(
+                                "gradients/min_value", min(grad_min), global_step
+                            )
+
+                    except Exception as e:
+                        logger.debug(f"Failed to log gradient statistics: {e}")
 
                 # Gradient clipping if configured
                 if gradient_clip_val is not None:
@@ -529,6 +592,15 @@ def train_model(
                                     step=epoch,
                                 )
 
+                                # Log confusion matrix as heatmap image
+                                viz.log_confusion_matrix_heatmap(
+                                    all_targets_tensor,
+                                    predictions_class,
+                                    tag="validation/confusion_matrix_heatmap",
+                                    step=epoch,
+                                    normalize=True,  # Show percentages and counts
+                                )
+
                                 # Log per-class performance
                                 viz.log_class_performance(
                                     all_targets_tensor,
@@ -610,6 +682,50 @@ def train_model(
 
         if callback:
             callback.on_training_end(final_metrics)
+
+        # Log hyperparameters to TensorBoard
+        if tensorboard_writer:
+            try:
+                # Collect hyperparameters
+                hparams = {
+                    "learning_rate": learning_rate,
+                    "epochs": epochs,
+                    "batch_size": train_loader.batch_size if hasattr(train_loader, 'batch_size') else 32,
+                    "optimizer": optimizer_type,
+                    "loss_function": loss_fn_name,
+                    "device": device,
+                }
+
+                # Add optional hyperparameters if they exist
+                if early_stopping_patience is not None:
+                    hparams["early_stopping_patience"] = early_stopping_patience
+                if gradient_clip_val is not None:
+                    hparams["gradient_clip_val"] = gradient_clip_val
+                if val_loader:
+                    hparams["validation_split"] = getattr(training_config, "validation_split", 0.2)
+
+                # Add optimizer-specific parameters
+                for key, value in optimizer_params.items():
+                    if isinstance(value, (int, float, bool, str)):
+                        hparams[f"optimizer_{key}"] = value
+
+                # Prepare metrics for hparams (only scalars)
+                hparam_metrics = {}
+                if train_losses:
+                    hparam_metrics["hparam/final_train_loss"] = train_losses[-1]
+                if val_losses:
+                    hparam_metrics["hparam/final_val_loss"] = val_losses[-1]
+                    hparam_metrics["hparam/best_val_loss"] = best_val_loss
+                    hparam_metrics["hparam/best_epoch"] = best_epoch
+                hparam_metrics["hparam/total_epochs"] = len(train_losses)
+                hparam_metrics["hparam/training_time"] = training_time
+
+                # Log to TensorBoard's HPARAMS tab
+                tensorboard_writer.add_hparams(hparam_dict=hparams, metric_dict=hparam_metrics)
+                logger.debug("Logged hyperparameters to TensorBoard")
+
+            except Exception as e:
+                logger.warning(f"Failed to log hyperparameters: {e}")
 
         # Close TensorBoard writer
         if tensorboard_writer:
