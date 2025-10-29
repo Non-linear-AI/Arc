@@ -290,15 +290,23 @@ def train_model(
             else:
                 sample_features = sample_features.to(device)
 
-            # Log the model graph
-            # TensorBoard's add_graph does tracing internally, so we just pass the model
-            # Note: This may fail for models with dict outputs, but that's okay - it's optional
-            tensorboard_writer.add_graph(model, sample_features)
-            logger.debug("Logged model architecture graph to TensorBoard")
+            # Check if model outputs a dict (which causes tracing issues)
+            model.eval()
+            with torch.no_grad():
+                test_output = model(sample_features)
+            model.train()
+
+            # Only log graph if output is not a dict (TensorBoard tracing doesn't support dicts well)
+            if isinstance(test_output, dict):
+                logger.debug("Skipping model graph logging (model outputs dict, not supported by TensorBoard tracer)")
+            else:
+                # Log the model graph
+                tensorboard_writer.add_graph(model, sample_features)
+                logger.debug("Logged model architecture graph to TensorBoard")
 
         except Exception as e:
             # Model graph logging is optional and may fail for complex models
-            logger.debug(f"Could not log model graph (this is okay): {e}")
+            logger.debug(f"Could not log model graph: {e}")
 
     # Create optimizer
     optimizer_type = getattr(training_config, "optimizer", "adam")
