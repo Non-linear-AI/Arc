@@ -35,6 +35,26 @@ class TensorBoardManager:
         # Initialization only happens once when _instance is created
         pass
 
+    def launch_for_job(self, job_id: str, port: int = 6006) -> tuple[str, int]:
+        """Launch TensorBoard for a training job using default log directory.
+
+        Automatically determines the log directory from the job ID using the
+        standard Arc convention: ~/.arc/tensorboard/run_{job_id}
+
+        Args:
+            job_id: Training job identifier
+            port: Preferred port (will find available if taken)
+
+        Returns:
+            Tuple of (url, pid) for the launched TensorBoard instance
+
+        Raises:
+            TensorBoardError: If TensorBoard fails to launch
+        """
+        # Use standard Arc tensorboard directory structure
+        logdir = Path.home() / ".arc" / "tensorboard" / f"run_{job_id}"
+        return self.launch(job_id, logdir, port)
+
     def launch(self, job_id: str, logdir: Path, port: int = 6006) -> tuple[str, int]:
         """Launch TensorBoard for a training job.
 

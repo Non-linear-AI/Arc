@@ -26,7 +26,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.database import get_database_manager
+from arc.database import DatabaseManager
+from arc.database.services import ModelService
 
 
 def parse_args():
@@ -49,9 +50,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--db-path",
+        "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
     )
 
     return parser.parse_args()
@@ -63,15 +64,18 @@ def main():
 
     try:
         # Initialize database
-        db_path = Path(args.db_path).expanduser()
-        db_manager = get_database_manager(str(db_path))
+        system_db_path = Path(args.system_db).expanduser()
+        db_manager = DatabaseManager(str(system_db_path))
+
+        # Initialize model service
+        model_service = ModelService(db_manager)
 
         # Try to get model by ID first
-        model = db_manager.services.models.get_model_by_id(args.model_name)
+        model = model_service.get_model_by_id(args.model_name)
 
         # If not found, try to get latest version by name
         if model is None:
-            model = db_manager.services.models.get_latest_model_by_name(args.model_name)
+            model = model_service.get_latest_model_by_name(args.model_name)
 
         if model is None:
             print(f"Error: Model not found: {args.model_name}", file=sys.stderr)

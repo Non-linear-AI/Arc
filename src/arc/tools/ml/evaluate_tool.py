@@ -561,7 +561,7 @@ class MLEvaluateTool(BaseTool):
                         # No TensorBoard manager available
                         if printer:
                             printer.print(
-                                "[dim]ℹ️  TensorBoard auto-launch not available "
+                                "[dim]ℹ TensorBoard auto-launch not available "
                                 "(restart arc chat to enable)[/dim]"
                             )
                         self._show_manual_tensorboard_instructions(job.job_id, printer)

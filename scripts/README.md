@@ -27,6 +27,9 @@ python scripts/test_training.py test-v8 pidd --target-column outcome --validatio
 # Monitor job until completion
 python scripts/test_training.py test-v8 pidd --target-column outcome --monitor
 
+# Launch TensorBoard for live metrics visualization
+python scripts/test_training.py test-v8 pidd --target-column outcome --tensorboard --monitor
+
 # Verbose logging
 python scripts/test_training.py test-v8 pidd --target-column outcome --monitor --verbose
 ```
@@ -34,9 +37,12 @@ python scripts/test_training.py test-v8 pidd --target-column outcome --monitor -
 **Options:**
 - `--target-column, -t`: Target column for prediction (required)
 - `--validation-table, -v`: Optional validation table name
-- `--db-path`: Path to Arc database (default: `~/.arc/arc_system.db`)
+- `--system-db`: Path to Arc system database (default: `~/.arc/arc_system.db`)
+- `--user-db`: Path to Arc user database (default: `~/.arc/arc_user.db`)
 - `--artifacts-dir`: Directory for training artifacts (default: `~/.arc/artifacts`)
 - `--monitor`: Monitor job status until completion
+- `--tensorboard`: Launch TensorBoard after job submission
+- `--tensorboard-port`: TensorBoard port (default: 6006)
 - `--verbose, -V`: Enable verbose logging
 
 ### 2. `extract_model_yaml.py` - Extract Model YAML
@@ -65,7 +71,7 @@ python scripts/extract_model_yaml.py test-v8 | python -m yaml
 
 **Options:**
 - `--output, -o`: Output file path (default: print to stdout)
-- `--db-path`: Path to Arc database (default: `~/.arc/arc_system.db`)
+- `--system-db`: Path to Arc system database (default: `~/.arc/arc_system.db`)
 
 ## Common Workflows
 
@@ -149,8 +155,8 @@ python -m scripts.test_training test-v8 pidd -t outcome
 # Check database path
 ls ~/.arc/arc_system.db
 
-# Or specify custom path
-python scripts/test_training.py test-v8 pidd -t outcome --db-path /custom/path/db.db
+# Or specify custom paths
+python scripts/test_training.py test-v8 pidd -t outcome --system-db /custom/path/system.db --user-db /custom/path/user.db
 ```
 
 **Import errors:**

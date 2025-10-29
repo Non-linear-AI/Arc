@@ -350,13 +350,6 @@ class MLModelTool(BaseTool):
                 lines.append(f"Training table: {train_table}")
                 lines.append(f"Job ID: {job_id}")
 
-                # Show training success message
-                if printer:
-                    printer.print("")
-                    printer.print("[dim]✓ Training job submitted successfully.[/dim]")
-                    printer.print(f"[dim]Training table: {train_table}[/dim]")
-                    printer.print(f"[dim]Job ID: {job_id}[/dim]")
-
                 # Show job monitoring instructions
                 if printer:
                     printer.print("")
@@ -371,16 +364,33 @@ class MLModelTool(BaseTool):
                 if not auto_confirm and self.ui:
                     if self.tensorboard_manager:
                         try:
-                            self.tensorboard_manager.launch_for_job(job_id)
+                            await self._handle_tensorboard_launch(job_id, printer)
+                        except (OSError, RuntimeError) as e:
+                            # Known TensorBoard launch failures
                             if printer:
-                                printer.print("")
-                                printer.print("[dim][green]✓ TensorBoard launched[/green][/dim]")
-                        except Exception:
-                            if printer:
-                                printer.print("")
                                 printer.print(
-                                    "[dim]ℹ️  TensorBoard auto-launch not available[/dim]"
+                                    f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
                                 )
+                            self._show_manual_tensorboard_instructions(job_id, printer)
+                        except Exception as e:
+                            # Log unexpected errors with full traceback
+                            import logging
+
+                            logging.exception("Unexpected error during TensorBoard launch")
+                            error_msg = f"{e.__class__.__name__}: {e}"
+                            if printer:
+                                printer.print(
+                                    f"[yellow]⚠️  TensorBoard setup failed: {error_msg}[/yellow]"
+                                )
+                            self._show_manual_tensorboard_instructions(job_id, printer)
+                    else:
+                        # No TensorBoard manager available
+                        if printer:
+                            printer.print(
+                                "[dim]ℹ TensorBoard auto-launch not available "
+                                "(restart arc chat to enable)[/dim]"
+                            )
+                        self._show_manual_tensorboard_instructions(job_id, printer)
 
             except MLRuntimeError as exc:
                 # Training launch failed but model was created
@@ -538,3 +548,166 @@ class MLModelTool(BaseTool):
         # Save to DB
         self.services.models.create_model(model)
         return model
+
+    async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
+        """Handle TensorBoard launch based on user preference.
+
+        Args:
+            job_id: Training job identifier
+            section_printer: Section printer for indented output
+        """
+        from arc.core.config import SettingsManager
+        from arc.utils.tensorboard_workflow import prompt_tensorboard_preference
+
+        settings = SettingsManager()
+        mode = settings.get_tensorboard_mode()
+
+        # First time - no preference set, show combined dialog
+        if mode is None:
+            mode, should_launch = await prompt_tensorboard_preference(self.ui)
+            settings.set_tensorboard_mode(mode)
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                )
+
+            # Launch immediately if user chose to
+            if should_launch:
+                await self._launch_tensorboard(job_id, section_printer)
+            else:
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
+
+        # Subsequent times - respect saved preference
+        elif mode == "always":
+            await self._launch_tensorboard(job_id, section_printer)
+        elif mode == "ask":
+            if section_printer:
+                section_printer.print("")
+                section_printer.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
+                )
+            choice = await self.ui._printer.get_choice_async(
+                options=[
+                    ("yes", "Yes, launch now"),
+                    ("always", "Always launch automatically"),
+                    ("no", "No, skip"),
+                ],
+                default="yes",
+            )
+
+            # Handle the choice
+            if choice == "always":
+                # Update preference to always
+                settings.set_tensorboard_mode("always")
+                if section_printer:
+                    section_printer.print("")
+                    section_printer.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                else:
+                    self.ui._printer.console.print()
+                    self.ui._printer.console.print(
+                        "[green]✓ TensorBoard preference updated: always[/green]"
+                    )
+                await self._launch_tensorboard(job_id, section_printer)
+            elif choice == "yes":
+                await self._launch_tensorboard(job_id, section_printer)
+            else:  # "no"
+                self._show_manual_tensorboard_instructions(job_id, section_printer)
+        else:  # "never"
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
+
+    async def _launch_tensorboard(self, job_id: str, section_printer=None):
+        """Launch TensorBoard and show info.
+
+        Args:
+            job_id: Training job identifier
+            section_printer: Section printer for indented output
+        """
+        from pathlib import Path
+
+        from arc.core.config import SettingsManager
+
+        # CRITICAL FIX: Use relative path to match where training service saves logs
+        logdir = Path(f"tensorboard/run_{job_id}")
+
+        try:
+            settings = SettingsManager()
+            port = settings.get_tensorboard_port()
+
+            url, pid = self.tensorboard_manager.launch(job_id, logdir, port)
+
+            if section_printer:
+                section_printer.print("")
+                section_printer.print("[green]→ Launching TensorBoard...[/green]")
+                section_printer.print(f"  • URL: [bold]{url}[/bold]")
+                section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
+                section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
+            else:
+                self.ui._printer.console.print()
+                self.ui._printer.console.print(
+                    "[green]→ Launching TensorBoard...[/green]"
+                )
+                self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
+                self.ui._printer.console.print(f"  • Process ID: {pid}")
+                self.ui._printer.console.print(f"  • Logs: {logdir}")
+        except (OSError, RuntimeError) as e:
+            # Known TensorBoard launch failures
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
+        except Exception as e:
+            # Log unexpected errors with full traceback
+            import logging
+
+            logging.exception("Unexpected error during TensorBoard launch")
+            error_msg = f"{e.__class__.__name__}: {e}"
+            if section_printer:
+                section_printer.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            else:
+                self.ui._printer.console.print(
+                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                )
+            self._show_manual_tensorboard_instructions(job_id, section_printer)
+
+    def _show_manual_tensorboard_instructions(self, job_id: str, section_printer=None):
+        """Show manual TensorBoard instructions.
+
+        Args:
+            job_id: Training job identifier
+            section_printer: Section printer for indented output
+        """
+        logdir = f"tensorboard/run_{job_id}"
+        if section_printer:
+            section_printer.print("")
+            section_printer.print("[dim][cyan]ℹ View training results:[/cyan][/dim]")
+            section_printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
+            section_printer.print(
+                f"[dim]  • TensorBoard: tensorboard --logdir {logdir}[/dim]"
+            )
+        else:
+            self.ui._printer.console.print()
+            self.ui._printer.console.print("[cyan]ℹ View training results:[/cyan]")
+            self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+            self.ui._printer.console.print(
+                f"  • TensorBoard: tensorboard --logdir {logdir}"
+            )

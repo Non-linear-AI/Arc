@@ -26,7 +26,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.database import get_database_manager
+from arc.core import SettingsManager
+from arc.database import DatabaseManager
+from arc.database.services import ModelService, ServiceContainer
+from arc.ml import TensorBoardManager
 from arc.ml.runtime import MLRuntime
 
 # Configure logging
@@ -69,9 +72,15 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--db-path",
+        "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+    )
+
+    parser.add_argument(
+        "--user-db",
+        default="~/.arc/arc_user.db",
+        help="Path to Arc user database (default: ~/.arc/arc_user.db)"
     )
 
     parser.add_argument(
@@ -87,6 +96,19 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--tensorboard",
+        action="store_true",
+        help="Launch TensorBoard after job submission"
+    )
+
+    parser.add_argument(
+        "--tensorboard-port",
+        type=int,
+        default=6006,
+        help="TensorBoard port (default: 6006)"
+    )
+
+    parser.add_argument(
         "--verbose",
         "-V",
         action="store_true",
@@ -96,22 +118,22 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_model_yaml(db_manager, model_name: str) -> tuple[str, str, str]:
+def get_model_yaml(model_service: ModelService, model_name: str) -> tuple[str, str, str]:
     """Get model YAML from database.
 
     Args:
-        db_manager: Database manager instance
+        model_service: Model service instance
         model_name: Model name or model ID
 
     Returns:
         Tuple of (model_id, model_yaml, description)
     """
     # Try to get model by ID first
-    model = db_manager.services.models.get_model_by_id(model_name)
+    model = model_service.get_model_by_id(model_name)
 
     # If not found, try to get latest version by name
     if model is None:
-        model = db_manager.services.models.get_latest_model_by_name(model_name)
+        model = model_service.get_latest_model_by_name(model_name)
 
     if model is None:
         raise ValueError(f"Model not found: {model_name}")
@@ -188,17 +210,36 @@ def main():
 
     try:
         # Initialize database
-        db_path = Path(args.db_path).expanduser()
-        logger.info(f"Opening database: {db_path}")
-        db_manager = get_database_manager(str(db_path))
+        system_db_path = Path(args.system_db).expanduser()
+        user_db_path = Path(args.user_db).expanduser()
+        logger.info(f"System database: {system_db_path}")
+        logger.info(f"User database: {user_db_path}")
+        db_manager = DatabaseManager(str(system_db_path), str(user_db_path))
 
-        # Get model YAML
-        model_id, model_yaml, description = get_model_yaml(db_manager, args.model_name)
+        # Initialize artifacts directory
+        artifacts_dir = Path(args.artifacts_dir).expanduser()
+        logger.info(f"Artifacts directory: {artifacts_dir}")
+
+        # Initialize service container
+        services = ServiceContainer(db_manager, artifacts_dir=str(artifacts_dir))
+
+        # Get model from database
+        model_service = services.models
+        model = model_service.get_model_by_id(args.model_name)
+
+        # If not found, try to get latest version by name
+        if model is None:
+            model = model_service.get_latest_model_by_name(args.model_name)
+
+        if model is None:
+            raise ValueError(f"Model not found: {args.model_name}")
 
         # Display model info
         logger.info("=" * 80)
-        logger.info(f"Model ID: {model_id}")
-        logger.info(f"Description: {description}")
+        logger.info(f"Model ID: {model.id}")
+        logger.info(f"Model Name: {model.name}")
+        logger.info(f"Version: {model.version}")
+        logger.info(f"Description: {model.description}")
         logger.info(f"Training table: {args.train_table}")
         logger.info(f"Target column: {args.target_column}")
         if args.validation_table:
@@ -206,18 +247,12 @@ def main():
         logger.info("=" * 80)
 
         # Initialize ML Runtime
-        artifacts_dir = Path(args.artifacts_dir).expanduser()
-        logger.info(f"Artifacts directory: {artifacts_dir}")
+        runtime = MLRuntime(services, artifacts_dir=artifacts_dir)
 
-        runtime = MLRuntime(
-            db_manager=db_manager,
-            artifacts_dir=str(artifacts_dir)
-        )
-
-        # Submit training job
+        # Submit training job using the model's name (not ID)
         logger.info("\nSubmitting training job...")
         job_id = runtime.train_model(
-            model_name=args.model_name,
+            model_name=model.name,
             train_table=args.train_table,
             validation_table=args.validation_table,
         )
@@ -229,6 +264,24 @@ def main():
         logger.info(f"  • Status: /ml jobs status {job_id}")
         logger.info(f"  • Logs: /ml jobs logs {job_id}")
         logger.info("")
+
+        # Launch TensorBoard if requested
+        if args.tensorboard:
+            try:
+                tensorboard_manager = TensorBoardManager()
+                # CRITICAL: Use relative path to match where training service saves logs
+                tensorboard_logdir = Path(f"tensorboard/run_{job_id}")
+                url, pid = tensorboard_manager.launch(job_id, tensorboard_logdir, port=args.tensorboard_port)
+                logger.info("✓ TensorBoard launched")
+                logger.info(f"  • URL: {url}")
+                logger.info(f"  • Process ID: {pid}")
+                logger.info(f"  • Logs: {tensorboard_logdir}")
+                logger.info("")
+            except Exception as e:
+                logger.warning(f"Failed to launch TensorBoard: {e}")
+                logger.info("You can launch TensorBoard manually:")
+                logger.info(f"  tensorboard --logdir tensorboard/run_{job_id}")
+                logger.info("")
 
         # Monitor if requested
         if args.monitor:
