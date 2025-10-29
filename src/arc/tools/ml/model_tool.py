@@ -297,11 +297,12 @@ class MLModelTool(BaseTool):
                     workflow.cleanup()
 
             # Save model to DB with plan_id if using ML plan
+            # IMPORTANT: Save unified_yaml (with training config) not model_yaml (without training)
             try:
                 plan_id = ml_plan.get("plan_id") if ml_plan else None
                 model = self._save_model_to_db(
                     name=str(name),
-                    yaml_content=model_yaml,
+                    yaml_content=unified_yaml,
                     description=instruction[:200] if instruction else "Generated model",
                     plan_id=plan_id,
                 )
@@ -326,8 +327,7 @@ class MLModelTool(BaseTool):
             result_metadata = {
                 "model_id": model_id,
                 "model_name": name,
-                "yaml_content": model_yaml,
-                "unified_yaml": unified_yaml,
+                "yaml_content": unified_yaml,  # Store unified YAML (with training)
                 "from_ml_plan": ml_plan is not None,
                 "training_launched": False,  # Will update if training launches
             }
@@ -480,7 +480,7 @@ class MLModelTool(BaseTool):
 
         Args:
             name: Model name
-            yaml_content: YAML specification as string
+            yaml_content: Unified YAML specification (includes training section)
             description: Model description
             plan_id: Optional ML plan ID that guided this model generation
 
@@ -496,11 +496,20 @@ class MLModelTool(BaseTool):
         from arc.graph.model import ModelSpec
         from arc.ml.runtime import _slugify_name
 
-        # Validate YAML first
+        # Validate YAML first - need to separate model and training sections
         try:
-            model_spec = ModelSpec.from_yaml(yaml_content)
+            full_spec = yaml.safe_load(yaml_content)
+            # Remove training section for validation
+            training_section = full_spec.pop("training", None)
+            model_yaml_only = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
+
+            model_spec = ModelSpec.from_yaml(model_yaml_only)
             _ = model_spec.get_input_names()
             _ = model_spec.get_output_names()
+
+            # Verify training section exists
+            if not training_section:
+                raise ValueError("Unified YAML must include 'training' section")
         except Exception as exc:
             raise ValueError(f"Invalid model YAML: {exc}") from exc
 
