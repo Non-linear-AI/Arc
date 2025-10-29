@@ -325,14 +325,15 @@ class MLRuntime:
                 f"Training table '{train_table}' does not exist in user DB"
             )
 
-        # Extract target column from model spec loss function
-        if not model_spec.loss or not model_spec.loss.inputs:
+        # Extract target column from training config loss function
+        loss_config = training_config.get("loss", {})
+        if not loss_config or not loss_config.get("inputs"):
             raise MLRuntimeError(
                 "Model spec must define a loss function with inputs "
                 "to determine target column"
             )
 
-        target_column = model_spec.loss.inputs.get("target")
+        target_column = loss_config["inputs"].get("target")
         if not target_column:
             raise MLRuntimeError(
                 "Model spec loss function must define 'target' input "
