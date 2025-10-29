@@ -81,7 +81,7 @@ class MLEvaluateTool(BaseTool):
         *,
         name: str | None = None,
         instruction: str | None = None,
-        trainer_id: str | None = None,
+        model_id: str | None = None,
         evaluate_table: str | None = None,
         auto_confirm: bool = False,
         plan_id: str | None = None,
@@ -92,7 +92,7 @@ class MLEvaluateTool(BaseTool):
         Args:
             name: Evaluator name
             instruction: User's instruction for evaluation setup (PRIMARY driver)
-            trainer_id: Trainer ID with version (e.g., 'my-trainer-v1')
+            model_id: Model ID with version (e.g., 'my-model-v1')
             evaluate_table: Test dataset table name
             auto_confirm: Skip confirmation workflows (for testing only)
             plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
@@ -158,36 +158,27 @@ class MLEvaluateTool(BaseTool):
                 )
 
             # Validate required parameters
-            if not name or not instruction or not trainer_id or not evaluate_table:
+            if not name or not instruction or not model_id or not evaluate_table:
                 return _error_in_section(
-                    "Parameters 'name', 'instruction', 'trainer_id', and "
+                    "Parameters 'name', 'instruction', 'model_id', and "
                     "'evaluate_table' are required."
                 )
 
-            # Get the registered trainer
+            # Get the registered model
             try:
-                trainer_record = self.services.trainers.get_trainer_by_id(
-                    str(trainer_id)
-                )
-                if not trainer_record:
+                model_record = self.services.models.get_model_by_id(str(model_id))
+                if not model_record:
                     return _error_in_section(
-                        f"Trainer '{trainer_id}' not found in registry. "
-                        "Please train a model first using /ml train"
+                        f"Model '{model_id}' not found in registry. "
+                        "Please train a model first using /ml model"
                     )
             except Exception as exc:
                 return _error_in_section(
-                    f"Failed to retrieve trainer '{trainer_id}': {exc}"
+                    f"Failed to retrieve model '{model_id}': {exc}"
                 )
 
             # Get model spec and infer target column
             try:
-                model_record = self.services.models.get_model_by_id(
-                    trainer_record.model_id
-                )
-                if not model_record:
-                    return _error_in_section(
-                        f"Model '{trainer_record.model_id}' not found in registry"
-                    )
 
                 # Infer target column from model spec
                 target_column = self._infer_target_column_from_model(model_record.spec)
@@ -198,7 +189,7 @@ class MLEvaluateTool(BaseTool):
                     )
 
             except Exception as exc:
-                return _error_in_section(f"Failed to retrieve model for trainer: {exc}")
+                return _error_in_section(f"Failed to retrieve model: {exc}")
 
             # Check if target column exists in evaluate table
             target_column_exists = False
@@ -240,8 +231,8 @@ class MLEvaluateTool(BaseTool):
                 ) = await agent.generate_evaluator(
                     name=str(name),
                     instruction=str(instruction),
-                    trainer_ref=str(trainer_id),
-                    trainer_spec_yaml=trainer_record.spec,
+                    model_ref=str(model_id),
+                    model_spec_yaml=model_record.spec,
                     dataset=str(evaluate_table),
                     target_column=str(target_column),
                     target_column_exists=target_column_exists,
@@ -293,7 +284,7 @@ class MLEvaluateTool(BaseTool):
                 workflow = YamlConfirmationWorkflow(
                     validator_func=self._create_validator(),
                     editor_func=self._create_editor(
-                        instruction, trainer_id, trainer_record, target_column_exists
+                        instruction, model_id, model_record, target_column_exists
                     ),
                     ui_interface=self.ui,
                     yaml_type_name="evaluator",
@@ -303,9 +294,9 @@ class MLEvaluateTool(BaseTool):
                 context_dict = {
                     "evaluator_name": str(name),
                     "instruction": str(instruction),
-                    "trainer_id": str(trainer_id),
-                    "trainer_ref": str(trainer_id),
-                    "trainer_spec_yaml": trainer_record.spec,
+                    "model_id": str(model_id),
+                    "model_ref": str(model_id),
+                    "model_spec_yaml": model_record.spec,
                     "dataset": str(evaluate_table),
                     "target_column": str(target_column),
                     "target_column_exists": target_column_exists,
@@ -363,7 +354,7 @@ class MLEvaluateTool(BaseTool):
                         printer.print(
                             f"[dim]✓ Using existing evaluator '{name}' "
                             f"({evaluator_record.id} • "
-                            f"Trainer: {evaluator_spec.trainer_ref} • "
+                            f"Model: {evaluator_spec.model_ref} • "
                             f"Dataset: {evaluator_spec.dataset})[/dim]"
                         )
                 else:
@@ -377,10 +368,10 @@ class MLEvaluateTool(BaseTool):
                         id=evaluator_id,
                         name=str(name),
                         version=next_version,
-                        trainer_id=trainer_record.id,
-                        trainer_version=trainer_record.version,
+                        model_id=model_record.id,
+                        model_version=model_record.version,
                         spec=evaluator_yaml,
-                        description=f"Generated evaluator for trainer {trainer_id}",
+                        description=f"Generated evaluator for model {model_id}",
                         created_at=datetime.now(UTC),
                         updated_at=datetime.now(UTC),
                     )
@@ -393,7 +384,7 @@ class MLEvaluateTool(BaseTool):
                         printer.print(
                             f"[dim]✓ Evaluator '{name}' registered to database "
                             f"({evaluator_record.id} • "
-                            f"Trainer: {evaluator_spec.trainer_ref} • "
+                            f"Model: {evaluator_spec.model_ref} • "
                             f"Dataset: {evaluator_spec.dataset})[/dim]"
                         )
             except Exception as exc:
@@ -424,13 +415,13 @@ class MLEvaluateTool(BaseTool):
             from arc.database.services import EvaluationTrackingService
 
             tracking_service = EvaluationTrackingService(
-                self.services.trainers.db_manager
+                self.services.models.db_manager
             )
 
             try:
                 eval_run = tracking_service.create_run(
                     evaluator_id=evaluator_record.id,
-                    trainer_id=trainer_record.id,
+                    model_id=model_record.id,
                     dataset=str(evaluate_table),
                     target_column=str(target_column),
                     job_id=job.job_id,
@@ -446,12 +437,12 @@ class MLEvaluateTool(BaseTool):
                     timestamp_field="started_at",
                 )
 
-                # Load evaluator from trainer
+                # Load evaluator from model
                 from arc.ml.evaluator import ArcEvaluator
 
-                evaluator = ArcEvaluator.load_from_trainer(
+                evaluator = ArcEvaluator.load_from_model(
                     artifact_manager=self.runtime.artifact_manager,
-                    trainer_service=self.services.trainers,
+                    model_service=self.services.models,
                     evaluator_spec=evaluator_spec,
                     device="cpu",
                 )
@@ -593,11 +584,10 @@ class MLEvaluateTool(BaseTool):
                     metadata={
                         "evaluator_id": evaluator_record.id,
                         "evaluator_name": name,
-                        "trainer_id": trainer_record.id,
+                        "model_id": model_record.id,
                         "yaml_content": evaluator_yaml,
                         "evaluation_launched": False,
                         "evaluation_error": str(exc),
-                        "from_ml_plan": ml_plan is not None,
                     },
                 )
 
@@ -605,12 +595,11 @@ class MLEvaluateTool(BaseTool):
             result_metadata = {
                 "evaluator_id": evaluator_record.id,
                 "evaluator_name": name,
-                "trainer_id": trainer_record.id,
+                "model_id": model_record.id,
                 "yaml_content": evaluator_yaml,
                 "evaluation_launched": True,
                 "job_id": job.job_id,
                 "run_id": eval_run.run_id,
-                "from_ml_plan": ml_plan is not None,
             }
 
             return ToolResult(
@@ -644,8 +633,8 @@ class MLEvaluateTool(BaseTool):
     def _create_editor(
         self,
         _user_instruction: str,
-        trainer_id: str,
-        trainer_record,
+        model_id: str,
+        model_record,
         target_column_exists: bool,
     ):
         """Create editor function for AI-assisted editing with conversation history."""
@@ -674,8 +663,8 @@ class MLEvaluateTool(BaseTool):
                 ) = await agent.generate_evaluator(
                     name=context["evaluator_name"],
                     instruction=feedback,
-                    trainer_ref=trainer_id,
-                    trainer_spec_yaml=trainer_record.spec,
+                    model_ref=model_id,
+                    model_spec_yaml=model_record.spec,
                     dataset=context["dataset"],
                     target_column=context["target_column"],
                     target_column_exists=target_column_exists,

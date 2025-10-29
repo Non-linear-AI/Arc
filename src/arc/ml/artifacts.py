@@ -13,7 +13,19 @@ import torch
 import torch.nn as nn
 
 from arc.graph import TrainingConfig
-from arc.ml.trainer import TrainingResult
+
+
+@dataclass
+class TrainingResult:
+    """Results from a training run."""
+
+    train_losses: list[float]
+    val_losses: list[float] | None = None
+    final_train_loss: float | None = None
+    final_val_loss: float | None = None
+    best_val_loss: float | None = None
+    metrics_history: dict[str, list[float]] | None = None
+    training_time: float | None = None
 
 
 @dataclass

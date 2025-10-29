@@ -15,7 +15,6 @@ from arc.database.services.ml_plan_service import MLPlanService
 from arc.database.services.model_service import ModelService
 from arc.database.services.plugin_service import PluginService
 from arc.database.services.schema_service import SchemaService
-from arc.database.services.trainer_service import TrainerService
 from arc.database.services.training_tracking_service import (
     TrainingTrackingService,
 )
@@ -42,7 +41,6 @@ class ServiceContainer:
         # Services are initialized lazily via properties
         self._query_service = None
         self._model_service = None
-        self._trainer_service = None
         self._evaluator_service = None
         self._job_service = None
         self._plugin_service = None
@@ -66,13 +64,6 @@ class ServiceContainer:
         if self._model_service is None:
             self._model_service = ModelService(self.db_manager)
         return self._model_service
-
-    @property
-    def trainers(self) -> TrainerService:
-        """Get the trainer service."""
-        if self._trainer_service is None:
-            self._trainer_service = TrainerService(self.db_manager)
-        return self._trainer_service
 
     @property
     def evaluators(self) -> EvaluatorService:

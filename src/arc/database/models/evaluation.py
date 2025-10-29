@@ -39,7 +39,7 @@ class EvaluationRun:
     run_id: str
     evaluator_id: str
     job_id: str | None
-    trainer_id: str
+    model_id: str
     dataset: str
     target_column: str
     status: EvaluationStatus

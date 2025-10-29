@@ -9,8 +9,8 @@ class Evaluator:
     id: str
     name: str
     version: int
-    trainer_id: str
-    trainer_version: int
+    model_id: str
+    model_version: int
     spec: str
     description: str
     plan_id: str | None = None

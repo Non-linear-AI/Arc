@@ -337,45 +337,14 @@ class DuckDBDatabase(Database):
                 ON models(name, version);
             """)
 
-            # Registry for trainer specifications linked to models
-            self.execute("""
-                CREATE TABLE IF NOT EXISTS trainers(
-                    id TEXT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    version INTEGER NOT NULL,
-                    model_id TEXT NOT NULL,
-                    model_version INTEGER NOT NULL,
-                    spec TEXT NOT NULL,
-                    description TEXT,
-                    plan_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (name, version)
-                );
-            """)
-
-            # Create indexes for trainer lookups
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainers_name ON trainers(name);
-            """)
-
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainers_model_id ON trainers(model_id);
-            """)
-
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainers_name_version
-                ON trainers(name, version);
-            """)
-
-            # Registry for evaluator specifications linked to trainers
+            # Registry for evaluator specifications linked to models
             self.execute("""
                 CREATE TABLE IF NOT EXISTS evaluators(
                     id TEXT PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     version INTEGER NOT NULL,
-                    trainer_id TEXT NOT NULL,
-                    trainer_version INTEGER NOT NULL,
+                    model_id TEXT NOT NULL,
+                    model_version INTEGER NOT NULL,
                     spec TEXT NOT NULL,
                     description TEXT,
                     plan_id TEXT,
@@ -391,8 +360,8 @@ class DuckDBDatabase(Database):
             """)
 
             self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_evaluators_trainer_id
-                ON evaluators(trainer_id);
+                CREATE INDEX IF NOT EXISTS idx_evaluators_model_id
+                ON evaluators(model_id);
             """)
 
             self.execute("""
@@ -400,39 +369,11 @@ class DuckDBDatabase(Database):
                 ON evaluators(name, version);
             """)
 
-            # Migrate trainers and evaluators tables to add plan_id column (Phase 7)
-            # This ensures backward compatibility with existing databases
-            with suppress(Exception):
-                # Check if trainers table needs migration
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'trainers' AND column_name = 'plan_id'
-                """)
-
-                if not check_result.rows:
-                    # plan_id column doesn't exist, add it
-                    self.execute("ALTER TABLE trainers ADD COLUMN plan_id TEXT")
-
-            with suppress(Exception):
-                # Check if evaluators table needs migration
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'evaluators' AND column_name = 'plan_id'
-                """)
-
-                if not check_result.rows:
-                    # plan_id column doesn't exist, add it
-                    self.execute("ALTER TABLE evaluators ADD COLUMN plan_id TEXT")
-
             # Tracks long-running processes like training
             self.execute("""
                 CREATE TABLE IF NOT EXISTS jobs(
                     job_id TEXT PRIMARY KEY,
-                    model_id INTEGER,
-                    trainer_id TEXT,
-                    trainer_version INTEGER,
+                    model_id TEXT,
                     type TEXT NOT NULL,
                     status TEXT NOT NULL,
                     message TEXT,
@@ -591,7 +532,6 @@ class DuckDBDatabase(Database):
                     run_id VARCHAR PRIMARY KEY,
                     job_id VARCHAR,
                     model_id VARCHAR,
-                    trainer_id VARCHAR,
                     run_name VARCHAR,
                     description TEXT,
                     tensorboard_enabled BOOLEAN DEFAULT TRUE,
@@ -605,6 +545,7 @@ class DuckDBDatabase(Database):
                     completed_at TIMESTAMP,
                     artifact_path VARCHAR,
                     final_metrics JSON,
+                    training_config JSON,
                     original_config JSON,
                     current_config JSON,
                     config_history JSON,
@@ -657,7 +598,7 @@ class DuckDBDatabase(Database):
                     run_id VARCHAR PRIMARY KEY,
                     evaluator_id VARCHAR NOT NULL,
                     job_id VARCHAR,
-                    trainer_id VARCHAR,
+                    model_id VARCHAR,
                     dataset VARCHAR,
                     target_column VARCHAR,
                     status VARCHAR DEFAULT 'pending',
@@ -677,8 +618,8 @@ class DuckDBDatabase(Database):
             """)
 
             self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_trainer
-                ON evaluation_runs(trainer_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_model
+                ON evaluation_runs(model_id, created_at);
             """)
 
         except Exception as e:

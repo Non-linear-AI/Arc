@@ -273,8 +273,6 @@ async def handle_ml_command(
             await _ml_plan(args, ui, agent)
         elif subcommand == "revise-plan":
             await _ml_revise_plan(args, ui, agent)
-        elif subcommand == "create-trainer":
-            _ml_create_trainer(args, ui, runtime)
         elif subcommand == "predict":
             _ml_predict(args, ui, runtime)
         elif subcommand == "jobs":
@@ -419,45 +417,6 @@ async def _ml_revise_plan(
         raise CommandError(f"Failed to revise ML plan: {result.error}")
 
 
-def _ml_create_trainer(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "schema": True,
-            "model-id": True,
-        },
-    )
-
-    name = options.get("name")
-    schema_path = options.get("schema")
-    model_id = options.get("model-id")
-
-    if not name or not schema_path or not model_id:
-        raise CommandError(
-            "/ml create-trainer requires --name, --schema, and --model-id"
-        )
-
-    schema_path_obj = Path(str(schema_path))
-
-    try:
-        trainer = runtime.create_trainer(
-            name=str(name),
-            schema_path=schema_path_obj,
-            model_id=str(model_id),
-        )
-    except MLRuntimeError as exc:
-        raise CommandError(str(exc)) from exc
-
-    ui.show_system_success(
-        f"Trainer '{trainer.name}' registered "
-        f"(version {trainer.version}, id={trainer.id})."
-    )
-    ui.show_info(f"Linked to model: {trainer.model_id}")
-
-
 def _ml_predict(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
@@ -568,8 +527,6 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 rows.append(["Training Run ID", training_run.run_id])
                 if training_run.model_id:
                     rows.append(["Model", training_run.model_id])
-                if training_run.trainer_id:
-                    rows.append(["Trainer", training_run.trainer_id])
 
                 # Show TensorBoard info
                 if training_run.tensorboard_enabled:
@@ -605,7 +562,7 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
             from arc.database.services import EvaluationTrackingService
 
             eval_tracking = EvaluationTrackingService(
-                runtime.services.trainers.db_manager
+                runtime.services.models.db_manager
             )
 
             # Find evaluation run by job_id
@@ -617,8 +574,8 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 rows.append(["Evaluation Run ID", eval_run.run_id])
                 if eval_run.evaluator_id:
                     rows.append(["Evaluator", eval_run.evaluator_id])
-                if eval_run.trainer_id:
-                    rows.append(["Trainer", eval_run.trainer_id])
+                if eval_run.model_id:
+                    rows.append(["Model", eval_run.model_id])
                 if eval_run.dataset:
                     rows.append(["Dataset", eval_run.dataset])
                 if eval_run.target_column:
@@ -754,7 +711,7 @@ async def _ml_evaluate(
         {
             "name": True,
             "instruction": True,
-            "trainer-id": True,
+            "model-id": True,
             "data-table": True,
             "plan-id": True,  # Optional ML plan ID for knowledge
         },
@@ -762,13 +719,13 @@ async def _ml_evaluate(
 
     name = options.get("name")
     instruction = options.get("instruction")
-    trainer_id = options.get("trainer-id")
+    model_id = options.get("model-id")
     data_table = options.get("data-table")
     plan_id = options.get("plan-id")
 
-    if not name or not instruction or not trainer_id or not data_table:
+    if not name or not instruction or not model_id or not data_table:
         raise CommandError(
-            "/ml evaluate requires --name, --instruction, --trainer-id, "
+            "/ml evaluate requires --name, --instruction, --model-id, "
             "and --data-table"
         )
 
@@ -799,7 +756,7 @@ async def _ml_evaluate(
         result = await tool.execute(
             name=name,
             instruction=instruction,
-            trainer_id=trainer_id,
+            model_id=model_id,
             evaluate_table=data_table,
             plan_id=plan_id,  # Pass plan_id to extract knowledge IDs
         )

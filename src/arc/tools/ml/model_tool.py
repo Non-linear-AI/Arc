@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 from arc.core.agents.ml_model import MLModelAgent
 from arc.graph.model import ModelValidationError, validate_model_dict
-from arc.graph.trainer import TrainerSpec
 from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.tools.base import BaseTool, ToolResult
 from arc.tools.ml._utils import _load_ml_plan
@@ -119,6 +118,7 @@ class MLModelTool(BaseTool):
                 )
 
             # Load plan from database if plan_id is provided
+            ml_plan = None
             model_plan = None
             recommended_knowledge_ids = None
             if plan_id:
@@ -227,7 +227,7 @@ class MLModelTool(BaseTool):
                         "The training configuration must include a loss function."
                     )
 
-                # Validate model portion (without loss - loss now goes to trainer)
+                # Validate model portion (without loss - loss is in training config)
                 validate_model_dict(full_spec)
 
                 # Convert back to YAML for model-only storage (without loss)
@@ -332,44 +332,16 @@ class MLModelTool(BaseTool):
                 "training_launched": False,  # Will update if training launches
             }
 
-            # Create trainer spec and launch training
-            trainer_name = name  # Use same name for trainer
-            try:
-                # Build trainer YAML from loss + training config + model reference
-                trainer_dict = {
-                    "model_ref": model_id,
-                    "loss": loss_config,
-                    **training_config,
-                }
-                trainer_yaml = yaml.dump(trainer_dict, default_flow_style=False, sort_keys=False)
-
-                # Create trainer record in database
-                trainer_record = self.runtime.create_trainer(
-                    name=trainer_name,
-                    spec_yaml=trainer_yaml,
-                    plan_id=plan_id,
-                )
-                trainer_id = trainer_record.name
-
-                if printer:
-                    printer.print("")
-                    printer.print(f"[dim]✓ Trainer '{trainer_name}' created[/dim]")
-
-                result_metadata["trainer_id"] = trainer_id
-                result_metadata["trainer_yaml"] = trainer_yaml
-
-            except Exception as exc:
-                return _error_in_section(f"Failed to create trainer: {exc}")
-
-            # Launch training
+            # Launch training directly with the model (no trainer needed)
+            # The training config is embedded in the unified model YAML
             if printer:
                 printer.print("")
-                printer.print(f"→ Launching training with trainer '{trainer_name}'...")
+                printer.print(f"→ Launching training for model '{name}'...")
 
             try:
                 job_id = await asyncio.to_thread(
-                    self.runtime.train_with_trainer,
-                    trainer_name=trainer_name,
+                    self.runtime.train_model,
+                    model_name=name,
                     train_table=str(train_table),
                 )
 
@@ -411,13 +383,13 @@ class MLModelTool(BaseTool):
                                 )
 
             except MLRuntimeError as exc:
-                # Training launch failed but model + trainer were created
+                # Training launch failed but model was created
                 if printer:
                     printer.print("⚠ Training Validation Failed")
                     printer.print("")
                     printer.print(f"[red]{exc}[/red]")
                     printer.print("")
-                    printer.print(f"[dim]Note: Model and trainer were registered successfully[/dim]")
+                    printer.print(f"[dim]Note: Model was registered successfully[/dim]")
 
                 lines.append("")
                 lines.append("⚠ Training Validation Failed")

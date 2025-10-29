@@ -13,7 +13,7 @@ class EvaluatorService(BaseService):
 
     Handles operations on the evaluators table including:
     - Evaluator registration and versioning
-    - Evaluator-trainer relationship tracking
+    - Evaluator-model relationship tracking
     - Evaluator lifecycle management
     - CRUD operations with proper SQL escaping
     """
@@ -137,27 +137,27 @@ class EvaluatorService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to get evaluators by name {name}: {e}") from e
 
-    def get_evaluators_by_trainer(self, trainer_id: str) -> list[Evaluator]:
-        """Get all evaluators for a specific trainer.
+    def get_evaluators_by_model(self, model_id: str) -> list[Evaluator]:
+        """Get all evaluators for a specific model.
 
         Args:
-            trainer_id: Trainer ID to search for
+            model_id: Model ID to search for
 
         Returns:
-            List of Evaluator objects for the trainer
+            List of Evaluator objects for the model
 
         Raises:
             DatabaseError: If query execution fails
         """
         try:
-            escaped_trainer_id = self._escape_string(trainer_id)
-            sql = f"""SELECT * FROM evaluators WHERE trainer_id = '{escaped_trainer_id}'
+            escaped_model_id = self._escape_string(model_id)
+            sql = f"""SELECT * FROM evaluators WHERE model_id = '{escaped_model_id}'
                 ORDER BY created_at DESC"""
             result = self._system_query(sql)
             return self._results_to_evaluators(result)
         except Exception as e:
             raise DatabaseError(
-                f"Failed to get evaluators for trainer {trainer_id}: {e}"
+                f"Failed to get evaluators for model {model_id}: {e}"
             ) from e
 
     def create_evaluator(self, evaluator: Evaluator) -> None:
@@ -291,8 +291,8 @@ class EvaluatorService(BaseService):
                 id=str(row["id"]),
                 name=str(row["name"]),
                 version=int(row["version"]),
-                trainer_id=str(row["trainer_id"]),
-                trainer_version=int(row["trainer_version"]),
+                model_id=str(row["model_id"]),
+                model_version=int(row["model_version"]),
                 spec=str(row["spec"]),
                 description=str(row["description"]),
                 plan_id=str(row["plan_id"]) if row.get("plan_id") else None,
@@ -343,14 +343,14 @@ class EvaluatorService(BaseService):
             )
 
             sql = f"""INSERT INTO evaluators (
-                id, name, version, trainer_id, trainer_version,
+                id, name, version, model_id, model_version,
                 spec, description, plan_id, created_at, updated_at
             ) VALUES (
                 '{self._escape_string(evaluator.id)}',
                 '{self._escape_string(evaluator.name)}',
                 {evaluator.version},
-                '{self._escape_string(evaluator.trainer_id)}',
-                {evaluator.trainer_version},
+                '{self._escape_string(evaluator.model_id)}',
+                {evaluator.model_version},
                 '{self._escape_string(evaluator.spec)}',
                 '{self._escape_string(evaluator.description)}',
                 {plan_id_value},
@@ -386,8 +386,8 @@ class EvaluatorService(BaseService):
             sql = f"""UPDATE evaluators SET
                 name = '{self._escape_string(evaluator.name)}',
                 version = {evaluator.version},
-                trainer_id = '{self._escape_string(evaluator.trainer_id)}',
-                trainer_version = {evaluator.trainer_version},
+                model_id = '{self._escape_string(evaluator.model_id)}',
+                model_version = {evaluator.model_version},
                 spec = '{self._escape_string(evaluator.spec)}',
                 description = '{self._escape_string(evaluator.description)}',
                 plan_id = {plan_id_value},
