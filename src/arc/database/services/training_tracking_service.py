@@ -42,7 +42,6 @@ class TrainingTrackingService(BaseService):
         self,
         job_id: str | None = None,
         model_id: str | None = None,
-        trainer_id: str | None = None,
         run_name: str | None = None,
         description: str | None = None,
         tensorboard_enabled: bool = True,
@@ -56,7 +55,6 @@ class TrainingTrackingService(BaseService):
         Args:
             job_id: Associated job ID
             model_id: Model being trained
-            trainer_id: Trainer being used
             run_name: Optional run name
             description: Optional run description
             tensorboard_enabled: Enable TensorBoard logging
@@ -78,11 +76,11 @@ class TrainingTrackingService(BaseService):
 
             sql = """
             INSERT INTO training_runs (
-                run_id, job_id, model_id, trainer_id,
+                run_id, job_id, model_id,
                 run_name, description,
                 tensorboard_enabled, tensorboard_log_dir,
                 metric_log_frequency, checkpoint_frequency,
-                status, original_config, current_config,
+                status, training_config, original_config, current_config,
                 created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
@@ -91,7 +89,6 @@ class TrainingTrackingService(BaseService):
                 run_id,
                 job_id,
                 model_id,
-                trainer_id,
                 run_name,
                 description,
                 tensorboard_enabled,
@@ -99,8 +96,9 @@ class TrainingTrackingService(BaseService):
                 metric_log_frequency,
                 checkpoint_frequency,
                 TrainingStatus.PENDING.value,
-                config_json,
-                config_json,
+                config_json,  # training_config (new column)
+                config_json,  # original_config
+                config_json,  # current_config
                 now,
                 now,
             ]
@@ -111,7 +109,6 @@ class TrainingTrackingService(BaseService):
                 run_id=run_id,
                 job_id=job_id,
                 model_id=model_id,
-                trainer_id=trainer_id,
                 run_name=run_name,
                 description=description,
                 tensorboard_enabled=tensorboard_enabled,
@@ -125,6 +122,7 @@ class TrainingTrackingService(BaseService):
                 completed_at=None,
                 artifact_path=None,
                 final_metrics=None,
+                training_config=config_json,
                 original_config=config_json,
                 current_config=config_json,
                 config_history=None,
@@ -185,7 +183,6 @@ class TrainingTrackingService(BaseService):
         limit: int = 100,
         status: TrainingStatus | None = None,
         model_id: str | None = None,
-        trainer_id: str | None = None,
     ) -> list[TrainingRun]:
         """List training runs with optional filters.
 
@@ -193,7 +190,6 @@ class TrainingTrackingService(BaseService):
             limit: Maximum number of runs to return
             status: Filter by status
             model_id: Filter by model ID
-            trainer_id: Filter by trainer ID
 
         Returns:
             List of TrainingRun objects
@@ -212,10 +208,6 @@ class TrainingTrackingService(BaseService):
             if model_id:
                 conditions.append("model_id = ?")
                 params.append(model_id)
-
-            if trainer_id:
-                conditions.append("trainer_id = ?")
-                params.append(trainer_id)
 
             where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             sql = f"""
@@ -716,7 +708,6 @@ class TrainingTrackingService(BaseService):
                 run_id=str(row["run_id"]),
                 job_id=str(row["job_id"]) if row.get("job_id") else None,
                 model_id=str(row["model_id"]) if row.get("model_id") else None,
-                trainer_id=str(row["trainer_id"]) if row.get("trainer_id") else None,
                 run_name=str(row["run_name"]) if row.get("run_name") else None,
                 description=str(row["description"]) if row.get("description") else None,
                 tensorboard_enabled=bool(row["tensorboard_enabled"]),

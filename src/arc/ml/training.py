@@ -57,6 +57,7 @@ def _get_optimizer(
 
     Args:
         optimizer_type: Type of optimizer (adam, sgd, adamw, etc.)
+                       Can also be full path like "torch.optim.Adam"
         parameters: Model parameters
         learning_rate: Learning rate
         **kwargs: Additional optimizer parameters
@@ -67,7 +68,10 @@ def _get_optimizer(
     # Sanitize parameters to handle YAML string-to-float conversion issues
     kwargs = _sanitize_optimizer_params(kwargs)
 
+    # Normalize optimizer type: strip "torch.optim." prefix if present and lowercase
     optimizer_type = optimizer_type.lower()
+    if optimizer_type.startswith("torch.optim."):
+        optimizer_type = optimizer_type.replace("torch.optim.", "")
 
     if optimizer_type == "adam":
         return torch.optim.Adam(parameters, lr=learning_rate, **kwargs)
