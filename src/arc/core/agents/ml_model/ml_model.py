@@ -257,7 +257,7 @@ class MLModelAgent(BaseAgent):
         """Comprehensive validation of generated model with detailed error reporting.
 
         Args:
-            model_yaml: Generated YAML model string
+            model_yaml: Generated YAML model string (unified spec with training section)
             context: Generation context for validation
 
         Returns:
@@ -268,19 +268,31 @@ class MLModelAgent(BaseAgent):
             # Parse YAML
             model_dict = self._validate_yaml_syntax(model_yaml)
 
-            # Check required top-level fields for model
-            required_fields = ["inputs", "graph", "outputs", "loss"]
+            # Check required top-level fields for unified specification
+            required_fields = ["inputs", "graph", "outputs", "training"]
             missing_fields = [
                 field for field in required_fields if field not in model_dict
             ]
             if missing_fields:
                 return {
                     "valid": False,
-                    "error": f"Missing required model fields: {missing_fields}",
+                    "error": f"Missing required fields: {missing_fields}",
                 }
 
-            # Validate model structure using dedicated validator
-            validate_model_dict(model_dict)
+            # Check that training section contains loss
+            training = model_dict.get("training", {})
+            if not training.get("loss"):
+                return {
+                    "valid": False,
+                    "error": "Missing required 'loss' field inside 'training' section",
+                }
+
+            # Validate model structure (without training section) using dedicated validator
+            # Create a copy with just the model fields for validation
+            model_only = {
+                k: v for k, v in model_dict.items() if k != "training"
+            }
+            validate_model_dict(model_only)
 
             # Validate node types against available components
             node_errors = self._validate_node_types(model_dict, context)
@@ -301,9 +313,11 @@ class MLModelAgent(BaseAgent):
                         "error": f"Column validation errors: {column_errors}",
                     }
 
-            # Parse into ModelSpec object
+            # Parse into ModelSpec object (from model-only portion)
             try:
-                model_spec = ModelSpec.from_yaml(model_yaml)
+                import yaml
+                model_yaml_str = yaml.dump(model_only, default_flow_style=False, sort_keys=False)
+                model_spec = ModelSpec.from_yaml(model_yaml_str)
             except Exception as e:
                 return {
                     "valid": False,
