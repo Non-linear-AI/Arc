@@ -710,8 +710,24 @@ async def _ml_model(
         # Get settings for tool initialization
         api_key, base_url, model = _get_ml_tool_config()
 
+        # Initialize TensorBoard manager for the tool
+        tensorboard_manager = None
+        try:
+            from arc.ml import TensorBoardManager
+            tensorboard_manager = TensorBoardManager()
+        except Exception:
+            tensorboard_manager = None
+
         # Create the tool with proper dependencies
-        tool = MLModelTool(runtime.services, api_key, base_url, model, ui)
+        tool = MLModelTool(
+            runtime.services,
+            runtime,
+            api_key,
+            base_url,
+            model,
+            ui,
+            tensorboard_manager,
+        )
 
         # Execute the tool with confirmation workflow
         result = await tool.execute(
