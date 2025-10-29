@@ -212,9 +212,8 @@ class MLEvaluateTool(BaseTool):
 
             # Note: ml_evaluate is now an ad hoc tool, not part of the core ML workflow.
             # It does not use ML Plan evaluation guidance since that field has been removed.
-            # Plans now focus on: feature_engineering, model_architecture_and_loss,
-            # and training_and_validation. Evaluation metrics are specified in the
-            # training configuration for validation monitoring.
+            # Plans now focus on: data_plan and model_plan. Evaluation metrics are
+            # specified in the training configuration for validation monitoring.
 
             # Generate evaluator spec via LLM
             # Agent will discover relevant knowledge using tools

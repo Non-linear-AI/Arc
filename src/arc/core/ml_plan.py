@@ -142,25 +142,18 @@ class MLPlan:
 class MLPlanDiff:
     """Represents differences between two ML plans."""
 
-    feature_engineering_changed: bool = False
-    architecture_changed: bool = False
-    training_config_changed: bool = False
+    data_plan_changed: bool = False
+    model_plan_changed: bool = False
 
     # Store old/new values for changed sections
-    old_feature_engineering: str = ""
-    new_feature_engineering: str = ""
-    old_architecture: str = ""
-    new_architecture: str = ""
-    old_training_config: str = ""
-    new_training_config: str = ""
+    old_data_plan: str = ""
+    new_data_plan: str = ""
+    old_model_plan: str = ""
+    new_model_plan: str = ""
 
     def has_changes(self) -> bool:
         """Check if there are any changes."""
-        return (
-            self.feature_engineering_changed
-            or self.architecture_changed
-            or self.training_config_changed
-        )
+        return self.data_plan_changed or self.model_plan_changed
 
     def format_for_display(self, new_plan: MLPlan) -> str:
         """Format diff as readable markdown with changes highlighted.
@@ -184,16 +177,16 @@ class MLPlanDiff:
         lines.append("---")
         lines.append("")
 
-        # Feature Engineering
-        if self.feature_engineering_changed:
+        # Data Plan
+        if self.data_plan_changed:
             lines.extend(
                 [
-                    "**Feature Engineering** *(Changed)*",
-                    new_plan.feature_engineering,
+                    "**Data Plan (Feature Engineering)** *(Changed)*",
+                    new_plan.data_plan,
                     "",
                     "<details><summary>Show previous version</summary>",
                     "",
-                    self.old_feature_engineering,
+                    self.old_data_plan,
                     "",
                     "</details>",
                     "",
@@ -202,22 +195,22 @@ class MLPlanDiff:
         else:
             lines.extend(
                 [
-                    "**Feature Engineering**",
-                    new_plan.feature_engineering,
+                    "**Data Plan (Feature Engineering)**",
+                    new_plan.data_plan,
                     "",
                 ]
             )
 
-        # Architecture
-        if self.architecture_changed:
+        # Model Plan
+        if self.model_plan_changed:
             lines.extend(
                 [
-                    "**Model Architecture & Loss** *(Changed)*",
-                    new_plan.model_architecture_and_loss,
+                    "**Model Plan (Architecture + Training)** *(Changed)*",
+                    new_plan.model_plan,
                     "",
                     "<details><summary>Show previous version</summary>",
                     "",
-                    self.old_architecture,
+                    self.old_model_plan,
                     "",
                     "</details>",
                     "",
@@ -226,32 +219,8 @@ class MLPlanDiff:
         else:
             lines.extend(
                 [
-                    "**Model Architecture & Loss**",
-                    new_plan.model_architecture_and_loss,
-                    "",
-                ]
-            )
-
-        # Training & Validation
-        if self.training_config_changed:
-            lines.extend(
-                [
-                    "**Training & Validation** *(Changed)*",
-                    new_plan.training_and_validation,
-                    "",
-                    "<details><summary>Show previous version</summary>",
-                    "",
-                    self.old_training_config,
-                    "",
-                    "</details>",
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "**Training & Validation**",
-                    new_plan.training_and_validation,
+                    "**Model Plan (Architecture + Training)**",
+                    new_plan.model_plan,
                     "",
                 ]
             )
@@ -289,19 +258,14 @@ def compute_plan_diff(old_plan: dict | MLPlan, new_plan: MLPlan) -> MLPlanDiff:
     diff = MLPlanDiff()
 
     # Text field changes
-    if old_plan.feature_engineering != new_plan.feature_engineering:
-        diff.feature_engineering_changed = True
-        diff.old_feature_engineering = old_plan.feature_engineering
-        diff.new_feature_engineering = new_plan.feature_engineering
+    if old_plan.data_plan != new_plan.data_plan:
+        diff.data_plan_changed = True
+        diff.old_data_plan = old_plan.data_plan
+        diff.new_data_plan = new_plan.data_plan
 
-    if old_plan.model_architecture_and_loss != new_plan.model_architecture_and_loss:
-        diff.architecture_changed = True
-        diff.old_architecture = old_plan.model_architecture_and_loss
-        diff.new_architecture = new_plan.model_architecture_and_loss
-
-    if old_plan.training_and_validation != new_plan.training_and_validation:
-        diff.training_config_changed = True
-        diff.old_training_config = old_plan.training_and_validation
-        diff.new_training_config = new_plan.training_and_validation
+    if old_plan.model_plan != new_plan.model_plan:
+        diff.model_plan_changed = True
+        diff.old_model_plan = old_plan.model_plan
+        diff.new_model_plan = new_plan.model_plan
 
     return diff

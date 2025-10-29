@@ -175,7 +175,7 @@ class MLDataTool(BaseTool):
 
             # Load plan from database if plan_id is provided
             # If plan is provided, use it as baseline and augment with instruction
-            ml_plan_feature_engineering = None
+            ml_plan_data_plan = None
             if plan_id:
                 try:
                     # Load plan from database using service
@@ -184,8 +184,8 @@ class MLDataTool(BaseTool):
                     from arc.core.ml_plan import MLPlan
 
                     plan = MLPlan.from_dict(ml_plan)
-                    # Extract feature engineering guidance for data processing
-                    ml_plan_feature_engineering = plan.feature_engineering
+                    # Extract data plan guidance for data processing
+                    ml_plan_data_plan = plan.data_plan
 
                     # Extract stage-specific knowledge IDs from plan
                     if not recommended_knowledge_ids:
@@ -199,12 +199,12 @@ class MLDataTool(BaseTool):
 
             # Build final instruction: use ML plan as baseline context if available
             # Main agent can provide shaped instruction that builds on the plan
-            if ml_plan_feature_engineering:
+            if ml_plan_data_plan:
                 # ML plan provides baseline, instruction adds specifics
                 enhanced_instruction = (
                     f"{instruction}\n\n"
-                    f"ML Plan Feature Engineering Guidance (use as baseline):\n"
-                    f"{ml_plan_feature_engineering}"
+                    f"ML Plan Data Plan Guidance (use as baseline):\n"
+                    f"{ml_plan_data_plan}"
                 )
             else:
                 enhanced_instruction = instruction
