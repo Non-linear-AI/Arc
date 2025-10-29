@@ -152,6 +152,12 @@ def _get_loss_function(loss_type: str, **kwargs) -> nn.Module:
     elif loss_type in ("bce", "binary_cross_entropy"):
         return nn.BCELoss(**kwargs)
     elif loss_type in ("bce_with_logits", "binary_cross_entropy_with_logits"):
+        # Handle pos_weight parameter - must be a tensor
+        if "pos_weight" in kwargs:
+            pos_weight = kwargs["pos_weight"]
+            if not isinstance(pos_weight, torch.Tensor):
+                # Convert to tensor
+                kwargs["pos_weight"] = torch.tensor([float(pos_weight)])
         return nn.BCEWithLogitsLoss(**kwargs)
     elif loss_type in ("ce", "cross_entropy", "categorical_cross_entropy"):
         return nn.CrossEntropyLoss(**kwargs)
