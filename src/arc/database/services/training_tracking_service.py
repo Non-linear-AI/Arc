@@ -745,6 +745,9 @@ class TrainingTrackingService(BaseService):
                 final_metrics=(
                     str(row["final_metrics"]) if row.get("final_metrics") else None
                 ),
+                training_config=(
+                    str(row["training_config"]) if row.get("training_config") else None
+                ),
                 original_config=(
                     str(row["original_config"]) if row.get("original_config") else None
                 ),

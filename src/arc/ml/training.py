@@ -21,6 +21,35 @@ from torch.utils.data import DataLoader
 logger = logging.getLogger(__name__)
 
 
+def _normalize_device(device: str) -> str:
+    """Normalize device string to valid PyTorch device.
+
+    Args:
+        device: Device string (can be "auto", "cpu", "cuda", "mps", etc.)
+
+    Returns:
+        Valid PyTorch device string
+    """
+    device = device.lower().strip()
+
+    # If already a valid device, return as-is
+    if device in ("cpu", "cuda", "mps", "ipu", "xpu"):
+        return device
+
+    # Handle "auto" - pick best available device
+    if device == "auto":
+        if torch.cuda.is_available():
+            return "cuda"
+        elif torch.backends.mps.is_available():
+            return "mps"
+        else:
+            return "cpu"
+
+    # Default to CPU for unknown devices
+    logger.warning(f"Unknown device '{device}', defaulting to 'cpu'")
+    return "cpu"
+
+
 def _sanitize_optimizer_params(params: dict) -> dict:
     """Convert optimizer parameters to proper numeric types.
 
@@ -180,7 +209,8 @@ def train_model(
     start_time = time.time()
 
     # Extract configuration
-    device = getattr(training_config, "device", "cpu")
+    device_str = getattr(training_config, "device", "cpu")
+    device = _normalize_device(device_str)
     epochs = getattr(training_config, "epochs", 10)
     learning_rate = getattr(training_config, "learning_rate", 0.001)
 
