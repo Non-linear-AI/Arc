@@ -338,7 +338,7 @@ class MLPlanAgent(BaseAgent):
             raise MLPlanError(
                 f"Failed to parse YAML from LLM response: {str(e)}\n"
                 f"Response preview:\n{response_preview}\n"
-                f"Ensure the LLM returns valid YAML without markdown code fences."
+                f"Ensure the LLM returns valid YAML within markdown code fences (```yaml ... ```)."
             ) from e
         except ValueError as e:
             # Missing required fields or invalid structure

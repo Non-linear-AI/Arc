@@ -169,11 +169,11 @@ knowledge:
 ## Output Format Requirements
 
 **Your output must:**
-- Start directly with the first field name (data_plan:)
-- Use YAML literal block style (>-) for all multi-line string fields
+- Start with ```yaml on the first line
 - Include all three required sections: data_plan, model_plan, knowledge
+- Use YAML literal block style (>-) for all multi-line string fields
 - Always include both knowledge.data and knowledge.model (use empty lists [] if none)
-- NOT include markdown code fences (no ```yaml or ```)
-- NOT include any explanatory text outside the YAML structure
+- End with ``` on the last line
+- Do NOT include any explanatory text outside the code fence
 
 {% endif %}
