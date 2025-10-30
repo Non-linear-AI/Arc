@@ -705,38 +705,37 @@ async def _ml_model(
 async def _ml_evaluate(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
-    """Handle evaluator generation and execution command."""
+    """Handle model evaluation command."""
     options = _parse_options(
         args,
         {
-            "name": True,
-            "instruction": True,
             "model-id": True,
-            "data-table": True,
-            "plan-id": True,  # Optional ML plan ID for knowledge
+            "dataset": True,
+            "metrics": True,  # Optional comma-separated list
+            "output-table": True,  # Optional table for predictions
         },
     )
 
-    name = options.get("name")
-    instruction = options.get("instruction")
     model_id = options.get("model-id")
-    data_table = options.get("data-table")
-    plan_id = options.get("plan-id")
+    dataset = options.get("dataset")
+    metrics_str = options.get("metrics")
+    output_table = options.get("output-table")
 
-    if not name or not instruction or not model_id or not data_table:
+    if not model_id or not dataset:
         raise CommandError(
-            "/ml evaluate requires --name, --instruction, --model-id, "
-            "and --data-table"
+            "/ml evaluate requires --model-id and --dataset"
         )
+
+    # Parse metrics if provided
+    metrics = None
+    if metrics_str:
+        metrics = [m.strip() for m in str(metrics_str).split(",")]
 
     tensorboard_manager = None
     evaluation_succeeded = False
     try:
         # Import here: MLEvaluateTool only needed for /ml evaluate command
         from arc.tools.ml import MLEvaluateTool
-
-        # Get settings for tool initialization
-        api_key, base_url, model = _get_ml_tool_config()
 
         # Initialize TensorBoard manager for the tool
         try:
@@ -747,18 +746,17 @@ async def _ml_evaluate(
         except Exception:
             tensorboard_manager = None
 
-        # Create the tool with proper dependencies
+        # Create the tool with proper dependencies (no API key needed for evaluation)
         tool = MLEvaluateTool(
-            runtime.services, runtime, api_key, base_url, model, ui, tensorboard_manager
+            runtime.services, runtime, ui, tensorboard_manager
         )
 
-        # Execute the tool: generate spec, register, and run evaluation
+        # Execute the tool: create evaluator and run evaluation
         result = await tool.execute(
-            name=name,
-            instruction=instruction,
             model_id=model_id,
-            evaluate_table=data_table,
-            plan_id=plan_id,  # Pass plan_id to extract knowledge IDs
+            dataset=dataset,
+            metrics=metrics,
+            output_table=output_table,
         )
 
         if not result.success:

@@ -237,9 +237,9 @@ class InteractiveInterface:
                     "Generate model + trainer and launch training",
                 ),
                 (
-                    "/ml evaluate --name NAME --instruction DESC "
-                    "--trainer-id TRAINER_ID --data-table TABLE",
-                    "Generate evaluator and run model evaluation",
+                    "/ml evaluate --model-id MODEL_ID --dataset TABLE "
+                    "[--metrics METRICS] [--output-table TABLE]",
+                    "Evaluate trained model on test dataset",
                 ),
                 (
                     "/ml predict --model NAME --data TABLE --output TABLE",
