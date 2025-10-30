@@ -28,6 +28,8 @@ class DataSourceExecutionResult:
     step_count: int
     steps_executed: list[tuple[str, str]]  # [(step_name, step_type), ...]
     progress_log: list[tuple[str, str]]  # [(message, level), ...]
+    sql: str | None = None  # Full SQL (all steps combined) for context
+    outputs: list[dict] | None = None  # Output table schemas and row counts
 
 
 class DataSourceExecutionError(Exception):
@@ -84,12 +86,18 @@ async def dry_run_data_source_pipeline(
                 # Execute directly without wrapping
                 execute_fn(sql)
             elif step.type == "view":
-                # Create temporary view
-                create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
+                # Drop both table and view (in case object exists with wrong type)
+                execute_fn(f"DROP TABLE IF EXISTS {quoted_name}")
+                execute_fn(f"DROP VIEW IF EXISTS {quoted_name}")
+                # Create view
+                create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
                 execute_fn(create_sql)
             elif step.type == "table":
+                # Drop both table and view (in case object exists with wrong type)
+                execute_fn(f"DROP VIEW IF EXISTS {quoted_name}")
+                execute_fn(f"DROP TABLE IF EXISTS {quoted_name}")
                 # Create persistent table
-                create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
+                create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
                 execute_fn(create_sql)
             else:
                 # Unknown type - rollback and fail
@@ -184,64 +192,152 @@ async def execute_data_source_pipeline(
         progress_callback("🤖 Executing pipeline...", "info")
         progress_log.append(("🤖 Executing pipeline...", "info"))
 
-    for i, step in enumerate(ordered_steps, 1):
-        # Get step type from the step itself (defaults to 'table' if not set)
-        step_type = getattr(step, "type", "table")
-        steps_executed.append((step.name, step_type))
+    # Choose execute method based on target database
+    execute_fn = (
+        db_manager.system_execute if target_db == "system" else db_manager.user_execute
+    )
 
-        # Report progress: step
-        step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
-        if progress_callback:
-            progress_callback(step_msg, "step")
-            progress_log.append((step_msg, "step"))
+    # Build complete SQL (all steps combined) for context
+    sql_parts = ["BEGIN TRANSACTION;\n\n"]
 
-        # Substitute variables in SQL
-        sql = spec.substitute_vars(step.sql)
+    try:
+        # Start transaction for atomic execution
+        execute_fn("BEGIN TRANSACTION")
 
-        # Strip trailing semicolons (they cause syntax errors in
-        # CREATE TABLE/VIEW AS)
-        sql = sql.rstrip().rstrip(";").rstrip()
+        for i, step in enumerate(ordered_steps, 1):
+            # Get step type from the step itself (defaults to 'table' if not set)
+            step_type = getattr(step, "type", "table")
+            steps_executed.append((step.name, step_type))
 
-        # Quote step name for safe SQL execution (not used for execute type)
-        quoted_name = quote_sql_identifier(step.name)
+            # Report progress: step
+            step_msg = f"Step {i}/{step_count}: {step.name} ({step_type})"
+            if progress_callback:
+                progress_callback(step_msg, "step")
+                progress_log.append((step_msg, "step"))
 
-        try:
-            if step_type == "execute":
-                # Execute directly without wrapping (DDL/DML statements)
-                # These don't create artifacts - just run the SQL as-is
-                if target_db == "system":
-                    db_manager.system_execute(sql)
+            # Substitute variables in SQL
+            sql = spec.substitute_vars(step.sql)
+
+            # Strip trailing semicolons (they cause syntax errors in
+            # CREATE TABLE/VIEW AS)
+            sql = sql.rstrip().rstrip(";").rstrip()
+
+            # Quote step name for safe SQL execution (not used for execute type)
+            quoted_name = quote_sql_identifier(step.name)
+
+            try:
+                if step_type == "execute":
+                    # Execute directly without wrapping (DDL/DML statements)
+                    # These don't create artifacts - just run the SQL as-is
+                    sql_parts.append(
+                        f"-- Step {i}/{step_count}: {step.name} (execute)\n"
+                    )
+                    sql_parts.append(f"{sql};\n\n")
+
+                    execute_fn(sql)
+                elif step_type == "view":
+                    # Create persistent view for intermediate steps
+                    # Drop both table and view first (in case object exists with wrong type)  # noqa: E501
+                    sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (view)\n")
+                    sql_parts.append(f"DROP TABLE IF EXISTS {quoted_name};\n")
+                    sql_parts.append(f"DROP VIEW IF EXISTS {quoted_name};\n")
+                    execute_fn(f"DROP TABLE IF EXISTS {quoted_name}")
+                    execute_fn(f"DROP VIEW IF EXISTS {quoted_name}")
+
+                    # Create view
+                    create_sql = f"CREATE VIEW {quoted_name} AS ({sql})"
+                    sql_parts.append(f"{create_sql};\n\n")
+                    execute_fn(create_sql)
+                elif step_type == "table":
+                    # Create persistent table for output steps
+                    # Drop both table and view first (in case object exists with wrong type)  # noqa: E501
+                    sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (table)\n")
+                    sql_parts.append(f"DROP VIEW IF EXISTS {quoted_name};\n")
+                    sql_parts.append(f"DROP TABLE IF EXISTS {quoted_name};\n")
+                    execute_fn(f"DROP VIEW IF EXISTS {quoted_name}")
+                    execute_fn(f"DROP TABLE IF EXISTS {quoted_name}")
+
+                    # Create table
+                    create_sql = f"CREATE TABLE {quoted_name} AS ({sql})"
+                    sql_parts.append(f"{create_sql};\n\n")
+                    execute_fn(create_sql)
                 else:
-                    db_manager.user_execute(sql)
-            elif step_type == "view":
-                # Create persistent view for intermediate steps
-                # Use CREATE OR REPLACE to handle re-runs
-                # Views persist in the database and are not automatically cleaned up
-                create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
-                if target_db == "system":
-                    db_manager.system_execute(create_sql)
-                else:
-                    db_manager.user_execute(create_sql)
-            elif step_type == "table":
-                # Create persistent table for output steps
-                # Use CREATE OR REPLACE to handle re-runs
-                create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
-                if target_db == "system":
-                    db_manager.system_execute(create_sql)
-                else:
-                    db_manager.user_execute(create_sql)
-            else:
+                    raise DataSourceExecutionError(
+                        f"Unknown step type '{step_type}' for step '{step.name}'"
+                    )
+
+            except Exception as step_error:
                 raise DataSourceExecutionError(
-                    f"Unknown step type '{step_type}' for step '{step.name}'"
-                )
+                    f"Failed to execute step '{step.name}': {str(step_error)}"
+                ) from step_error
 
-        except Exception as step_error:
-            raise DataSourceExecutionError(
-                f"Failed to execute step '{step.name}': {str(step_error)}"
-            ) from step_error
+        # All steps succeeded - commit the transaction
+        execute_fn("COMMIT")
+        sql_parts.append("COMMIT;")
+
+    except Exception:
+        # Error during execution - rollback transaction
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            execute_fn("ROLLBACK")
+
+        # Re-raise the error (will be a DataSourceExecutionError from step execution)
+        raise
 
     # Calculate execution time
     execution_time = time.time() - start_time
+
+    # Complete the SQL string
+    complete_sql = "".join(sql_parts)
+
+    # Collect output schemas and row counts
+    outputs = []
+    for table_name in spec.outputs:
+        quoted_table = quote_sql_identifier(table_name)
+
+        try:
+            # Get schema using DESCRIBE
+            if target_db == "system":
+                schema_result = db_manager.system_query(f"DESCRIBE {quoted_table}")
+            else:
+                schema_result = db_manager.user_query(f"DESCRIBE {quoted_table}")
+
+            columns = [
+                {"name": row["column_name"], "type": row["column_type"]}
+                for row in schema_result.rows
+            ]
+
+            # Get row count
+            if target_db == "system":
+                count_result = db_manager.system_query(
+                    f"SELECT COUNT(*) as count FROM {quoted_table}"
+                )
+            else:
+                count_result = db_manager.user_query(
+                    f"SELECT COUNT(*) as count FROM {quoted_table}"
+                )
+
+            row_count = count_result.rows[0]["count"]
+
+            outputs.append(
+                {
+                    "name": table_name,
+                    "type": "table",
+                    "row_count": row_count,
+                    "columns": columns,
+                }
+            )
+
+        except Exception as e:
+            # If we can't get schema/count, still include basic info
+            outputs.append(
+                {
+                    "name": table_name,
+                    "type": "table",
+                    "error": f"Failed to collect metadata: {str(e)}",
+                }
+            )
 
     # Report progress: completion
     success_msg = "Pipeline completed successfully"
@@ -266,4 +362,6 @@ async def execute_data_source_pipeline(
         step_count=step_count,
         steps_executed=steps_executed,
         progress_log=progress_log,
+        sql=complete_sql,
+        outputs=outputs,
     )

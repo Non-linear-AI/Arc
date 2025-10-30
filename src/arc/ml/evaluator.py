@@ -14,8 +14,8 @@ import torch
 import torch.nn as nn
 
 from arc.database.services.ml_data_service import MLDataService
-from arc.database.services.trainer_service import TrainerService
-from arc.graph import EvaluatorSpec, ModelSpec, TrainerSpec
+from arc.database.services.model_service import ModelService
+from arc.graph import EvaluatorSpec, ModelSpec
 from arc.ml.artifacts import ModelArtifactManager
 from arc.ml.builder import ModelBuilder
 from arc.ml.metrics import Metric, MetricsTracker, create_metrics_for_task
@@ -32,7 +32,6 @@ class EvaluationResult:
     """Result from model evaluation."""
 
     evaluator_name: str
-    trainer_ref: str
     model_ref: str
     version: int
     dataset: str
@@ -49,7 +48,6 @@ class EvaluationResult:
         """Convert to dictionary."""
         return {
             "evaluator_name": self.evaluator_name,
-            "trainer_ref": self.trainer_ref,
             "model_ref": self.model_ref,
             "version": self.version,
             "dataset": self.dataset,
@@ -70,7 +68,7 @@ class ArcEvaluator:
         self,
         model: nn.Module,
         model_spec: ModelSpec,
-        trainer_spec: TrainerSpec,
+        model_id: str,
         evaluator_spec: EvaluatorSpec,
         artifact_version: int,
         device: str = "cpu",
@@ -80,14 +78,14 @@ class ArcEvaluator:
         Args:
             model: Trained PyTorch model
             model_spec: Model specification
-            trainer_spec: Trainer specification
+            model_id: Model identifier
             evaluator_spec: Evaluator specification
             artifact_version: Which training run/version
             device: Device for inference
         """
         self.model = model
         self.model_spec = model_spec
-        self.trainer_spec = trainer_spec
+        self.model_id = model_id
         self.evaluator_spec = evaluator_spec
         self.artifact_version = artifact_version
         self.device = torch.device(device)
@@ -96,7 +94,7 @@ class ArcEvaluator:
         self.model.to(self.device)
         self.model.eval()
 
-        logger.info(f"ArcEvaluator initialized for trainer {trainer_spec.model_ref}")
+        logger.info(f"ArcEvaluator initialized for model {model_id}")
         logger.info(f"Evaluation dataset: {evaluator_spec.dataset}")
 
     def evaluate(
@@ -159,8 +157,7 @@ class ArcEvaluator:
             # 6. Create result
             result = EvaluationResult(
                 evaluator_name=self.evaluator_spec.name,
-                trainer_ref=self.evaluator_spec.trainer_ref,
-                model_ref=self.trainer_spec.model_ref,
+                model_ref=self.model_id,
                 version=self.artifact_version,
                 dataset=self.evaluator_spec.dataset,
                 num_samples=len(targets),
@@ -811,18 +808,18 @@ class ArcEvaluator:
             raise EvaluationError(f"Failed to save predictions: {e}") from e
 
     @classmethod
-    def load_from_trainer(
+    def load_from_model(
         cls,
         artifact_manager: ModelArtifactManager,
-        trainer_service: TrainerService,
+        model_service: ModelService,
         evaluator_spec: EvaluatorSpec,
         device: str = "cpu",
     ) -> ArcEvaluator:
-        """Load evaluator from trainer reference.
+        """Load evaluator from model reference.
 
         Args:
             artifact_manager: Manager for loading model artifacts
-            trainer_service: Service for loading trainer specs
+            model_service: Service for loading model specs
             evaluator_spec: Evaluator specification
             device: Device for inference
 
@@ -833,32 +830,30 @@ class ArcEvaluator:
             EvaluationError: If loading fails
         """
         try:
-            logger.info(f"Loading evaluator for trainer: {evaluator_spec.trainer_ref}")
+            logger.info(f"Loading evaluator for model: {evaluator_spec.model_id}")
 
-            # 1. Load trainer spec
-            trainer = trainer_service.get_trainer_by_id(evaluator_spec.trainer_ref)
-            if not trainer:
-                raise EvaluationError(
-                    f"Trainer '{evaluator_spec.trainer_ref}' not found"
-                )
+            # 1. Load model spec
+            model = model_service.get_model_by_id(evaluator_spec.model_id)
+            if not model:
+                raise EvaluationError(f"Model '{evaluator_spec.model_id}' not found")
 
-            trainer_spec = TrainerSpec.from_yaml(trainer.spec)
-            model_ref = trainer_spec.model_ref
+            model_ref = model.id
+            # Use base model name (not versioned ID) to query training runs
+            model_name = model.name
 
-            logger.info(f"Trainer references model: {model_ref}")
+            logger.info(f"Using model: {model_ref} (name: {model_name})")
 
             # 2. Find which model version to load based on training_runs
-            # Artifacts are saved per trainer_id for isolation
+            # Training runs are keyed by model name, not versioned ID
             from arc.database.services import TrainingTrackingService
 
-            tracking_service = TrainingTrackingService(trainer_service.db_manager)
-            runs = tracking_service.list_runs(trainer_id=evaluator_spec.trainer_ref)
+            tracking_service = TrainingTrackingService(model_service.db_manager)
+            runs = tracking_service.list_runs(model_id=model_name)
 
             if not runs:
-                trainer_ref = evaluator_spec.trainer_ref
                 raise EvaluationError(
-                    f"Trainer '{trainer_ref}' has never been trained. "
-                    f"Train first: /ml train --trainer-id {trainer_ref}"
+                    f"Model '{model_ref}' has never been trained. "
+                    f"Train first: /ml model --name <name> ..."
                 )
 
             # Get the most recent successful run
@@ -870,17 +865,16 @@ class ArcEvaluator:
                 if r.status == TrainingStatus.COMPLETED and r.artifact_path
             ]
             if not completed_runs:
-                trainer_ref = evaluator_spec.trainer_ref
                 raise EvaluationError(
-                    f"Trainer '{trainer_ref}' has no successful training runs. "
-                    f"Train first: /ml train --trainer-id {trainer_ref}"
+                    f"Model '{model_ref}' has no successful training runs. "
+                    f"Train first: /ml model --name <name> ..."
                 )
 
             # Use the most recent completed run (list_runs sorts by created_at DESC)
             latest_run = completed_runs[0]
 
             # Parse version from artifact_path
-            # Format: artifacts/trainer-id/v{version}/
+            # Format: artifacts/model-id/v{version}/
             version_match = re.search(r"/v(\d+)/?$", latest_run.artifact_path)
             if not version_match:
                 # Try to load latest version
@@ -889,16 +883,16 @@ class ArcEvaluator:
                 version = int(version_match.group(1))
                 logger.info(f"Using model v{version} from run {latest_run.run_id}")
 
-            # Load the model artifact (keyed by trainer_id, not model_ref)
+            # Load the model artifact (keyed by model name, not versioned ID)
             try:
                 state_dict, artifact = artifact_manager.load_model_state_dict(
-                    model_id=evaluator_spec.trainer_ref,
+                    model_id=model_name,
                     version=version,
                     device=device,
                 )
             except FileNotFoundError as e:
                 raise EvaluationError(
-                    f"Artifacts not found for trainer '{evaluator_spec.trainer_ref}'. "
+                    f"Artifacts not found for model '{model_name}' v{version}. "
                     f"The training run completed but artifacts are missing. "
                     f"Artifact path: {latest_run.artifact_path}"
                 ) from e
@@ -918,8 +912,16 @@ class ArcEvaluator:
 
             from arc.graph.model import GraphNode, ModelInput, validate_model_dict
 
-            # Validate the model structure
-            validate_model_dict(model_dict)
+            # Validate the model structure (skip loss validation for backward compatibility)
+            # Old artifacts may have loss in a different format
+            loss_spec = model_dict.pop("loss", None)
+            try:
+                validate_model_dict(model_dict)
+            except Exception as e:
+                logger.warning(f"Model validation warning (continuing anyway): {e}")
+            # Restore loss for ModelSpec creation
+            if loss_spec is not None:
+                model_dict["loss"] = loss_spec
 
             # Parse inputs
             inputs = {}
@@ -962,7 +964,7 @@ class ArcEvaluator:
             return cls(
                 model=model,
                 model_spec=model_spec,
-                trainer_spec=trainer_spec,
+                model_id=model_ref,
                 evaluator_spec=evaluator_spec,
                 artifact_version=artifact.version,
                 device=device,

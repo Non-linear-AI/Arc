@@ -221,34 +221,26 @@ class InteractiveInterface:
             ml_commands = [
                 (
                     "/ml plan --name NAME --instruction DESC --source-tables TABLES",
-                    "Create ML workflow plan (feature engineering, architecture, "
-                    "training, evaluation)",
+                    "Create ML workflow plan (data processing + model + training)",
                 ),
                 (
                     "/ml revise-plan --instruction CHANGES [--name NAME]",
                     "Revise the current ML plan based on feedback or training results",
                 ),
                 (
-                    "/ml model --name NAME [--context DESC] "
-                    "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
-                    "Generate an Arc-Graph model specification "
-                    "(--context optional with --plan-id)",
-                ),
-                (
-                    "/ml train --name NAME --model-id ID --data TABLE "
-                    "--instruction DESC",
-                    "Generate trainer specification and launch training",
-                ),
-                (
-                    "/ml evaluate --name NAME --instruction DESC "
-                    "--trainer-id TRAINER_ID --data-table TABLE",
-                    "Generate evaluator and run model evaluation",
-                ),
-                (
-                    "/ml data --name NAME --instruction INST --data-tables TABLES",
+                    "/ml data --name NAME --instruction INST --source-tables TABLES",
                     "Generate data processing pipeline from natural language",
                 ),
-                ("/ml train --model NAME --data TABLE", "Launch a training job"),
+                (
+                    "/ml model --name NAME --instruction DESC "
+                    "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
+                    "Generate model + trainer and launch training",
+                ),
+                (
+                    "/ml evaluate --model-id MODEL_ID --data-table TABLE "
+                    "[--metrics METRICS] [--output-table TABLE]",
+                    "Evaluate trained model on test dataset",
+                ),
                 (
                     "/ml predict --model NAME --data TABLE --output TABLE",
                     "Run inference and save predictions",
@@ -270,7 +262,6 @@ class InteractiveInterface:
             "update_todo_list": "Update Plan",
             "database_query": "SQL Query",
             "schema_discovery": "Schema Discovery",
-            "ml_train": "Train Model",
             "ml_predict": "Predict",
             "ml_evaluate": "Evaluate Model",
             "ml_model": "Model Generator",
@@ -307,7 +298,6 @@ class InteractiveInterface:
         elif tool_name in ["database_query", "schema_discovery"]:
             return "blue"  # Database/system operations
         elif tool_name in [
-            "ml_train",
             "ml_predict",
             "ml_evaluate",
             "ml_model",
@@ -330,7 +320,6 @@ class InteractiveInterface:
         # These tools print their output progressively within their own sections
         # and don't need console.py to create a duplicate section
         TOOLS_WITH_OWN_SECTIONS = {
-            "ml_train",  # MLTrainTool shows output in "ML Train" section
             "ml_model",  # MLModelTool shows output in "ML Model" section
             "ml_evaluate",  # MLEvaluateTool shows output in "ML Evaluator" section
             "ml_plan",  # MLPlanTool shows output in "ML Plan" section

@@ -3,9 +3,5 @@ name: "Multi-Layer Perceptron"
 type: architecture
 description: "Feedforward neural network with fully connected layers for tabular data prediction"
 problem_type: general
-phases:
-  - model
-  - train
-  - evaluate
 complexity: basic
 domain: general

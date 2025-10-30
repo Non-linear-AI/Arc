@@ -129,7 +129,6 @@ class TrainingRun:
     run_id: str
     job_id: str | None
     model_id: str | None
-    trainer_id: str | None
     run_name: str | None
     description: str | None
     tensorboard_enabled: bool
@@ -143,9 +142,7 @@ class TrainingRun:
     completed_at: datetime | None
     artifact_path: str | None
     final_metrics: str | None  # JSON string
-    original_config: str | None  # JSON string
-    current_config: str | None  # JSON string
-    config_history: str | None  # JSON string
+    training_config: str | None  # JSON string - snapshot of training config used
     created_at: datetime
     updated_at: datetime
 

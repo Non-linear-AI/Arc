@@ -1,7 +1,6 @@
 """DuckDB database implementation."""
 
 import time
-from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,18 @@ class DuckDBDatabase(Database):
         Args:
             db_path: Path to the DuckDB database file.
                 Use ":memory:" for in-memory database.
+
+        Raises:
+            TypeError: If db_path is a Database object instead of a path string
         """
+        # Validate that we're not being passed a Database object
+        if isinstance(db_path, Database):
+            raise TypeError(
+                f"DuckDBDatabase() expects a path string, not a Database object. "
+                f"Received: {type(db_path).__name__}. "
+                f"If you need the database path, use db_object.db_path instead."
+            )
+
         self.db_path = str(db_path)
         self._connection: duckdb.DuckDBPyConnection | None = None
         self._connect()
@@ -337,45 +347,13 @@ class DuckDBDatabase(Database):
                 ON models(name, version);
             """)
 
-            # Registry for trainer specifications linked to models
-            self.execute("""
-                CREATE TABLE IF NOT EXISTS trainers(
-                    id TEXT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    version INTEGER NOT NULL,
-                    model_id TEXT NOT NULL,
-                    model_version INTEGER NOT NULL,
-                    spec TEXT NOT NULL,
-                    description TEXT,
-                    plan_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (name, version)
-                );
-            """)
-
-            # Create indexes for trainer lookups
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainers_name ON trainers(name);
-            """)
-
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainers_model_id ON trainers(model_id);
-            """)
-
-            self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainers_name_version
-                ON trainers(name, version);
-            """)
-
-            # Registry for evaluator specifications linked to trainers
+            # Registry for evaluator specifications linked to models
             self.execute("""
                 CREATE TABLE IF NOT EXISTS evaluators(
                     id TEXT PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     version INTEGER NOT NULL,
-                    trainer_id TEXT NOT NULL,
-                    trainer_version INTEGER NOT NULL,
+                    model_id TEXT NOT NULL,
                     spec TEXT NOT NULL,
                     description TEXT,
                     plan_id TEXT,
@@ -391,8 +369,8 @@ class DuckDBDatabase(Database):
             """)
 
             self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_evaluators_trainer_id
-                ON evaluators(trainer_id);
+                CREATE INDEX IF NOT EXISTS idx_evaluators_model_id
+                ON evaluators(model_id);
             """)
 
             self.execute("""
@@ -400,39 +378,11 @@ class DuckDBDatabase(Database):
                 ON evaluators(name, version);
             """)
 
-            # Migrate trainers and evaluators tables to add plan_id column (Phase 7)
-            # This ensures backward compatibility with existing databases
-            with suppress(Exception):
-                # Check if trainers table needs migration
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'trainers' AND column_name = 'plan_id'
-                """)
-
-                if not check_result.rows:
-                    # plan_id column doesn't exist, add it
-                    self.execute("ALTER TABLE trainers ADD COLUMN plan_id TEXT")
-
-            with suppress(Exception):
-                # Check if evaluators table needs migration
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'evaluators' AND column_name = 'plan_id'
-                """)
-
-                if not check_result.rows:
-                    # plan_id column doesn't exist, add it
-                    self.execute("ALTER TABLE evaluators ADD COLUMN plan_id TEXT")
-
             # Tracks long-running processes like training
             self.execute("""
                 CREATE TABLE IF NOT EXISTS jobs(
                     job_id TEXT PRIMARY KEY,
-                    model_id INTEGER,
-                    trainer_id TEXT,
-                    trainer_version INTEGER,
+                    model_id TEXT,
                     type TEXT NOT NULL,
                     status TEXT NOT NULL,
                     message TEXT,
@@ -538,52 +488,33 @@ class DuckDBDatabase(Database):
                 );
             """)
 
-            # Migrate old schema: data_table/target_column -> source_tables
-            # Check if old columns exist and migrate
-            with suppress(Exception):
-                # Check if data_table column exists (old schema)
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'plans' AND column_name = 'data_table'
-                """)
+            # Plan executions table - tracks execution of plan steps (data processing, training, etc.)  # noqa: E501
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS plan_executions (
+                    id TEXT PRIMARY KEY,
+                    plan_id TEXT NOT NULL,
+                    step_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TIMESTAMP NOT NULL,
+                    completed_at TIMESTAMP,
+                    context TEXT NOT NULL,
+                    outputs JSON NOT NULL,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (plan_id) REFERENCES plans(plan_id)
+                );
+            """)
 
-                if check_result.rows:
-                    # Old schema exists, migrate it
-                    # Add new column if it doesn't exist
-                    with suppress(Exception):
-                        self.execute("ALTER TABLE plans ADD COLUMN source_tables TEXT")
+            # Create indexes for plan execution lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_plan_executions_plan
+                ON plan_executions(plan_id);
+            """)
 
-                    # Copy data_table to source_tables for existing rows
-                    self.execute("""
-                        UPDATE plans
-                        SET source_tables = data_table
-                        WHERE source_tables IS NULL
-                    """)
-
-                    # Drop old columns
-                    self.execute("ALTER TABLE plans DROP COLUMN data_table")
-                    self.execute("ALTER TABLE plans DROP COLUMN target_column")
-
-            # Migrate plans table to add name column (for name-based versioning)
-            with suppress(Exception):
-                # Check if name column exists
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'plans' AND column_name = 'name'
-                """)
-
-                if not check_result.rows:
-                    # name column doesn't exist, add it
-                    self.execute("ALTER TABLE plans ADD COLUMN name TEXT")
-
-                    # For existing plans, derive name from plan_id (remove -vN suffix)
-                    self.execute("""
-                        UPDATE plans
-                        SET name = REGEXP_REPLACE(plan_id, '-v[0-9]+$', '')
-                        WHERE name IS NULL
-                    """)
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_plan_executions_step_type
+                ON plan_executions(plan_id, step_type);
+            """)
 
             # Training tracking tables
             self.execute("""
@@ -591,7 +522,6 @@ class DuckDBDatabase(Database):
                     run_id VARCHAR PRIMARY KEY,
                     job_id VARCHAR,
                     model_id VARCHAR,
-                    trainer_id VARCHAR,
                     run_name VARCHAR,
                     description TEXT,
                     tensorboard_enabled BOOLEAN DEFAULT TRUE,
@@ -605,9 +535,7 @@ class DuckDBDatabase(Database):
                     completed_at TIMESTAMP,
                     artifact_path VARCHAR,
                     final_metrics JSON,
-                    original_config JSON,
-                    current_config JSON,
-                    config_history JSON,
+                    training_config JSON,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -657,7 +585,7 @@ class DuckDBDatabase(Database):
                     run_id VARCHAR PRIMARY KEY,
                     evaluator_id VARCHAR NOT NULL,
                     job_id VARCHAR,
-                    trainer_id VARCHAR,
+                    model_id VARCHAR,
                     dataset VARCHAR,
                     target_column VARCHAR,
                     status VARCHAR DEFAULT 'pending',
@@ -677,8 +605,8 @@ class DuckDBDatabase(Database):
             """)
 
             self.execute("""
-                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_trainer
-                ON evaluation_runs(trainer_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_evaluation_runs_model
+                ON evaluation_runs(model_id, created_at);
             """)
 
         except Exception as e:
@@ -691,6 +619,14 @@ class DuckDBDatabase(Database):
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit - ensure connection is closed."""
         self.close()
+
+    def __str__(self) -> str:
+        """String representation of the database (returns path)."""
+        return self.db_path
+
+    def __repr__(self) -> str:
+        """Representation of the database object."""
+        return f"DuckDBDatabase('{self.db_path}')"
 
     def __del__(self) -> None:
         """Destructor - ensure connection is closed."""

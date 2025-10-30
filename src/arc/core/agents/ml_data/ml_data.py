@@ -51,10 +51,12 @@ class MLDataAgent(BaseAgent):
     async def generate_data_processing_yaml(
         self,
         instruction: str,
+        name: str,
         source_tables: list[str] | None = None,
         database: str = "user",
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Generate or edit data processing YAML from instruction.
@@ -63,13 +65,15 @@ class MLDataAgent(BaseAgent):
             instruction: Detailed instruction for data processing.
                 For generation: shaped by main agent or from ML plan.
                 For editing: user feedback on what to change.
+            name: Name for the data processor (provided by user/tool).
+                Used directly in YAML instead of asking LLM to generate it.
             source_tables: List of source tables to read from (optional)
             database: Database to use for schema discovery
             existing_yaml: Existing YAML content to edit (optional).
                 If provided, switches to editing mode where instruction
                 describes the changes to make.
-            recommended_knowledge_ids: Optional list of knowledge IDs
-                recommended by ML Plan
+            recommended_knowledge_ids: Optional list of knowledge IDs (deprecated)
+            preloaded_knowledge: Optional list of preloaded knowledge docs
             conversation_history: Optional conversation history for editing workflow
 
         Returns:
@@ -83,25 +87,30 @@ class MLDataAgent(BaseAgent):
             # Fresh generation - build full context
             return await self._generate_fresh(
                 instruction=instruction,
+                name=name,
                 source_tables=source_tables,
                 database=database,
                 existing_yaml=existing_yaml,
                 recommended_knowledge_ids=recommended_knowledge_ids,
+                preloaded_knowledge=preloaded_knowledge,
             )
         else:
             # Continue conversation - just append feedback
             return await self._continue_conversation(
                 feedback=instruction,
+                name=name,
                 conversation_history=conversation_history,
             )
 
     async def _generate_fresh(
         self,
         instruction: str,
+        name: str,
         source_tables: list[str] | None = None,
         database: str = "user",
         existing_yaml: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -116,32 +125,44 @@ class MLDataAgent(BaseAgent):
                 source_tables, database, include_row_counts=False
             )
 
-            # Pre-load recommended knowledge content (handle missing gracefully)
-            recommended_knowledge = ""
-            loaded_knowledge_ids = []
-            if recommended_knowledge_ids:
+            # Use preloaded knowledge if provided, otherwise fall back to old method
+            if preloaded_knowledge:
+                # New method: knowledge already loaded by tool
+                loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
+                for doc in preloaded_knowledge:
+                    self._loaded_knowledge.add((doc["id"], "data"))
+            elif recommended_knowledge_ids:
+                # Old method: load knowledge here (deprecated but backward compatible)
+                preloaded_knowledge = []
+                loaded_knowledge_ids = []
                 for knowledge_id in recommended_knowledge_ids:
-                    content = self.knowledge_loader.load_knowledge(knowledge_id, "data")
-                    if content:
-                        # Successfully loaded - add to system context
-                        recommended_knowledge += (
-                            f"\n\n# Data Processing Knowledge: {knowledge_id}"
-                            f"\n\n{content}"
+                    content, actual_phase = self.knowledge_loader.load_knowledge(
+                        knowledge_id, "data"
+                    )
+                    if content and actual_phase:
+                        preloaded_knowledge.append(
+                            {
+                                "id": knowledge_id,
+                                "name": knowledge_id,
+                                "content": content,
+                            }
                         )
                         loaded_knowledge_ids.append(knowledge_id)
-                        # Track in base agent to exclude from list_available_knowledge
-                        self._loaded_knowledge.add((knowledge_id, "data"))
-                    # If missing, silently skip (already logged at debug level)
+                        self._loaded_knowledge.add((knowledge_id, actual_phase))
+            else:
+                preloaded_knowledge = []
+                loaded_knowledge_ids = []
 
             # Build system message with all context
             system_message = self._render_template(
                 "prompt.j2",
                 {
+                    "processor_name": name,
                     "user_instruction": instruction,
                     "schema_info": schema_info,
                     "source_tables": source_tables or [],
                     "existing_yaml": existing_yaml,
-                    "recommended_knowledge": recommended_knowledge,
+                    "preloaded_knowledge": preloaded_knowledge,
                 },
             )
 
@@ -178,11 +199,16 @@ class MLDataAgent(BaseAgent):
                 tools=tools,
                 tool_executor=self._execute_ml_tool,
                 validator_func=self._validate_data_processing_comprehensive,
-                validation_context={"schema_info": schema_info},
+                validation_context={"schema_info": schema_info, "processor_name": name},
                 max_iterations=3,
                 conversation_history=None,  # Fresh start
                 progress_callback=self.progress_callback,
             )
+
+            # Inject name into yaml_content if not already present
+            # (LLM doesn't generate it, we add it programmatically)
+            if not yaml_content.strip().startswith("name:"):
+                yaml_content = f"name: {name}\n\n{yaml_content}"
 
             return spec, yaml_content, conversation_history
 
@@ -196,6 +222,7 @@ class MLDataAgent(BaseAgent):
     async def _continue_conversation(
         self,
         feedback: str,
+        name: str,
         conversation_history: list[dict[str, str]],
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Continue existing conversation with user feedback.
@@ -216,12 +243,18 @@ class MLDataAgent(BaseAgent):
                 tool_executor=self._execute_ml_tool,
                 validator_func=self._validate_data_processing_comprehensive,
                 validation_context={
-                    "schema_info": None
-                },  # Already in conversation history
+                    "schema_info": None,  # Already in conversation history
+                    "processor_name": name,
+                },
                 max_iterations=3,
                 conversation_history=conversation_history,
                 progress_callback=self.progress_callback,
             )
+
+            # Inject name into yaml_content if not already present
+            # (LLM doesn't generate it, we add it programmatically)
+            if not yaml_content.strip().startswith("name:"):
+                yaml_content = f"name: {name}\n\n{yaml_content}"
 
             return spec, yaml_content, updated_history
 
@@ -344,7 +377,7 @@ class MLDataAgent(BaseAgent):
         Args:
             yaml_content: Generated YAML string
             context: Generation context for validation (includes schema_info
-                with database)
+                with database, and processor_name to inject)
 
         Returns:
             Dictionary with validation results:
@@ -353,6 +386,13 @@ class MLDataAgent(BaseAgent):
         try:
             # Parse YAML syntax
             self._validate_yaml_syntax(yaml_content)
+
+            # Inject processor name into YAML before parsing
+            # LLM generates description, steps, outputs - we add the name field
+            processor_name = context.get("processor_name")
+            if processor_name and not yaml_content.strip().startswith("name:"):
+                # Add name field at the beginning of YAML
+                yaml_content = f"name: {processor_name}\n\n{yaml_content}"
 
             # Try to parse into DataSourceSpec
             try:
@@ -398,7 +438,13 @@ class MLDataAgent(BaseAgent):
                     "error": f"Dry-run validation failed: {error}",
                 }
 
-            return {"valid": True, "object": spec, "error": None}
+            # Return the modified yaml_content with name injected
+            return {
+                "valid": True,
+                "object": spec,
+                "error": None,
+                "yaml_content": yaml_content,
+            }
 
         except AgentError as e:
             # AgentError messages are already well-formatted, don't wrap them

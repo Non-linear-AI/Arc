@@ -7,7 +7,6 @@ import shlex
 import sys
 import time
 from contextlib import suppress
-from pathlib import Path
 
 import click
 import yaml
@@ -261,7 +260,7 @@ async def handle_ml_command(
 
     if len(tokens) < 2:
         ui.show_system_error(
-            "Usage: /ml <plan|revise-plan|train|predict|jobs|model|evaluate|data> ..."
+            "Usage: /ml <plan|revise-plan|data|model|evaluate|predict|jobs> ..."
         )
         return
 
@@ -273,10 +272,6 @@ async def handle_ml_command(
             await _ml_plan(args, ui, agent)
         elif subcommand == "revise-plan":
             await _ml_revise_plan(args, ui, agent)
-        elif subcommand == "create-trainer":
-            _ml_create_trainer(args, ui, runtime)
-        elif subcommand == "train":
-            await _ml_train(args, ui, runtime)
         elif subcommand == "predict":
             _ml_predict(args, ui, runtime)
         elif subcommand == "jobs":
@@ -421,188 +416,6 @@ async def _ml_revise_plan(
         raise CommandError(f"Failed to revise ML plan: {result.error}")
 
 
-def _ml_create_trainer(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "schema": True,
-            "model-id": True,
-        },
-    )
-
-    name = options.get("name")
-    schema_path = options.get("schema")
-    model_id = options.get("model-id")
-
-    if not name or not schema_path or not model_id:
-        raise CommandError(
-            "/ml create-trainer requires --name, --schema, and --model-id"
-        )
-
-    schema_path_obj = Path(str(schema_path))
-
-    try:
-        trainer = runtime.create_trainer(
-            name=str(name),
-            schema_path=schema_path_obj,
-            model_id=str(model_id),
-        )
-    except MLRuntimeError as exc:
-        raise CommandError(str(exc)) from exc
-
-    ui.show_system_success(
-        f"Trainer '{trainer.name}' registered "
-        f"(version {trainer.version}, id={trainer.id})."
-    )
-    ui.show_info(f"Linked to model: {trainer.model_id}")
-
-
-async def _ml_train(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    """Handle training command with trainer generation.
-
-    Always generates a trainer YAML file and launches training.
-    Supports two modes:
-    1. With plan: Uses plan's training instructions
-    2. With context: Uses user-provided training context
-    """
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "model-id": True,
-            "data": True,
-            "instruction": True,
-            "plan-id": True,
-        },
-        command_name="/ml train",
-    )
-
-    name = options.get("name")
-    model_id = options.get("model-id")
-    train_table = options.get("data")
-    instruction = options.get("instruction")
-    plan_id = options.get("plan-id")
-
-    # Validate required parameters
-    if not name:
-        raise CommandError("/ml train requires --name")
-
-    if not model_id:
-        raise CommandError("/ml train requires --model-id")
-
-    if not train_table:
-        raise CommandError("/ml train requires --data")
-
-    # Must provide either instruction or plan-id (mutually exclusive)
-    if not instruction and not plan_id:
-        raise CommandError("/ml train requires either --instruction or --plan-id")
-
-    if instruction and plan_id:
-        raise CommandError(
-            "/ml train cannot use both --instruction and --plan-id (choose one)"
-        )
-
-    # If using plan, extract training instructions and embed into instruction
-    training_instruction = instruction
-    if plan_id:
-        try:
-            # Get the plan from database
-            db_plan = runtime.services.ml_plan.get_plan_by_id(str(plan_id))
-            if not db_plan:
-                raise CommandError(f"Plan '{plan_id}' not found")
-
-            # Parse plan YAML to extract training instructions
-            plan_data = yaml.safe_load(db_plan.plan_yaml)
-
-            # Extract training-related information from plan
-            training_instructions = []
-
-            if "training" in plan_data:
-                training_section = plan_data["training"]
-                training_instructions.append("Training Strategy from Plan:")
-                training_instructions.append(
-                    yaml.dump(training_section, default_flow_style=False)
-                )
-
-            if "rationale" in plan_data:
-                training_instructions.append("\nPlan Rationale:")
-                training_instructions.append(plan_data["rationale"])
-
-            if training_instructions:
-                training_instruction = "\n".join(training_instructions)
-            else:
-                # Fallback: use entire plan as instruction
-                training_instruction = (
-                    f"Follow the training strategy from plan '{plan_id}':\n"
-                    f"{db_plan.plan_yaml}"
-                )
-
-            ui.show_info(f"Using ML plan: {plan_id}")
-        except Exception as e:
-            raise CommandError(f"Failed to load plan '{plan_id}': {e}") from e
-
-    tensorboard_manager = None
-    training_succeeded = False
-    try:
-        # Import here: MLTrainTool only needed for /ml train command
-        from arc.tools.ml import MLTrainTool
-
-        # Get settings for tool initialization
-        api_key, base_url, model = _get_ml_tool_config()
-
-        # Initialize TensorBoard manager for the tool
-        try:
-            # Import here: TensorBoardManager is optional and heavy dependency
-            from arc.ml import TensorBoardManager
-
-            tensorboard_manager = TensorBoardManager()
-        except Exception:
-            tensorboard_manager = None
-
-        # Create the tool with proper dependencies
-        tool = MLTrainTool(
-            runtime.services, runtime, api_key, base_url, model, ui, tensorboard_manager
-        )
-
-        # Execute the tool with confirmation workflow
-        # This will generate trainer, confirm, register, and launch training
-        result = await tool.execute(
-            name=name,
-            instruction=training_instruction,
-            model_id=model_id,
-            train_table=train_table,
-            plan_id=plan_id,  # Pass plan_id to extract knowledge IDs
-        )
-
-        if not result.success:
-            raise CommandError(f"Training failed: {result.error}")
-
-        # Mark success to keep TensorBoard running
-        training_succeeded = True
-        # Success message already shown by tool
-
-    except Exception as exc:
-        raise CommandError(f"Unexpected error during training: {exc}") from exc
-    finally:
-        # Clean up TensorBoard on failure (keep running on success for user access)
-        if tensorboard_manager and not training_succeeded:
-            try:
-                stopped_count = tensorboard_manager.stop_all()
-                if stopped_count > 0:
-                    ui.show_warning(
-                        f"Stopped {stopped_count} TensorBoard process(es) "
-                        "due to failure"
-                    )
-            except Exception:
-                # Don't fail cleanup if TensorBoard stop fails
-                pass
-
-
 def _ml_predict(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
@@ -713,8 +526,6 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 rows.append(["Training Run ID", training_run.run_id])
                 if training_run.model_id:
                     rows.append(["Model", training_run.model_id])
-                if training_run.trainer_id:
-                    rows.append(["Trainer", training_run.trainer_id])
 
                 # Show TensorBoard info
                 if training_run.tensorboard_enabled:
@@ -750,7 +561,7 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
             from arc.database.services import EvaluationTrackingService
 
             eval_tracking = EvaluationTrackingService(
-                runtime.services.trainers.db_manager
+                runtime.services.models.db_manager
             )
 
             # Find evaluation run by job_id
@@ -762,8 +573,8 @@ def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> N
                 rows.append(["Evaluation Run ID", eval_run.run_id])
                 if eval_run.evaluator_id:
                     rows.append(["Evaluator", eval_run.evaluator_id])
-                if eval_run.trainer_id:
-                    rows.append(["Trainer", eval_run.trainer_id])
+                if eval_run.model_id:
+                    rows.append(["Model", eval_run.model_id])
                 if eval_run.dataset:
                     rows.append(["Dataset", eval_run.dataset])
                 if eval_run.target_column:
@@ -855,8 +666,25 @@ async def _ml_model(
         # Get settings for tool initialization
         api_key, base_url, model = _get_ml_tool_config()
 
+        # Initialize TensorBoard manager for the tool
+        tensorboard_manager = None
+        try:
+            from arc.ml import TensorBoardManager
+
+            tensorboard_manager = TensorBoardManager()
+        except Exception:
+            tensorboard_manager = None
+
         # Create the tool with proper dependencies
-        tool = MLModelTool(runtime.services, api_key, base_url, model, ui)
+        tool = MLModelTool(
+            runtime.services,
+            runtime,
+            api_key,
+            base_url,
+            model,
+            ui,
+            tensorboard_manager,
+        )
 
         # Execute the tool with confirmation workflow
         result = await tool.execute(
@@ -877,38 +705,35 @@ async def _ml_model(
 async def _ml_evaluate(
     args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
 ) -> None:
-    """Handle evaluator generation and execution command."""
+    """Handle model evaluation command."""
     options = _parse_options(
         args,
         {
-            "name": True,
-            "instruction": True,
-            "trainer-id": True,
+            "model-id": True,
             "data-table": True,
-            "plan-id": True,  # Optional ML plan ID for knowledge
+            "metrics": True,  # Optional comma-separated list
+            "output-table": True,  # Optional table for predictions
         },
     )
 
-    name = options.get("name")
-    instruction = options.get("instruction")
-    trainer_id = options.get("trainer-id")
+    model_id = options.get("model-id")
     data_table = options.get("data-table")
-    plan_id = options.get("plan-id")
+    metrics_str = options.get("metrics")
+    output_table = options.get("output-table")
 
-    if not name or not instruction or not trainer_id or not data_table:
-        raise CommandError(
-            "/ml evaluate requires --name, --instruction, --trainer-id, "
-            "and --data-table"
-        )
+    if not model_id or not data_table:
+        raise CommandError("/ml evaluate requires --model-id and --data-table")
+
+    # Parse metrics if provided
+    metrics = None
+    if metrics_str:
+        metrics = [m.strip() for m in str(metrics_str).split(",")]
 
     tensorboard_manager = None
     evaluation_succeeded = False
     try:
         # Import here: MLEvaluateTool only needed for /ml evaluate command
         from arc.tools.ml import MLEvaluateTool
-
-        # Get settings for tool initialization
-        api_key, base_url, model = _get_ml_tool_config()
 
         # Initialize TensorBoard manager for the tool
         try:
@@ -919,18 +744,15 @@ async def _ml_evaluate(
         except Exception:
             tensorboard_manager = None
 
-        # Create the tool with proper dependencies
-        tool = MLEvaluateTool(
-            runtime.services, runtime, api_key, base_url, model, ui, tensorboard_manager
-        )
+        # Create the tool with proper dependencies (no API key needed for evaluation)
+        tool = MLEvaluateTool(runtime.services, runtime, ui, tensorboard_manager)
 
-        # Execute the tool: generate spec, register, and run evaluation
+        # Execute the tool: create evaluator and run evaluation
         result = await tool.execute(
-            name=name,
-            instruction=instruction,
-            trainer_id=trainer_id,
-            evaluate_table=data_table,
-            plan_id=plan_id,  # Pass plan_id to extract knowledge IDs
+            model_id=model_id,
+            data_table=data_table,
+            metrics=metrics,
+            output_table=output_table,
         )
 
         if not result.success:

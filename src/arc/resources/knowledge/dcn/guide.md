@@ -107,6 +107,29 @@ graph:
     type: torch.nn.Linear
     params: { in_features: CROSS_DIM + DEEP_DIM, out_features: 1 }
     inputs: { input: combined_features.output }
+
+  # For binary classification, add sigmoid for evaluation
+  - name: probabilities
+    type: torch.nn.functional.sigmoid
+    inputs: { input: output_layer.output }
+
+outputs:
+  logits: output_layer.output
+  probabilities: probabilities.output
+
+training:
+  loss:
+    type: torch.nn.functional.binary_cross_entropy_with_logits
+    inputs:
+      input: logits
+      target: target_column
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 64
+  validation_split: 0.2
+  metrics: [accuracy, auroc, f1]
 ```
 
 ## Configuration Guidelines
@@ -136,15 +159,43 @@ Example: If input=100, deep=[512,256,128]:
 
 ### CTR Prediction
 - Binary classification (click or not)
-- Loss: `torch.nn.functional.binary_cross_entropy_with_logits`
-- Output: Single logit
+- Loss: `torch.nn.functional.binary_cross_entropy_with_logits` (in training section)
+- Output: Logits and probabilities
 - Features: User, item, context (categorical + numerical)
+- Example training config:
+  ```yaml
+  training:
+    loss:
+      type: torch.nn.functional.binary_cross_entropy_with_logits
+      inputs: { input: logits, target: clicked }
+    optimizer:
+      type: torch.optim.Adam
+      lr: 0.001
+    epochs: 50
+    batch_size: 64
+    validation_split: 0.2
+    metrics: [accuracy, auroc, f1]
+  ```
 
 ### Recommendation Scoring
 - Regression or ranking
-- Loss: MSE or ranking loss
+- Loss: `torch.nn.functional.mse_loss` (in training section)
 - Output: Score prediction
 - Features: User-item interactions, metadata
+- Example training config:
+  ```yaml
+  training:
+    loss:
+      type: torch.nn.functional.mse_loss
+      inputs: { input: prediction, target: rating }
+    optimizer:
+      type: torch.optim.Adam
+      lr: 0.001
+    epochs: 50
+    batch_size: 64
+    validation_split: 0.2
+    metrics: [mse, mae, r2]
+  ```
 
 ## Best Practices
 
@@ -152,4 +203,6 @@ Example: If input=100, deep=[512,256,128]:
 2. **Cross Layer Count**: Start with 3-4, increase if underfitting
 3. **Deep Network**: Match capacity to cross network
 4. **Regularization**: Use dropout in deep network if overfitting
-5. **Loss Function**: Match to task (BCE for CTR, MSE for rating prediction)
+5. **Training Configuration**: Include loss inside training section with appropriate optimizer and hyperparameters
+6. **Loss Function**: Match to task (BCEWithLogitsLoss for CTR, MSELoss for rating prediction)
+7. **Output Structure**: For classification, include both logits (for loss) and probabilities (for evaluation)

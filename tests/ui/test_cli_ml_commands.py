@@ -181,7 +181,7 @@ class StubRuntime:
         self.trainer_service = trainer_service or StubTrainerService()
         self.artifacts_root = artifacts_root
 
-        # Create a stub services object for compatibility with new _ml_train
+        # Create a stub services object for compatibility with ML tools
         class StubServices:
             def __init__(self, model_svc, trainer_svc, ml_plan_svc=None):
                 self.models = model_svc
@@ -407,132 +407,7 @@ loss:
 
 
 # Test removed: /ml create-model command no longer exists (integrated into /ml model)
-
-
-@pytest.mark.asyncio
-async def test_train_submits_job(tmp_path):
-    arc_graph_dict = json.loads(
-        json.dumps(
-            {
-                "features": {
-                    "feature_columns": ["x1", "x2"],
-                    "target_columns": ["y"],
-                    "processors": [],
-                },
-                "model": {
-                    "inputs": {"features": {"dtype": "float32", "shape": [None, 2]}},
-                    "graph": [
-                        {
-                            "name": "linear",
-                            "type": "core.Linear",
-                            "params": {"in_features": 2, "out_features": 1},
-                            "inputs": {"input": "features"},
-                        }
-                    ],
-                    "outputs": {"prediction": "linear.output"},
-                },
-                "trainer": {
-                    "optimizer": {"type": "adam"},
-                    "loss": {"type": "mse"},
-                    "config": {
-                        "epochs": 3,
-                        "batch_size": 16,
-                        "learning_rate": 0.01,
-                    },
-                },
-                "predictor": None,
-            }
-        )
-    )
-
-    model_record = StubModelRecord(
-        id="my_model-v1",
-        name="my_model",
-        version=1,
-        arc_graph=json.dumps(arc_graph_dict),
-        spec="",  # Add empty spec for testing
-    )
-
-    model_service = StubModelService()
-    model_service.register_model(model_record)
-
-    # Create a trainer record
-    trainer_record = StubTrainerRecord(
-        id="my_trainer-v1",
-        name="my_trainer",
-        version=1,
-        model_id="my_model-v1",
-        model_version=1,
-        spec=(
-            "model_ref: my_model-v1\noptimizer:\n"
-            "  type: torch.optim.Adam\n  lr: 0.001\n"
-        ),
-    )
-    trainer_service = StubTrainerService()
-    trainer_service.register_trainer(trainer_record)
-
-    ml_data_service = StubMLDataService(
-        {
-            "train_table": {"x1", "x2", "y"},
-        }
-    )
-    training_service = StubTrainingService()
-
-    runtime = StubRuntime(
-        model_service=model_service,
-        ml_data_service=ml_data_service,
-        job_service=StubJobService(),
-        training_service=training_service,
-        trainer_service=trainer_service,
-        artifacts_root=tmp_path / "artifacts",
-    )
-
-    ui = StubUI()
-
-    # Mock the MLTrainTool to avoid API calls
-    from unittest.mock import AsyncMock, patch
-
-    from arc.tools.base import ToolResult
-
-    mock_result = ToolResult(
-        success=True,
-        output=(
-            "✓ Trainer 'test_trainer-v1' created and registered.\n"
-            "Model: my_model-v1 • Optimizer: adam\n\n"
-            "✓ Training job submitted successfully.\n"
-            "Training table: train_table\nJob ID: test-job-123"
-        ),
-        metadata={
-            "trainer_id": "test_trainer-v1",
-            "job_id": "test-job-123",
-            "training_launched": True,
-        },
-    )
-
-    # Mock SettingsManager to provide fake API key
-    with (
-        patch("arc.ui.cli.SettingsManager") as mock_settings,
-        patch(
-            "arc.tools.ml.MLTrainTool.execute",
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ),
-    ):
-        mock_settings_instance = mock_settings.return_value
-        mock_settings_instance.get_api_key.return_value = "fake-api-key"
-        mock_settings_instance.get_base_url.return_value = "https://api.openai.com"
-        mock_settings_instance.get_current_model.return_value = "gpt-4"
-
-        await handle_ml_command(
-            "/ml train --name test_trainer --model-id my_model-v1 "
-            "--instruction 'Train for 3 epochs' --data train_table",
-            ui,
-            runtime,
-        )
-
-    assert ui.errors == []
-    # The success message comes from the tool result
-    # No need to check training_service.submitted_jobs since it's mocked
+# Test removed: /ml train command no longer exists (integrated into /ml model)
 
 
 @pytest.mark.asyncio
@@ -596,28 +471,6 @@ async def test_jobs_status_displays_details(tmp_path):
     title, rows = ui.kv_tables[0]
     assert title == "Job Status"
     assert any(field == "Status" and value == "completed" for field, value in rows)
-
-
-@pytest.mark.asyncio
-async def test_train_missing_model_shows_error(tmp_path):
-    runtime = StubRuntime(
-        model_service=StubModelService(),
-        ml_data_service=StubMLDataService(),
-        job_service=StubJobService(),
-        training_service=StubTrainingService(),
-        artifacts_root=tmp_path / "artifacts",
-    )
-
-    ui = StubUI()
-    await handle_ml_command(
-        "/ml train --name test_trainer --model-id unknown_model-v1 "
-        "--instruction 'test' --data table",
-        ui,
-        runtime,
-    )
-
-    # Should error because model is not found (happens in MLTrainTool)
-    assert len(ui.errors) > 0
 
 
 # Test removed: /ml create-model command no longer exists (integrated into /ml model)

@@ -70,11 +70,14 @@ def test_init_schema():
             "plugin_schemas",
             "plugins",
             "plugin_components",
-            "trainers",
+            "evaluators",
+            "data_processors",
             "plans",
+            "plan_executions",
             "training_runs",
             "training_metrics",
             "training_checkpoints",
+            "evaluation_runs",
         ]
 
         for table in expected_tables:

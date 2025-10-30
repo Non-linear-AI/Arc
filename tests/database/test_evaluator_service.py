@@ -32,8 +32,7 @@ def sample_evaluator():
         id="test-eval-1",
         name="diabetes_eval",
         version=1,
-        trainer_id="trainer-123",
-        trainer_version=1,
+        model_id="trainer-123-v1",
         spec="""name: diabetes_eval
 trainer_ref: diabetes_trainer
 dataset: test_diabetes_data
@@ -57,8 +56,7 @@ def sample_evaluators():
             id="eval-1",
             name="diabetes_eval",
             version=1,
-            trainer_id="trainer-123",
-            trainer_version=1,
+            model_id="trainer-123-v1",
             spec="name: diabetes_eval\ntrainer_ref: diabetes_trainer\n",
             description="First version",
             created_at=now,
@@ -68,8 +66,7 @@ def sample_evaluators():
             id="eval-2",
             name="diabetes_eval",
             version=2,
-            trainer_id="trainer-123",
-            trainer_version=2,
+            model_id="trainer-123-v2",
             spec="name: diabetes_eval\ntrainer_ref: diabetes_trainer_v2\n",
             description="Second version",
             created_at=now,
@@ -79,8 +76,7 @@ def sample_evaluators():
             id="eval-3",
             name="iris_eval",
             version=1,
-            trainer_id="trainer-456",
-            trainer_version=1,
+            model_id="trainer-456-v1",
             spec="name: iris_eval\ntrainer_ref: iris_trainer\n",
             description="Iris evaluator",
             created_at=now,
@@ -97,8 +93,7 @@ class TestEvaluatorDataClass:
         assert sample_evaluator.id == "test-eval-1"
         assert sample_evaluator.name == "diabetes_eval"
         assert sample_evaluator.version == 1
-        assert sample_evaluator.trainer_id == "trainer-123"
-        assert sample_evaluator.trainer_version == 1
+        assert sample_evaluator.model_id == "trainer-123-v1"
         assert isinstance(sample_evaluator.created_at, datetime)
         assert isinstance(sample_evaluator.updated_at, datetime)
 
@@ -193,16 +188,16 @@ class TestEvaluatorServiceRetrieval:
         results = evaluator_service.get_evaluators_by_name("nonexistent")
         assert len(results) == 0
 
-    def test_get_evaluators_by_trainer(self, evaluator_service, sample_evaluators):
-        """Test retrieving evaluators by trainer ID."""
+    def test_get_evaluators_by_model(self, evaluator_service, sample_evaluators):
+        """Test retrieving evaluators by model ID."""
         for evaluator in sample_evaluators:
             evaluator_service.create_evaluator(evaluator)
 
-        results = evaluator_service.get_evaluators_by_trainer("trainer-123")
+        results = evaluator_service.get_evaluators_by_model("trainer-123-v1")
 
-        assert len(results) == 2
-        # All should belong to trainer-123
-        assert all(r.trainer_id == "trainer-123" for r in results)
+        assert len(results) == 1
+        # Should belong to the specific model version
+        assert results[0].model_id == "trainer-123-v1"
 
     def test_list_all_evaluators(self, evaluator_service, sample_evaluators):
         """Test listing all evaluators."""

@@ -72,9 +72,9 @@ class DataSourceSpec:
     """Complete data source specification for SQL feature engineering."""
 
     name: str
-    description: str
     steps: list[DataSourceStep]
     outputs: list[str]
+    description: str | None = None
     vars: dict[str, str] | None = None
 
     def __post_init__(self):
@@ -82,8 +82,7 @@ class DataSourceSpec:
         if not self.name or not self.name.strip():
             raise ValueError("Name is required and cannot be empty")
 
-        if not self.description or not self.description.strip():
-            raise ValueError("Description is required and cannot be empty")
+        # description is optional - no validation needed
 
         if not self.steps:
             raise ValueError("At least one step is required")
@@ -141,11 +140,9 @@ class DataSourceSpec:
         if not isinstance(name, str):
             raise ValueError("name must be a string")
 
-        # Parse description (required)
-        if "description" not in data:
-            raise ValueError("Data must contain 'description' field")
-        description = data["description"]
-        if not isinstance(description, str):
+        # Parse description (optional)
+        description = data.get("description")
+        if description is not None and not isinstance(description, str):
             raise ValueError("description must be a string")
 
         # Parse vars (optional)
@@ -190,9 +187,9 @@ class DataSourceSpec:
 
         return cls(
             name=name,
-            description=description,
             steps=steps,
             outputs=outputs,
+            description=description,
             vars=vars_dict,
         )
 
@@ -224,11 +221,9 @@ class DataSourceSpec:
         if not isinstance(name, str):
             raise ValueError("name must be a string")
 
-        # Parse description (required)
-        if "description" not in data:
-            raise ValueError("YAML must contain 'description' field")
-        description = data["description"]
-        if not isinstance(description, str):
+        # Parse description (optional)
+        description = data.get("description")
+        if description is not None and not isinstance(description, str):
             raise ValueError("description must be a string")
 
         # Parse vars (optional)
@@ -277,9 +272,9 @@ class DataSourceSpec:
 
         return cls(
             name=name,
-            description=description,
             steps=steps,
             outputs=outputs,
+            description=description,
             vars=vars_dict,
         )
 
@@ -312,10 +307,13 @@ class DataSourceSpec:
         # Build dictionary manually to exclude None values and improve formatting
         result_dict = {
             "name": self.name,
-            "description": self.description,
             "steps": [asdict(step) for step in self.steps],
             "outputs": self.outputs,
         }
+
+        # Only include description if it's not None
+        if self.description is not None:
+            result_dict["description"] = self.description
 
         # Only include vars if it's not None
         if self.vars is not None:
@@ -457,11 +455,14 @@ class DataSourceSpec:
         """
         lines = []
 
-        # Name and description
+        # Name
         lines.append(f"name: {self.name}")
         lines.append("")
-        lines.append(f"description: {self.description}")
-        lines.append("")
+
+        # Description (optional)
+        if self.description is not None:
+            lines.append(f"description: {self.description}")
+            lines.append("")
 
         # Variables (optional)
         if self.vars:
@@ -788,7 +789,7 @@ class DataSourceSpec:
         """
         return {
             "type": "object",
-            "required": ["name", "description", "steps", "outputs"],
+            "required": ["name", "steps", "outputs"],
             "properties": {
                 "name": {
                     "type": "string",
@@ -796,7 +797,7 @@ class DataSourceSpec:
                 },
                 "description": {
                     "type": "string",
-                    "description": "Description of what this pipeline does",
+                    "description": "Optional description of what this pipeline does",
                 },
                 "vars": {
                     "type": "object",

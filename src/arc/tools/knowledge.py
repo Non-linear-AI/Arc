@@ -46,9 +46,11 @@ class ReadKnowledgeTool(BaseTool):
             )
 
         # Load the knowledge document
-        content = self.knowledge_loader.load_knowledge(knowledge_id, phase)
+        content, actual_phase = self.knowledge_loader.load_knowledge(
+            knowledge_id, phase
+        )
 
-        if content is None:
+        if content is None or actual_phase is None:
             # Get available knowledge for helpful error message
             metadata_map = self.knowledge_loader.scan_metadata()
             available_ids = list(metadata_map.keys())

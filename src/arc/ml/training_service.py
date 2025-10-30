@@ -6,11 +6,13 @@ import logging
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
 from typing import Any
+
+import torch
 
 from arc.database import DatabaseError
 from arc.database.models.training import MetricType, TrainingStatus
@@ -19,7 +21,7 @@ from arc.database.services.ml_data_service import MLDataService
 from arc.database.services.training_tracking_service import (
     TrainingTrackingService,
 )
-from arc.graph import FeatureSpec, ModelSpec, TrainerSpec
+from arc.graph import FeatureSpec, ModelSpec
 from arc.jobs.models import Job, JobStatus, JobType
 from arc.ml.artifacts import (
     ModelArtifact,
@@ -30,7 +32,12 @@ from arc.ml.builder import ArcModel, ModelBuilder
 from arc.ml.callbacks import TensorBoardLogger
 from arc.ml.data import DataProcessor
 from arc.ml.dry_run_validator import DryRunValidator, ValidationError, ValidationReport
-from arc.ml.trainer import ArcTrainer, ProgressCallback, TrainingResult
+from arc.ml.training import (
+    ProgressCallback,
+    TrainingResult,
+    _sanitize_optimizer_params,
+    train_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,18 +76,21 @@ class CompositeCallback:
 
 @dataclass
 class TrainingJobConfig:
-    """Configuration for a training job."""
+    """Configuration for a training job.
+
+    Training configuration is extracted from the model's unified YAML spec.
+    The model.spec contains both architecture (inputs, graph, outputs) and
+    training configuration (loss, optimizer, metrics, hyperparameters).
+    """
 
     # Required fields first
     model_id: str  # Stable model identifier (slug)
     model_version: int  # Model version number associated with the job
     model_name: str
-    trainer_id: str  # Trainer identifier
-    trainer_version: int  # Trainer version number
     train_table: str
     target_column: str
     model_spec: ModelSpec  # Model specification
-    trainer_spec: TrainerSpec  # Trainer specification
+    training_config: dict[str, Any]  # Training configuration from model YAML
 
     # Optional fields with defaults
     feature_spec: FeatureSpec | None = None
@@ -417,23 +427,23 @@ class TrainingService:
                         "learning_rate": config.learning_rate,
                         "validation_split": config.validation_split,
                     }
-                    # Set up TensorBoard log directory
+                    # Set up TensorBoard log directory (project-local, relative path)
                     tensorboard_log_dir = None
                     if config.artifacts_dir:
+                        # Keep relative paths relative for project-local storage
+                        artifacts_path = Path(config.artifacts_dir)
                         tensorboard_log_dir = str(
-                            Path(config.artifacts_dir).parent
-                            / "tensorboard"
-                            / f"run_{job_id}"
+                            artifacts_path.parent / "tensorboard" / f"run_{job_id}"
                         )
                     else:
+                        # Default to project-local .arc directory
                         tensorboard_log_dir = str(
-                            Path.home() / ".arc" / "training_logs" / f"run_{job_id}"
+                            Path(".arc") / "tensorboard" / f"run_{job_id}"
                         )
 
                     run = self.tracking_service.create_run(
                         job_id=job_id,
                         model_id=config.model_id,
-                        trainer_id=config.trainer_id,
                         run_name=config.description,
                         description=config.description,
                         tensorboard_enabled=True,
@@ -632,52 +642,60 @@ class TrainingService:
         """
         logger.info("Validating training job configuration...")
 
-        # Setup training configuration - extract from TrainerSpec
-        if not config.trainer_spec:
-            raise ValueError("Training job config must have trainer_spec")
+        # Extract values from training_config dict
+        if not config.training_config:
+            raise ValueError("Training job config must have training_config")
 
-        trainer_spec = config.trainer_spec
+        tc = config.training_config  # Shorthand
 
-        # Extract loss from model spec (loss is in model, not trainer)
-        if not config.model_spec or not config.model_spec.loss:
-            raise ValueError("Model spec must define a loss function")
+        # Extract loss configuration
+        loss_config = tc.get("loss", {})
+        if not loss_config or not loss_config.get("type"):
+            raise ValueError("Training config must define a loss function")
 
-        model_loss = config.model_spec.loss
-
-        # Create training config
-        base_training_config = trainer_spec.get_training_config()
+        # Create a simple loss object for validation
         from types import SimpleNamespace
 
+        model_loss = SimpleNamespace(
+            type=loss_config.get("type"), params=loss_config.get("params", {})
+        )
+
+        # Extract optimizer configuration
+        optimizer_config = tc.get("optimizer", {"type": "adam"})
+
+        # Build training config SimpleNamespace from dict
         training_config = SimpleNamespace(
-            # Basic training parameters
-            epochs=trainer_spec.epochs,
-            batch_size=trainer_spec.batch_size,
-            learning_rate=trainer_spec.learning_rate,
-            validation_split=trainer_spec.validation_split,
-            device=trainer_spec.device,
-            early_stopping_patience=trainer_spec.early_stopping_patience,
-            # Training config parameters
-            shuffle=base_training_config.shuffle,
-            num_workers=base_training_config.num_workers,
-            pin_memory=base_training_config.pin_memory,
-            checkpoint_every=base_training_config.checkpoint_every,
-            save_best_only=base_training_config.save_best_only,
-            save_dir=base_training_config.save_dir,
-            early_stopping_min_delta=base_training_config.early_stopping_min_delta,
-            early_stopping_monitor=base_training_config.early_stopping_monitor,
-            early_stopping_mode=base_training_config.early_stopping_mode,
-            log_every=base_training_config.log_every,
-            verbose=base_training_config.verbose,
-            gradient_clip_val=base_training_config.gradient_clip_val,
-            gradient_clip_norm=base_training_config.gradient_clip_norm,
-            accumulate_grad_batches=base_training_config.accumulate_grad_batches,
-            seed=base_training_config.seed,
-            # Optimizer config from trainer
-            optimizer=trainer_spec.optimizer.type,
-            optimizer_params=trainer_spec.optimizer.params or {},
-            # Loss config from model spec
+            # Basic training parameters (use config overrides if provided)
+            epochs=config.epochs,
+            batch_size=config.batch_size,
+            learning_rate=config.learning_rate,
+            validation_split=config.validation_split,
+            device=tc.get("device", "cpu"),
+            early_stopping_patience=tc.get("early_stopping_patience"),
+            # Training config parameters with defaults
+            shuffle=tc.get("shuffle", True),
+            num_workers=tc.get("num_workers", 0),
+            pin_memory=tc.get("pin_memory", False),
+            checkpoint_every=tc.get("checkpoint_every", 1),
+            save_best_only=tc.get("save_best_only", True),
+            save_dir=tc.get("save_dir"),
+            early_stopping_min_delta=tc.get("early_stopping_min_delta", 0.001),
+            early_stopping_monitor=tc.get("early_stopping_monitor", "val_loss"),
+            early_stopping_mode=tc.get("early_stopping_mode", "min"),
+            log_every=tc.get("log_every", 10),
+            verbose=tc.get("verbose", True),
+            gradient_clip_val=tc.get("gradient_clip_val"),
+            gradient_clip_norm=tc.get("gradient_clip_norm"),
+            accumulate_grad_batches=tc.get("accumulate_grad_batches", 1),
+            seed=tc.get("seed"),
+            # Optimizer config
+            optimizer=optimizer_config.get("type", "adam"),
+            optimizer_params=_sanitize_optimizer_params(
+                optimizer_config.get("params", {})
+            ),
+            # Loss config
             loss_function=model_loss.type,
-            loss_params=model_loss.params or {},
+            loss_params=model_loss.params,
             # Additional trainer-specific fields (with defaults)
             reshape_targets=True,  # Default for binary classification
             target_output_key="logits",  # Use logits for BCEWithLogitsLoss
@@ -760,71 +778,65 @@ class TrainingService:
         try:
             logger.info(f"Starting training execution for job {job_id}")
 
-            # Setup training configuration - extract from TrainerSpec or use defaults
-            if config.trainer_spec:
-                trainer_spec = config.trainer_spec
-            else:
-                # Create default trainer spec if none provided (no loss - it's in model)
-                from arc.graph.trainer import OptimizerConfig, TrainerSpec
+            # Extract values from training_config dict
+            if not config.training_config:
+                raise ValueError("Training job config must have training_config")
 
-                trainer_spec = TrainerSpec(
-                    model_ref=config.model_id,  # Reference the model
-                    optimizer=OptimizerConfig(
-                        type="torch.optim.Adam", lr=config.learning_rate
-                    ),
-                    epochs=config.epochs,
-                    batch_size=config.batch_size,
-                    learning_rate=config.learning_rate,
-                    validation_split=config.validation_split,
-                )
+            tc = config.training_config  # Shorthand
 
-            # Extract loss from model spec (loss is in model, not trainer)
-            if not config.model_spec or not config.model_spec.loss:
-                raise ValueError("Model spec must define a loss function")
+            # Extract loss configuration
+            loss_config = tc.get("loss", {})
+            if not loss_config or not loss_config.get("type"):
+                raise ValueError("Training config must define a loss function")
 
-            model_loss = config.model_spec.loss
-
-            # Create a bridge config that has all the fields the trainer expects
-            base_training_config = trainer_spec.get_training_config()
+            # Create a simple loss object
             from types import SimpleNamespace
 
+            model_loss = SimpleNamespace(
+                type=loss_config.get("type"), params=loss_config.get("params", {})
+            )
+
+            # Extract optimizer configuration
+            optimizer_config = tc.get("optimizer", {"type": "adam"})
+
+            # Build training config SimpleNamespace from dict
             training_config = SimpleNamespace(
-                # Basic training parameters
-                epochs=trainer_spec.epochs,
-                batch_size=trainer_spec.batch_size,
-                learning_rate=trainer_spec.learning_rate,
-                validation_split=trainer_spec.validation_split,
-                device=trainer_spec.device,
-                early_stopping_patience=trainer_spec.early_stopping_patience,
-                # Training config parameters
-                shuffle=base_training_config.shuffle,
-                num_workers=base_training_config.num_workers,
-                pin_memory=base_training_config.pin_memory,
-                checkpoint_every=base_training_config.checkpoint_every,
-                save_best_only=base_training_config.save_best_only,
-                save_dir=base_training_config.save_dir,
-                early_stopping_min_delta=base_training_config.early_stopping_min_delta,
-                early_stopping_monitor=base_training_config.early_stopping_monitor,
-                early_stopping_mode=base_training_config.early_stopping_mode,
-                log_every=base_training_config.log_every,
-                verbose=base_training_config.verbose,
-                gradient_clip_val=base_training_config.gradient_clip_val,
-                gradient_clip_norm=base_training_config.gradient_clip_norm,
-                accumulate_grad_batches=base_training_config.accumulate_grad_batches,
-                seed=base_training_config.seed,
-                # Optimizer config from trainer
-                optimizer=trainer_spec.optimizer.type,
-                optimizer_params=trainer_spec.optimizer.params or {},
-                # Loss config from model spec
+                # Basic training parameters (use config overrides if provided)
+                epochs=config.epochs,
+                batch_size=config.batch_size,
+                learning_rate=config.learning_rate,
+                validation_split=config.validation_split,
+                device=tc.get("device", "cpu"),
+                early_stopping_patience=tc.get("early_stopping_patience"),
+                # Training config parameters with defaults
+                shuffle=tc.get("shuffle", True),
+                num_workers=tc.get("num_workers", 0),
+                pin_memory=tc.get("pin_memory", False),
+                checkpoint_every=tc.get("checkpoint_every", 1),
+                save_best_only=tc.get("save_best_only", True),
+                save_dir=tc.get("save_dir"),
+                early_stopping_min_delta=tc.get("early_stopping_min_delta", 0.001),
+                early_stopping_monitor=tc.get("early_stopping_monitor", "val_loss"),
+                early_stopping_mode=tc.get("early_stopping_mode", "min"),
+                log_every=tc.get("log_every", 10),
+                verbose=tc.get("verbose", True),
+                gradient_clip_val=tc.get("gradient_clip_val"),
+                gradient_clip_norm=tc.get("gradient_clip_norm"),
+                accumulate_grad_batches=tc.get("accumulate_grad_batches", 1),
+                seed=tc.get("seed"),
+                # Optimizer config
+                optimizer=optimizer_config.get("type", "adam"),
+                optimizer_params=_sanitize_optimizer_params(
+                    optimizer_config.get("params", {})
+                ),
+                # Loss config
                 loss_function=model_loss.type,
-                loss_params=model_loss.params or {},
+                loss_params=model_loss.params,
                 # Additional trainer-specific fields (with defaults)
                 reshape_targets=True,  # Default for binary classification
                 target_output_key="logits",  # Use logits for BCEWithLogitsLoss
             )
 
-            # Persist the effective training configuration for downstream use
-            config.training_config = training_config
             logger.info(f"Training config ready for job {job_id}")
 
             # Create data processor with ML data service and database access
@@ -904,8 +916,10 @@ class TrainingService:
                 )
             raise
 
+        # Create validation loader
         val_loader = None
         if config.validation_table:
+            # Use separate validation table if provided
             try:
                 # First try as a registered dataset
                 val_loader = data_processor.create_dataloader_from_dataset(
@@ -937,6 +951,47 @@ class TrainingService:
                     f"Validation data loader created from table "
                     f"'{config.validation_table}' for job {job_id}"
                 )
+        elif config.validation_split > 0:
+            # Split training data for validation
+            from torch.utils.data import DataLoader, random_split
+
+            dataset = train_loader.dataset
+            total_size = len(dataset)
+            val_size = int(total_size * config.validation_split)
+            train_size = total_size - val_size
+
+            logger.info(
+                f"Splitting training data: {train_size} train, {val_size} validation "
+                f"(split: {config.validation_split}) for job {job_id}"
+            )
+
+            train_dataset, val_dataset = random_split(
+                dataset,
+                [train_size, val_size],
+                generator=torch.Generator().manual_seed(42),  # Reproducible split
+            )
+
+            # Recreate train_loader with split dataset
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=training_config.batch_size,
+                shuffle=training_config.shuffle,
+                num_workers=getattr(training_config, "num_workers", 0),
+                pin_memory=getattr(training_config, "pin_memory", False),
+            )
+
+            # Create validation loader
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=training_config.batch_size,
+                shuffle=False,  # Never shuffle validation
+                num_workers=getattr(training_config, "num_workers", 0),
+                pin_memory=getattr(training_config, "pin_memory", False),
+            )
+
+            logger.info(
+                f"Validation loader created from training split for job {job_id}"
+            )
 
         # Run dry-run validation before starting training
         logger.info(f"Running dry-run validation for job {job_id}")
@@ -974,18 +1029,30 @@ class TrainingService:
                 f"Checkpoint directory set to: {checkpoint_dir} for job {job_id}"
             )
 
-            # Create trainer and run training
-            logger.info(f"Creating trainer for job {job_id}")
-            trainer = ArcTrainer(training_config)
+            # Get TensorBoard log directory from tracking service
+            tensorboard_log_dir = None
+            if self.tracking_service:
+                try:
+                    run = self.tracking_service.get_run_by_job_id(job_id)
+                    if run and run.tensorboard_enabled and run.tensorboard_log_dir:
+                        tensorboard_log_dir = Path(run.tensorboard_log_dir)
+                        logger.info(
+                            f"TensorBoard logging directory: {tensorboard_log_dir}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to get TensorBoard log directory: {e}")
 
+            # Run training
             logger.info(f"Starting model training for job {job_id}")
-            result = trainer.train(
+            result, optimizer = train_model(
                 model=model,
                 train_loader=train_loader,
+                training_config=training_config,
                 val_loader=val_loader,
                 callback=progress_callback,
                 checkpoint_dir=checkpoint_dir,
                 stop_event=cancel_event,
+                tensorboard_log_dir=tensorboard_log_dir,
             )
             logger.info(
                 f"Training completed for job {job_id}, success: {result.success}"
@@ -1042,7 +1109,7 @@ class TrainingService:
         logger.info(f"Training succeeded for job {job_id}, saving artifacts")
         try:
             artifact, artifact_dir = self._save_training_artifact(
-                job_id, config, model, trainer, result
+                job_id, config, model, optimizer, result
             )
             logger.info(f"Artifacts saved successfully for job {job_id}")
             try:
@@ -1085,7 +1152,7 @@ class TrainingService:
         job_id: str,
         config: TrainingJobConfig,
         model: ArcModel,
-        trainer: ArcTrainer,
+        optimizer: torch.optim.Optimizer,
         result: TrainingResult,
     ) -> tuple[ModelArtifact, Path]:
         """Save training artifacts.
@@ -1094,12 +1161,12 @@ class TrainingService:
             job_id: Job identifier
             config: Training configuration
             model: Trained model
-            trainer: Trainer instance
+            optimizer: Optimizer instance
             result: Training result
         """
-        # Use trainer_id as artifact key (not model_id)
-        # This ensures each trainer has isolated artifacts
-        artifact_key = config.trainer_id
+        # Use model_id as artifact key
+        # Model ID already includes versioning (e.g., "pima-diabetes-v1")
+        artifact_key = config.model_id
 
         try:
             latest_version = self.artifact_manager.get_latest_version(artifact_key)
@@ -1108,12 +1175,13 @@ class TrainingService:
             version = 1
 
         # Create artifact metadata
-        # Use trainer_id as model_id for artifact path isolation
+        # Note: We don't save training_config here since it's already in the model YAML
+        # The model_id gives us everything we need to retrieve the training config
         artifact = create_artifact_from_training(
-            model_id=artifact_key,  # Use trainer_id for path
+            model_id=artifact_key,
             model_name=config.model_name,
             version=version,
-            training_config=config.trainer_spec or {},
+            training_config=None,  # Training config is in the model's unified YAML
             training_result=result,
             model_spec=config.model_spec,
             model_info={
@@ -1127,20 +1195,22 @@ class TrainingService:
         )
 
         # Prepare training history
+        # Note: We don't save training_config here since it's in the model's unified YAML
+        # Just save the job_id to link back to the training run record
         training_history = {
             "job_id": job_id,
+            "model_id": config.model_id,  # Reference to retrieve training config from model
             "train_losses": result.train_losses,
             "val_losses": result.val_losses,
             "metrics_history": result.metrics_history,
             "training_time": result.training_time,
-            "config": asdict(config.trainer_spec) if config.trainer_spec else {},
         }
 
         # Save artifact
         artifact_dir = self.artifact_manager.save_model_artifact(
             model=model,
             artifact=artifact,
-            optimizer=trainer.optimizer,
+            optimizer=optimizer,
             training_history=training_history,
             model_spec=config.model_spec,
             overwrite=False,

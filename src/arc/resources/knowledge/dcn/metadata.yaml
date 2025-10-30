@@ -20,12 +20,6 @@ problem_type: classification
 related_knowledge:
   - mlp
 
-# Availability
-phases:
-  - model
-  - train
-  - evaluate
-
 # Metadata
 complexity: intermediate
 domain: recommendation

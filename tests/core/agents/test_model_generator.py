@@ -72,11 +72,16 @@ graph:
       input: linear.output
 outputs:
   prediction: sigmoid.output
-loss:
-  type: torch.nn.functional.binary_cross_entropy
-  inputs:
-    input: prediction
-    target: target"""
+training:
+  loss:
+    type: torch.nn.functional.binary_cross_entropy
+    inputs:
+      input: prediction
+      target: target
+  optimizer:
+    type: adam
+    params:
+      lr: 0.001"""
 
     @pytest.mark.asyncio
     async def test_generate_model_success(self, model_generator, valid_model_yaml):

@@ -52,7 +52,7 @@ Your previous response had the following error:
 
 Please fix this error:
 1. Return valid YAML only (no markdown code fences like ```yaml)
-2. Include all required sections: feature_engineering, model_architecture_and_loss, training_configuration, evaluation
+2. Include all required sections: data_plan, model_plan
 3. Ensure proper YAML formatting with correct indentation
 {% endif %}
 
@@ -88,7 +88,7 @@ Your plan should be:
 - **Specific**: Use exact dimensions, specific PyTorch modules (torch.nn.Linear, torch.nn.BatchNorm1d), and precise hyperparameters
 - **Implementable**: Design for Arc-Graph YAML specification using standard PyTorch modules (torch.nn.*, torch.*)
 - **Data-driven**: Base recommendations on dataset characteristics (size, feature types, class balance)
-- **Complete**: Cover feature preprocessing, architecture, training, and evaluation with specific details
+- **Complete**: Cover feature preprocessing, architecture, and training/validation with specific details
 
 Key principles:
 - Specify exact values with reasoning (e.g., "batch size 32 for 10K samples balancing noise and memory")
@@ -117,28 +117,31 @@ Your output must validate against this structure:
 ```json
 {
   "type": "object",
-  "required": ["feature_engineering", "model_architecture_and_loss", "training_configuration", "evaluation"],
+  "required": ["data_plan", "model_plan"],
   "properties": {
-    "feature_engineering": {
+    "data_plan": {
       "type": "string",
-      "description": "Describe feature processing with specific techniques. Include scaling method (StandardScaler, MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, validation split strategy, and data leakage prevention measures."
+      "description": "Describe feature processing with specific techniques for the ml_data stage. Include scaling method (StandardScaler, MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, train/validation split strategy, and data leakage prevention measures."
     },
-    "model_architecture_and_loss": {
+    "model_plan": {
       "type": "string",
-      "description": "Describe the neural network architecture with exact layer specifications. Use bracket notation for the architecture flow [Input → Layer1 → Activation → Layer2 → ...]. Specify the loss function and explain why this architecture is appropriate. Include exact dimensions, activation functions, and regularization layers (BatchNorm, Dropout)."
+      "description": "UNIFIED guidance for ml_model stage (which now handles both architecture AND training). Describe: (1) Neural network architecture with exact layer specifications using bracket notation [Input → Layer1 → Activation → Layer2 → ...], loss function selection. (2) Training setup with specific optimizer (Adam, SGD), parameters (lr, weight_decay), batch size, epoch count, early stopping patience, validation metrics to track (AUROC, F1, accuracy). This single section guides the entire model training workflow."
     },
-    "training_configuration": {
-      "type": "string",
-      "description": "Describe the training setup with specific optimizer (Adam, SGD) and parameters (lr, betas, weight_decay), learning rate schedule if applicable (CosineAnnealingLR, StepLR), batch size, epoch count, early stopping patience, and gradient clipping if needed."
-    },
-    "evaluation": {
-      "type": "string",
-      "description": "Describe evaluation metrics with specific library references (torchmetrics.AUROC, sklearn.metrics.f1_score). Include primary and secondary metrics, specify parameters (threshold, average method), and explain why these metrics fit the task."
-    },
-    "recommended_knowledge_ids": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "Optional list of knowledge document IDs that informed this plan. Only include knowledge you actually read and found useful."
+    "knowledge": {
+      "type": "object",
+      "description": "Stage-specific knowledge recommendations. Map each workflow stage to list of knowledge IDs relevant for that stage.",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Knowledge IDs for data processing stage"
+        },
+        "model": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Knowledge IDs for model architecture + training stage (unified)"
+        }
+      }
     }
   }
 }
@@ -146,13 +149,13 @@ Your output must validate against this structure:
 
 ## Output Format
 
-Provide your ML plan in YAML format with these four required sections:
+Provide your ML plan in YAML format with these three required sections:
 
 ```yaml
 feature_engineering: >-
   Describe feature processing with specific techniques. Include scaling method (StandardScaler,
-  MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, validation split
-  strategy, and data leakage prevention measures.
+  MinMaxScaler), encoding strategies (one-hot, embeddings), imputation approach, train/validation
+  split strategy (e.g., 80/20), and data leakage prevention measures.
 
 model_architecture_and_loss: >-
   Describe the neural network architecture with exact layer specifications. Use bracket notation
@@ -160,37 +163,38 @@ model_architecture_and_loss: >-
   function and explain why this architecture is appropriate. Include exact dimensions, activation
   functions, and regularization layers (BatchNorm, Dropout).
 
-training_configuration: >-
+training_and_validation: >-
   Describe the training setup with specific optimizer (Adam, SGD) and parameters (lr, betas,
   weight_decay), learning rate schedule if applicable (CosineAnnealingLR, StepLR), batch size,
-  epoch count, early stopping patience, and gradient clipping if needed.
+  epoch count, early stopping patience on validation loss, and gradient clipping if needed.
+  Include which validation metrics to track during training (e.g., AUROC, F1, accuracy) for
+  monitoring progress.
 
-evaluation: >-
-  Describe evaluation metrics with specific library references (torchmetrics.AUROC,
-  sklearn.metrics.f1_score). Include primary and secondary metrics, specify parameters
-  (threshold, average method), and explain why these metrics fit the task.
-
-recommended_knowledge_ids:
-  - knowledge_id_1
-  - knowledge_id_2
+knowledge:
+  data:
+    - feature_engineering_knowledge_id
+  model:
+    - mlp
+  training:
+    - optimizer_guide
 ```
 
-**recommended_knowledge_ids** (optional): List knowledge document IDs that informed this plan. Only include knowledge you actually read and found useful.
+**knowledge** (optional): Stage-specific knowledge recommendations. Map each workflow stage (data, model) to relevant knowledge IDs. Only include knowledge you actually read and found useful for each stage. Note: "model" stage now includes both architecture and training knowledge since they are unified.
 
 ## Example Output
 
 For a binary classification task with 768 samples, 8 numeric features, and 35% class imbalance:
 
 ```yaml
-feature_engineering: >-
+data_plan: >-
   Apply StandardScaler to all 8 numeric features (Pregnancies, Glucose, BloodPressure,
   SkinThickness, Insulin, BMI, DiabetesPedigreeFunction, Age). No missing values detected.
   Use 20% stratified validation split to maintain class balance. Fit scaler on training set
   only, then transform both train and validation to prevent data leakage. Random seed 42
   for reproducibility.
 
-model_architecture_and_loss: >-
-  3-layer MLP architecture for tabular binary classification: [Linear(8,128), BatchNorm1d(128),
+model_plan: >-
+  Architecture: 3-layer MLP for tabular binary classification: [Linear(8,128), BatchNorm1d(128),
   ReLU, Dropout(0.4), Linear(128,64), BatchNorm1d(64), ReLU, Dropout(0.3), Linear(64,32),
   BatchNorm1d(32), ReLU, Dropout(0.2), Linear(32,1)]. Use BCEWithLogitsLoss which combines
   sigmoid and binary cross-entropy for numerical stability. Architecture uses decreasing
@@ -198,23 +202,16 @@ model_architecture_and_loss: >-
   for training stability. Dropout rates decrease in deeper layers (0.4→0.3→0.2) to balance
   regularization. Final layer outputs logits (no activation) as required by BCEWithLogitsLoss.
 
-training_configuration: >-
-  Adam optimizer with lr=0.001, betas=(0.9, 0.999), weight_decay=1e-4 for L2 regularization.
-  CosineAnnealingLR scheduler with T_max=100 to gradually reduce learning rate. Batch size 32
+  Training: Adam optimizer with lr=0.001, weight_decay=1e-4 for L2 regularization. Batch size 32
   balances gradient noise and memory (768 samples → 24 batches). Train for 100 epochs with
-  early stopping patience 15 on validation loss to prevent overfitting. Gradient clipping at
-  norm 1.0 to prevent exploding gradients. Learning rate choice: 0.001 is safe starting point
-  for Adam on small tabular datasets.
+  early stopping patience 15 on validation loss to prevent overfitting. Track validation metrics:
+  AUROC (primary), F1, accuracy, precision, and recall. AUROC chosen as primary metric because
+  it evaluates model calibration across all thresholds, critical for imbalanced classification.
 
-evaluation: >-
-  Primary: torchmetrics.AUROC for threshold-independent performance evaluation on imbalanced
-  data (65/35 split). Secondary: torchmetrics.F1Score with threshold=0.5 to evaluate precision-recall
-  tradeoff, torchmetrics.Accuracy for overall correctness, and torchmetrics.Precision/Recall to
-  understand false positives vs false negatives. AUROC chosen as primary because it evaluates
-  model calibration across all thresholds, critical for imbalanced classification.
-
-recommended_knowledge_ids:
-  - mlp
+knowledge:
+  data: []
+  model:
+    - mlp
 ```
 
 **Output instructions:**

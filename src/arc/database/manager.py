@@ -30,7 +30,22 @@ class DatabaseManager:
         Args:
             system_db_path: Path to system database (Arc metadata)
             user_db_path: Optional path to user database (training data)
+
+        Raises:
+            TypeError: If a Database object is passed instead of a path
         """
+        # Validate inputs - catch common mistake of passing Database objects
+        if isinstance(system_db_path, Database):
+            raise TypeError(
+                f"DatabaseManager() expects a path string for system_db_path, "
+                f"not a Database object. Received: {type(system_db_path).__name__}"
+            )
+        if isinstance(user_db_path, Database):
+            raise TypeError(
+                f"DatabaseManager() expects a path string for user_db_path, "
+                f"not a Database object. Received: {type(user_db_path).__name__}"
+            )
+
         self.system_db_path = str(system_db_path)
         self.user_db_path = str(user_db_path) if user_db_path else None
 
@@ -159,6 +174,10 @@ class DatabaseManager:
 
     def close(self) -> None:
         """Close all database connections for the current thread."""
+        # Guard against close() being called when __init__ failed
+        if not hasattr(self, "_thread_local"):
+            return
+
         if hasattr(self._thread_local, "system_db"):
             self._thread_local.system_db.close()
             delattr(self._thread_local, "system_db")

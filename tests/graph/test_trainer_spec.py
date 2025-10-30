@@ -63,6 +63,10 @@ class TestTrainerSpec:
         """Sample trainer dictionary for testing."""
         return {
             "model_ref": "test-model-v1",
+            "loss": {
+                "type": "torch.nn.CrossEntropyLoss",
+                "inputs": {"input": "model.logits", "target": "target"},
+            },
             "optimizer": {
                 "type": "torch.optim.Adam",
                 "params": {"lr": 0.001, "betas": [0.9, 0.999], "weight_decay": 0.0001},
@@ -120,6 +124,8 @@ class TestTrainerSpec:
         """Test TrainerSpec with minimal configuration."""
         minimal_yaml = """
         model_ref: test-model-v1
+        loss:
+          type: torch.nn.MSELoss
         optimizer:
           type: torch.optim.SGD
           lr: 0.01
@@ -140,6 +146,8 @@ class TestTrainerSpec:
         """Test TrainerSpec with custom configuration."""
         custom_yaml = """
         model_ref: test-model-v1
+        loss:
+          type: torch.nn.CrossEntropyLoss
         optimizer:
           type: torch.optim.AdamW
           lr: 0.0001
@@ -187,6 +195,7 @@ class TestTrainerValidation:
         """Test validation of valid trainer dictionary."""
         valid_dict = {
             "model_ref": "test-model-v1",
+            "loss": {"type": "torch.nn.CrossEntropyLoss"},
             "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
         }
 
@@ -211,6 +220,7 @@ class TestTrainerValidation:
         """Test validation with invalid batch size."""
         invalid_dict = {
             "model_ref": "test-model-v1",
+            "loss": {"type": "torch.nn.MSELoss"},
             "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
             "config": {
                 "batch_size": -1  # Invalid
@@ -226,6 +236,7 @@ class TestTrainerValidation:
         """Test validation with invalid validation split."""
         invalid_dict = {
             "model_ref": "test-model-v1",
+            "loss": {"type": "torch.nn.MSELoss"},
             "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
             "config": {
                 "validation_split": 1.5  # Invalid (> 1)
@@ -241,6 +252,7 @@ class TestTrainerValidation:
         """Test validation with invalid device."""
         invalid_dict = {
             "model_ref": "test-model-v1",
+            "loss": {"type": "torch.nn.MSELoss"},
             "optimizer": {"type": "torch.optim.Adam", "lr": 0.001},
             "config": {"device": "invalid_device"},
         }

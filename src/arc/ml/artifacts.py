@@ -13,7 +13,19 @@ import torch
 import torch.nn as nn
 
 from arc.graph import TrainingConfig
-from arc.ml.trainer import TrainingResult
+
+
+@dataclass
+class TrainingResult:
+    """Results from a training run."""
+
+    train_losses: list[float]
+    val_losses: list[float] | None = None
+    final_train_loss: float | None = None
+    final_val_loss: float | None = None
+    best_val_loss: float | None = None
+    metrics_history: dict[str, list[float]] | None = None
+    training_time: float | None = None
 
 
 @dataclass
@@ -388,7 +400,14 @@ class ModelArtifactManager:
             }
             data["training_config"] = TrainingConfig(**filtered_config)
         if data.get("training_result"):
-            data["training_result"] = TrainingResult(**data["training_result"])
+            # Filter to only include fields that are in TrainingResult dataclass
+            # Old artifacts may have additional fields like 'success' that we no longer use  # noqa: E501
+            result_data = data["training_result"]
+            valid_fields = {f.name for f in fields(TrainingResult)}
+            filtered_result = {
+                k: v for k, v in result_data.items() if k in valid_fields
+            }
+            data["training_result"] = TrainingResult(**filtered_result)
 
         return ModelArtifact(**data)
 

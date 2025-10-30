@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from arc.core.agents.shared.base_agent import AgentError, BaseAgent
 from arc.core.agents.shared.example_repository import ExampleRepository
 from arc.database.services import ServiceContainer
 from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS, ModelSpec, validate_model_dict
+
+logger = logging.getLogger(__name__)
 
 
 class MLModelError(AgentError):
@@ -57,26 +60,30 @@ class MLModelAgent(BaseAgent):
         target_column: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
-        ml_plan_architecture: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
+        model_plan: str | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
+        data_processing_id: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
-        """Generate Arc model specification based on data and user context.
+        """Generate unified model + training specification.
 
         Args:
             name: Model name for the specification
-            user_context: User description of desired model
+            user_context: User description of desired model and training
             table_name: Database table name for data exploration
             target_column: Optional target column name for task-aware generation
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
-            ml_plan_architecture: Optional ML plan architecture guidance
-            recommended_knowledge_ids: Optional list of knowledge IDs
-                recommended by ML Plan
+            model_plan: Optional ML plan guidance (architecture + training unified)
+            preloaded_knowledge: Optional list of preloaded knowledge docs
             conversation_history: Optional conversation history for editing workflow
+            data_processing_id: Optional execution ID to load data processing context
 
         Returns:
-            Tuple of (parsed ModelSpec object, YAML string, conversation_history)
+            Tuple of (ModelSpec, unified YAML, conversation_history)
+            Note: YAML includes both model and training sections, but only
+            ModelSpec is returned for backward compatibility. Training config
+            extracted separately by tool.
 
         Raises:
             MLModelError: If generation fails
@@ -91,8 +98,9 @@ class MLModelAgent(BaseAgent):
                 target_column=target_column,
                 existing_yaml=existing_yaml,
                 editing_instructions=editing_instructions,
-                ml_plan_architecture=ml_plan_architecture,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                model_plan=model_plan,
+                preloaded_knowledge=preloaded_knowledge,
+                data_processing_id=data_processing_id,
             )
         else:
             # Continue conversation - just append feedback
@@ -109,32 +117,60 @@ class MLModelAgent(BaseAgent):
         target_column: str | None = None,
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
-        ml_plan_architecture: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
+        model_plan: str | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,
+        data_processing_id: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
         This path is used for initial generation or when starting a new conversation.
         It builds the complete system message with data profiling and knowledge loading.
         """
+        # Load data processing context if execution ID provided
+        data_processing_context = None
+        if data_processing_id:
+            try:
+                execution = self.services.plan_executions.get_execution(
+                    data_processing_id
+                )
+                if execution:
+                    # Build context summary from execution record
+                    # Defensive access to outputs structure
+                    outputs = execution.get("outputs", [])
+                    output_tables = [
+                        out["name"]
+                        for out in outputs
+                        if isinstance(out, dict) and "name" in out
+                    ]
+                    data_processing_context = {
+                        "execution_id": data_processing_id,
+                        "sql_context": execution["context"],
+                        "output_tables": output_tables,
+                        "outputs": execution["outputs"],
+                    }
+                    # Use first output table as the primary table for profiling
+                    if output_tables and not table_name:
+                        table_name = output_tables[0]
+            except Exception as e:
+                # Log but don't fail - continue without context
+                logger.warning(f"Failed to load data processing context: {e}")
+                if self.progress_callback:
+                    self.progress_callback(
+                        f"⚠️ Failed to load data processing context: {e}"
+                    )
+
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Pre-load recommended knowledge content (handle missing gracefully)
-        recommended_knowledge = ""
-        loaded_knowledge_ids = []
-        if recommended_knowledge_ids:
-            for knowledge_id in recommended_knowledge_ids:
-                content = self.knowledge_loader.load_knowledge(knowledge_id, "model")
-                if content:
-                    # Successfully loaded - add to system context
-                    recommended_knowledge += (
-                        f"\n\n# Architecture Knowledge: {knowledge_id}\n\n{content}"
-                    )
-                    loaded_knowledge_ids.append(knowledge_id)
-                    # Track in base agent to exclude from list_available_knowledge
-                    self._loaded_knowledge.add((knowledge_id, "model"))
-                # If missing, silently skip (already logged at debug level)
+        # Use preloaded knowledge if provided
+        if preloaded_knowledge:
+            # Knowledge already loaded by tool
+            loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
+            for doc in preloaded_knowledge:
+                self._loaded_knowledge.add((doc["id"], "model"))
+        else:
+            preloaded_knowledge = []
+            loaded_knowledge_ids = []
 
         # Build system message with all context
         system_message = self._render_template(
@@ -144,11 +180,12 @@ class MLModelAgent(BaseAgent):
                 "user_intent": user_context,
                 "data_profile": data_profile,
                 "available_components": self._get_model_components(),
-                "ml_plan_architecture": ml_plan_architecture,
-                "recommended_knowledge": recommended_knowledge,
+                "model_plan": model_plan,
+                "preloaded_knowledge": preloaded_knowledge,
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,
                 "is_editing": existing_yaml is not None,
+                "data_processing_context": data_processing_context,
             },
         )
 
@@ -246,7 +283,7 @@ class MLModelAgent(BaseAgent):
         """Comprehensive validation of generated model with detailed error reporting.
 
         Args:
-            model_yaml: Generated YAML model string
+            model_yaml: Generated YAML model string (unified spec with training section)
             context: Generation context for validation
 
         Returns:
@@ -257,19 +294,29 @@ class MLModelAgent(BaseAgent):
             # Parse YAML
             model_dict = self._validate_yaml_syntax(model_yaml)
 
-            # Check required top-level fields for model
-            required_fields = ["inputs", "graph", "outputs", "loss"]
+            # Check required top-level fields for unified specification
+            required_fields = ["inputs", "graph", "outputs", "training"]
             missing_fields = [
                 field for field in required_fields if field not in model_dict
             ]
             if missing_fields:
                 return {
                     "valid": False,
-                    "error": f"Missing required model fields: {missing_fields}",
+                    "error": f"Missing required fields: {missing_fields}",
                 }
 
-            # Validate model structure using dedicated validator
-            validate_model_dict(model_dict)
+            # Check that training section contains loss
+            training = model_dict.get("training", {})
+            if not training.get("loss"):
+                return {
+                    "valid": False,
+                    "error": "Missing required 'loss' field inside 'training' section",
+                }
+
+            # Validate model structure (without training section) using dedicated validator  # noqa: E501
+            # Create a copy with just the model fields for validation
+            model_only = {k: v for k, v in model_dict.items() if k != "training"}
+            validate_model_dict(model_only)
 
             # Validate node types against available components
             node_errors = self._validate_node_types(model_dict, context)
@@ -290,9 +337,14 @@ class MLModelAgent(BaseAgent):
                         "error": f"Column validation errors: {column_errors}",
                     }
 
-            # Parse into ModelSpec object
+            # Parse into ModelSpec object (from model-only portion)
             try:
-                model_spec = ModelSpec.from_yaml(model_yaml)
+                import yaml
+
+                model_yaml_str = yaml.dump(
+                    model_only, default_flow_style=False, sort_keys=False
+                )
+                model_spec = ModelSpec.from_yaml(model_yaml_str)
             except Exception as e:
                 return {
                     "valid": False,

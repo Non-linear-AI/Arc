@@ -76,11 +76,19 @@ outputs:
   logits: output_layer.output
   probabilities: probabilities.output
 
-loss:
-  type: torch.nn.functional.binary_cross_entropy_with_logits
-  inputs:
-    input: logits
-    target: target_column
+training:
+  loss:
+    type: torch.nn.functional.binary_cross_entropy_with_logits
+    inputs:
+      input: logits
+      target: target_column
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 32
+  validation_split: 0.2
+  metrics: [accuracy, auroc, f1, precision, recall]
 ```
 
 ### 2. Multi-Class Classification MLP
@@ -149,11 +157,19 @@ outputs:
   logits: output_layer.output
   probabilities: probabilities.output
 
-loss:
-  type: torch.nn.functional.cross_entropy
-  inputs:
-    input: logits
-    target: target_column
+training:
+  loss:
+    type: torch.nn.functional.cross_entropy
+    inputs:
+      input: logits
+      target: target_column
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 32
+  validation_split: 0.2
+  metrics: [accuracy, f1]
 ```
 
 ### 3. Regression MLP
@@ -198,11 +214,19 @@ graph:
 outputs:
   prediction: output_layer.output
 
-loss:
-  type: torch.nn.functional.mse_loss
-  inputs:
-    input: prediction
-    target: target_column
+training:
+  loss:
+    type: torch.nn.functional.mse_loss
+    inputs:
+      input: prediction
+      target: target_column
+  optimizer:
+    type: torch.optim.Adam
+    lr: 0.001
+  epochs: 50
+  batch_size: 32
+  validation_split: 0.2
+  metrics: [mse, mae]
 ```
 
 ## Configuration Guidelines
@@ -255,26 +279,19 @@ Common dropout rates:
 
 ### Loss Functions
 
+Loss functions are specified inside the `training` section. Match the loss to your task type:
+
 **Binary Classification**:
-```yaml
-loss:
-  type: torch.nn.BCEWithLogitsLoss
-  target_columns: [target]
-```
+- Use `torch.nn.functional.binary_cross_entropy_with_logits` or `torch.nn.BCEWithLogitsLoss`
+- Requires logits output and probabilities for evaluation
 
 **Multi-Class Classification**:
-```yaml
-loss:
-  type: torch.nn.CrossEntropyLoss
-  target_columns: [target]
-```
+- Use `torch.nn.functional.cross_entropy` or `torch.nn.CrossEntropyLoss`
+- Requires logits output and softmax probabilities for evaluation
 
 **Regression**:
-```yaml
-loss:
-  type: torch.nn.MSELoss
-  target_columns: [target]
-```
+- Use `torch.nn.functional.mse_loss` or `torch.nn.MSELoss` for mean squared error
+- Direct prediction output (no activation needed)
 
 ## Input Handling
 
@@ -400,20 +417,21 @@ outputs:
   logits: output_layer.output
   probabilities: probabilities.output
 
-loss:
-  type: torch.nn.functional.binary_cross_entropy_with_logits
-  inputs:
-    input: logits
-    target: outcome
-```
-
-**Example Optimizer Configuration**:
-```yaml
-optimizer:
-  type: torch.optim.AdamW
-  lr: 0.001
-  params:
-    weight_decay: 0.01
+training:
+  loss:
+    type: torch.nn.functional.binary_cross_entropy_with_logits
+    inputs:
+      input: logits
+      target: outcome
+  optimizer:
+    type: torch.optim.AdamW
+    lr: 0.001
+    params:
+      weight_decay: 0.01
+  epochs: 50
+  batch_size: 32
+  validation_split: 0.2
+  metrics: [accuracy, auroc, f1, precision, recall]
 ```
 
 ## When to Use MLP

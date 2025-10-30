@@ -19,7 +19,7 @@ class TestEvaluatorSpec:
         """Test creating an evaluator spec with all fields."""
         spec = EvaluatorSpec(
             name="diabetes_eval",
-            trainer_ref="diabetes_trainer",
+            model_id="diabetes_trainer",
             dataset="test_diabetes_data",
             target_column="outcome",
             metrics=["accuracy", "precision", "recall"],
@@ -27,7 +27,7 @@ class TestEvaluatorSpec:
         )
 
         assert spec.name == "diabetes_eval"
-        assert spec.trainer_ref == "diabetes_trainer"
+        assert spec.model_id == "diabetes_trainer"
         assert spec.dataset == "test_diabetes_data"
         assert spec.target_column == "outcome"
         assert spec.metrics == ["accuracy", "precision", "recall"]
@@ -37,13 +37,13 @@ class TestEvaluatorSpec:
         """Test creating an evaluator spec with only required fields."""
         spec = EvaluatorSpec(
             name="minimal_eval",
-            trainer_ref="trainer_v1",
+            model_id="trainer_v1",
             dataset="test_data",
             target_column="target",
         )
 
         assert spec.name == "minimal_eval"
-        assert spec.trainer_ref == "trainer_v1"
+        assert spec.model_id == "trainer_v1"
         assert spec.dataset == "test_data"
         assert spec.target_column == "target"
         assert spec.metrics is None
@@ -53,7 +53,7 @@ class TestEvaluatorSpec:
         """Test parsing evaluator spec from YAML."""
         yaml_str = """
 name: diabetes_eval
-trainer_ref: diabetes_trainer
+model_id: diabetes_trainer
 dataset: test_diabetes_data
 target_column: outcome
 metrics:
@@ -66,7 +66,7 @@ version: 2
         spec = EvaluatorSpec.from_yaml(yaml_str)
 
         assert spec.name == "diabetes_eval"
-        assert spec.trainer_ref == "diabetes_trainer"
+        assert spec.model_id == "diabetes_trainer"
         assert spec.dataset == "test_diabetes_data"
         assert spec.target_column == "outcome"
         assert spec.metrics == ["accuracy", "precision", "recall", "f1_score"]
@@ -76,14 +76,14 @@ version: 2
         """Test parsing minimal evaluator spec from YAML."""
         yaml_str = """
 name: minimal_eval
-trainer_ref: trainer_v1
+model_id: trainer_v1
 dataset: test_data
 target_column: target
 """
         spec = EvaluatorSpec.from_yaml(yaml_str)
 
         assert spec.name == "minimal_eval"
-        assert spec.trainer_ref == "trainer_v1"
+        assert spec.model_id == "trainer_v1"
         assert spec.dataset == "test_data"
         assert spec.target_column == "target"
         assert spec.metrics is None
@@ -93,7 +93,7 @@ target_column: target
         """Test converting evaluator spec to YAML."""
         spec = EvaluatorSpec(
             name="diabetes_eval",
-            trainer_ref="diabetes_trainer",
+            model_id="diabetes_trainer",
             dataset="test_diabetes_data",
             target_column="outcome",
             metrics=["accuracy", "precision"],
@@ -104,7 +104,7 @@ target_column: target
         data = yaml.safe_load(yaml_str)
 
         assert data["name"] == "diabetes_eval"
-        assert data["trainer_ref"] == "diabetes_trainer"
+        assert data["model_id"] == "diabetes_trainer"
         assert data["dataset"] == "test_diabetes_data"
         assert data["target_column"] == "outcome"
         assert data["metrics"] == ["accuracy", "precision"]
@@ -114,7 +114,7 @@ target_column: target
         """Test converting minimal evaluator spec to YAML."""
         spec = EvaluatorSpec(
             name="minimal_eval",
-            trainer_ref="trainer_v1",
+            model_id="trainer_v1",
             dataset="test_data",
             target_column="target",
         )
@@ -123,7 +123,7 @@ target_column: target
         data = yaml.safe_load(yaml_str)
 
         assert data["name"] == "minimal_eval"
-        assert data["trainer_ref"] == "trainer_v1"
+        assert data["model_id"] == "trainer_v1"
         assert data["dataset"] == "test_data"
         assert data["target_column"] == "target"
         assert "metrics" not in data
@@ -133,7 +133,7 @@ target_column: target
         """Test that spec can be converted to YAML and back."""
         original = EvaluatorSpec(
             name="roundtrip_eval",
-            trainer_ref="roundtrip_trainer",
+            model_id="roundtrip_trainer",
             dataset="roundtrip_data",
             target_column="target",
             metrics=["accuracy", "f1_score"],
@@ -144,7 +144,7 @@ target_column: target
         restored = EvaluatorSpec.from_yaml(yaml_str)
 
         assert restored.name == original.name
-        assert restored.trainer_ref == original.trainer_ref
+        assert restored.model_id == original.model_id
         assert restored.dataset == original.dataset
         assert restored.target_column == original.target_column
         assert restored.metrics == original.metrics
@@ -165,7 +165,7 @@ class TestEvaluatorValidation:
         """Test validation with valid evaluator dict."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
             "metrics": ["accuracy"],
@@ -175,7 +175,7 @@ class TestEvaluatorValidation:
         spec = validate_evaluator_dict(data)
 
         assert spec.name == "test_eval"
-        assert spec.trainer_ref == "test_trainer"
+        assert spec.model_id == "test_trainer"
         assert spec.dataset == "test_data"
         assert spec.target_column == "target"
         assert spec.metrics == ["accuracy"]
@@ -184,7 +184,7 @@ class TestEvaluatorValidation:
     def test_validate_evaluator_dict_missing_name(self):
         """Test validation fails when name is missing."""
         data = {
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
         }
@@ -194,8 +194,8 @@ class TestEvaluatorValidation:
         ):
             validate_evaluator_dict(data)
 
-    def test_validate_evaluator_dict_missing_trainer_ref(self):
-        """Test validation fails when trainer_ref is missing."""
+    def test_validate_evaluator_dict_missing_model_id(self):
+        """Test validation fails when model_id is missing."""
         data = {
             "name": "test_eval",
             "dataset": "test_data",
@@ -203,7 +203,7 @@ class TestEvaluatorValidation:
         }
 
         with pytest.raises(
-            EvaluatorValidationError, match="Missing required field: trainer_ref"
+            EvaluatorValidationError, match="Missing required field: model_id"
         ):
             validate_evaluator_dict(data)
 
@@ -211,7 +211,7 @@ class TestEvaluatorValidation:
         """Test validation fails when dataset is missing."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "target_column": "target",
         }
 
@@ -224,7 +224,7 @@ class TestEvaluatorValidation:
         """Test validation fails when target_column is missing."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
         }
 
@@ -237,7 +237,7 @@ class TestEvaluatorValidation:
         """Test validation fails when name is empty string."""
         data = {
             "name": "   ",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
         }
@@ -247,17 +247,17 @@ class TestEvaluatorValidation:
         ):
             validate_evaluator_dict(data)
 
-    def test_validate_evaluator_dict_empty_trainer_ref(self):
-        """Test validation fails when trainer_ref is empty string."""
+    def test_validate_evaluator_dict_empty_model_id(self):
+        """Test validation fails when model_id is empty string."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "  ",
+            "model_id": "  ",
             "dataset": "test_data",
             "target_column": "target",
         }
 
         with pytest.raises(
-            EvaluatorValidationError, match="trainer_ref must be a non-empty string"
+            EvaluatorValidationError, match="model_id must be a non-empty string"
         ):
             validate_evaluator_dict(data)
 
@@ -265,7 +265,7 @@ class TestEvaluatorValidation:
         """Test validation fails when dataset is empty string."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "",
             "target_column": "target",
         }
@@ -279,7 +279,7 @@ class TestEvaluatorValidation:
         """Test validation fails when metrics is not a list."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
             "metrics": "accuracy",  # Should be a list
@@ -292,7 +292,7 @@ class TestEvaluatorValidation:
         """Test validation fails when metrics contains non-strings."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
             "metrics": ["accuracy", 123],  # 123 is not a string
@@ -307,7 +307,7 @@ class TestEvaluatorValidation:
         """Test validation fails when a metric name is empty."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
             "metrics": ["accuracy", "  "],  # Empty metric name
@@ -322,7 +322,7 @@ class TestEvaluatorValidation:
         """Test validation fails when version is not an integer."""
         data = {
             "name": "test_eval",
-            "trainer_ref": "test_trainer",
+            "model_id": "test_trainer",
             "dataset": "test_data",
             "target_column": "target",
             "version": "1",  # Should be an int
@@ -337,7 +337,7 @@ class TestEvaluatorValidation:
         """Test that validation strips whitespace from string fields."""
         data = {
             "name": "  test_eval  ",
-            "trainer_ref": "  test_trainer  ",
+            "model_id": "  test_trainer  ",
             "dataset": "  test_data  ",
             "target_column": "  target  ",
             "metrics": ["  accuracy  ", "  precision  "],
@@ -346,7 +346,7 @@ class TestEvaluatorValidation:
         spec = validate_evaluator_dict(data)
 
         assert spec.name == "test_eval"
-        assert spec.trainer_ref == "test_trainer"
+        assert spec.model_id == "test_trainer"
         assert spec.dataset == "test_data"
         assert spec.target_column == "target"
         assert spec.metrics == ["accuracy", "precision"]
@@ -359,7 +359,7 @@ class TestEvaluatorFileOperations:
         """Test loading evaluator spec from file."""
         yaml_content = """
 name: file_eval
-trainer_ref: file_trainer
+model_id: file_trainer
 dataset: file_data
 target_column: target
 metrics:
@@ -373,7 +373,7 @@ version: 1
         spec = load_evaluator_from_yaml(yaml_file)
 
         assert spec.name == "file_eval"
-        assert spec.trainer_ref == "file_trainer"
+        assert spec.model_id == "file_trainer"
         assert spec.dataset == "file_data"
         assert spec.target_column == "target"
         assert spec.metrics == ["accuracy", "precision"]
@@ -390,7 +390,7 @@ version: 1
         """Test saving evaluator spec to file."""
         spec = EvaluatorSpec(
             name="save_eval",
-            trainer_ref="save_trainer",
+            model_id="save_trainer",
             dataset="save_data",
             target_column="target",
             metrics=["accuracy", "recall"],
@@ -405,7 +405,7 @@ version: 1
         data = yaml.safe_load(yaml_file.read_text())
 
         assert data["name"] == "save_eval"
-        assert data["trainer_ref"] == "save_trainer"
+        assert data["model_id"] == "save_trainer"
         assert data["dataset"] == "save_data"
         assert data["target_column"] == "target"
         assert data["metrics"] == ["accuracy", "recall"]
@@ -415,7 +415,7 @@ version: 1
         """Test that saving and loading produces identical spec."""
         original = EvaluatorSpec(
             name="roundtrip_eval",
-            trainer_ref="roundtrip_trainer",
+            model_id="roundtrip_trainer",
             dataset="roundtrip_data",
             target_column="target",
             metrics=["accuracy", "f1_score"],
@@ -427,7 +427,7 @@ version: 1
         restored = load_evaluator_from_yaml(yaml_file)
 
         assert restored.name == original.name
-        assert restored.trainer_ref == original.trainer_ref
+        assert restored.model_id == original.model_id
         assert restored.dataset == original.dataset
         assert restored.metrics == original.metrics
         assert restored.version == original.version

@@ -3,9 +3,12 @@
 from datetime import datetime
 from typing import Any
 
+import yaml
+
 from arc.database.base import DatabaseError
 from arc.database.models.model import Model
 from arc.database.services.base import BaseService
+from arc.graph.model import ModelSpec
 
 
 class ModelService(BaseService):
@@ -204,6 +207,46 @@ class ModelService(BaseService):
             DatabaseError: If query execution fails
         """
         return self.get_model_by_name_version(name, version) is not None
+
+    def parse_model_spec(self, model: Model) -> tuple[ModelSpec, dict]:
+        """Parse unified YAML into ModelSpec and training config dict.
+
+        The model.spec field contains a unified YAML with both model architecture
+        and training configuration. This method separates them.
+
+        Args:
+            model: Model object with unified YAML spec
+
+        Returns:
+            Tuple of (ModelSpec, training_config_dict)
+            - ModelSpec: Parsed model architecture (inputs, graph, outputs)
+            - training_config: Dict with training parameters (loss, optimizer, etc.)
+
+        Raises:
+            DatabaseError: If YAML parsing fails
+
+        Example:
+            >>> model_spec, training_config = model_service.parse_model_spec(model)
+            >>> loss_type = training_config.get("loss", {}).get("type")
+            >>> epochs = training_config.get("epochs", 10)
+        """
+        try:
+            # Parse full unified YAML
+            full_spec = yaml.safe_load(model.spec)
+
+            # Extract training section (if it exists)
+            training_config = full_spec.pop("training", {})
+
+            # The remaining spec is the model portion (inputs, graph, outputs)
+            model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
+            model_spec = ModelSpec.from_yaml(model_yaml)
+
+            return model_spec, training_config
+
+        except yaml.YAMLError as e:
+            raise DatabaseError(f"Failed to parse model YAML: {e}") from e
+        except Exception as e:
+            raise DatabaseError(f"Failed to parse model spec: {e}") from e
 
     def generate_next_model_id(self) -> str:
         """Generate the next sequential model ID.

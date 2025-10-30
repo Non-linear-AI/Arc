@@ -15,16 +15,15 @@ class MLPlan:
     based on training results, evaluation metrics, or user feedback.
     """
 
-    # Core plan content - Technical Decisions only
+    # Core plan content - Separated by workflow stage
     name: str
-    feature_engineering: str
-    model_architecture_and_loss: str
-    training_configuration: str
-    evaluation: str
+    data_plan: str  # Feature engineering guidance for ml_data
+    model_plan: str  # Model architecture + training guidance for ml_model (unified)
 
-    # Optional knowledge recommendations
-    # Agent can read knowledge but chooses which to recommend based on task
-    recommended_knowledge_ids: list[str] = field(default_factory=list)
+    # Stage-specific knowledge recommendations
+    # Maps workflow stage to list of knowledge IDs to preload for that stage
+    knowledge: dict[str, list[str]] = field(default_factory=dict)
+    # Example: {"data": ["feature_eng"], "model": ["mlp", "adam_optimizer"]}
 
     # Metadata
     version: int = 1
@@ -53,11 +52,9 @@ class MLPlan:
         """
         return cls(
             name=analysis.get("name", ""),
-            feature_engineering=analysis.get("feature_engineering", ""),
-            model_architecture_and_loss=analysis.get("model_architecture_and_loss", ""),
-            training_configuration=analysis.get("training_configuration", ""),
-            evaluation=analysis.get("evaluation", ""),
-            recommended_knowledge_ids=analysis.get("recommended_knowledge_ids", []),
+            data_plan=analysis.get("data_plan", ""),
+            model_plan=analysis.get("model_plan", ""),
+            knowledge=analysis.get("knowledge", {}),
             version=version,
             stage=stage,
             reason_for_update=reason,
@@ -67,11 +64,9 @@ class MLPlan:
         """Convert to dictionary for serialization."""
         return {
             "name": self.name,
-            "feature_engineering": self.feature_engineering,
-            "model_architecture_and_loss": self.model_architecture_and_loss,
-            "training_configuration": self.training_configuration,
-            "evaluation": self.evaluation,
-            "recommended_knowledge_ids": self.recommended_knowledge_ids,
+            "data_plan": self.data_plan,
+            "model_plan": self.model_plan,
+            "knowledge": self.knowledge,
             "version": self.version,
             "stage": self.stage,
             "reason_for_update": self.reason_for_update,
@@ -87,11 +82,9 @@ class MLPlan:
 
         return cls(
             name=data["name"],
-            feature_engineering=data["feature_engineering"],
-            model_architecture_and_loss=data["model_architecture_and_loss"],
-            training_configuration=data["training_configuration"],
-            evaluation=data["evaluation"],
-            recommended_knowledge_ids=data.get("recommended_knowledge_ids", []),
+            data_plan=data["data_plan"],
+            model_plan=data["model_plan"],
+            knowledge=data.get("knowledge", {}),
             version=data.get("version", 1),
             stage=data.get("stage", "initial"),
             reason_for_update=data.get("reason_for_update"),
@@ -99,17 +92,14 @@ class MLPlan:
         )
 
     def to_generation_context(self) -> dict[str, Any]:
-        """Convert to context dict for model generation.
+        """Convert to context dict for generation tools.
 
-        This is the format expected by MLModelSpecGeneratorTool's
-        analysis_result parameter.
+        Returns the plan content split by workflow stage.
         """
         return {
             "name": self.name,
-            "feature_engineering": self.feature_engineering,
-            "model_architecture_and_loss": self.model_architecture_and_loss,
-            "training_configuration": self.training_configuration,
-            "evaluation": self.evaluation,
+            "data_plan": self.data_plan,
+            "model_plan": self.model_plan,
         }
 
     def format_for_display(self) -> str:
@@ -125,30 +115,25 @@ class MLPlan:
             [
                 f"**Plan** {self.name}",
                 "",
-                "**Feature Engineering**",
-                self.feature_engineering,
+                "**Data Plan (Feature Engineering)**",
+                self.data_plan,
                 "",
-                "**Model Architecture & Loss**",
-                self.model_architecture_and_loss,
-                "",
-                "**Training Configuration**",
-                self.training_configuration,
-                "",
-                "**Evaluation**",
-                self.evaluation,
+                "**Model Plan (Architecture + Training)**",
+                self.model_plan,
             ]
         )
 
         # Show knowledge at the end if present
-        if self.recommended_knowledge_ids:
-            knowledge_str = ", ".join(self.recommended_knowledge_ids)
-            lines.extend(
-                [
-                    "",
-                    "**Knowledge**",
-                    knowledge_str,
-                ]
-            )
+        if self.knowledge:
+            lines.append("")
+            lines.append("**Knowledge Recommendations**")
+            # Show stage-specific knowledge in a readable format
+            for stage in ["data", "model"]:
+                knowledge_ids = self.knowledge.get(stage, [])
+                if knowledge_ids:
+                    knowledge_str = ", ".join(knowledge_ids)
+                    stage_name = stage.title()  # Capitalize first letter
+                    lines.append(f"  • {stage_name}: {knowledge_str}")
 
         return "\n".join(lines)
 
@@ -157,29 +142,18 @@ class MLPlan:
 class MLPlanDiff:
     """Represents differences between two ML plans."""
 
-    feature_engineering_changed: bool = False
-    architecture_changed: bool = False
-    training_config_changed: bool = False
-    evaluation_changed: bool = False
+    data_plan_changed: bool = False
+    model_plan_changed: bool = False
 
     # Store old/new values for changed sections
-    old_feature_engineering: str = ""
-    new_feature_engineering: str = ""
-    old_architecture: str = ""
-    new_architecture: str = ""
-    old_training_config: str = ""
-    new_training_config: str = ""
-    old_evaluation: str = ""
-    new_evaluation: str = ""
+    old_data_plan: str = ""
+    new_data_plan: str = ""
+    old_model_plan: str = ""
+    new_model_plan: str = ""
 
     def has_changes(self) -> bool:
         """Check if there are any changes."""
-        return (
-            self.feature_engineering_changed
-            or self.architecture_changed
-            or self.training_config_changed
-            or self.evaluation_changed
-        )
+        return self.data_plan_changed or self.model_plan_changed
 
     def format_for_display(self, new_plan: MLPlan) -> str:
         """Format diff as readable markdown with changes highlighted.
@@ -203,16 +177,16 @@ class MLPlanDiff:
         lines.append("---")
         lines.append("")
 
-        # Feature Engineering
-        if self.feature_engineering_changed:
+        # Data Plan
+        if self.data_plan_changed:
             lines.extend(
                 [
-                    "**Feature Engineering** *(Changed)*",
-                    new_plan.feature_engineering,
+                    "**Data Plan (Feature Engineering)** *(Changed)*",
+                    new_plan.data_plan,
                     "",
                     "<details><summary>Show previous version</summary>",
                     "",
-                    self.old_feature_engineering,
+                    self.old_data_plan,
                     "",
                     "</details>",
                     "",
@@ -221,22 +195,22 @@ class MLPlanDiff:
         else:
             lines.extend(
                 [
-                    "**Feature Engineering**",
-                    new_plan.feature_engineering,
+                    "**Data Plan (Feature Engineering)**",
+                    new_plan.data_plan,
                     "",
                 ]
             )
 
-        # Architecture
-        if self.architecture_changed:
+        # Model Plan
+        if self.model_plan_changed:
             lines.extend(
                 [
-                    "**Model Architecture & Loss** *(Changed)*",
-                    new_plan.model_architecture_and_loss,
+                    "**Model Plan (Architecture + Training)** *(Changed)*",
+                    new_plan.model_plan,
                     "",
                     "<details><summary>Show previous version</summary>",
                     "",
-                    self.old_architecture,
+                    self.old_model_plan,
                     "",
                     "</details>",
                     "",
@@ -245,56 +219,8 @@ class MLPlanDiff:
         else:
             lines.extend(
                 [
-                    "**Model Architecture & Loss**",
-                    new_plan.model_architecture_and_loss,
-                    "",
-                ]
-            )
-
-        # Training Config
-        if self.training_config_changed:
-            lines.extend(
-                [
-                    "**Training Configuration** *(Changed)*",
-                    new_plan.training_configuration,
-                    "",
-                    "<details><summary>Show previous version</summary>",
-                    "",
-                    self.old_training_config,
-                    "",
-                    "</details>",
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "**Training Configuration**",
-                    new_plan.training_configuration,
-                    "",
-                ]
-            )
-
-        # Evaluation
-        if self.evaluation_changed:
-            lines.extend(
-                [
-                    "**Evaluation** *(Changed)*",
-                    new_plan.evaluation,
-                    "",
-                    "<details><summary>Show previous version</summary>",
-                    "",
-                    self.old_evaluation,
-                    "",
-                    "</details>",
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "**Evaluation**",
-                    new_plan.evaluation,
+                    "**Model Plan (Architecture + Training)**",
+                    new_plan.model_plan,
                     "",
                 ]
             )
@@ -332,24 +258,14 @@ def compute_plan_diff(old_plan: dict | MLPlan, new_plan: MLPlan) -> MLPlanDiff:
     diff = MLPlanDiff()
 
     # Text field changes
-    if old_plan.feature_engineering != new_plan.feature_engineering:
-        diff.feature_engineering_changed = True
-        diff.old_feature_engineering = old_plan.feature_engineering
-        diff.new_feature_engineering = new_plan.feature_engineering
+    if old_plan.data_plan != new_plan.data_plan:
+        diff.data_plan_changed = True
+        diff.old_data_plan = old_plan.data_plan
+        diff.new_data_plan = new_plan.data_plan
 
-    if old_plan.model_architecture_and_loss != new_plan.model_architecture_and_loss:
-        diff.architecture_changed = True
-        diff.old_architecture = old_plan.model_architecture_and_loss
-        diff.new_architecture = new_plan.model_architecture_and_loss
-
-    if old_plan.training_configuration != new_plan.training_configuration:
-        diff.training_config_changed = True
-        diff.old_training_config = old_plan.training_configuration
-        diff.new_training_config = new_plan.training_configuration
-
-    if old_plan.evaluation != new_plan.evaluation:
-        diff.evaluation_changed = True
-        diff.old_evaluation = old_plan.evaluation
-        diff.new_evaluation = new_plan.evaluation
+    if old_plan.model_plan != new_plan.model_plan:
+        diff.model_plan_changed = True
+        diff.old_model_plan = old_plan.model_plan
+        diff.new_model_plan = new_plan.model_plan
 
     return diff

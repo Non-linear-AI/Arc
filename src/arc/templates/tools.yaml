@@ -228,7 +228,8 @@ tools:
     description: |
       Create or revise comprehensive ML workflow plan for a modeling task. This tool
       analyzes data, user requirements, and creates a detailed plan covering feature
-      engineering, model architecture, training strategy, and evaluation metrics.
+      engineering, model architecture, and training/validation strategy (including
+      validation metrics to track during training).
 
       IMPORTANT: Use this tool AFTER exploring the data with schema_discovery and database_query.
       Include data insights in the instruction parameter for better plan quality.
@@ -276,140 +277,102 @@ tools:
 
   - name: ml_model
     description: |
-      Generate Arc-Graph model YAML using the model generator agent. If plan_id is provided,
-      the agent will load the plan from the database and use its architecture guidance.
+      Generate unified model + training specification and launch training. This tool:
+      1) Generates model architecture AND training config in a single unified YAML
+      2) Presents interactive confirmation workflow
+      3) Auto-registers model to database after approval
+      4) Creates trainer from training config
+      5) Launches training immediately
+
+      This tool replaces the old separate ml_model + ml_train workflow. If plan_id is provided,
+      uses unified model_plan guidance (architecture + training).
+
+      IMPORTANT: If ml_data was called previously and returned a data_processing_id in its result,
+      pass that ID to this tool. It will load the SQL transformations and output schemas to
+      understand how training data was prepared, enabling better architecture decisions.
     parameters:
       type: object
       properties:
         name:
           type: string
-          description: Model name to include in the specification
+          description: Experiment name (used for both model and trainer)
         instruction:
           type: string
-          description: Description of the intended model behavior and requirements
+          description: Description of model architecture and training requirements
         data_table:
           type: string
           description: Database table to profile for generation
+        train_table:
+          type: string
+          description: Training data table (defaults to data_table if not provided)
         target_column:
           type: string
           description: Target column for prediction
         plan_id:
           type: string
           description: |
-            Optional ML plan ID to use for model generation (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            architecture guidance (model_architecture_and_loss section).
-        recommended_knowledge_ids:
-          type: array
-          items:
-            type: string
+            Optional ML plan ID (e.g., 'pidd-plan-v1'). When provided, loads plan
+            from database and uses its unified model_plan guidance.
+        data_processing_id:
+          type: string
           description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform model generation decisions.
+            Optional data processing execution ID from ml_data tool result. When provided,
+            loads SQL transformations and output schemas to understand feature engineering.
+            Extract this from ml_data's result metadata: result.metadata.data_processing_id
       required:
         - name
         - instruction
         - data_table
         - target_column
 
-  - name: ml_train
-    description: |
-      Generate Arc-Graph trainer specification and launch training. This unified tool:
-      1) Generates trainer spec via LLM based on model and training goals,
-      2) Presents interactive confirmation workflow,
-      3) Auto-registers trainer to database after approval,
-      4) Launches training after user confirmation.
-      All training configuration (epochs, batch_size, learning_rate, etc.) must be specified
-      in the generated trainer YAML - no runtime overrides are supported.
-      If plan_id is provided, the agent loads the plan from database and uses its training guidance.
-    parameters:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Trainer name for the specification
-        instruction:
-          type: string
-          description: |
-            Training goals, constraints, and requirements. Include all training configuration
-            details (epochs, batch size, learning rate, validation strategy, etc.) as these
-            will be encoded in the trainer YAML.
-        model_id:
-          type: string
-          description: Model ID with version (e.g., 'my_model-v1')
-        train_table:
-          type: string
-          description: Training data table name
-        plan_id:
-          type: string
-          description: |
-            Optional ML plan ID to use for training (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            training guidance (training_configuration section).
-        recommended_knowledge_ids:
-          type: array
-          items:
-            type: string
-          description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform training decisions.
-      required:
-        - name
-        - instruction
-        - model_id
-        - train_table
-
   - name: ml_evaluate
     description: |
-      Generate Arc-Graph evaluator specification and launch evaluation job on test data.
-      This unified tool:
-      1) Generates evaluator spec via LLM based on evaluation goals,
-      2) Presents interactive confirmation workflow,
-      3) Auto-registers evaluator to database after approval,
-      4) Launches evaluation job and returns immediately with job_id.
+      Evaluate a trained model on a test dataset and compute metrics.
+      This is an AD HOC tool for evaluating trained models on separate test datasets.
+      It is NOT part of the core ML workflow (plan → data → model → train). Validation
+      metrics are already tracked during training.
+
+      This tool:
+      1) Infers target column from the model's specification
+      2) Creates evaluator configuration automatically
+      3) Auto-registers evaluator to database
+      4) Launches evaluation job and returns immediately with job_id
+
       Evaluation runs asynchronously in the background. Monitor progress via /ml jobs status
       and view metrics in TensorBoard. Supports classification metrics (accuracy, precision,
       recall, F1, confusion matrix, PR curves, ROC curves) and regression metrics (MSE, MAE,
-      R², scatter plots). If plan_id is provided, the agent loads the plan from database and
-      uses its evaluation guidance.
+      R², scatter plots).
+
+      Use this tool when you need to:
+      - Evaluate a trained model on a hold-out test set
+      - Compare multiple models on the same test data
+      - Generate comprehensive evaluation reports with visualizations
     parameters:
       type: object
       properties:
-        name:
+        model_id:
           type: string
-          description: Evaluator name for the specification
-        instruction:
-          type: string
-          description: |
-            Evaluation goals, constraints, and requirements. Specify which metrics
-            to compute and any evaluation-specific notes.
-        trainer_id:
-          type: string
-          description: Trainer ID with version (e.g., 'my-trainer-v1')
-        evaluate_table:
+          description: Model ID with version (e.g., 'my-model-v1')
+        data_table:
           type: string
           description: Test dataset table name for evaluation
-        plan_id:
-          type: string
-          description: |
-            Optional ML plan ID to use for evaluation (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            evaluation guidance (evaluation section).
-        recommended_knowledge_ids:
+        metrics:
           type: array
           items:
             type: string
           description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform evaluation decisions.
+            Optional list of specific metrics to compute. If not provided, metrics are
+            inferred from the model's task type (classification or regression).
+            Available classification metrics: accuracy, precision, recall, f1_score, auc
+            Available regression metrics: mse, mae, rmse, r2_score
+        output_table:
+          type: string
+          description: |
+            Optional table name to save predictions with features and targets.
+            If not provided, predictions are not saved to database.
       required:
-        - name
-        - instruction
-        - trainer_id
-        - evaluate_table
+        - model_id
+        - data_table
 
   - name: ml_data
     description: |

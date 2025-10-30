@@ -405,13 +405,11 @@ class MLPlanTool(BaseTool):
                         "ml_plan": plan_dict,
                         "plan_id": plan_id,  # Top-level for easy LLM access
                         "is_revision": previous_plan is not None,
-                        "recommended_knowledge_ids": plan.recommended_knowledge_ids,
+                        "knowledge": plan.knowledge,  # Stage-specific knowledge dict
                     },
                 )
 
             except Exception as exc:
-                from arc.core.ml_plan import MLPlanError
-
-                if isinstance(exc, MLPlanError):
+                if "MLPlanError" in str(type(exc)):
                     return _error_in_section(str(exc))
                 return _error_in_section(f"Unexpected error during ML planning: {exc}")

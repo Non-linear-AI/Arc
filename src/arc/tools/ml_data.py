@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 import yaml
@@ -175,7 +176,7 @@ class MLDataTool(BaseTool):
 
             # Load plan from database if plan_id is provided
             # If plan is provided, use it as baseline and augment with instruction
-            ml_plan_feature_engineering = None
+            ml_plan_data_plan = None
             if plan_id:
                 try:
                     # Load plan from database using service
@@ -184,8 +185,12 @@ class MLDataTool(BaseTool):
                     from arc.core.ml_plan import MLPlan
 
                     plan = MLPlan.from_dict(ml_plan)
-                    # Extract feature engineering guidance for data processing
-                    ml_plan_feature_engineering = plan.feature_engineering
+                    # Extract data plan guidance for data processing
+                    ml_plan_data_plan = plan.data_plan
+
+                    # Extract stage-specific knowledge IDs from plan
+                    if not recommended_knowledge_ids:
+                        recommended_knowledge_ids = plan.knowledge.get("data", [])
                 except ValueError as e:
                     return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
                 except Exception as e:
@@ -195,12 +200,12 @@ class MLDataTool(BaseTool):
 
             # Build final instruction: use ML plan as baseline context if available
             # Main agent can provide shaped instruction that builds on the plan
-            if ml_plan_feature_engineering:
+            if ml_plan_data_plan:
                 # ML plan provides baseline, instruction adds specifics
                 enhanced_instruction = (
                     f"{instruction}\n\n"
-                    f"ML Plan Feature Engineering Guidance (use as baseline):\n"
-                    f"{ml_plan_feature_engineering}"
+                    f"ML Plan Data Plan Guidance (use as baseline):\n"
+                    f"{ml_plan_data_plan}"
                 )
             else:
                 enhanced_instruction = instruction
@@ -218,6 +223,15 @@ class MLDataTool(BaseTool):
                 else:
                     self.generator_agent.progress_callback = None
 
+                # Preload stage-specific knowledge from plan
+                preloaded_knowledge = None
+                if recommended_knowledge_ids:
+                    preloaded_knowledge = (
+                        self.generator_agent.knowledge_loader.load_multiple(
+                            recommended_knowledge_ids, phase="model"
+                        )
+                    )
+
                 # Generate using LLM (generator_agent is guaranteed to exist)
                 (
                     spec,
@@ -225,9 +239,10 @@ class MLDataTool(BaseTool):
                     conversation_history,  # Store for interactive editing workflow
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=enhanced_instruction,
+                    name=name,
                     source_tables=source_tables,
                     database=database,
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                    preloaded_knowledge=preloaded_knowledge,
                 )
 
                 # Show completion message
@@ -254,6 +269,7 @@ class MLDataTool(BaseTool):
                     )
 
                     context_dict = {
+                        "name": name,
                         "instruction": str(enhanced_instruction),
                         "source_tables": source_tables,
                         "database": database,
@@ -285,8 +301,10 @@ class MLDataTool(BaseTool):
 
                 runtime = MLRuntime(self.services, artifacts_dir="artifacts")
                 try:
+                    # Use spec.description if available, otherwise use name
+                    description = spec.description if spec.description else name
                     processor = runtime.register_data_processor(
-                        name=name, spec=spec, description=spec.description
+                        name=name, spec=spec, description=description
                     )
                     # Display registration confirmation in the Data Processor section
                     if printer:
@@ -309,7 +327,7 @@ class MLDataTool(BaseTool):
                 # Show execution message
                 if printer:
                     printer.print("")
-                    printer.print("→ Executing data processing pipeline...")
+                    printer.print("[dim]→ Executing data processing pipeline...[/dim]")
 
                 # Define progress callback for real-time updates
                 def progress_callback(message: str, level: str):
@@ -329,6 +347,27 @@ class MLDataTool(BaseTool):
 
                     # Invalidate schema cache since new tables were created
                     self.services.schema.invalidate_cache(database)
+
+                    # Store execution record in database
+                    # Always store executions (not just when plan_id exists) to track all data processing
+                    data_processing_id = f"data_{uuid.uuid4().hex[:8]}"
+                    if execution_result.sql and execution_result.outputs:
+                        try:
+                            self.services.plan_executions.store_execution(
+                                execution_id=data_processing_id,
+                                plan_id=plan_id
+                                or "standalone",  # Use "standalone" for ad-hoc executions
+                                step_type="data_processing",
+                                context=execution_result.sql,
+                                outputs=execution_result.outputs,
+                                status="completed",
+                            )
+                        except Exception as store_error:
+                            # Log but don't fail the operation if storage fails
+                            if printer:
+                                printer.print(
+                                    f"[yellow]⚠️  Failed to store execution record: {store_error}[/yellow]"
+                                )
 
                 except DataSourceExecutionError as e:
                     # Generation and registration succeeded, but execution failed
@@ -380,19 +419,27 @@ class MLDataTool(BaseTool):
                     f"{', '.join(execution_result.created_tables)} created",
                 ]
 
+                # Build metadata
+                metadata = {
+                    "processor_id": processor.id,
+                    "processor_name": name,
+                    "generation_succeeded": True,
+                    "registration_succeeded": True,
+                    "execution_succeeded": True,
+                    "created_tables": execution_result.created_tables,
+                    "execution_time": execution_result.execution_time,
+                }
+
+                # Add data_processing_id if execution was stored
+                # (stored for all executions, not just those with plan_id)
+                if execution_result.sql and execution_result.outputs:
+                    metadata["data_processing_id"] = data_processing_id
+
                 # Return success with detailed metadata
                 return ToolResult(
                     success=True,
                     output="\n".join(lines),
-                    metadata={
-                        "processor_id": processor.id,
-                        "processor_name": name,
-                        "generation_succeeded": True,
-                        "registration_succeeded": True,
-                        "execution_succeeded": True,
-                        "created_tables": execution_result.created_tables,
-                        "execution_time": execution_result.execution_time,
-                    },
+                    metadata=metadata,
                 )
 
             except Exception as e:
@@ -477,6 +524,7 @@ class MLDataTool(BaseTool):
                     updated_history,
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=feedback,  # User's change request
+                    name=context.get("name", ""),
                     source_tables=context.get("source_tables"),
                     database=context.get("database", "user"),
                     existing_yaml=yaml_content,

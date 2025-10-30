@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from arc.graph import EvaluatorSpec, ModelSpec, TrainerSpec
+from arc.graph import EvaluatorSpec, ModelSpec
 from arc.ml.evaluator import ArcEvaluator, EvaluationError, EvaluationResult
 from arc.ml.metrics import Accuracy
 
@@ -29,7 +29,6 @@ class TestEvaluationResult:
         """Test creating an evaluation result."""
         result = EvaluationResult(
             evaluator_name="test_eval",
-            trainer_ref="test_trainer",
             model_ref="test_model",
             version=1,
             dataset="test_data",
@@ -40,7 +39,6 @@ class TestEvaluationResult:
         )
 
         assert result.evaluator_name == "test_eval"
-        assert result.trainer_ref == "test_trainer"
         assert result.model_ref == "test_model"
         assert result.version == 1
         assert result.dataset == "test_data"
@@ -53,7 +51,6 @@ class TestEvaluationResult:
         """Test converting evaluation result to dict."""
         result = EvaluationResult(
             evaluator_name="test_eval",
-            trainer_ref="test_trainer",
             model_ref="test_model",
             version=1,
             dataset="test_data",
@@ -66,7 +63,6 @@ class TestEvaluationResult:
         result_dict = result.to_dict()
 
         assert result_dict["evaluator_name"] == "test_eval"
-        assert result_dict["trainer_ref"] == "test_trainer"
         assert result_dict["model_ref"] == "test_model"
         assert result_dict["version"] == 1
         assert result_dict["dataset"] == "test_data"
@@ -131,37 +127,22 @@ class TestArcEvaluator:
         )
 
     @pytest.fixture
-    def trainer_spec(self):
-        """Create a trainer spec."""
-        from arc.graph.trainer import OptimizerConfig
-
-        return TrainerSpec(
-            model_ref="test_model",
-            optimizer=OptimizerConfig(type="torch.optim.Adam", params={"lr": 0.001}),
-            epochs=10,
-            batch_size=32,
-            validation_split=0.2,
-        )
-
-    @pytest.fixture
     def evaluator_spec(self):
         """Create an evaluator spec."""
         return EvaluatorSpec(
             name="test_eval",
-            trainer_ref="test_trainer",
+            model_id="test_model",
             dataset="test_data",
             target_column="target",
             metrics=["accuracy"],
         )
 
-    def test_evaluator_initialization(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
-    ):
+    def test_evaluator_initialization(self, simple_model, model_spec, evaluator_spec):
         """Test creating an evaluator."""
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
             device="cpu",
@@ -169,13 +150,13 @@ class TestArcEvaluator:
 
         assert evaluator.model is simple_model
         assert evaluator.model_spec is model_spec
-        assert evaluator.trainer_spec is trainer_spec
+        assert evaluator.model_id == "test_model"
         assert evaluator.evaluator_spec is evaluator_spec
         assert evaluator.artifact_version == 1
         assert evaluator.device == torch.device("cpu")
 
     def test_evaluator_sets_model_to_eval_mode(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
+        self, simple_model, model_spec, evaluator_spec
     ):
         """Test that evaluator sets model to evaluation mode."""
         simple_model.train()  # Set to training mode first
@@ -184,7 +165,7 @@ class TestArcEvaluator:
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -192,13 +173,13 @@ class TestArcEvaluator:
         assert evaluator.model.training is False  # Should be in eval mode
 
     def test_infer_task_type_classification(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
+        self, simple_model, model_spec, evaluator_spec
     ):
         """Test inferring classification task from loss function."""
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -206,9 +187,7 @@ class TestArcEvaluator:
         task_type = evaluator._infer_task_type()
         assert task_type == "classification"
 
-    def test_infer_task_type_regression(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
-    ):
+    def test_infer_task_type_regression(self, simple_model, model_spec, evaluator_spec):
         """Test inferring regression task from loss function."""
         # Modify model spec to use regression loss
         model_spec.loss = {
@@ -220,7 +199,7 @@ class TestArcEvaluator:
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -228,14 +207,12 @@ class TestArcEvaluator:
         task_type = evaluator._infer_task_type()
         assert task_type == "regression"
 
-    def test_create_metric_accuracy(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
-    ):
+    def test_create_metric_accuracy(self, simple_model, model_spec, evaluator_spec):
         """Test creating accuracy metric."""
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -243,14 +220,12 @@ class TestArcEvaluator:
         metric = evaluator._create_metric("accuracy", "classification")
         assert isinstance(metric, Accuracy)
 
-    def test_create_metric_unknown(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
-    ):
+    def test_create_metric_unknown(self, simple_model, model_spec, evaluator_spec):
         """Test creating unknown metric raises error."""
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -258,14 +233,12 @@ class TestArcEvaluator:
         with pytest.raises(EvaluationError, match="Unknown metric"):
             evaluator._create_metric("unknown_metric", "classification")
 
-    def test_run_predictions(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
-    ):
+    def test_run_predictions(self, simple_model, model_spec, evaluator_spec):
         """Test running predictions on features."""
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -282,13 +255,13 @@ class TestArcEvaluator:
         assert predictions.device.type == "cpu"
 
     def test_compute_metrics_with_specified_metrics(
-        self, simple_model, model_spec, trainer_spec, evaluator_spec
+        self, simple_model, model_spec, evaluator_spec
     ):
         """Test computing metrics when metrics are specified."""
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -305,14 +278,12 @@ class TestArcEvaluator:
         assert isinstance(metrics["accuracy"], float)
         assert 0.0 <= metrics["accuracy"] <= 1.0
 
-    def test_compute_metrics_with_default_metrics(
-        self, simple_model, model_spec, trainer_spec
-    ):
+    def test_compute_metrics_with_default_metrics(self, simple_model, model_spec):
         """Test computing metrics when no metrics are specified (use defaults)."""
         # Create evaluator spec without metrics
         evaluator_spec = EvaluatorSpec(
             name="test_eval",
-            trainer_ref="test_trainer",
+            model_id="test_model",
             dataset="test_data",
             target_column="target",
             metrics=None,  # No metrics specified
@@ -321,7 +292,7 @@ class TestArcEvaluator:
         evaluator = ArcEvaluator(
             model=simple_model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -340,30 +311,39 @@ class TestArcEvaluator:
         assert "f1_score" in metrics
 
     @patch("arc.ml.evaluator.ModelArtifactManager")
-    @patch("arc.ml.evaluator.TrainerService")
-    def test_load_from_trainer(
-        self, _mock_trainer_service_class, _mock_artifact_manager_class
+    @patch("arc.ml.evaluator.ModelService")
+    def test_load_from_model(
+        self, _mock_model_service_class, _mock_artifact_manager_class
     ):
-        """Test loading evaluator from trainer reference."""
+        """Test loading evaluator from model reference."""
         # Setup mocks
-        mock_trainer_service = MagicMock()
+        mock_model_service = MagicMock()
         mock_artifact_manager = MagicMock()
 
-        # Mock trainer
-        mock_trainer = MagicMock()
-        mock_trainer.spec = """
-model_ref: test_model
-optimizer:
-  type: torch.optim.Adam
-  params:
-    lr: 0.001
-config:
-  epochs: 10
-  batch_size: 32
-  validation_split: 0.2
-  target_column: target
+        # Mock model
+        mock_model = MagicMock()
+        mock_model.spec = """
+inputs:
+  features:
+    dtype: float32
+    shape: [10]
+graph:
+  - name: linear
+    type: torch.nn.Linear
+    params:
+      in_features: 10
+      out_features: 1
+outputs:
+  probability: linear.output
+training:
+  loss:
+    type: torch.nn.functional.binary_cross_entropy
+  optimizer:
+    type: torch.optim.Adam
+    params:
+      lr: 0.001
 """
-        mock_trainer_service.get_trainer_by_id.return_value = mock_trainer
+        mock_model_service.get_model_by_id.return_value = mock_model
 
         # Mock training runs for artifact loading
         mock_training_run = MagicMock()
@@ -377,7 +357,7 @@ config:
 
         # Mock db_manager for TrainingTrackingService
         mock_db_manager = MagicMock()
-        mock_trainer_service.db_manager = mock_db_manager
+        mock_model_service.db_manager = mock_db_manager
 
         # Mock artifact
         mock_artifact = MagicMock()
@@ -472,7 +452,7 @@ config:
         # Create evaluator spec
         evaluator_spec = EvaluatorSpec(
             name="test_eval",
-            trainer_ref="test_trainer",
+            model_id="test_model",
             dataset="test_data",
             target_column="target",
             metrics=["accuracy"],
@@ -487,9 +467,9 @@ config:
             mock_tracking_service.list_runs.return_value = [mock_training_run]
 
             # Load evaluator
-            evaluator = ArcEvaluator.load_from_trainer(
+            evaluator = ArcEvaluator.load_from_model(
                 artifact_manager=mock_artifact_manager,
-                trainer_service=mock_trainer_service,
+                model_service=mock_model_service,
                 evaluator_spec=evaluator_spec,
                 device="cpu",
             )
@@ -497,32 +477,32 @@ config:
         # Verify
         assert evaluator.evaluator_spec is evaluator_spec
         assert evaluator.artifact_version == 1
-        mock_trainer_service.get_trainer_by_id.assert_called_once_with("test_trainer")
+        mock_model_service.get_model_by_id.assert_called_once_with("test_model")
         mock_artifact_manager.load_model_state_dict.assert_called_once()
 
     @patch("arc.ml.evaluator.ModelArtifactManager")
-    @patch("arc.ml.evaluator.TrainerService")
-    def test_load_from_trainer_trainer_not_found(
-        self, _mock_trainer_service_class, _mock_artifact_manager_class
+    @patch("arc.ml.evaluator.ModelService")
+    def test_load_from_model_model_not_found(
+        self, _mock_model_service_class, _mock_artifact_manager_class
     ):
-        """Test loading evaluator fails when trainer not found."""
-        mock_trainer_service = MagicMock()
+        """Test loading evaluator fails when model not found."""
+        mock_model_service = MagicMock()
         mock_artifact_manager = MagicMock()
 
-        # Trainer not found
-        mock_trainer_service.get_trainer_by_id.return_value = None
+        # Model not found
+        mock_model_service.get_model_by_id.return_value = None
 
         evaluator_spec = EvaluatorSpec(
             name="test_eval",
-            trainer_ref="nonexistent_trainer",
+            model_id="nonexistent_model",
             dataset="test_data",
             target_column="target",
         )
 
-        with pytest.raises(EvaluationError, match="Trainer .* not found"):
-            ArcEvaluator.load_from_trainer(
+        with pytest.raises(EvaluationError, match="Model .* not found"):
+            ArcEvaluator.load_from_model(
                 artifact_manager=mock_artifact_manager,
-                trainer_service=mock_trainer_service,
+                model_service=mock_model_service,
                 evaluator_spec=evaluator_spec,
             )
 
@@ -537,7 +517,6 @@ class TestArcEvaluatorIntegration:
 
         # Create specs
         from arc.graph.model import GraphNode, ModelInput
-        from arc.graph.trainer import OptimizerConfig
 
         model_spec = ModelSpec(
             inputs={
@@ -580,17 +559,9 @@ class TestArcEvaluatorIntegration:
             },
         )
 
-        trainer_spec = TrainerSpec(
-            model_ref="test_model",
-            optimizer=OptimizerConfig(type="torch.optim.Adam", params={"lr": 0.001}),
-            epochs=10,
-            batch_size=32,
-            validation_split=0.2,
-        )
-
         evaluator_spec = EvaluatorSpec(
             name="test_eval",
-            trainer_ref="test_trainer",
+            model_id="test_model",
             dataset="test_data",
             target_column="target",
             metrics=["accuracy"],
@@ -600,7 +571,7 @@ class TestArcEvaluatorIntegration:
         evaluator = ArcEvaluator(
             model=model,
             model_spec=model_spec,
-            trainer_spec=trainer_spec,
+            model_id="test_model",
             evaluator_spec=evaluator_spec,
             artifact_version=1,
         )
@@ -623,7 +594,6 @@ class TestArcEvaluatorIntegration:
         # Verify result
         assert isinstance(result, EvaluationResult)
         assert result.evaluator_name == "test_eval"
-        assert result.trainer_ref == "test_trainer"
         assert result.model_ref == "test_model"
         assert result.version == 1
         assert result.dataset == "test_data"

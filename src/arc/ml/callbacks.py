@@ -139,9 +139,10 @@ class TensorBoardLogger:
         if not self.enabled or not self.writer:
             return
 
-        # Log final metrics with special tag
+        # Log final metrics with special tag (skip None values)
         for metric_name, value in final_metrics.items():
-            self.writer.add_scalar(f"final/{metric_name}", value, 0)
+            if value is not None:
+                self.writer.add_scalar(f"final/{metric_name}", value, 0)
 
         logger.info(f"TensorBoard: Training completed. Logs saved to {self.log_dir}")
 

@@ -123,6 +123,7 @@ class TrainerSpec:
 
     model_ref: str  # Reference to model ID (e.g., "diabetes-logistic-v1")
     optimizer: OptimizerConfig
+    loss: LossConfig  # Loss function configuration (moved from ModelSpec)
 
     # Flattened config properties for direct access
     epochs: int = 10
@@ -131,6 +132,10 @@ class TrainerSpec:
     validation_split: float = 0.2
     early_stopping_patience: int | None = None
     device: str = "auto"
+
+    # Validation metrics to track (optional - for monitoring)
+    # Example: ["accuracy", "auroc", "f1"]
+    metrics: list[str] | None = None
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> TrainerSpec:
@@ -169,18 +174,30 @@ class TrainerSpec:
             params=params,
         )
 
+        # Parse loss (required)
+        loss_data = data.get("loss")
+        if not loss_data:
+            raise ValueError("trainer.loss is required")
+        loss = LossConfig(
+            type=loss_data["type"],
+            inputs=loss_data.get("inputs"),
+            params=loss_data.get("params"),
+        )
+
         # Parse config if present
         config_data = data.get("config", {})
 
         return cls(
             model_ref=str(model_ref),
             optimizer=optimizer,
+            loss=loss,
             epochs=config_data.get("epochs", 10),
             batch_size=config_data.get("batch_size", 32),
             learning_rate=config_data.get("learning_rate", 0.001),
             validation_split=config_data.get("validation_split", 0.2),
             early_stopping_patience=config_data.get("early_stopping_patience"),
             device=config_data.get("device", "auto"),
+            metrics=config_data.get("metrics"),
         )
 
     @classmethod
@@ -206,16 +223,23 @@ class TrainerSpec:
         Returns:
             YAML string representation of the trainer specification
         """
+        config = {
+            "epochs": self.epochs,
+            "batch_size": self.batch_size,
+            "learning_rate": self.learning_rate,
+            "validation_split": self.validation_split,
+            "device": self.device,
+        }
+
+        # Add metrics if specified
+        if self.metrics is not None:
+            config["metrics"] = self.metrics
+
         data = {
             "model_ref": self.model_ref,
             "optimizer": asdict(self.optimizer),
-            "config": {
-                "epochs": self.epochs,
-                "batch_size": self.batch_size,
-                "learning_rate": self.learning_rate,
-                "validation_split": self.validation_split,
-                "device": self.device,
-            },
+            "loss": asdict(self.loss),  # Include loss in output
+            "config": config,
         }
 
         # Only include early_stopping_patience if it's set
