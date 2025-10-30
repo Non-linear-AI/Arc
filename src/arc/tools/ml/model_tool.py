@@ -49,6 +49,7 @@ class MLModelTool(BaseTool):
         target_column: str | None = None,
         auto_confirm: bool = False,
         plan_id: str | None = None,
+        data_processing_id: str | None = None,
     ) -> ToolResult:
         """Generate unified model + training specification and launch training.
 
@@ -60,6 +61,7 @@ class MLModelTool(BaseTool):
             target_column: Target column for prediction
             auto_confirm: Skip confirmation workflows (for testing only)
             plan_id: Optional ML plan ID containing unified model_plan guidance
+            data_processing_id: Optional execution ID to load data processing context
 
         Note: This tool now generates BOTH model architecture AND training configuration
         in a single unified YAML, then immediately launches training.
@@ -191,6 +193,7 @@ class MLModelTool(BaseTool):
                     target_column=target_column,
                     model_plan=model_plan,
                     preloaded_knowledge=preloaded_knowledge,
+                    data_processing_id=data_processing_id,
                 )
 
                 # Show completion message
