@@ -175,11 +175,10 @@ knowledge:
     - feature_engineering_knowledge_id
   model:
     - mlp
-  training:
     - optimizer_guide
 ```
 
-**knowledge** (optional): Stage-specific knowledge recommendations. Map each workflow stage (data, model) to relevant knowledge IDs. Only include knowledge you actually read and found useful for each stage. Note: "model" stage now includes both architecture and training knowledge since they are unified.
+**knowledge** (optional): Stage-specific knowledge recommendations. Map each workflow stage (data, model) to relevant knowledge IDs. Only include knowledge you actually read and found useful for each stage. Note: The "model" stage covers both architecture and training since they are unified in ml_model tool.
 
 ## Example Output
 
