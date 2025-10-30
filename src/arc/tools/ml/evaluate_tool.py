@@ -229,7 +229,6 @@ class MLEvaluateTool(BaseTool):
                         name=evaluator_name,
                         version=next_version,
                         model_id=model_record.id,
-                        model_version=model_record.version,
                         spec=evaluator_yaml,
                         description=f"Evaluator for {model_id} on {data_table}",
                         created_at=datetime.now(UTC),

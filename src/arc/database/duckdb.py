@@ -344,7 +344,6 @@ class DuckDBDatabase(Database):
                     name VARCHAR(255) NOT NULL,
                     version INTEGER NOT NULL,
                     model_id TEXT NOT NULL,
-                    model_version INTEGER NOT NULL,
                     spec TEXT NOT NULL,
                     description TEXT,
                     plan_id TEXT,
@@ -353,6 +352,20 @@ class DuckDBDatabase(Database):
                     UNIQUE (name, version)
                 );
             """)
+
+            # Migrate evaluators table: remove redundant model_version column
+            # (model_id already contains version info like 'test-v8')
+            with suppress(Exception):
+                # Check if model_version column exists (old schema)
+                check_result = self.query("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'evaluators' AND column_name = 'model_version'
+                """)
+
+                if check_result.rows:
+                    # Old schema exists, drop the redundant column
+                    self.execute("ALTER TABLE evaluators DROP COLUMN model_version")
 
             # Create indexes for evaluator lookups
             self.execute("""

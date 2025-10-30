@@ -9,8 +9,7 @@ class Evaluator:
     id: str
     name: str
     version: int
-    model_id: str
-    model_version: int
+    model_id: str  # Already contains version info (e.g., 'test-v8')
     spec: str
     description: str
     plan_id: str | None = None

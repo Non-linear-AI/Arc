@@ -292,7 +292,6 @@ class EvaluatorService(BaseService):
                 name=str(row["name"]),
                 version=int(row["version"]),
                 model_id=str(row["model_id"]),
-                model_version=int(row["model_version"]),
                 spec=str(row["spec"]),
                 description=str(row["description"]),
                 plan_id=str(row["plan_id"]) if row.get("plan_id") else None,
@@ -343,14 +342,13 @@ class EvaluatorService(BaseService):
             )
 
             sql = f"""INSERT INTO evaluators (
-                id, name, version, model_id, model_version,
+                id, name, version, model_id,
                 spec, description, plan_id, created_at, updated_at
             ) VALUES (
                 '{self._escape_string(evaluator.id)}',
                 '{self._escape_string(evaluator.name)}',
                 {evaluator.version},
                 '{self._escape_string(evaluator.model_id)}',
-                {evaluator.model_version},
                 '{self._escape_string(evaluator.spec)}',
                 '{self._escape_string(evaluator.description)}',
                 {plan_id_value},
@@ -387,7 +385,6 @@ class EvaluatorService(BaseService):
                 name = '{self._escape_string(evaluator.name)}',
                 version = {evaluator.version},
                 model_id = '{self._escape_string(evaluator.model_id)}',
-                model_version = {evaluator.model_version},
                 spec = '{self._escape_string(evaluator.spec)}',
                 description = '{self._escape_string(evaluator.description)}',
                 plan_id = {plan_id_value},
