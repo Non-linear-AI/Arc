@@ -28,6 +28,8 @@ class DataSourceExecutionResult:
     step_count: int
     steps_executed: list[tuple[str, str]]  # [(step_name, step_type), ...]
     progress_log: list[tuple[str, str]]  # [(message, level), ...]
+    sql: str | None = None  # Full SQL (all steps combined) for context
+    outputs: list[dict] | None = None  # Output table schemas and row counts
 
 
 class DataSourceExecutionError(Exception):
