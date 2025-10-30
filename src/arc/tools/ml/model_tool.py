@@ -704,7 +704,6 @@ class MLModelTool(BaseTool):
                 section_printer.print(f"  • URL: [bold]{url}[/bold]")
                 section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
                 section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
-                section_printer.print(f"[dim]  • Updates every 5s (click 🔄 in TensorBoard UI to refresh)[/dim]")
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
