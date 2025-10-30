@@ -48,17 +48,28 @@ class MLEvaluateTool(BaseTool):
             Target column name if found in loss spec, None otherwise
         """
         try:
-            from arc.graph import ModelSpec
+            import yaml
 
-            model_spec = ModelSpec.from_yaml(model_spec_yaml)
+            # Parse YAML directly to check both locations
+            spec_dict = yaml.safe_load(model_spec_yaml)
 
-            # Check if model has loss specification
-            if not model_spec.loss:
-                return None
+            # Check model-level loss first (new format)
+            if "loss" in spec_dict:
+                loss_spec = spec_dict["loss"]
+                if isinstance(loss_spec, dict) and "inputs" in loss_spec:
+                    inputs = loss_spec["inputs"]
+                    if isinstance(inputs, dict) and "target" in inputs:
+                        return inputs["target"]
 
-            # Look for 'target' input in loss specification
-            if model_spec.loss.inputs and "target" in model_spec.loss.inputs:
-                return model_spec.loss.inputs["target"]
+            # Fall back to training.loss (old format or if not found at model level)
+            if "training" in spec_dict:
+                training = spec_dict["training"]
+                if isinstance(training, dict) and "loss" in training:
+                    loss_spec = training["loss"]
+                    if isinstance(loss_spec, dict) and "inputs" in loss_spec:
+                        inputs = loss_spec["inputs"]
+                        if isinstance(inputs, dict) and "target" in inputs:
+                            return inputs["target"]
 
             return None
         except Exception:
