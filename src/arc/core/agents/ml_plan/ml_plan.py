@@ -303,10 +303,26 @@ class MLPlanAgent(BaseAgent):
             required_fields = [
                 "data_plan",
                 "model_plan",
+                "knowledge",
             ]
             missing = [f for f in required_fields if f not in result]
             if missing:
                 raise ValueError(f"Missing required fields: {missing}")
+
+            # Validate knowledge structure (must have both data and model keys)
+            if "knowledge" in result:
+                knowledge = result["knowledge"]
+                if not isinstance(knowledge, dict):
+                    raise ValueError("knowledge must be an object/dict")
+                if "data" not in knowledge or "model" not in knowledge:
+                    raise ValueError(
+                        "knowledge must contain both 'data' and 'model' keys "
+                        "(use empty lists [] if none)"
+                    )
+                if not isinstance(knowledge["data"], list) or not isinstance(
+                    knowledge["model"], list
+                ):
+                    raise ValueError("knowledge.data and knowledge.model must be lists")
 
             return result
 
@@ -325,11 +341,11 @@ class MLPlanAgent(BaseAgent):
                 f"Ensure the LLM returns valid YAML without markdown code fences."
             ) from e
         except ValueError as e:
-            # Missing required fields
+            # Missing required fields or invalid structure
             raise MLPlanError(
                 f"Invalid ML plan structure: {str(e)}\n"
                 f"The plan must include all required sections: "
-                f"data_plan and model_plan."
+                f"data_plan, model_plan, and knowledge (with data and model keys)."
             ) from e
 
     async def _analyze_target_column(
