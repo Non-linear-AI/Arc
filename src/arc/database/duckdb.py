@@ -1,7 +1,6 @@
 """DuckDB database implementation."""
 
 import time
-from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,18 @@ class DuckDBDatabase(Database):
         Args:
             db_path: Path to the DuckDB database file.
                 Use ":memory:" for in-memory database.
+
+        Raises:
+            TypeError: If db_path is a Database object instead of a path string
         """
+        # Validate that we're not being passed a Database object
+        if isinstance(db_path, Database):
+            raise TypeError(
+                f"DuckDBDatabase() expects a path string, not a Database object. "
+                f"Received: {type(db_path).__name__}. "
+                f"If you need the database path, use db_object.db_path instead."
+            )
+
         self.db_path = str(db_path)
         self._connection: duckdb.DuckDBPyConnection | None = None
         self._connect()
@@ -353,20 +363,6 @@ class DuckDBDatabase(Database):
                 );
             """)
 
-            # Migrate evaluators table: remove redundant model_version column
-            # (model_id already contains version info like 'test-v8')
-            with suppress(Exception):
-                # Check if model_version column exists (old schema)
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'evaluators' AND column_name = 'model_version'
-                """)
-
-                if check_result.rows:
-                    # Old schema exists, drop the redundant column
-                    self.execute("ALTER TABLE evaluators DROP COLUMN model_version")
-
             # Create indexes for evaluator lookups
             self.execute("""
                 CREATE INDEX IF NOT EXISTS idx_evaluators_name ON evaluators(name);
@@ -491,53 +487,6 @@ class DuckDBDatabase(Database):
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-
-            # Migrate old schema: data_table/target_column -> source_tables
-            # Check if old columns exist and migrate
-            with suppress(Exception):
-                # Check if data_table column exists (old schema)
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'plans' AND column_name = 'data_table'
-                """)
-
-                if check_result.rows:
-                    # Old schema exists, migrate it
-                    # Add new column if it doesn't exist
-                    with suppress(Exception):
-                        self.execute("ALTER TABLE plans ADD COLUMN source_tables TEXT")
-
-                    # Copy data_table to source_tables for existing rows
-                    self.execute("""
-                        UPDATE plans
-                        SET source_tables = data_table
-                        WHERE source_tables IS NULL
-                    """)
-
-                    # Drop old columns
-                    self.execute("ALTER TABLE plans DROP COLUMN data_table")
-                    self.execute("ALTER TABLE plans DROP COLUMN target_column")
-
-            # Migrate plans table to add name column (for name-based versioning)
-            with suppress(Exception):
-                # Check if name column exists
-                check_result = self.query("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = 'plans' AND column_name = 'name'
-                """)
-
-                if not check_result.rows:
-                    # name column doesn't exist, add it
-                    self.execute("ALTER TABLE plans ADD COLUMN name TEXT")
-
-                    # For existing plans, derive name from plan_id (remove -vN suffix)
-                    self.execute("""
-                        UPDATE plans
-                        SET name = REGEXP_REPLACE(plan_id, '-v[0-9]+$', '')
-                        WHERE name IS NULL
-                    """)
 
             # Plan executions table - tracks execution of plan steps (data processing, training, etc.)  # noqa: E501
             self.execute("""
@@ -671,18 +620,14 @@ class DuckDBDatabase(Database):
         """Context manager exit - ensure connection is closed."""
         self.close()
 
-    def __del__(self) -> None:
-        """Destructor - ensure connection is closed.
+    def __str__(self) -> str:
+        """String representation of the database (returns path)."""
+        return self.db_path
 
-        Note: Wrapped in try-except to handle garbage collection in
-        multithreaded contexts where DuckDB may have issues closing
-        connections from different threads.
-        """
-        try:
-            if self._connection is not None:
-                self._connection.close()
-                self._connection = None
-        except Exception:
-            # Silently ignore all errors during garbage collection
-            # This prevents fatal errors in multithreaded scenarios
-            pass
+    def __repr__(self) -> str:
+        """Representation of the database object."""
+        return f"DuckDBDatabase('{self.db_path}')"
+
+    def __del__(self) -> None:
+        """Destructor - ensure connection is closed."""
+        self.close()

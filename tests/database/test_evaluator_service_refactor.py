@@ -25,7 +25,7 @@ def temp_db():
 @pytest.fixture
 def db_manager(temp_db):
     """Create a database manager with temporary database."""
-    return DatabaseManager(temp_db)
+    return DatabaseManager(temp_db.db_path)
 
 
 @pytest.fixture

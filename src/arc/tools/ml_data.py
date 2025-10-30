@@ -327,7 +327,7 @@ class MLDataTool(BaseTool):
                 # Show execution message
                 if printer:
                     printer.print("")
-                    printer.print("→ Executing data processing pipeline...")
+                    printer.print("[dim]→ Executing data processing pipeline...[/dim]")
 
                 # Define progress callback for real-time updates
                 def progress_callback(message: str, level: str):
