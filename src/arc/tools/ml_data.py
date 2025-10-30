@@ -347,12 +347,13 @@ class MLDataTool(BaseTool):
                     self.services.schema.invalidate_cache(database)
 
                     # Store execution record in database
+                    # Always store executions (not just when plan_id exists) to track all data processing
                     data_processing_id = f"data_{uuid.uuid4().hex[:8]}"
-                    if plan_id and execution_result.sql and execution_result.outputs:
+                    if execution_result.sql and execution_result.outputs:
                         try:
                             self.services.plan_executions.store_execution(
                                 execution_id=data_processing_id,
-                                plan_id=plan_id,
+                                plan_id=plan_id or "standalone",  # Use "standalone" for ad-hoc executions
                                 step_type="data_processing",
                                 context=execution_result.sql,
                                 outputs=execution_result.outputs,
@@ -427,7 +428,8 @@ class MLDataTool(BaseTool):
                 }
 
                 # Add data_processing_id if execution was stored
-                if plan_id and execution_result.sql and execution_result.outputs:
+                # (stored for all executions, not just those with plan_id)
+                if execution_result.sql and execution_result.outputs:
                     metadata["data_processing_id"] = data_processing_id
 
                 # Return success with detailed metadata

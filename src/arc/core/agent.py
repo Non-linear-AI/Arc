@@ -183,9 +183,6 @@ class ArcAgent:
         self.ml_evaluate_tool = MLEvaluateTool(
             services,
             services.ml_runtime,
-            self.api_key,
-            self.base_url,
-            model,
             self.ui_interface,
             self.tensorboard_manager,
         )
@@ -625,8 +622,6 @@ class ArcAgent:
             self.ml_plan_tool.model = model
         if getattr(self, "ml_model_tool", None):
             self.ml_model_tool.model = model
-        if getattr(self, "ml_evaluate_tool", None):
-            self.ml_evaluate_tool.model = model
 
     def cleanup(self) -> None:
         """Clean up resources including TensorBoard processes."""

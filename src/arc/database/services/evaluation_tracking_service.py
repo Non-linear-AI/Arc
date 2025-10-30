@@ -124,6 +124,7 @@ class EvaluationTrackingService(BaseService):
         status: EvaluationStatus | None = None,
         evaluator_id: str | None = None,
         trainer_id: str | None = None,
+        job_id: str | None = None,
     ) -> list[EvaluationRun]:
         """List evaluation runs with optional filters.
 
@@ -132,6 +133,7 @@ class EvaluationTrackingService(BaseService):
             status: Filter by status
             evaluator_id: Filter by evaluator ID
             trainer_id: Filter by trainer ID
+            job_id: Filter by job ID
 
         Returns:
             List of EvaluationRun objects
@@ -154,6 +156,10 @@ class EvaluationTrackingService(BaseService):
             if trainer_id:
                 conditions.append("trainer_id = ?")
                 params.append(trainer_id)
+
+            if job_id:
+                conditions.append("job_id = ?")
+                params.append(job_id)
 
             where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             sql = f"""

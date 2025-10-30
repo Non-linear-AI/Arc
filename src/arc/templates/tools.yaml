@@ -327,16 +327,16 @@ tools:
 
   - name: ml_evaluate
     description: |
-      Generate Arc-Graph evaluator specification and launch evaluation job on test data.
+      Evaluate a trained model on a test dataset and compute metrics.
       This is an AD HOC tool for evaluating trained models on separate test datasets.
       It is NOT part of the core ML workflow (plan → data → model → train). Validation
       metrics are already tracked during training.
 
-      This unified tool:
-      1) Generates evaluator spec via LLM based on evaluation goals,
-      2) Presents interactive confirmation workflow,
-      3) Auto-registers evaluator to database after approval,
-      4) Launches evaluation job and returns immediately with job_id.
+      This tool:
+      1) Infers target column from the model's specification
+      2) Creates evaluator configuration automatically
+      3) Auto-registers evaluator to database
+      4) Launches evaluation job and returns immediately with job_id
 
       Evaluation runs asynchronously in the background. Monitor progress via /ml jobs status
       and view metrics in TensorBoard. Supports classification metrics (accuracy, precision,
@@ -347,43 +347,32 @@ tools:
       - Evaluate a trained model on a hold-out test set
       - Compare multiple models on the same test data
       - Generate comprehensive evaluation reports with visualizations
-      - Perform threshold tuning or calibration analysis
     parameters:
       type: object
       properties:
-        name:
+        model_id:
           type: string
-          description: Evaluator name for the specification
-        instruction:
-          type: string
-          description: |
-            Evaluation goals, constraints, and requirements. Specify which metrics
-            to compute and any evaluation-specific notes.
-        trainer_id:
-          type: string
-          description: Trainer ID with version (e.g., 'my-trainer-v1')
-        evaluate_table:
+          description: Model ID with version (e.g., 'my-model-v1')
+        dataset:
           type: string
           description: Test dataset table name for evaluation
-        plan_id:
-          type: string
-          description: |
-            Optional ML plan ID (e.g., 'pidd-plan-v1'). When provided, used only
-            for context/metadata tracking. The plan no longer contains evaluation
-            guidance - evaluation is now ad hoc and independent of the plan.
-        recommended_knowledge_ids:
+        metrics:
           type: array
           items:
             type: string
           description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform evaluation decisions.
+            Optional list of specific metrics to compute. If not provided, metrics are
+            inferred from the model's task type (classification or regression).
+            Available classification metrics: accuracy, precision, recall, f1_score, auc
+            Available regression metrics: mse, mae, rmse, r2_score
+        output_table:
+          type: string
+          description: |
+            Optional table name to save predictions with features and targets.
+            If not provided, predictions are not saved to database.
       required:
-        - name
-        - instruction
-        - trainer_id
-        - evaluate_table
+        - model_id
+        - dataset
 
   - name: ml_data
     description: |

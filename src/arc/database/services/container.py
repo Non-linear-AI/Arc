@@ -7,12 +7,16 @@ if TYPE_CHECKING:
     from arc.ml.runtime import MLRuntime
 
 from arc.database.services.data_processor_service import DataProcessorService
+from arc.database.services.evaluation_tracking_service import (
+    EvaluationTrackingService,
+)
 from arc.database.services.evaluator_service import EvaluatorService
 from arc.database.services.interactive_query_service import InteractiveQueryService
 from arc.database.services.job_service import JobService
 from arc.database.services.ml_data_service import MLDataService
 from arc.database.services.ml_plan_service import MLPlanService
 from arc.database.services.model_service import ModelService
+from arc.database.services.plan_execution_service import PlanExecutionService
 from arc.database.services.plugin_service import PluginService
 from arc.database.services.schema_service import SchemaService
 from arc.database.services.training_tracking_service import (
@@ -42,11 +46,13 @@ class ServiceContainer:
         self._query_service = None
         self._model_service = None
         self._evaluator_service = None
+        self._evaluation_tracking_service = None
         self._job_service = None
         self._plugin_service = None
         self._schema_service = None
         self._ml_data_service = None
         self._ml_plan_service = None
+        self._plan_execution_service = None
         self._data_processor_service = None
         self._ml_runtime = None
         self._training_tracking_service = None
@@ -108,6 +114,13 @@ class ServiceContainer:
         return self._ml_plan_service
 
     @property
+    def plan_executions(self) -> PlanExecutionService:
+        """Get the plan execution service."""
+        if self._plan_execution_service is None:
+            self._plan_execution_service = PlanExecutionService(self.db_manager)
+        return self._plan_execution_service
+
+    @property
     def data_processors(self) -> DataProcessorService:
         """Get the data processor service."""
         if self._data_processor_service is None:
@@ -129,6 +142,13 @@ class ServiceContainer:
         if self._training_tracking_service is None:
             self._training_tracking_service = TrainingTrackingService(self.db_manager)
         return self._training_tracking_service
+
+    @property
+    def evaluation_tracking(self) -> EvaluationTrackingService:
+        """Get the evaluation tracking service."""
+        if self._evaluation_tracking_service is None:
+            self._evaluation_tracking_service = EvaluationTrackingService(self.db_manager)
+        return self._evaluation_tracking_service
 
     def shutdown(self) -> None:
         """Shutdown all services and clean up resources."""

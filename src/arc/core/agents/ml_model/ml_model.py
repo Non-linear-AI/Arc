@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from arc.core.agents.shared.base_agent import AgentError, BaseAgent
 from arc.core.agents.shared.example_repository import ExampleRepository
 from arc.database.services import ServiceContainer
 from arc.graph.model import CORE_LAYERS, TORCH_FUNCTIONS, ModelSpec, validate_model_dict
+
+logger = logging.getLogger(__name__)
 
 
 class MLModelError(AgentError):
@@ -129,7 +132,12 @@ class MLModelAgent(BaseAgent):
                 execution = self.services.plan_executions.get_execution(data_processing_id)
                 if execution:
                     # Build context summary from execution record
-                    output_tables = [out["name"] for out in execution["outputs"]]
+                    # Defensive access to outputs structure
+                    outputs = execution.get("outputs", [])
+                    output_tables = [
+                        out["name"] for out in outputs
+                        if isinstance(out, dict) and "name" in out
+                    ]
                     data_processing_context = {
                         "execution_id": data_processing_id,
                         "sql_context": execution["context"],
@@ -141,6 +149,7 @@ class MLModelAgent(BaseAgent):
                         table_name = output_tables[0]
             except Exception as e:
                 # Log but don't fail - continue without context
+                logger.warning(f"Failed to load data processing context: {e}")
                 if self.progress_callback:
                     self.progress_callback(
                         f"⚠️ Failed to load data processing context: {e}"

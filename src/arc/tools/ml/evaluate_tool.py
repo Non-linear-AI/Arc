@@ -1,26 +1,22 @@
-"""ML Evaluate tool for generating evaluator specs and launching evaluation."""
+"""ML Evaluate tool for evaluating trained models on test datasets."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
 
 import yaml
 
 from arc.ml.runtime import MLRuntime
 from arc.tools.base import BaseTool, ToolResult
-from arc.tools.ml._utils import _load_ml_plan
-from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 
 class MLEvaluateTool(BaseTool):
-    """Unified tool for generating evaluator specs and launching evaluation.
+    """Tool for evaluating trained models on test datasets.
 
-    This tool combines evaluator generation with evaluation execution in a single
-    workflow, similar to the MLTrainTool pattern. It provides:
-    1. Evaluator spec generation via LLM
-    2. Interactive confirmation workflow for evaluator spec
+    This tool provides:
+    1. Automatic target column inference from model specification
+    2. Direct evaluator creation (no LLM generation needed)
     3. Auto-registration to database
     4. Async evaluation launch (returns immediately with job_id)
 
@@ -28,25 +24,17 @@ class MLEvaluateTool(BaseTool):
     - /ml jobs status {job_id}
     - /ml jobs logs {job_id}
     - TensorBoard for metrics visualization
-
-    This replaces the separate generate-evaluator command with a unified workflow.
     """
 
     def __init__(
         self,
         services,
         runtime: MLRuntime,
-        api_key: str | None,
-        base_url: str | None,
-        model: str | None,
         ui_interface,
         tensorboard_manager=None,
     ) -> None:
         self.services = services
         self.runtime = runtime
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model = model
         self.ui = ui_interface
         self.tensorboard_manager = tensorboard_manager
 
@@ -79,34 +67,20 @@ class MLEvaluateTool(BaseTool):
     async def execute(
         self,
         *,
-        name: str | None = None,
-        instruction: str | None = None,
         model_id: str | None = None,
-        evaluate_table: str | None = None,
+        dataset: str | None = None,
+        metrics: list[str] | None = None,
+        output_table: str | None = None,
         auto_confirm: bool = False,
-        plan_id: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
     ) -> ToolResult:
-        """Generate evaluator spec, register it, and launch evaluation.
+        """Evaluate a trained model on test dataset.
 
         Args:
-            name: Evaluator name
-            instruction: User's instruction for evaluation setup (PRIMARY driver)
             model_id: Model ID with version (e.g., 'my-model-v1')
-            evaluate_table: Test dataset table name
+            dataset: Test dataset table name
+            metrics: Optional list of metrics to compute (inferred from model if not provided)
+            output_table: Optional table to save predictions
             auto_confirm: Skip confirmation workflows (for testing only)
-            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
-                evaluation expectations (SECONDARY baseline)
-
-        Note on instruction vs plan_id precedence:
-            - instruction: PRIMARY driver - user's immediate, specific request
-            - plan_id: SECONDARY baseline - loads plan from DB for guidance and context
-            - When there's a conflict, instruction takes precedence
-            - Example: If instruction says "compute F1 score" but plan says
-              "compute accuracy only", the evaluator should compute F1 score
-              (instruction wins)
-            - The LLM agent should use plan as baseline context and augment/override
-              it with specifics from instruction
 
         Note on async execution:
             This tool returns immediately after launching the evaluation job.
@@ -116,23 +90,8 @@ class MLEvaluateTool(BaseTool):
         Returns:
             ToolResult with job_id for monitoring async evaluation
         """
-        # Show section title first, before any validation
-        # Build metadata for section title
-        metadata_parts = []
-        if plan_id:
-            metadata_parts.append(plan_id)
-        if recommended_knowledge_ids:
-            metadata_parts.extend(recommended_knowledge_ids)
-
         # Use context manager for section printing
-        with self._section_printer(
-            self.ui, "ML Evaluator", metadata=metadata_parts
-        ) as printer:
-            # Show task description
-            if printer:
-                printer.print(f"[dim]Task: {instruction}[/dim]")
-                printer.print("")  # Empty line after task
-
+        with self._section_printer(self.ui, "ML Evaluate") as printer:
             # Helper to show error and return
             def _error_in_section(message: str) -> ToolResult:
                 if printer:
@@ -144,24 +103,16 @@ class MLEvaluateTool(BaseTool):
                     metadata={"error_shown": True, "error_message": message},
                 )
 
-            # Validate API key and services
-            if not self.api_key:
-                return _error_in_section(
-                    "API key required for evaluator generation. "
-                    "Set ARC_API_KEY or configure an API key before using this tool."
-                )
-
+            # Validate services
             if not self.services:
                 return _error_in_section(
-                    "Evaluator generation service unavailable. "
-                    "Database services not initialized."
+                    "Evaluation service unavailable. Database services not initialized."
                 )
 
             # Validate required parameters
-            if not name or not instruction or not model_id or not evaluate_table:
+            if not model_id or not dataset:
                 return _error_in_section(
-                    "Parameters 'name', 'instruction', 'model_id', and "
-                    "'evaluate_table' are required."
+                    "Parameters 'model_id' and 'dataset' are required."
                 )
 
             # Get the registered model
@@ -170,154 +121,57 @@ class MLEvaluateTool(BaseTool):
                 if not model_record:
                     return _error_in_section(
                         f"Model '{model_id}' not found in registry. "
-                        "Please train a model first using /ml model"
+                        "Train a model first using /ml model"
                     )
             except Exception as exc:
-                return _error_in_section(
-                    f"Failed to retrieve model '{model_id}': {exc}"
-                )
+                return _error_in_section(f"Failed to retrieve model '{model_id}': {exc}")
 
-            # Get model spec and infer target column
+            # Infer target column from model spec
             try:
-
-                # Infer target column from model spec
                 target_column = self._infer_target_column_from_model(model_record.spec)
                 if not target_column:
                     return _error_in_section(
                         "Cannot infer target column from model spec. "
                         "Ensure model's loss spec includes a 'target' input."
                     )
-
             except Exception as exc:
-                return _error_in_section(f"Failed to retrieve model: {exc}")
+                return _error_in_section(f"Failed to infer target column: {exc}")
 
-            # Check if target column exists in evaluate table
+            # Check if target column exists in dataset
             target_column_exists = False
             try:
                 schema_info = self.services.schema.get_schema_info(target_db="user")
-                columns = schema_info.get_column_names(str(evaluate_table))
+                columns = schema_info.get_column_names(str(dataset))
                 target_column_exists = str(target_column) in columns
             except Exception:
                 # If schema check fails, default to assuming target exists
                 target_column_exists = True
 
-            # Note: ml_evaluate is now an ad hoc tool, not part of the core ML workflow.
-            # It does not use ML Plan evaluation guidance since that field has been removed.
-            # Plans now focus on: data_plan and model_plan. Evaluation metrics are
-            # specified in the training configuration for validation monitoring.
+            # Create evaluator spec directly (no LLM generation needed)
+            from arc.graph.evaluator import EvaluatorSpec
 
-            # Generate evaluator spec via LLM
-            # Agent will discover relevant knowledge using tools
-            from arc.core.agents.ml_evaluate import MLEvaluateAgent
+            # Generate evaluator name from model_id if not provided
+            evaluator_name = f"{model_id}_evaluator"
 
-            agent = MLEvaluateAgent(
-                self.services,
-                self.api_key,
-                self.base_url,
-                self.model,
+            evaluator_spec = EvaluatorSpec(
+                name=evaluator_name,
+                model_ref=str(model_id),
+                dataset=str(dataset),
+                target_column=str(target_column),
+                metrics=metrics,  # None = infer from model's loss function
+                version=None,  # Use latest training run
+                output_name=None,  # Auto-detect from model outputs
             )
 
-            # Set progress callback for this invocation
+            # Convert to YAML for database storage
+            evaluator_yaml = evaluator_spec.to_yaml()
+
             if printer:
-                agent.progress_callback = printer.print
-            else:
-                agent.progress_callback = None
-
-            try:
-                (
-                    evaluator_spec,
-                    evaluator_yaml,
-                    conversation_history,
-                ) = await agent.generate_evaluator(
-                    name=str(name),
-                    instruction=str(instruction),
-                    model_ref=str(model_id),
-                    model_spec_yaml=model_record.spec,
-                    dataset=str(evaluate_table),
-                    target_column=str(target_column),
-                    target_column_exists=target_column_exists,
-                    ml_plan_evaluation=None,  # No longer using plan.evaluation
-                    recommended_knowledge_ids=recommended_knowledge_ids,
+                printer.print("")
+                printer.print(
+                    f"[dim]✓ Evaluator created for model '{model_id}' "
+                    f"on dataset '{dataset}'[/dim]"
                 )
-
-                # Show completion message
-                if printer:
-                    printer.print("[dim]✓ Evaluator generated successfully[/dim]")
-
-            except Exception as exc:
-                from arc.core.agents.ml_evaluate import MLEvaluateError
-
-                if isinstance(exc, MLEvaluateError):
-                    return _error_in_section(str(exc))
-                return _error_in_section(
-                    f"Unexpected error during evaluator generation: {exc}"
-                )
-
-            # Validate the generated evaluator
-            try:
-                from arc.graph.evaluator import (
-                    EvaluatorValidationError,
-                    validate_evaluator_dict,
-                )
-
-                evaluator_dict = yaml.safe_load(evaluator_yaml)
-                validate_evaluator_dict(evaluator_dict)
-            except yaml.YAMLError as exc:
-                return _error_in_section(
-                    f"Generated evaluator contains invalid YAML: {exc}"
-                )
-            except EvaluatorValidationError as exc:
-                return _error_in_section(
-                    f"Generated evaluator failed validation: {exc}"
-                )
-            except Exception as exc:
-                # Log unexpected errors with full traceback
-                import logging
-
-                logging.exception("Unexpected error during evaluator validation")
-                return _error_in_section(
-                    f"Unexpected validation error: {exc.__class__.__name__}: {exc}"
-                )
-
-            # Interactive confirmation workflow (unless auto_confirm is True)
-            if not auto_confirm:
-                workflow = YamlConfirmationWorkflow(
-                    validator_func=self._create_validator(),
-                    editor_func=self._create_editor(
-                        instruction, model_id, model_record, target_column_exists
-                    ),
-                    ui_interface=self.ui,
-                    yaml_type_name="evaluator",
-                    yaml_suffix=".arc-evaluator.yaml",
-                )
-
-                context_dict = {
-                    "evaluator_name": str(name),
-                    "instruction": str(instruction),
-                    "model_id": str(model_id),
-                    "model_ref": str(model_id),
-                    "model_spec_yaml": model_record.spec,
-                    "dataset": str(evaluate_table),
-                    "target_column": str(target_column),
-                    "target_column_exists": target_column_exists,
-                }
-
-                try:
-                    proceed, final_yaml = await workflow.run_workflow(
-                        evaluator_yaml,
-                        context_dict,
-                        None,  # No output path - we register to DB
-                        conversation_history,  # Pass conversation history for editing
-                    )
-                    if not proceed:
-                        return ToolResult(
-                            success=True,
-                            output="✗ Evaluator cancelled.",
-                            metadata={"cancelled": True},
-                        )
-                    evaluator_yaml = final_yaml
-                finally:
-                    workflow.cleanup()
 
             # Auto-register evaluator to database (or reuse existing)
             try:
@@ -326,13 +180,12 @@ class MLEvaluateTool(BaseTool):
                 from arc.database.models.evaluator import Evaluator
 
                 # Check if evaluator with same spec already exists
-                existing_evaluator = (
-                    self.services.evaluators.get_latest_evaluator_by_name(str(name))
+                existing_evaluator = self.services.evaluators.get_latest_evaluator_by_name(
+                    evaluator_name
                 )
                 evaluator_record = None
 
                 # Use semantic YAML comparison instead of string comparison
-                # This handles whitespace differences and formatting variations
                 spec_matches = False
                 if existing_evaluator:
                     try:
@@ -348,57 +201,48 @@ class MLEvaluateTool(BaseTool):
                 if spec_matches:
                     # Reuse existing evaluator (same spec)
                     evaluator_record = existing_evaluator
-                    # Display "using existing" message in the ML Evaluator section
                     if printer:
-                        printer.print("")  # Empty line before confirmation
                         printer.print(
-                            f"[dim]✓ Using existing evaluator '{name}' "
-                            f"({evaluator_record.id} • "
-                            f"Model: {evaluator_spec.model_ref} • "
-                            f"Dataset: {evaluator_spec.dataset})[/dim]"
+                            f"[dim]✓ Using existing evaluator "
+                            f"({evaluator_record.id})[/dim]"
                         )
                 else:
                     # Create new version (spec changed or first time)
                     next_version = self.services.evaluators.get_next_version_for_name(
-                        str(name)
+                        evaluator_name
                     )
-                    evaluator_id = f"{name}-v{next_version}"
+                    evaluator_id = f"{evaluator_name}-v{next_version}"
 
                     evaluator_record = Evaluator(
                         id=evaluator_id,
-                        name=str(name),
+                        name=evaluator_name,
                         version=next_version,
                         model_id=model_record.id,
                         model_version=model_record.version,
                         spec=evaluator_yaml,
-                        description=f"Generated evaluator for model {model_id}",
+                        description=f"Evaluator for {model_id} on {dataset}",
                         created_at=datetime.now(UTC),
                         updated_at=datetime.now(UTC),
                     )
 
                     self.services.evaluators.create_evaluator(evaluator_record)
 
-                    # Display registration confirmation in the ML Evaluator section
                     if printer:
-                        printer.print("")  # Empty line before confirmation
                         printer.print(
-                            f"[dim]✓ Evaluator '{name}' registered to database "
-                            f"({evaluator_record.id} • "
-                            f"Model: {evaluator_spec.model_ref} • "
-                            f"Dataset: {evaluator_spec.dataset})[/dim]"
+                            f"[dim]✓ Evaluator registered ({evaluator_record.id})[/dim]"
                         )
             except Exception as exc:
                 return _error_in_section(f"Failed to register evaluator: {exc}")
 
-            # Build simple output for ToolResult (detailed output already shown in UI)
+            # Build simple output for ToolResult
             lines = [
-                f"Evaluator '{name}' registered successfully as {evaluator_record.id}"
+                f"Evaluator '{evaluator_name}' registered as {evaluator_record.id}"
             ]
 
             # Launch evaluation as background job (async pattern)
             if printer:
                 printer.print("")
-                printer.print(f"→ Launching evaluation with '{name}'...")
+                printer.print("→ Launching evaluation...")
 
             # Create job record for this evaluation
             from arc.jobs.models import Job, JobType
@@ -406,7 +250,7 @@ class MLEvaluateTool(BaseTool):
             job = Job.create(
                 job_type=JobType.EVALUATE_MODEL,
                 model_id=None,  # Not using legacy model_id
-                message=f"Evaluating {evaluator_record.id} on {evaluate_table}",
+                message=f"Evaluating {evaluator_record.id} on {dataset}",
             )
             self.services.jobs.create_job(job)
 
@@ -422,7 +266,7 @@ class MLEvaluateTool(BaseTool):
                 eval_run = tracking_service.create_run(
                     evaluator_id=evaluator_record.id,
                     model_id=model_record.id,
-                    dataset=str(evaluate_table),
+                    dataset=str(dataset),
                     target_column=str(target_column),
                     job_id=job.job_id,
                 )
@@ -447,8 +291,8 @@ class MLEvaluateTool(BaseTool):
                     device="cpu",
                 )
 
-                # Derive output table name from evaluator ID
-                output_table = f"{evaluator_record.id}_predictions"
+                # Use provided output_table or None (don't save predictions by default)
+                prediction_table = output_table if output_table else None
 
                 # Setup TensorBoard logging directory
                 from pathlib import Path
@@ -462,7 +306,7 @@ class MLEvaluateTool(BaseTool):
                         result = await asyncio.to_thread(
                             evaluator.evaluate,
                             self.services.ml_data,
-                            output_table,
+                            prediction_table,
                             tensorboard_log_dir,
                         )
 
@@ -470,7 +314,7 @@ class MLEvaluateTool(BaseTool):
                         tracking_service.update_run_result(
                             eval_run.run_id,
                             metrics_result=result.metrics,
-                            prediction_table=output_table,
+                            prediction_table=prediction_table,
                         )
 
                         # Mark as completed
@@ -512,7 +356,7 @@ class MLEvaluateTool(BaseTool):
                 lines.append("")
                 lines.append("✓ Evaluation job submitted successfully.")
                 lines.append(f"  Evaluator: {evaluator_record.id}")
-                lines.append(f"  Dataset: {evaluate_table}")
+                lines.append(f"  Dataset: {dataset}")
                 lines.append(f"  Job ID: {job.job_id}")
                 lines.append(f"  Run ID: {eval_run.run_id}")
 
@@ -574,18 +418,14 @@ class MLEvaluateTool(BaseTool):
                 lines.append("")
                 lines.append("⚠️  Evaluation launch failed but evaluator is registered.")
                 lines.append(f"Error: {exc}")
-                lines.append("")
-                retry_cmd = f"/ml evaluate --evaluator {name} --data {evaluate_table}"
-                lines.append(f"Retry evaluation with: {retry_cmd}")
 
                 return ToolResult(
                     success=True,  # Evaluator registration succeeded
                     output="\n".join(lines),
                     metadata={
                         "evaluator_id": evaluator_record.id,
-                        "evaluator_name": name,
+                        "evaluator_name": evaluator_name,
                         "model_id": model_record.id,
-                        "yaml_content": evaluator_yaml,
                         "evaluation_launched": False,
                         "evaluation_error": str(exc),
                     },
@@ -594,9 +434,8 @@ class MLEvaluateTool(BaseTool):
             # Build result metadata
             result_metadata = {
                 "evaluator_id": evaluator_record.id,
-                "evaluator_name": name,
+                "evaluator_name": evaluator_name,
                 "model_id": model_record.id,
-                "yaml_content": evaluator_yaml,
                 "evaluation_launched": True,
                 "job_id": job.job_id,
                 "run_id": eval_run.run_id,
@@ -607,78 +446,6 @@ class MLEvaluateTool(BaseTool):
                 output="\n".join(lines),
                 metadata=result_metadata,
             )
-
-    def _create_validator(self):
-        """Create validator function for the workflow."""
-
-        def validate(yaml_str: str) -> list[str]:
-            try:
-                from arc.graph.evaluator import (
-                    EvaluatorValidationError,
-                    validate_evaluator_dict,
-                )
-
-                evaluator_dict = yaml.safe_load(yaml_str)
-                validate_evaluator_dict(evaluator_dict)
-                return []  # No errors
-            except yaml.YAMLError as e:
-                return [f"Invalid YAML: {e}"]
-            except EvaluatorValidationError as e:
-                return [f"Validation error: {e}"]
-            except Exception as e:
-                return [f"Unexpected error: {e}"]
-
-        return validate
-
-    def _create_editor(
-        self,
-        _user_instruction: str,
-        model_id: str,
-        model_record,
-        target_column_exists: bool,
-    ):
-        """Create editor function for AI-assisted editing with conversation history."""
-
-        async def edit(
-            yaml_content: str,
-            feedback: str,
-            context: dict[str, Any],
-            conversation_history: list[dict[str, str]] | None = None,
-        ) -> tuple[str | None, list[dict[str, str]] | None]:
-            # Agent will discover relevant knowledge using tools
-            from arc.core.agents.ml_evaluate import MLEvaluateAgent
-
-            agent = MLEvaluateAgent(
-                self.services,
-                self.api_key,
-                self.base_url,
-                self.model,
-            )
-
-            try:
-                (
-                    _evaluator_spec,
-                    edited_yaml,
-                    updated_history,
-                ) = await agent.generate_evaluator(
-                    name=context["evaluator_name"],
-                    instruction=feedback,
-                    model_ref=model_id,
-                    model_spec_yaml=model_record.spec,
-                    dataset=context["dataset"],
-                    target_column=context["target_column"],
-                    target_column_exists=target_column_exists,
-                    existing_yaml=yaml_content,
-                    recommended_knowledge_ids=None,  # Editing uses conversation_history
-                    conversation_history=conversation_history,
-                )
-                return edited_yaml, updated_history
-            except Exception as e:
-                if self.ui:
-                    self.ui.show_system_error(f"❌ Edit failed: {e}")
-                return None, None
-
-        return edit
 
     async def _handle_tensorboard_launch(self, job_id: str, section_printer=None):
         """Handle TensorBoard launch based on user preference.

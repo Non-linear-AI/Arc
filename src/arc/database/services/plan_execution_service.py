@@ -2,9 +2,10 @@
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from arc.database.base import Database
+if TYPE_CHECKING:
+    from arc.database.manager import DatabaseManager
 
 
 class PlanExecutionService:
@@ -14,13 +15,13 @@ class PlanExecutionService:
     with their SQL/YAML context and outputs.
     """
 
-    def __init__(self, db: Database):
+    def __init__(self, db_manager: "DatabaseManager"):
         """Initialize service.
 
         Args:
-            db: Database connection
+            db_manager: DatabaseManager instance
         """
-        self.db = db
+        self.db_manager = db_manager
 
     def store_execution(
         self,
@@ -45,7 +46,7 @@ class PlanExecutionService:
         """
         now = datetime.now()
 
-        self.db.execute("""
+        self.db_manager.system_execute("""
             INSERT INTO plan_executions
             (id, plan_id, step_type, status, started_at, completed_at, context, outputs, error_message)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -70,17 +71,17 @@ class PlanExecutionService:
         Returns:
             Execution record with context and outputs, or None if not found
         """
-        result = self.db.query("""
+        result = self.db_manager.system_query("""
             SELECT id, plan_id, step_type, status, started_at, completed_at,
                    context, outputs, error_message
             FROM plan_executions
             WHERE id = ?
         """, [execution_id])
 
-        if not result.rows:
+        if result.empty():
             return None
 
-        row = result.rows[0]
+        row = result.first()
         return {
             "id": row["id"],
             "plan_id": row["plan_id"],
@@ -107,7 +108,7 @@ class PlanExecutionService:
         Returns:
             Latest execution record, or None if not found
         """
-        result = self.db.query("""
+        result = self.db_manager.system_query("""
             SELECT id, plan_id, step_type, status, started_at, completed_at,
                    context, outputs, error_message
             FROM plan_executions
@@ -116,10 +117,10 @@ class PlanExecutionService:
             LIMIT 1
         """, [plan_id, step_type])
 
-        if not result.rows:
+        if result.empty():
             return None
 
-        row = result.rows[0]
+        row = result.first()
         return {
             "id": row["id"],
             "plan_id": row["plan_id"],
@@ -141,7 +142,7 @@ class PlanExecutionService:
         Returns:
             List of execution records
         """
-        result = self.db.query("""
+        result = self.db_manager.system_query("""
             SELECT id, plan_id, step_type, status, started_at, completed_at,
                    context, outputs, error_message
             FROM plan_executions
