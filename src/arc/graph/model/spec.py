@@ -60,6 +60,9 @@ class ModelSpec:
     inputs: dict[str, ModelInput]
     graph: list[GraphNode]
     outputs: dict[str, str]
+    name: str | None = None  # Model name (injected by tool)
+    data_table: str | None = None  # Training data table (injected by tool)
+    plan_id: str | None = None  # Optional ML plan ID for lineage tracking
     modules: dict[str, ModuleDefinition] | None = None  # Optional reusable modules
     loss: LossSpec | None = None  # Optional loss function specification
 
@@ -142,8 +145,20 @@ class ModelSpec:
                 params=loss_data.get("params"),
             )
 
+        # Parse metadata fields (optional, injected by tool)
+        name = data.get("name")
+        data_table = data.get("data_table")
+        plan_id = data.get("plan_id")
+
         return cls(
-            inputs=inputs, graph=graph, outputs=outputs, modules=modules, loss=loss
+            inputs=inputs,
+            graph=graph,
+            outputs=outputs,
+            name=name,
+            data_table=data_table,
+            plan_id=plan_id,
+            modules=modules,
+            loss=loss,
         )
 
     @classmethod
@@ -169,11 +184,29 @@ class ModelSpec:
         Returns:
             YAML string representation of the model specification
         """
-        # Convert to dict, filtering out None modules
-        spec_dict = asdict(self)
-        if spec_dict.get("modules") is None:
-            del spec_dict["modules"]
-        return yaml.dump(spec_dict, default_flow_style=False)
+        # Build dict with specific field order
+        spec_dict = {}
+
+        # Metadata fields first (if present)
+        if self.name is not None:
+            spec_dict["name"] = self.name
+        if self.data_table is not None:
+            spec_dict["data_table"] = self.data_table
+        if self.plan_id is not None:
+            spec_dict["plan_id"] = self.plan_id
+
+        # Core spec fields
+        spec_dict["inputs"] = asdict(self)["inputs"]
+        spec_dict["graph"] = asdict(self)["graph"]
+        spec_dict["outputs"] = self.outputs
+
+        # Optional fields
+        if self.modules is not None:
+            spec_dict["modules"] = asdict(self)["modules"]
+        if self.loss is not None:
+            spec_dict["loss"] = asdict(self)["loss"]
+
+        return yaml.dump(spec_dict, default_flow_style=False, sort_keys=False)
 
     def to_yaml_file(self, path: str) -> None:
         """Save ModelSpec to YAML file.

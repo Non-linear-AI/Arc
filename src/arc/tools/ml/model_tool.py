@@ -196,6 +196,26 @@ class MLModelTool(BaseTool):
                     data_processing_id=data_processing_id,
                 )
 
+                # Inject metadata fields into unified YAML
+                # Parse YAML, inject fields, and convert back to YAML string
+                full_spec = yaml.safe_load(unified_yaml)
+                full_spec["name"] = name
+                full_spec["data_table"] = data_table
+                if plan_id:
+                    full_spec["plan_id"] = plan_id
+
+                # Reconstruct YAML with metadata fields at the top
+                # Build dict with specific field order for clean YAML output
+                ordered_spec = {}
+                ordered_spec["name"] = full_spec.pop("name")
+                ordered_spec["data_table"] = full_spec.pop("data_table")
+                if "plan_id" in full_spec:
+                    ordered_spec["plan_id"] = full_spec.pop("plan_id")
+                # Add remaining fields
+                ordered_spec.update(full_spec)
+
+                unified_yaml = yaml.dump(ordered_spec, default_flow_style=False, sort_keys=False)
+
                 # Show completion message
                 if printer:
                     printer.print("[dim]✓ Model generated successfully[/dim]")
@@ -284,18 +304,34 @@ class MLModelTool(BaseTool):
                             metadata={"cancelled": True},
                         )
 
-                    # Re-parse the edited YAML
+                    # Re-parse the edited YAML and re-inject metadata
                     full_spec = yaml.safe_load(final_unified_yaml)
-                    training_config = full_spec.pop("training", None)
+
+                    # Re-inject metadata fields (in case they were removed during editing)
+                    full_spec["name"] = name
+                    full_spec["data_table"] = data_table
+                    if plan_id:
+                        full_spec["plan_id"] = plan_id
+
+                    # Reconstruct YAML with metadata fields at the top
+                    ordered_spec = {}
+                    ordered_spec["name"] = full_spec.pop("name")
+                    ordered_spec["data_table"] = full_spec.pop("data_table")
+                    if "plan_id" in full_spec:
+                        ordered_spec["plan_id"] = full_spec.pop("plan_id")
+                    ordered_spec.update(full_spec)
+
+                    unified_yaml = yaml.dump(ordered_spec, default_flow_style=False, sort_keys=False)
+
+                    # Validate training section still exists
+                    training_config = full_spec.get("training")
                     if not training_config:
                         return _error_in_section(
                             "Edited YAML missing 'training' section"
                         )
-                    loss_config = training_config.pop("loss", None)
+                    loss_config = training_config.get("loss")
                     if not loss_config:
                         return _error_in_section("Edited YAML missing 'training.loss' section")
-                    model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
-                    unified_yaml = final_unified_yaml
                 finally:
                     workflow.cleanup()
 
