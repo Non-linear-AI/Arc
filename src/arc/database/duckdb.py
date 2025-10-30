@@ -672,5 +672,17 @@ class DuckDBDatabase(Database):
         self.close()
 
     def __del__(self) -> None:
-        """Destructor - ensure connection is closed."""
-        self.close()
+        """Destructor - ensure connection is closed.
+
+        Note: Wrapped in try-except to handle garbage collection in
+        multithreaded contexts where DuckDB may have issues closing
+        connections from different threads.
+        """
+        try:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
+        except Exception:
+            # Silently ignore all errors during garbage collection
+            # This prevents fatal errors in multithreaded scenarios
+            pass
