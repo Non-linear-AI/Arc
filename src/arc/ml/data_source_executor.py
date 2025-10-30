@@ -186,6 +186,9 @@ async def execute_data_source_pipeline(
         progress_callback("🤖 Executing pipeline...", "info")
         progress_log.append(("🤖 Executing pipeline...", "info"))
 
+    # Build complete SQL (all steps combined) for context
+    sql_parts = ["BEGIN TRANSACTION;\n\n"]
+
     for i, step in enumerate(ordered_steps, 1):
         # Get step type from the step itself (defaults to 'table' if not set)
         step_type = getattr(step, "type", "table")
@@ -211,6 +214,9 @@ async def execute_data_source_pipeline(
             if step_type == "execute":
                 # Execute directly without wrapping (DDL/DML statements)
                 # These don't create artifacts - just run the SQL as-is
+                sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (execute)\n")
+                sql_parts.append(f"{sql};\n\n")
+
                 if target_db == "system":
                     db_manager.system_execute(sql)
                 else:
@@ -220,6 +226,9 @@ async def execute_data_source_pipeline(
                 # Use CREATE OR REPLACE to handle re-runs
                 # Views persist in the database and are not automatically cleaned up
                 create_sql = f"CREATE OR REPLACE VIEW {quoted_name} AS ({sql})"
+                sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (view)\n")
+                sql_parts.append(f"{create_sql};\n\n")
+
                 if target_db == "system":
                     db_manager.system_execute(create_sql)
                 else:
@@ -228,6 +237,9 @@ async def execute_data_source_pipeline(
                 # Create persistent table for output steps
                 # Use CREATE OR REPLACE to handle re-runs
                 create_sql = f"CREATE OR REPLACE TABLE {quoted_name} AS ({sql})"
+                sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (table)\n")
+                sql_parts.append(f"{create_sql};\n\n")
+
                 if target_db == "system":
                     db_manager.system_execute(create_sql)
                 else:
@@ -244,6 +256,54 @@ async def execute_data_source_pipeline(
 
     # Calculate execution time
     execution_time = time.time() - start_time
+
+    # Complete the SQL string
+    sql_parts.append("COMMIT;")
+    complete_sql = "".join(sql_parts)
+
+    # Collect output schemas and row counts
+    outputs = []
+    for table_name in spec.outputs:
+        quoted_table = quote_sql_identifier(table_name)
+
+        try:
+            # Get schema using DESCRIBE
+            if target_db == "system":
+                schema_result = db_manager.system_query(f"DESCRIBE {quoted_table}")
+            else:
+                schema_result = db_manager.user_query(f"DESCRIBE {quoted_table}")
+
+            columns = [
+                {"name": row["column_name"], "type": row["column_type"]}
+                for row in schema_result.rows
+            ]
+
+            # Get row count
+            if target_db == "system":
+                count_result = db_manager.system_query(
+                    f"SELECT COUNT(*) as count FROM {quoted_table}"
+                )
+            else:
+                count_result = db_manager.user_query(
+                    f"SELECT COUNT(*) as count FROM {quoted_table}"
+                )
+
+            row_count = count_result.rows[0]["count"]
+
+            outputs.append({
+                "name": table_name,
+                "type": "table",
+                "row_count": row_count,
+                "columns": columns,
+            })
+
+        except Exception as e:
+            # If we can't get schema/count, still include basic info
+            outputs.append({
+                "name": table_name,
+                "type": "table",
+                "error": f"Failed to collect metadata: {str(e)}",
+            })
 
     # Report progress: completion
     success_msg = "Pipeline completed successfully"
@@ -268,4 +328,6 @@ async def execute_data_source_pipeline(
         step_count=step_count,
         steps_executed=steps_executed,
         progress_log=progress_log,
+        sql=complete_sql,
+        outputs=outputs,
     )
