@@ -44,6 +44,91 @@ Your goal is to generate a single, valid YAML configuration that:
 No table schema information is available. You must use the database_query tool to explore tables and columns needed to fulfill the request.
 {% endif %}
 
+# ML-Specific Requirements
+
+Your pipeline creates a training dataset for downstream machine learning model training. The final output table MUST meet these requirements:
+
+## Output Schema
+
+The final output table must contain:
+- **Feature columns**: All features must be numeric (DECIMAL, FLOAT, INTEGER). Column names should be lowercase snake_case (e.g., `age`, `glucose_level`, `bmi`).
+- **Target column**: Named according to the task (e.g., `outcome`, `target`, `label`). Type depends on problem:
+  - Binary/multiclass classification: INTEGER (0, 1, 2, ...)
+  - Regression: DECIMAL or FLOAT
+- **Split column**: Must be named `split` (lowercase) with TEXT values:
+  - `'training'` for training samples
+  - `'validation'` for validation samples
+
+## Stratified Train/Validation Splits
+
+When creating train/validation splits, use **stratified splitting** to maintain class distribution:
+
+```sql
+-- Stratified 80/20 split maintaining class balance
+CASE
+  WHEN MOD(ROW_NUMBER() OVER (PARTITION BY target ORDER BY id), 10) < 8
+    THEN 'training'
+  ELSE 'validation'
+END as split
+```
+
+**Key points**:
+- `PARTITION BY target` ensures each class is split proportionally
+- `ORDER BY id` (or another column) ensures reproducibility
+- Use MOD with denominator 10 for easy percentage control (8/10 = 80%)
+
+## Data Leakage Prevention
+
+**CRITICAL**: Fit preprocessing parameters (mean, stddev, min, max) on the training set ONLY, then apply to both train and validation.
+
+**Pattern**:
+1. Create train/val split FIRST
+2. Calculate scaling parameters FROM training samples only (WHERE split = 'training')
+3. Join those parameters back to apply transformations to ALL samples
+
+**Example** (StandardScaler for feature `age`):
+```sql
+WITH split_data AS (
+  -- Step 1: Create split first
+  SELECT *,
+    CASE WHEN MOD(ROW_NUMBER() OVER (PARTITION BY target ORDER BY id), 10) < 8
+      THEN 'training' ELSE 'validation' END as split
+  FROM "source_table"
+),
+train_stats AS (
+  -- Step 2: Calculate mean/stddev from training set only
+  SELECT
+    AVG(age) as age_mean,
+    STDDEV(age) as age_stddev
+  FROM split_data
+  WHERE split = 'training'
+)
+SELECT
+  -- Step 3: Apply to both train and validation
+  (age - train_stats.age_mean) / NULLIF(train_stats.age_stddev, 0) as age_scaled,
+  target,
+  split
+FROM split_data
+CROSS JOIN train_stats
+```
+
+## Feature Engineering Patterns
+
+**StandardScaler**: `(value - mean) / stddev` (fit mean/stddev on training only)
+
+**MinMaxScaler**: `(value - min) / (max - min)` (fit min/max on training only)
+
+**One-hot encoding**: Use CASE statements:
+```sql
+CASE WHEN category = 'A' THEN 1 ELSE 0 END as category_a,
+CASE WHEN category = 'B' THEN 1 ELSE 0 END as category_b
+```
+
+**Missing value imputation**: Use COALESCE with training-set statistics:
+```sql
+COALESCE(feature_value, training_median) as feature_imputed
+```
+
 # Available Tools
 
 Use these tools sparingly. Only use them when the provided schema is insufficient.
@@ -189,22 +274,23 @@ The database engine is unknown (could be PostgreSQL, MySQL, SQLite, DuckDB, etc.
 | USING SAMPLE, TABLESAMPLE | MOD(ROW_NUMBER()...) pattern (see below) |
 | NOW(), GETDATE() | Do not use; all SQL must be deterministic. |
 
-## 4. Random Split Pattern
+## 4. Train/Validation Split Pattern
 
-Use MOD and ROW_NUMBER() for reproducible, pseudo-random splits.
+Use MOD and ROW_NUMBER() for reproducible splits. **Prefer stratified splits** to maintain class balance (see ML-Specific Requirements above).
 
 ```sql
--- Example: 80/20 train/validation split
+-- Stratified 80/20 split (maintains class distribution)
 SELECT
   *,
   CASE
-    WHEN MOD(ROW_NUMBER() OVER (ORDER BY id), 10) < 8 THEN 'training'
+    WHEN MOD(ROW_NUMBER() OVER (PARTITION BY target ORDER BY id), 10) < 8
+      THEN 'training'
     ELSE 'validation'
   END as split
 FROM "source_table"
 ```
 
-(Note: ORDER BY id ensures reproducibility. If id is not available, use another unique or semi-unique column. ORDER BY (SELECT NULL) is a last resort for non-deterministic splitting if required.)
+**Key**: `PARTITION BY target` ensures proportional sampling from each class. For regression tasks or when stratification is not needed, omit `PARTITION BY target`.
 
 ## 5. Defensive SQL
 
@@ -270,64 +356,109 @@ steps:
 - Reference a step name in outputs that does not exist in steps.
 
 {% if not existing_yaml %}
-# Example: New Pipeline
+# Example: ML Training Dataset Pipeline
 
-This example demonstrates idempotency, NULL handling, window functions, aggregations, and a correct outputs list.
+This example demonstrates ML-specific feature engineering for a binary classification task (diabetes prediction): stratified splitting, StandardScaler preprocessing, data leakage prevention, and proper output schema.
 
 ```yaml
 steps:
-  - name: drop_old_features
+  - name: drop_old_training_data
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS "user_features"
+    sql: DROP TABLE IF EXISTS "diabetes_training_data"
 
-  - name: drop_old_clean_data
+  - name: drop_old_split_data
     type: execute
     depends_on: []
-    sql: DROP VIEW IF EXISTS "clean_data"
+    sql: DROP VIEW IF EXISTS "diabetes_split_data"
 
-  - name: clean_data
+  # Step 1: Create stratified train/val split (80/20)
+  - name: diabetes_split_data
     type: view
-    depends_on: [drop_old_clean_data, transactions]
+    depends_on: [drop_old_split_data, diabetes]
     sql: |
       SELECT
-        user_id,
-        CAST(amount AS DECIMAL(10, 2)) as amount,
-        transaction_date,
-        COALESCE(category, 'UNKNOWN') as category
-      FROM "transactions"
-      WHERE transaction_date >= '2023-01-01'
-        AND amount > 0
-        AND user_id IS NOT NULL
+        *,
+        CASE
+          WHEN MOD(ROW_NUMBER() OVER (PARTITION BY Outcome ORDER BY id), 10) < 8
+            THEN 'training'
+          ELSE 'validation'
+        END as split
+      FROM "diabetes"
+      WHERE Pregnancies IS NOT NULL
+        AND Glucose IS NOT NULL
+        AND BloodPressure IS NOT NULL
+        AND Outcome IS NOT NULL
 
-  - name: user_features
+  # Step 2: Calculate scaling parameters from training set ONLY
+  - name: drop_old_train_stats
+    type: execute
+    depends_on: []
+    sql: DROP VIEW IF EXISTS "train_stats"
+
+  - name: train_stats
+    type: view
+    depends_on: [drop_old_train_stats, diabetes_split_data]
+    sql: |
+      SELECT
+        AVG(Pregnancies) as pregnancies_mean,
+        STDDEV(Pregnancies) as pregnancies_stddev,
+        AVG(Glucose) as glucose_mean,
+        STDDEV(Glucose) as glucose_stddev,
+        AVG(BloodPressure) as bp_mean,
+        STDDEV(BloodPressure) as bp_stddev,
+        AVG(SkinThickness) as skin_mean,
+        STDDEV(SkinThickness) as skin_stddev,
+        AVG(Insulin) as insulin_mean,
+        STDDEV(Insulin) as insulin_stddev,
+        AVG(BMI) as bmi_mean,
+        STDDEV(BMI) as bmi_stddev,
+        AVG(DiabetesPedigreeFunction) as dpf_mean,
+        STDDEV(DiabetesPedigreeFunction) as dpf_stddev,
+        AVG(Age) as age_mean,
+        STDDEV(Age) as age_stddev
+      FROM "diabetes_split_data"
+      WHERE split = 'training'
+
+  # Step 3: Apply StandardScaler to ALL samples using training statistics
+  - name: diabetes_training_data
     type: table
-    depends_on: [drop_old_features, clean_data]
+    depends_on: [drop_old_training_data, diabetes_split_data, train_stats]
     sql: |
-      WITH ranked_transactions AS (
-        SELECT
-          user_id,
-          amount,
-          transaction_date,
-          ROW_NUMBER() OVER (
-            PARTITION BY user_id
-            ORDER BY transaction_date DESC
-          ) as rn
-        FROM "clean_data"
-      )
       SELECT
-        user_id,
-        COUNT(*) as transaction_count,
-        SUM(amount) as total_spent,
-        AVG(amount) as average_spent,
-        MAX(transaction_date) as last_transaction_date,
-        MAX(CASE WHEN rn = 1 THEN amount ELSE 0 END) as most_recent_amount
-      FROM ranked_transactions
-      GROUP BY user_id
-      HAVING COUNT(*) >= 2
+        -- Scaled features (StandardScaler: (x - mean) / stddev)
+        (Pregnancies - train_stats.pregnancies_mean) /
+          NULLIF(train_stats.pregnancies_stddev, 0) as pregnancies,
+        (Glucose - train_stats.glucose_mean) /
+          NULLIF(train_stats.glucose_stddev, 0) as glucose,
+        (BloodPressure - train_stats.bp_mean) /
+          NULLIF(train_stats.bp_stddev, 0) as blood_pressure,
+        (SkinThickness - train_stats.skin_mean) /
+          NULLIF(train_stats.skin_stddev, 0) as skin_thickness,
+        (Insulin - train_stats.insulin_mean) /
+          NULLIF(train_stats.insulin_stddev, 0) as insulin,
+        (BMI - train_stats.bmi_mean) /
+          NULLIF(train_stats.bmi_stddev, 0) as bmi,
+        (DiabetesPedigreeFunction - train_stats.dpf_mean) /
+          NULLIF(train_stats.dpf_stddev, 0) as diabetes_pedigree,
+        (Age - train_stats.age_mean) /
+          NULLIF(train_stats.age_stddev, 0) as age,
+        -- Target column (INTEGER for binary classification)
+        Outcome as outcome,
+        -- Split column (TEXT: 'training' or 'validation')
+        diabetes_split_data.split as split
+      FROM "diabetes_split_data"
+      CROSS JOIN "train_stats"
 
-outputs: [user_features]
+outputs: [diabetes_training_data]
 ```
+
+**Key features demonstrated**:
+- Stratified 80/20 split maintaining Outcome class balance (PARTITION BY Outcome)
+- Data leakage prevention: statistics calculated from training set only, then applied to both train and validation
+- StandardScaler implementation: `(value - mean) / stddev` with NULLIF for division-by-zero protection
+- Proper output schema: numeric features + `outcome` target + `split` column
+- Idempotency: DROP statements for all created objects
 {% endif %}
 
 # Output Format
