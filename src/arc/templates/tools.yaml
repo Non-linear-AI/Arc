@@ -286,6 +286,10 @@ tools:
 
       This tool replaces the old separate ml_model + ml_train workflow. If plan_id is provided,
       uses unified model_plan guidance (architecture + training).
+
+      IMPORTANT: If ml_data was called previously and returned a data_processing_id in its result,
+      pass that ID to this tool. It will load the SQL transformations and output schemas to
+      understand how training data was prepared, enabling better architecture decisions.
     parameters:
       type: object
       properties:
@@ -309,6 +313,12 @@ tools:
           description: |
             Optional ML plan ID (e.g., 'pidd-plan-v1'). When provided, loads plan
             from database and uses its unified model_plan guidance.
+        data_processing_id:
+          type: string
+          description: |
+            Optional data processing execution ID from ml_data tool result. When provided,
+            loads SQL transformations and output schemas to understand feature engineering.
+            Extract this from ml_data's result metadata: result.metadata.data_processing_id
       required:
         - name
         - instruction
