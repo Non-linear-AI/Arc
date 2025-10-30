@@ -526,6 +526,34 @@ class DuckDBDatabase(Database):
                         WHERE name IS NULL
                     """)
 
+            # Plan executions table - tracks execution of plan steps (data processing, training, etc.)
+            self.execute("""
+                CREATE TABLE IF NOT EXISTS plan_executions (
+                    id TEXT PRIMARY KEY,
+                    plan_id TEXT NOT NULL,
+                    step_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TIMESTAMP NOT NULL,
+                    completed_at TIMESTAMP,
+                    context TEXT NOT NULL,
+                    outputs JSON NOT NULL,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (plan_id) REFERENCES plans(plan_id)
+                );
+            """)
+
+            # Create indexes for plan execution lookups
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_plan_executions_plan
+                ON plan_executions(plan_id);
+            """)
+
+            self.execute("""
+                CREATE INDEX IF NOT EXISTS idx_plan_executions_step_type
+                ON plan_executions(plan_id, step_type);
+            """)
+
             # Training tracking tables
             self.execute("""
                 CREATE TABLE IF NOT EXISTS training_runs (
