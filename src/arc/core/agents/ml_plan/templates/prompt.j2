@@ -25,6 +25,16 @@ Do not include markdown code fences.
 
 Analyze the ML problem and create a detailed, implementable plan covering data processing, model architecture, and training strategy.
 
+## Execution Workflow
+
+Your plan will be executed in two sequential stages:
+
+1. **Feature Engineering Stage**: The `data_plan` is applied to source tables to create a feature-engineered training dataset (includes preprocessing, splits, transformations)
+
+2. **Model Training Stage**: The `model_plan` trains the model using the feature-engineered dataset produced by stage 1
+
+**Key implication**: When writing `model_plan`, base your reasoning on the transformations described in `data_plan` (e.g., training split size, feature dimensions after encoding), but remember the model will operate on the transformed dataset, not the raw source tables.
+
 ## User Request
 
 **Context**: {{ user_context }}
@@ -153,8 +163,9 @@ model_plan: >-
   stability). Final Linear(32,1) outputs raw logits as required.
 
   Training: Adam optimizer with lr=0.001, weight_decay=1e-4 for L2 regularization.
-  Batch size 32 (768 samples = 24 batches per epoch) balances gradient noise and memory.
-  Train for 100 epochs with early stopping (patience=15) on validation loss.
+  Batch size 32 (~614 training samples after 80/20 split = ~19 batches per epoch) balances
+  gradient noise and memory. Train for 100 epochs with early stopping (patience=15) on
+  validation loss.
 
   Validation Metrics: Track AUROC (primary metric due to 35% class imbalance), F1-score,
   Accuracy, Precision, and Recall. AUROC chosen as primary because it evaluates model
