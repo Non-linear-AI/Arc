@@ -60,6 +60,7 @@ class MLModelAgent(BaseAgent):
         model_plan: str | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
+        data_processing_id: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Generate unified model + training specification.
 
@@ -73,6 +74,7 @@ class MLModelAgent(BaseAgent):
             model_plan: Optional ML plan guidance (architecture + training unified)
             preloaded_knowledge: Optional list of preloaded knowledge docs
             conversation_history: Optional conversation history for editing workflow
+            data_processing_id: Optional execution ID to load data processing context
 
         Returns:
             Tuple of (parsed ModelSpec object, unified YAML string, conversation_history)
@@ -94,6 +96,7 @@ class MLModelAgent(BaseAgent):
                 editing_instructions=editing_instructions,
                 model_plan=model_plan,
                 preloaded_knowledge=preloaded_knowledge,
+                data_processing_id=data_processing_id,
             )
         else:
             # Continue conversation - just append feedback
@@ -112,12 +115,37 @@ class MLModelAgent(BaseAgent):
         editing_instructions: str | None = None,
         model_plan: str | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
+        data_processing_id: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
         This path is used for initial generation or when starting a new conversation.
         It builds the complete system message with data profiling and knowledge loading.
         """
+        # Load data processing context if execution ID provided
+        data_processing_context = None
+        if data_processing_id:
+            try:
+                execution = self.services.plan_executions.get_execution(data_processing_id)
+                if execution:
+                    # Build context summary from execution record
+                    output_tables = [out["name"] for out in execution["outputs"]]
+                    data_processing_context = {
+                        "execution_id": data_processing_id,
+                        "sql_context": execution["context"],
+                        "output_tables": output_tables,
+                        "outputs": execution["outputs"],
+                    }
+                    # Use first output table as the primary table for profiling
+                    if output_tables and not table_name:
+                        table_name = output_tables[0]
+            except Exception as e:
+                # Log but don't fail - continue without context
+                if self.progress_callback:
+                    self.progress_callback(
+                        f"⚠️ Failed to load data processing context: {e}"
+                    )
+
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
@@ -144,6 +172,7 @@ class MLModelAgent(BaseAgent):
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,
                 "is_editing": existing_yaml is not None,
+                "data_processing_context": data_processing_context,
             },
         )
 
