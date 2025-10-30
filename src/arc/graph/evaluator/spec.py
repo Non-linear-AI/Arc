@@ -21,7 +21,7 @@ class EvaluatorSpec:
     """
 
     name: str
-    trainer_ref: str  # Reference to trainer (which knows the model)
+    model_id: str  # Model ID to evaluate (e.g., 'my-model-v1')
     dataset: str  # Test dataset table name
     target_column: str  # Target column name in the dataset
     metrics: list[str] | None = None  # Metric names (infer if None)
@@ -56,7 +56,7 @@ class EvaluatorSpec:
         """
         data = {
             "name": self.name,
-            "trainer_ref": self.trainer_ref,
+            "model_id": self.model_id,
             "dataset": self.dataset,
             "target_column": self.target_column,
         }
@@ -89,22 +89,22 @@ def validate_evaluator_dict(data: dict[str, Any]) -> EvaluatorSpec:
         # Required fields
         if "name" not in data:
             raise EvaluatorValidationError("Missing required field: name")
-        if "trainer_ref" not in data:
-            raise EvaluatorValidationError("Missing required field: trainer_ref")
+        if "model_id" not in data:
+            raise EvaluatorValidationError("Missing required field: model_id")
         if "dataset" not in data:
             raise EvaluatorValidationError("Missing required field: dataset")
         if "target_column" not in data:
             raise EvaluatorValidationError("Missing required field: target_column")
 
         name = data["name"]
-        trainer_ref = data["trainer_ref"]
+        model_id = data["model_id"]
         dataset = data["dataset"]
         target_column = data["target_column"]
 
         if not isinstance(name, str) or not name.strip():
             raise EvaluatorValidationError("name must be a non-empty string")
-        if not isinstance(trainer_ref, str) or not trainer_ref.strip():
-            raise EvaluatorValidationError("trainer_ref must be a non-empty string")
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise EvaluatorValidationError("model_id must be a non-empty string")
         if not isinstance(dataset, str) or not dataset.strip():
             raise EvaluatorValidationError("dataset must be a non-empty string")
         if not isinstance(target_column, str) or not target_column.strip():
@@ -132,7 +132,7 @@ def validate_evaluator_dict(data: dict[str, Any]) -> EvaluatorSpec:
 
         return EvaluatorSpec(
             name=name.strip(),
-            trainer_ref=trainer_ref.strip(),
+            model_id=model_id.strip(),
             dataset=dataset.strip(),
             target_column=target_column.strip(),
             metrics=[m.strip() for m in metrics] if metrics else None,
@@ -186,7 +186,7 @@ def save_evaluator_to_yaml(spec: EvaluatorSpec, file_path: str | Path) -> None:
     """
     data = {
         "name": spec.name,
-        "trainer_ref": spec.trainer_ref,
+        "model_id": spec.model_id,
         "dataset": spec.dataset,
         "target_column": spec.target_column,
     }

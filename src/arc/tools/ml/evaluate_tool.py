@@ -166,7 +166,7 @@ class MLEvaluateTool(BaseTool):
 
             evaluator_spec = EvaluatorSpec(
                 name=evaluator_name,
-                trainer_ref=str(model_id),  # Use model_id as trainer reference
+                model_id=str(model_id),
                 dataset=str(data_table),
                 target_column=str(target_column),
                 metrics=metrics,  # None = infer from model's loss function
