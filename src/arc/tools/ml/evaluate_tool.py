@@ -68,7 +68,7 @@ class MLEvaluateTool(BaseTool):
         self,
         *,
         model_id: str | None = None,
-        dataset: str | None = None,
+        data_table: str | None = None,
         metrics: list[str] | None = None,
         output_table: str | None = None,
         auto_confirm: bool = False,
@@ -77,7 +77,7 @@ class MLEvaluateTool(BaseTool):
 
         Args:
             model_id: Model ID with version (e.g., 'my-model-v1')
-            dataset: Test dataset table name
+            data_table: Test dataset table name
             metrics: Optional list of metrics to compute (inferred from model if not provided)
             output_table: Optional table to save predictions
             auto_confirm: Skip confirmation workflows (for testing only)
@@ -110,9 +110,9 @@ class MLEvaluateTool(BaseTool):
                 )
 
             # Validate required parameters
-            if not model_id or not dataset:
+            if not model_id or not data_table:
                 return _error_in_section(
-                    "Parameters 'model_id' and 'dataset' are required."
+                    "Parameters 'model_id' and 'data_table' are required."
                 )
 
             # Get the registered model
@@ -137,11 +137,11 @@ class MLEvaluateTool(BaseTool):
             except Exception as exc:
                 return _error_in_section(f"Failed to infer target column: {exc}")
 
-            # Check if target column exists in dataset
+            # Check if target column exists in data_table
             target_column_exists = False
             try:
                 schema_info = self.services.schema.get_schema_info(target_db="user")
-                columns = schema_info.get_column_names(str(dataset))
+                columns = schema_info.get_column_names(str(data_table))
                 target_column_exists = str(target_column) in columns
             except Exception:
                 # If schema check fails, default to assuming target exists
@@ -156,7 +156,7 @@ class MLEvaluateTool(BaseTool):
             evaluator_spec = EvaluatorSpec(
                 name=evaluator_name,
                 model_ref=str(model_id),
-                dataset=str(dataset),
+                dataset=str(data_table),
                 target_column=str(target_column),
                 metrics=metrics,  # None = infer from model's loss function
                 version=None,  # Use latest training run
@@ -170,7 +170,7 @@ class MLEvaluateTool(BaseTool):
                 printer.print("")
                 printer.print(
                     f"[dim]✓ Evaluator created for model '{model_id}' "
-                    f"on dataset '{dataset}'[/dim]"
+                    f"on dataset '{data_table}'[/dim]"
                 )
 
             # Auto-register evaluator to database (or reuse existing)
@@ -220,7 +220,7 @@ class MLEvaluateTool(BaseTool):
                         model_id=model_record.id,
                         model_version=model_record.version,
                         spec=evaluator_yaml,
-                        description=f"Evaluator for {model_id} on {dataset}",
+                        description=f"Evaluator for {model_id} on {data_table}",
                         created_at=datetime.now(UTC),
                         updated_at=datetime.now(UTC),
                     )
@@ -250,7 +250,7 @@ class MLEvaluateTool(BaseTool):
             job = Job.create(
                 job_type=JobType.EVALUATE_MODEL,
                 model_id=None,  # Not using legacy model_id
-                message=f"Evaluating {evaluator_record.id} on {dataset}",
+                message=f"Evaluating {evaluator_record.id} on {data_table}",
             )
             self.services.jobs.create_job(job)
 
@@ -266,7 +266,7 @@ class MLEvaluateTool(BaseTool):
                 eval_run = tracking_service.create_run(
                     evaluator_id=evaluator_record.id,
                     model_id=model_record.id,
-                    dataset=str(dataset),
+                    dataset=str(data_table),
                     target_column=str(target_column),
                     job_id=job.job_id,
                 )
@@ -356,7 +356,7 @@ class MLEvaluateTool(BaseTool):
                 lines.append("")
                 lines.append("✓ Evaluation job submitted successfully.")
                 lines.append(f"  Evaluator: {evaluator_record.id}")
-                lines.append(f"  Dataset: {dataset}")
+                lines.append(f"  Dataset: {data_table}")
                 lines.append(f"  Job ID: {job.job_id}")
                 lines.append(f"  Run ID: {eval_run.run_id}")
 

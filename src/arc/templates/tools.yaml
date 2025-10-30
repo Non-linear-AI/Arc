@@ -353,7 +353,7 @@ tools:
         model_id:
           type: string
           description: Model ID with version (e.g., 'my-model-v1')
-        dataset:
+        data_table:
           type: string
           description: Test dataset table name for evaluation
         metrics:
@@ -372,7 +372,7 @@ tools:
             If not provided, predictions are not saved to database.
       required:
         - model_id
-        - dataset
+        - data_table
 
   - name: ml_data
     description: |

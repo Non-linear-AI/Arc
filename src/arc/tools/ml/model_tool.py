@@ -253,6 +253,34 @@ class MLModelTool(BaseTool):
                 # Validate model portion (without loss - loss is in training config)
                 validate_model_dict(full_spec)
 
+                # Add loss to model spec level for easy access by other tools (e.g., evaluate)
+                full_spec["loss"] = loss_config
+
+                # Reconstruct unified YAML with loss in both places:
+                # 1. At model spec level (for evaluation and inference)
+                # 2. In training section (for training execution)
+                training_config["loss"] = loss_config  # Add back to training
+                full_spec["training"] = training_config  # Add training back to spec
+
+                # Rebuild with proper field ordering
+                ordered_spec = {}
+                if "name" in full_spec:
+                    ordered_spec["name"] = full_spec.pop("name")
+                if "data_table" in full_spec:
+                    ordered_spec["data_table"] = full_spec.pop("data_table")
+                if "plan_id" in full_spec:
+                    ordered_spec["plan_id"] = full_spec.pop("plan_id")
+                ordered_spec["inputs"] = full_spec.pop("inputs")
+                if "modules" in full_spec:
+                    ordered_spec["modules"] = full_spec.pop("modules")
+                ordered_spec["graph"] = full_spec.pop("graph")
+                ordered_spec["outputs"] = full_spec.pop("outputs")
+                ordered_spec["loss"] = full_spec.pop("loss")
+                ordered_spec["training"] = full_spec.pop("training")
+
+                # Update unified_yaml with the reconstructed version
+                unified_yaml = yaml.dump(ordered_spec, default_flow_style=False, sort_keys=False)
+
                 # Convert back to YAML for model-only storage (without loss)
                 model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
 

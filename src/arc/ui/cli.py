@@ -710,20 +710,20 @@ async def _ml_evaluate(
         args,
         {
             "model-id": True,
-            "dataset": True,
+            "data-table": True,
             "metrics": True,  # Optional comma-separated list
             "output-table": True,  # Optional table for predictions
         },
     )
 
     model_id = options.get("model-id")
-    dataset = options.get("dataset")
+    data_table = options.get("data-table")
     metrics_str = options.get("metrics")
     output_table = options.get("output-table")
 
-    if not model_id or not dataset:
+    if not model_id or not data_table:
         raise CommandError(
-            "/ml evaluate requires --model-id and --dataset"
+            "/ml evaluate requires --model-id and --data-table"
         )
 
     # Parse metrics if provided
@@ -754,7 +754,7 @@ async def _ml_evaluate(
         # Execute the tool: create evaluator and run evaluation
         result = await tool.execute(
             model_id=model_id,
-            dataset=dataset,
+            data_table=data_table,
             metrics=metrics,
             output_table=output_table,
         )
