@@ -43,7 +43,7 @@ class KnowledgeMetadata:
 
     def __str__(self) -> str:
         """String representation for LLM context."""
-        keywords_str = ', '.join(self.keywords) if self.keywords else 'none'
+        keywords_str = ", ".join(self.keywords) if self.keywords else "none"
         return (
             f"- {self.id} (type: {self.type})\n"
             f"  {self.description}\n"
@@ -195,11 +195,13 @@ class KnowledgeLoader:
             content, _ = self.load_knowledge(knowledge_id, phase)
             if content:
                 metadata = metadata_map.get(knowledge_id)
-                results.append({
-                    "id": knowledge_id,
-                    "name": metadata.name if metadata else knowledge_id,
-                    "content": content
-                })
+                results.append(
+                    {
+                        "id": knowledge_id,
+                        "name": metadata.name if metadata else knowledge_id,
+                        "content": content,
+                    }
+                )
 
         return results
 

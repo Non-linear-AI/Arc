@@ -28,14 +28,13 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.database import DatabaseManager
-from arc.database.services import ServiceContainer
-from arc.tools.ml_data import MLDataTool
+from arc.database import DatabaseManager  # noqa: E402
+from arc.database.services import ServiceContainer  # noqa: E402
+from arc.tools.ml_data import MLDataTool  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -45,22 +44,19 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Test ml_data tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
-    parser.add_argument(
-        "name",
-        help="Name for the data processor"
-    )
+    parser.add_argument("name", help="Name for the data processor")
 
     parser.add_argument(
         "instruction",
-        help="Natural language description of data processing requirements"
+        help="Natural language description of data processing requirements",
     )
 
     parser.add_argument(
         "source_tables",
-        help="Comma-separated list of source tables (e.g., 'pidd' or 'users,transactions')"
+        help="Comma-separated list of source tables (e.g., 'pidd' or 'users,transactions')",
     )
 
     parser.add_argument(
@@ -68,53 +64,45 @@ def parse_args():
         "-d",
         choices=["system", "user"],
         default="user",
-        help="Target database (default: user)"
+        help="Target database (default: user)",
     )
 
     parser.add_argument(
-        "--plan-id",
-        "-p",
-        help="Optional ML plan ID (e.g., 'diabetes-plan-v1')"
+        "--plan-id", "-p", help="Optional ML plan ID (e.g., 'diabetes-plan-v1')"
     )
 
     parser.add_argument(
-        "--api-key",
-        help="API key for LLM calls (default: from ARC_API_KEY env var)"
+        "--api-key", help="API key for LLM calls (default: from ARC_API_KEY env var)"
     )
 
     parser.add_argument(
-        "--base-url",
-        help="Base URL for LLM API (default: from ARC_BASE_URL env var)"
+        "--base-url", help="Base URL for LLM API (default: from ARC_BASE_URL env var)"
     )
 
     parser.add_argument(
-        "--model",
-        help="Model name for LLM (default: from settings or claude-sonnet-4)"
+        "--model", help="Model name for LLM (default: from settings or claude-sonnet-4)"
     )
 
     parser.add_argument(
         "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)",
     )
 
     parser.add_argument(
         "--user-db",
         default="~/.arc/arc_user.db",
-        help="Path to Arc user database (default: ~/.arc/arc_user.db)"
+        help="Path to Arc user database (default: ~/.arc/arc_user.db)",
     )
 
     parser.add_argument(
         "--auto-confirm",
         action="store_true",
-        help="Skip interactive confirmation workflow"
+        help="Skip interactive confirmation workflow",
     )
 
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
     return parser.parse_args()
@@ -132,6 +120,7 @@ async def main():
     try:
         # Get API configuration
         import os
+
         api_key = args.api_key or os.getenv("ARC_API_KEY", "")
         base_url = args.base_url or os.getenv("ARC_BASE_URL")
         model = args.model or os.getenv("ARC_MODEL", "claude-sonnet-4")
@@ -217,7 +206,7 @@ async def main():
         return 1
     finally:
         # Clean up
-        if 'db_manager' in locals():
+        if "db_manager" in locals():
             db_manager.close()
 
 

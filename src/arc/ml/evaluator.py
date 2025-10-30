@@ -835,9 +835,7 @@ class ArcEvaluator:
             # 1. Load model spec
             model = model_service.get_model_by_id(evaluator_spec.model_id)
             if not model:
-                raise EvaluationError(
-                    f"Model '{evaluator_spec.model_id}' not found"
-                )
+                raise EvaluationError(f"Model '{evaluator_spec.model_id}' not found")
 
             model_ref = model.id
             # Use base model name (not versioned ID) to query training runs

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 import yaml
 
 from arc.ml.runtime import MLRuntime
 from arc.tools.base import BaseTool, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class MLEvaluateTool(BaseTool):
@@ -135,7 +138,9 @@ class MLEvaluateTool(BaseTool):
                         "Train a model first using /ml model"
                     )
             except Exception as exc:
-                return _error_in_section(f"Failed to retrieve model '{model_id}': {exc}")
+                return _error_in_section(
+                    f"Failed to retrieve model '{model_id}': {exc}"
+                )
 
             # Infer target column from model spec
             try:
@@ -148,15 +153,17 @@ class MLEvaluateTool(BaseTool):
             except Exception as exc:
                 return _error_in_section(f"Failed to infer target column: {exc}")
 
-            # Check if target column exists in data_table
-            target_column_exists = False
+            # Validate target column exists in data_table (schema check only)
             try:
                 schema_info = self.services.schema.get_schema_info(target_db="user")
                 columns = schema_info.get_column_names(str(data_table))
-                target_column_exists = str(target_column) in columns
+                if str(target_column) not in columns:
+                    logger.warning(
+                        f"Target column '{target_column}' not found in '{data_table}' schema"
+                    )
             except Exception:
-                # If schema check fails, default to assuming target exists
-                target_column_exists = True
+                # If schema check fails, proceed anyway (table might exist at runtime)
+                pass
 
             # Create evaluator spec directly (no LLM generation needed)
             from arc.graph.evaluator import EvaluatorSpec
@@ -191,8 +198,10 @@ class MLEvaluateTool(BaseTool):
                 from arc.database.models.evaluator import Evaluator
 
                 # Check if evaluator with same spec already exists
-                existing_evaluator = self.services.evaluators.get_latest_evaluator_by_name(
-                    evaluator_name
+                existing_evaluator = (
+                    self.services.evaluators.get_latest_evaluator_by_name(
+                        evaluator_name
+                    )
                 )
                 evaluator_record = None
 

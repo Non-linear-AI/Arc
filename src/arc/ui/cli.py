@@ -7,7 +7,6 @@ import shlex
 import sys
 import time
 from contextlib import suppress
-from pathlib import Path
 
 import click
 import yaml
@@ -671,6 +670,7 @@ async def _ml_model(
         tensorboard_manager = None
         try:
             from arc.ml import TensorBoardManager
+
             tensorboard_manager = TensorBoardManager()
         except Exception:
             tensorboard_manager = None
@@ -722,9 +722,7 @@ async def _ml_evaluate(
     output_table = options.get("output-table")
 
     if not model_id or not data_table:
-        raise CommandError(
-            "/ml evaluate requires --model-id and --data-table"
-        )
+        raise CommandError("/ml evaluate requires --model-id and --data-table")
 
     # Parse metrics if provided
     metrics = None
@@ -747,9 +745,7 @@ async def _ml_evaluate(
             tensorboard_manager = None
 
         # Create the tool with proper dependencies (no API key needed for evaluation)
-        tool = MLEvaluateTool(
-            runtime.services, runtime, ui, tensorboard_manager
-        )
+        tool = MLEvaluateTool(runtime.services, runtime, ui, tensorboard_manager)
 
         # Execute the tool: create evaluator and run evaluation
         result = await tool.execute(

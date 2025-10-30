@@ -140,11 +140,13 @@ class MLDataAgent(BaseAgent):
                         knowledge_id, "data"
                     )
                     if content and actual_phase:
-                        preloaded_knowledge.append({
-                            "id": knowledge_id,
-                            "name": knowledge_id,
-                            "content": content
-                        })
+                        preloaded_knowledge.append(
+                            {
+                                "id": knowledge_id,
+                                "name": knowledge_id,
+                                "content": content,
+                            }
+                        )
                         loaded_knowledge_ids.append(knowledge_id)
                         self._loaded_knowledge.add((knowledge_id, actual_phase))
             else:

@@ -113,7 +113,6 @@ class TestTrainingRunOperations:
         run = tracking_service.create_run(
             job_id="job-123",
             model_id="model-456",
-            trainer_id="trainer-789",
             run_name="Test Run",
             description="Test training run",
             tensorboard_enabled=True,
@@ -125,14 +124,13 @@ class TestTrainingRunOperations:
 
         assert run.job_id == "job-123"
         assert run.model_id == "model-456"
-        assert run.trainer_id == "trainer-789"
         assert run.run_name == "Test Run"
         assert run.description == "Test training run"
         assert run.tensorboard_log_dir == "/tmp/tb_logs"
         assert run.metric_log_frequency == 50
         assert run.checkpoint_frequency == 10
-        assert run.original_config is not None
-        assert "epochs" in run.original_config
+        assert run.training_config is not None
+        assert "epochs" in run.training_config
 
     def test_get_run_by_id(self, tracking_service):
         """Test retrieving a run by ID."""
@@ -229,18 +227,6 @@ class TestTrainingRunOperations:
         updated_run = tracking_service.get_run_by_id(run.run_id)
         assert updated_run.status == TrainingStatus.RUNNING
         assert updated_run.started_at is not None
-
-    def test_update_run_config(self, tracking_service):
-        """Test updating run configuration."""
-        original_config = {"epochs": 10, "batch_size": 32}
-        run = tracking_service.create_run(config=original_config)
-
-        new_config = {"epochs": 20, "batch_size": 64}
-        tracking_service.update_run_config(run.run_id, new_config)
-
-        updated_run = tracking_service.get_run_by_id(run.run_id)
-        assert "20" in updated_run.current_config
-        assert updated_run.config_history is not None
 
     def test_delete_run(self, tracking_service):
         """Test deleting a run."""

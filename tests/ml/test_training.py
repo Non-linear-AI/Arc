@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -12,7 +11,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from arc.ml.training import (
-    ProgressCallback,
     TrainingResult,
     _get_loss_function,
     _get_optimizer,

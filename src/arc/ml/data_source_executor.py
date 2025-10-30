@@ -229,13 +229,15 @@ async def execute_data_source_pipeline(
                 if step_type == "execute":
                     # Execute directly without wrapping (DDL/DML statements)
                     # These don't create artifacts - just run the SQL as-is
-                    sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (execute)\n")
+                    sql_parts.append(
+                        f"-- Step {i}/{step_count}: {step.name} (execute)\n"
+                    )
                     sql_parts.append(f"{sql};\n\n")
 
                     execute_fn(sql)
                 elif step_type == "view":
                     # Create persistent view for intermediate steps
-                    # Drop both table and view first (in case object exists with wrong type)
+                    # Drop both table and view first (in case object exists with wrong type)  # noqa: E501
                     sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (view)\n")
                     sql_parts.append(f"DROP TABLE IF EXISTS {quoted_name};\n")
                     sql_parts.append(f"DROP VIEW IF EXISTS {quoted_name};\n")
@@ -248,7 +250,7 @@ async def execute_data_source_pipeline(
                     execute_fn(create_sql)
                 elif step_type == "table":
                     # Create persistent table for output steps
-                    # Drop both table and view first (in case object exists with wrong type)
+                    # Drop both table and view first (in case object exists with wrong type)  # noqa: E501
                     sql_parts.append(f"-- Step {i}/{step_count}: {step.name} (table)\n")
                     sql_parts.append(f"DROP VIEW IF EXISTS {quoted_name};\n")
                     sql_parts.append(f"DROP TABLE IF EXISTS {quoted_name};\n")
@@ -273,7 +275,7 @@ async def execute_data_source_pipeline(
         execute_fn("COMMIT")
         sql_parts.append("COMMIT;")
 
-    except Exception as e:
+    except Exception:
         # Error during execution - rollback transaction
         import contextlib
 
@@ -318,20 +320,24 @@ async def execute_data_source_pipeline(
 
             row_count = count_result.rows[0]["count"]
 
-            outputs.append({
-                "name": table_name,
-                "type": "table",
-                "row_count": row_count,
-                "columns": columns,
-            })
+            outputs.append(
+                {
+                    "name": table_name,
+                    "type": "table",
+                    "row_count": row_count,
+                    "columns": columns,
+                }
+            )
 
         except Exception as e:
             # If we can't get schema/count, still include basic info
-            outputs.append({
-                "name": table_name,
-                "type": "table",
-                "error": f"Failed to collect metadata: {str(e)}",
-            })
+            outputs.append(
+                {
+                    "name": table_name,
+                    "type": "table",
+                    "error": f"Failed to collect metadata: {str(e)}",
+                }
+            )
 
     # Report progress: completion
     success_msg = "Pipeline completed successfully"

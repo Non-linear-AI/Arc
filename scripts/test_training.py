@@ -16,7 +16,6 @@ Examples:
 """
 
 import argparse
-import asyncio
 import logging
 import sys
 import time
@@ -26,16 +25,14 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.core import SettingsManager
-from arc.database import DatabaseManager
-from arc.database.services import ModelService, ServiceContainer
-from arc.ml import TensorBoardManager
-from arc.ml.runtime import MLRuntime
+from arc.database import DatabaseManager  # noqa: E402
+from arc.database.services import ModelService, ServiceContainer  # noqa: E402
+from arc.ml import TensorBoardManager  # noqa: E402
+from arc.ml.runtime import MLRuntime  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -45,80 +42,68 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Test training with a saved model",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     parser.add_argument(
-        "model_name",
-        help="Model name or model ID (e.g., 'test' or 'test-v8')"
+        "model_name", help="Model name or model ID (e.g., 'test' or 'test-v8')"
+    )
+
+    parser.add_argument("train_table", help="Training table name")
+
+    parser.add_argument(
+        "--target-column", "-t", required=True, help="Target column for prediction"
     )
 
     parser.add_argument(
-        "train_table",
-        help="Training table name"
-    )
-
-    parser.add_argument(
-        "--target-column",
-        "-t",
-        required=True,
-        help="Target column for prediction"
-    )
-
-    parser.add_argument(
-        "--validation-table",
-        "-v",
-        help="Optional validation table name"
+        "--validation-table", "-v", help="Optional validation table name"
     )
 
     parser.add_argument(
         "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)",
     )
 
     parser.add_argument(
         "--user-db",
         default="~/.arc/arc_user.db",
-        help="Path to Arc user database (default: ~/.arc/arc_user.db)"
+        help="Path to Arc user database (default: ~/.arc/arc_user.db)",
     )
 
     parser.add_argument(
         "--artifacts-dir",
         default=".arc/artifacts",
-        help="Directory for training artifacts (default: .arc/artifacts, project-local)"
+        help="Directory for training artifacts (default: .arc/artifacts, project-local)",
     )
 
     parser.add_argument(
-        "--monitor",
-        action="store_true",
-        help="Monitor job status until completion"
+        "--monitor", action="store_true", help="Monitor job status until completion"
     )
 
     parser.add_argument(
         "--tensorboard",
         action="store_true",
-        help="Launch TensorBoard after job submission"
+        help="Launch TensorBoard after job submission",
     )
 
     parser.add_argument(
         "--tensorboard-port",
         type=int,
         default=6006,
-        help="TensorBoard port (default: 6006)"
+        help="TensorBoard port (default: 6006)",
     )
 
     parser.add_argument(
-        "--verbose",
-        "-V",
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-V", action="store_true", help="Enable verbose logging"
     )
 
     return parser.parse_args()
 
 
-def get_model_yaml(model_service: ModelService, model_name: str) -> tuple[str, str, str]:
+def get_model_yaml(
+    model_service: ModelService, model_name: str
+) -> tuple[str, str, str]:
     """Get model YAML from database.
 
     Args:
@@ -188,7 +173,7 @@ def monitor_job(runtime: MLRuntime, job_id: str, poll_interval: int = 5):
                     logger.warning(f"Job cancelled: {message}")
                     return False
                 else:
-                    logger.info(f"Job completed successfully!")
+                    logger.info("Job completed successfully!")
                     return True
 
             # Wait before next check
@@ -218,7 +203,7 @@ def main():
 
         # Initialize artifacts directory (expand ~ if present, otherwise keep as-is)
         artifacts_path = Path(args.artifacts_dir)
-        if str(artifacts_path).startswith('~'):
+        if str(artifacts_path).startswith("~"):
             artifacts_dir = artifacts_path.expanduser()
         else:
             artifacts_dir = artifacts_path
@@ -263,7 +248,7 @@ def main():
             validation_table=args.validation_table,
         )
 
-        logger.info(f"✓ Training job submitted successfully!")
+        logger.info("✓ Training job submitted successfully!")
         logger.info(f"Job ID: {job_id}")
         logger.info("")
         logger.info("Monitor training progress:")
@@ -289,7 +274,9 @@ def main():
                 if tensorboard_logdir is None:
                     tensorboard_logdir = Path(f"tensorboard/run_{job_id}")
 
-                url, pid = tensorboard_manager.launch(job_id, tensorboard_logdir, port=args.tensorboard_port)
+                url, pid = tensorboard_manager.launch(
+                    job_id, tensorboard_logdir, port=args.tensorboard_port
+                )
                 logger.info("✓ TensorBoard launched")
                 logger.info(f"  • URL: {url}")
                 logger.info(f"  • Process ID: {pid}")
@@ -298,7 +285,9 @@ def main():
             except Exception as e:
                 logger.warning(f"Failed to launch TensorBoard: {e}")
                 logger.info("You can launch TensorBoard manually:")
-                logger.info(f"  tensorboard --logdir {tensorboard_logdir if tensorboard_logdir else f'tensorboard/run_{job_id}'}")
+                logger.info(
+                    f"  tensorboard --logdir {tensorboard_logdir if tensorboard_logdir else f'tensorboard/run_{job_id}'}"
+                )
                 logger.info("")
 
         # Monitor if requested

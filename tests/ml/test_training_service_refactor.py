@@ -2,8 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 import torch
@@ -93,7 +92,9 @@ def sample_training_config():
 class TestTrainingServiceRefactor:
     """Tests for training service after ArcTrainer removal."""
 
-    def test_training_service_initialization(self, mock_job_service, temp_artifacts_dir):
+    def test_training_service_initialization(
+        self, mock_job_service, temp_artifacts_dir
+    ):
         """Test that training service initializes without ArcTrainer."""
         service = TrainingService(
             job_service=mock_job_service,
@@ -105,7 +106,9 @@ class TestTrainingServiceRefactor:
         assert service.artifact_manager is not None
         assert service.executor is not None
 
-    def test_save_training_artifact_uses_optimizer(self, training_service, sample_training_config):
+    def test_save_training_artifact_uses_optimizer(
+        self, training_service, sample_training_config
+    ):
         """Test that _save_training_artifact accepts optimizer instead of trainer."""
         # Create a simple model with required ArcModel attributes
         model = nn.Sequential(nn.Linear(10, 1))
@@ -152,7 +155,9 @@ class TestTrainingServiceRefactor:
         assert not hasattr(sample_training_config, "trainer_id")
         assert not hasattr(sample_training_config, "trainer_spec")
 
-    def test_artifact_references_model_not_trainer(self, training_service, sample_training_config):
+    def test_artifact_references_model_not_trainer(
+        self, training_service, sample_training_config
+    ):
         """Test that saved artifacts reference model_id, not trainer_id."""
         # Create a simple model with required ArcModel attributes
         model = nn.Sequential(nn.Linear(10, 1))
@@ -201,7 +206,11 @@ class TestTrainingServiceRefactor:
 
     @patch("arc.ml.training_service.train_model")
     def test_run_training_calls_train_model_function(
-        self, mock_train_model, training_service, sample_training_config, mock_job_service
+        self,
+        mock_train_model,
+        training_service,
+        sample_training_config,
+        mock_job_service,
     ):
         """Test that _run_training calls train_model function instead of ArcTrainer."""
         # Setup mocks

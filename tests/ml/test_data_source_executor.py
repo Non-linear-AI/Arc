@@ -45,7 +45,7 @@ async def test_execute_pipeline_captures_sql(db_manager):
     assert result.sql is not None
     assert "test_table" in result.sql
     assert "SELECT 1 as id" in result.sql
-    assert "CREATE OR REPLACE TABLE" in result.sql
+    assert "CREATE TABLE" in result.sql
     # Should contain actual transaction markers
     assert "BEGIN TRANSACTION" in result.sql
     assert "COMMIT" in result.sql

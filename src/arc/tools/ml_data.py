@@ -226,8 +226,10 @@ class MLDataTool(BaseTool):
                 # Preload stage-specific knowledge from plan
                 preloaded_knowledge = None
                 if recommended_knowledge_ids:
-                    preloaded_knowledge = self.generator_agent.knowledge_loader.load_multiple(
-                        recommended_knowledge_ids, phase="model"
+                    preloaded_knowledge = (
+                        self.generator_agent.knowledge_loader.load_multiple(
+                            recommended_knowledge_ids, phase="model"
+                        )
                     )
 
                 # Generate using LLM (generator_agent is guaranteed to exist)
@@ -353,7 +355,8 @@ class MLDataTool(BaseTool):
                         try:
                             self.services.plan_executions.store_execution(
                                 execution_id=data_processing_id,
-                                plan_id=plan_id or "standalone",  # Use "standalone" for ad-hoc executions
+                                plan_id=plan_id
+                                or "standalone",  # Use "standalone" for ad-hoc executions
                                 step_type="data_processing",
                                 context=execution_result.sql,
                                 outputs=execution_result.outputs,

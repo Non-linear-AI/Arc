@@ -2,7 +2,6 @@
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -79,20 +78,23 @@ def test_insert_plan_execution(test_db):
 
     # Insert plan execution
     now = datetime.now()
-    test_db.execute("""
+    test_db.execute(
+        """
         INSERT INTO plan_executions
         (id, plan_id, step_type, status, started_at, completed_at, context, outputs)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, [
-        'exec_123',
-        'test_plan',
-        'data_processing',
-        'completed',
-        now,
-        now,
-        'CREATE TABLE test AS SELECT 1',
-        json.dumps([{"name": "test", "row_count": 1}])
-    ])
+    """,
+        [
+            "exec_123",
+            "test_plan",
+            "data_processing",
+            "completed",
+            now,
+            now,
+            "CREATE TABLE test AS SELECT 1",
+            json.dumps([{"name": "test", "row_count": 1}]),
+        ],
+    )
 
     # Verify it was inserted
     result = test_db.query("SELECT * FROM plan_executions WHERE id = 'exec_123'")
@@ -122,19 +124,22 @@ def test_query_by_plan_id(test_db):
     # Insert multiple executions
     now = datetime.now()
     for i in range(3):
-        test_db.execute("""
+        test_db.execute(
+            """
             INSERT INTO plan_executions
             (id, plan_id, step_type, status, started_at, context, outputs)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, [
-            f'exec_{i}',
-            'test_plan',
-            'data_processing',
-            'completed',
-            now,
-            f'SQL {i}',
-            '[]'
-        ])
+        """,
+            [
+                f"exec_{i}",
+                "test_plan",
+                "data_processing",
+                "completed",
+                now,
+                f"SQL {i}",
+                "[]",
+            ],
+        )
 
     # Query by plan_id
     result = test_db.query("""
@@ -159,17 +164,23 @@ def test_query_by_step_type(test_db):
 
     # Insert executions of different types
     now = datetime.now()
-    test_db.execute("""
+    test_db.execute(
+        """
         INSERT INTO plan_executions
         (id, plan_id, step_type, status, started_at, context, outputs)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ['exec_data', 'test_plan', 'data_processing', 'completed', now, 'SQL', '[]'])
+    """,
+        ["exec_data", "test_plan", "data_processing", "completed", now, "SQL", "[]"],
+    )
 
-    test_db.execute("""
+    test_db.execute(
+        """
         INSERT INTO plan_executions
         (id, plan_id, step_type, status, started_at, context, outputs)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ['exec_train', 'test_plan', 'training', 'completed', now, 'YAML', '[]'])
+    """,
+        ["exec_train", "test_plan", "training", "completed", now, "YAML", "[]"],
+    )
 
     # Query by step_type
     result = test_db.query("""

@@ -147,7 +147,9 @@ class ServiceContainer:
     def evaluation_tracking(self) -> EvaluationTrackingService:
         """Get the evaluation tracking service."""
         if self._evaluation_tracking_service is None:
-            self._evaluation_tracking_service = EvaluationTrackingService(self.db_manager)
+            self._evaluation_tracking_service = EvaluationTrackingService(
+                self.db_manager
+            )
         return self._evaluation_tracking_service
 
     def shutdown(self) -> None:

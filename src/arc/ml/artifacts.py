@@ -401,7 +401,7 @@ class ModelArtifactManager:
             data["training_config"] = TrainingConfig(**filtered_config)
         if data.get("training_result"):
             # Filter to only include fields that are in TrainingResult dataclass
-            # Old artifacts may have additional fields like 'success' that we no longer use
+            # Old artifacts may have additional fields like 'success' that we no longer use  # noqa: E501
             result_data = data["training_result"]
             valid_fields = {f.name for f in fields(TrainingResult)}
             filtered_result = {

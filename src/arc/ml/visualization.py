@@ -183,14 +183,23 @@ class TensorBoardVisualizer:
                     )
 
                     # Plot diagonal (random classifier)
-                    ax.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--", label="Random")
+                    ax.plot(
+                        [0, 1],
+                        [0, 1],
+                        color="navy",
+                        lw=2,
+                        linestyle="--",
+                        label="Random",
+                    )
 
                     # Configure plot
                     ax.set_xlim([0.0, 1.0])
                     ax.set_ylim([0.0, 1.05])
                     ax.set_xlabel("False Positive Rate", fontsize=12)
                     ax.set_ylabel("True Positive Rate", fontsize=12)
-                    ax.set_title("Receiver Operating Characteristic (ROC) Curve", fontsize=14)
+                    ax.set_title(
+                        "Receiver Operating Characteristic (ROC) Curve", fontsize=14
+                    )
                     ax.legend(loc="lower right", fontsize=10)
                     ax.grid(True, alpha=0.3)
                     ax.set_aspect("equal")
@@ -204,6 +213,7 @@ class TensorBoardVisualizer:
 
                     # Read image and convert to numpy array
                     from PIL import Image
+
                     image = Image.open(buf)
                     image_array = np.array(image)
 
@@ -212,7 +222,9 @@ class TensorBoardVisualizer:
                         image_array = np.transpose(image_array, (2, 0, 1))
 
                     # Log image to TensorBoard
-                    self.writer.add_image(f"{tag}/curve", image_array, step, dataformats="CHW")
+                    self.writer.add_image(
+                        f"{tag}/curve", image_array, step, dataformats="CHW"
+                    )
 
                     plt.close(fig)
                     buf.close()
@@ -370,7 +382,9 @@ class TensorBoardVisualizer:
                 class_names = [f"Class {int(i)}" for i in classes]
 
             # Create figure
-            fig, ax = plt.subplots(figsize=(max(8, n_classes * 1.5), max(6, n_classes * 1.2)))
+            fig, ax = plt.subplots(
+                figsize=(max(8, n_classes * 1.5), max(6, n_classes * 1.2))
+            )
 
             # Create heatmap
             im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
@@ -388,7 +402,9 @@ class TensorBoardVisualizer:
             )
 
             # Rotate x-axis labels for readability
-            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+            plt.setp(
+                ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor"
+            )
 
             # Add text annotations
             thresh = cm.max() / 2.0
@@ -420,6 +436,7 @@ class TensorBoardVisualizer:
 
             # Read image and convert to numpy array
             from PIL import Image
+
             image = Image.open(buf)
             image_array = np.array(image)
 

@@ -77,10 +77,7 @@ def _sanitize_optimizer_params(params: dict) -> dict:
 
 
 def _get_optimizer(
-    optimizer_type: str,
-    parameters,
-    learning_rate: float,
-    **kwargs
+    optimizer_type: str, parameters, learning_rate: float, **kwargs
 ) -> torch.optim.Optimizer:
     """Get PyTorch optimizer by name.
 
@@ -246,11 +243,14 @@ def train_model(
     if tensorboard_log_dir:
         try:
             from torch.utils.tensorboard import SummaryWriter
+
             tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
             tensorboard_writer = SummaryWriter(log_dir=str(tensorboard_log_dir))
             logger.info(f"TensorBoard logging enabled: {tensorboard_log_dir}")
         except ImportError:
-            logger.warning("TensorBoard not available. Install with: pip install tensorboard")
+            logger.warning(
+                "TensorBoard not available. Install with: pip install tensorboard"
+            )
         except Exception as e:
             logger.warning(f"Failed to initialize TensorBoard: {e}")
 
@@ -304,7 +304,9 @@ def train_model(
 
             # Only log graph if output is not a dict (TensorBoard tracing doesn't support dicts well)
             if isinstance(test_output, dict):
-                logger.debug("Skipping model graph logging (model outputs dict, not supported by TensorBoard tracer)")
+                logger.debug(
+                    "Skipping model graph logging (model outputs dict, not supported by TensorBoard tracer)"
+                )
             else:
                 # Log the model graph
                 tensorboard_writer.add_graph(model, sample_features)
@@ -321,7 +323,7 @@ def train_model(
         optimizer_type,
         model.parameters(),
         learning_rate=learning_rate,
-        **optimizer_params
+        **optimizer_params,
     )
 
     # Create loss function
@@ -448,8 +450,11 @@ def train_model(
                         if grad_norms:
                             # Log aggregate gradient statistics
                             import numpy as np
+
                             tensorboard_writer.add_scalar(
-                                "gradients/global_norm", np.sqrt(sum(g**2 for g in grad_norms)), global_step
+                                "gradients/global_norm",
+                                np.sqrt(sum(g**2 for g in grad_norms)),
+                                global_step,
                             )
                             tensorboard_writer.add_scalar(
                                 "gradients/mean_norm", np.mean(grad_norms), global_step
@@ -469,7 +474,9 @@ def train_model(
 
                 # Gradient clipping if configured
                 if gradient_clip_val is not None:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_val)
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), gradient_clip_val
+                    )
 
                 optimizer.step()
 
@@ -480,10 +487,14 @@ def train_model(
 
                 # Log to TensorBoard
                 if tensorboard_writer and global_step % 10 == 0:  # Log every 10 steps
-                    tensorboard_writer.add_scalar("train/batch_loss", batch_loss, global_step)
+                    tensorboard_writer.add_scalar(
+                        "train/batch_loss", batch_loss, global_step
+                    )
                     # Log learning rate
                     current_lr = optimizer.param_groups[0]["lr"]
-                    tensorboard_writer.add_scalar("train/learning_rate", current_lr, global_step)
+                    tensorboard_writer.add_scalar(
+                        "train/learning_rate", current_lr, global_step
+                    )
 
                 # Notify batch end
                 if callback:
@@ -572,15 +583,22 @@ def train_model(
                                 # Get probabilities for binary classification
                                 if all_predictions_tensor.shape[-1] == 2:
                                     # Softmax output
-                                    probs = torch.softmax(all_predictions_tensor, dim=1)[:, 1]
+                                    probs = torch.softmax(
+                                        all_predictions_tensor, dim=1
+                                    )[:, 1]
                                 elif all_predictions_tensor.shape[-1] == 1:
                                     # Sigmoid output
-                                    probs = torch.sigmoid(all_predictions_tensor.squeeze())
+                                    probs = torch.sigmoid(
+                                        all_predictions_tensor.squeeze()
+                                    )
                                 else:
                                     probs = None
 
                                 # Log PR curve for binary classification
-                                if probs is not None and len(torch.unique(all_targets_tensor)) == 2:
+                                if (
+                                    probs is not None
+                                    and len(torch.unique(all_targets_tensor)) == 2
+                                ):
                                     viz.log_pr_curve(
                                         all_targets_tensor,
                                         probs,
@@ -642,13 +660,16 @@ def train_model(
                     if checkpoint_dir:
                         checkpoint_dir.mkdir(parents=True, exist_ok=True)
                         checkpoint_path = checkpoint_dir / "best_model.pt"
-                        torch.save({
-                            "epoch": epoch,
-                            "model_state_dict": model.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "train_loss": avg_train_loss,
-                            "val_loss": avg_val_loss,
-                        }, checkpoint_path)
+                        torch.save(
+                            {
+                                "epoch": epoch,
+                                "model_state_dict": model.state_dict(),
+                                "optimizer_state_dict": optimizer.state_dict(),
+                                "train_loss": avg_train_loss,
+                                "val_loss": avg_val_loss,
+                            },
+                            checkpoint_path,
+                        )
                 else:
                     epochs_without_improvement += 1
 
@@ -681,7 +702,10 @@ def train_model(
                 callback.on_epoch_end(epoch, metrics)
 
             # Early stopping check
-            if early_stopping_patience and epochs_without_improvement >= early_stopping_patience:
+            if (
+                early_stopping_patience
+                and epochs_without_improvement >= early_stopping_patience
+            ):
                 logger.info(
                     f"Early stopping triggered after {epoch} epochs "
                     f"({epochs_without_improvement} epochs without improvement)"
@@ -707,7 +731,9 @@ def train_model(
                 hparams = {
                     "learning_rate": learning_rate,
                     "epochs": epochs,
-                    "batch_size": train_loader.batch_size if hasattr(train_loader, 'batch_size') else 32,
+                    "batch_size": train_loader.batch_size
+                    if hasattr(train_loader, "batch_size")
+                    else 32,
                     "optimizer": optimizer_type,
                     "loss_function": loss_fn_name,
                     "device": device,
@@ -719,7 +745,9 @@ def train_model(
                 if gradient_clip_val is not None:
                     hparams["gradient_clip_val"] = gradient_clip_val
                 if val_loader:
-                    hparams["validation_split"] = getattr(training_config, "validation_split", 0.2)
+                    hparams["validation_split"] = getattr(
+                        training_config, "validation_split", 0.2
+                    )
 
                 # Add optimizer-specific parameters
                 for key, value in optimizer_params.items():
@@ -738,7 +766,9 @@ def train_model(
                 hparam_metrics["hparam/training_time"] = training_time
 
                 # Log to TensorBoard's HPARAMS tab
-                tensorboard_writer.add_hparams(hparam_dict=hparams, metric_dict=hparam_metrics)
+                tensorboard_writer.add_hparams(
+                    hparam_dict=hparams, metric_dict=hparam_metrics
+                )
                 logger.debug("Logged hyperparameters to TensorBoard")
 
             except Exception as e:
@@ -774,10 +804,10 @@ def train_model(
 
         # Close TensorBoard writer
         if tensorboard_writer:
-            try:
+            from contextlib import suppress
+
+            with suppress(Exception):
                 tensorboard_writer.close()
-            except Exception:
-                pass  # Ignore errors during cleanup
 
         result = TrainingResult(
             success=False,

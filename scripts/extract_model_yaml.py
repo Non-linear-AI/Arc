@@ -26,8 +26,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.database import DatabaseManager
-from arc.database.services import ModelService
+from arc.database import DatabaseManager  # noqa: E402
+from arc.database.services import ModelService  # noqa: E402
 
 
 def parse_args():
@@ -35,24 +35,21 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Extract model YAML from Arc database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     parser.add_argument(
-        "model_name",
-        help="Model name or model ID (e.g., 'test' or 'test-v8')"
+        "model_name", help="Model name or model ID (e.g., 'test' or 'test-v8')"
     )
 
     parser.add_argument(
-        "--output",
-        "-o",
-        help="Output file path (default: print to stdout)"
+        "--output", "-o", help="Output file path (default: print to stdout)"
     )
 
     parser.add_argument(
         "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)",
     )
 
     return parser.parse_args()

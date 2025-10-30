@@ -29,17 +29,15 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.core import SettingsManager
-from arc.database import DatabaseManager
-from arc.database.services import ServiceContainer
-from arc.ml import TensorBoardManager
-from arc.ml.runtime import MLRuntime
-from arc.tools.ml import MLEvaluateTool
+from arc.database import DatabaseManager  # noqa: E402
+from arc.database.services import ServiceContainer  # noqa: E402
+from arc.ml import TensorBoardManager  # noqa: E402
+from arc.ml.runtime import MLRuntime  # noqa: E402
+from arc.tools.ml import MLEvaluateTool  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -49,73 +47,60 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Test model evaluation with a trained model",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
-    parser.add_argument(
-        "model_id",
-        help="Model ID to evaluate (e.g., 'test-v8')"
-    )
+    parser.add_argument("model_id", help="Model ID to evaluate (e.g., 'test-v8')")
+
+    parser.add_argument("test_table", help="Test dataset table name")
 
     parser.add_argument(
-        "test_table",
-        help="Test dataset table name"
-    )
-
-    parser.add_argument(
-        "--output-table",
-        "-o",
-        help="Optional table name to save predictions"
+        "--output-table", "-o", help="Optional table name to save predictions"
     )
 
     parser.add_argument(
         "--metrics",
         "-m",
-        help="Comma-separated list of metrics (e.g., 'accuracy,precision,recall')"
+        help="Comma-separated list of metrics (e.g., 'accuracy,precision,recall')",
     )
 
     parser.add_argument(
         "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)",
     )
 
     parser.add_argument(
         "--user-db",
         default="~/.arc/arc_user.db",
-        help="Path to Arc user database (default: ~/.arc/arc_user.db)"
+        help="Path to Arc user database (default: ~/.arc/arc_user.db)",
     )
 
     parser.add_argument(
         "--artifacts-dir",
         default="artifacts",
-        help="Directory for artifacts (default: artifacts, project-local)"
+        help="Directory for artifacts (default: artifacts, project-local)",
     )
 
     parser.add_argument(
-        "--monitor",
-        action="store_true",
-        help="Monitor job status until completion"
+        "--monitor", action="store_true", help="Monitor job status until completion"
     )
 
     parser.add_argument(
         "--tensorboard",
         action="store_true",
-        help="Launch TensorBoard after job submission"
+        help="Launch TensorBoard after job submission",
     )
 
     parser.add_argument(
         "--tensorboard-port",
         type=int,
         default=6006,
-        help="TensorBoard port (default: 6006)"
+        help="TensorBoard port (default: 6006)",
     )
 
     parser.add_argument(
-        "--verbose",
-        "-V",
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-V", action="store_true", help="Enable verbose logging"
     )
 
     return parser.parse_args()
@@ -165,13 +150,16 @@ def monitor_job(runtime: MLRuntime, job_id: str, poll_interval: int = 5):
                     logger.warning(f"Job cancelled: {message}")
                     return False
                 else:
-                    logger.info(f"Job completed successfully!")
+                    logger.info("Job completed successfully!")
 
                     # Show evaluation metrics if available
-                    from arc.database.services import EvaluationTrackingService
                     import json
 
-                    eval_tracking = EvaluationTrackingService(runtime.services.models.db_manager)
+                    from arc.database.services import EvaluationTrackingService
+
+                    eval_tracking = EvaluationTrackingService(
+                        runtime.services.models.db_manager
+                    )
                     eval_runs = eval_tracking.list_runs(limit=100)
                     eval_run = next((r for r in eval_runs if r.job_id == job_id), None)
 
@@ -219,7 +207,7 @@ class SimpleUI:
 class SimplePrinter:
     """Simple printer stub that mimics the section printer interface."""
 
-    def section(self, color="cyan", streaming=False, **kwargs):
+    def section(self, color="cyan", streaming=False, **kwargs):  # noqa: ARG002
         """Context manager that returns a section printer."""
         from contextlib import contextmanager
 
@@ -233,13 +221,13 @@ class SimplePrinter:
 class SimpleSectionPrinter:
     """Simple section printer that logs output."""
 
-    def print(self, *args, **kwargs):
+    def print(self, *args, **kwargs):  # noqa: ARG002
         """Print to logger."""
         message = " ".join(str(arg) for arg in args)
         if message.strip():
             logger.info(message)
 
-    def print_panel(self, panel, **kwargs):
+    def print_panel(self, panel, **kwargs):  # noqa: ARG002
         """Print panel to logger."""
         logger.info(str(panel))
 
@@ -263,7 +251,7 @@ async def main():
 
         # Initialize artifacts directory (expand ~ if present, otherwise keep as-is)
         artifacts_path = Path(args.artifacts_dir)
-        if str(artifacts_path).startswith('~'):
+        if str(artifacts_path).startswith("~"):
             artifacts_dir = artifacts_path.expanduser()
         else:
             artifacts_dir = artifacts_path
@@ -311,12 +299,7 @@ async def main():
         ui = SimpleUI()
 
         # Create evaluation tool
-        tool = MLEvaluateTool(
-            services,
-            runtime,
-            ui,
-            tensorboard_manager
-        )
+        tool = MLEvaluateTool(services, runtime, ui, tensorboard_manager)
 
         # Submit evaluation job
         logger.info("\nSubmitting evaluation job...")
@@ -348,7 +331,7 @@ async def main():
             logger.error(f"Result metadata: {result.metadata}")
             return 1
 
-        logger.info(f"✓ Evaluation job submitted successfully!")
+        logger.info("✓ Evaluation job submitted successfully!")
         logger.info(f"Job ID: {job_id}")
         logger.info("")
         logger.info("Monitor evaluation progress:")
@@ -360,7 +343,9 @@ async def main():
         if args.tensorboard and tensorboard_manager:
             try:
                 tensorboard_logdir = Path(f"tensorboard/run_{job_id}")
-                url, pid = tensorboard_manager.launch(job_id, tensorboard_logdir, port=args.tensorboard_port)
+                url, pid = tensorboard_manager.launch(
+                    job_id, tensorboard_logdir, port=args.tensorboard_port
+                )
                 logger.info("✓ TensorBoard launched")
                 logger.info(f"  • URL: {url}")
                 logger.info(f"  • Process ID: {pid}")

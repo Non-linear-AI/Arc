@@ -32,15 +32,14 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.database import DatabaseManager
-from arc.database.services import ServiceContainer
-from arc.ml import TensorBoardManager
-from arc.tools.ml import MLEvaluateTool
+from arc.database import DatabaseManager  # noqa: E402
+from arc.database.services import ServiceContainer  # noqa: E402
+from arc.ml import TensorBoardManager  # noqa: E402
+from arc.tools.ml import MLEvaluateTool  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -50,74 +49,63 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Test ml_evaluate tool (simplified evaluation)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     parser.add_argument(
-        "model_id",
-        help="Model ID with version (e.g., 'diabetes_model-v1')"
+        "model_id", help="Model ID with version (e.g., 'diabetes_model-v1')"
     )
 
-    parser.add_argument(
-        "dataset",
-        help="Test dataset table name"
-    )
+    parser.add_argument("dataset", help="Test dataset table name")
 
     parser.add_argument(
         "--metrics",
         "-m",
         nargs="+",
-        help="Optional list of metrics to compute (e.g., accuracy precision recall)"
+        help="Optional list of metrics to compute (e.g., accuracy precision recall)",
     )
 
     parser.add_argument(
-        "--output-table",
-        "-o",
-        help="Optional table name to save predictions"
+        "--output-table", "-o", help="Optional table name to save predictions"
     )
 
     parser.add_argument(
         "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)",
     )
 
     parser.add_argument(
         "--user-db",
         default="~/.arc/arc_user.db",
-        help="Path to Arc user database (default: ~/.arc/arc_user.db)"
+        help="Path to Arc user database (default: ~/.arc/arc_user.db)",
     )
 
     parser.add_argument(
         "--artifacts-dir",
         default=".arc/artifacts",
-        help="Directory for model artifacts (default: .arc/artifacts)"
+        help="Directory for model artifacts (default: .arc/artifacts)",
     )
 
     parser.add_argument(
-        "--monitor",
-        action="store_true",
-        help="Monitor evaluation job until completion"
+        "--monitor", action="store_true", help="Monitor evaluation job until completion"
     )
 
     parser.add_argument(
         "--tensorboard",
         action="store_true",
-        help="Launch TensorBoard after job submission"
+        help="Launch TensorBoard after job submission",
     )
 
     parser.add_argument(
         "--tensorboard-port",
         type=int,
         default=6006,
-        help="TensorBoard port (default: 6006)"
+        help="TensorBoard port (default: 6006)",
     )
 
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
     return parser.parse_args()
@@ -160,11 +148,14 @@ def monitor_job(services, job_id: str, poll_interval: int = 5):
                             logger.info("=" * 80)
                             if run.metrics_result:
                                 import json
+
                                 metrics = json.loads(run.metrics_result)
                                 for metric_name, value in metrics.items():
                                     logger.info(f"  {metric_name}: {value:.4f}")
                             if run.prediction_table:
-                                logger.info(f"\nPredictions saved to: {run.prediction_table}")
+                                logger.info(
+                                    f"\nPredictions saved to: {run.prediction_table}"
+                                )
                     except Exception as e:
                         logger.warning(f"Failed to fetch results: {e}")
 
@@ -196,7 +187,7 @@ async def main():
 
         # Initialize artifacts directory
         artifacts_path = Path(args.artifacts_dir)
-        if str(artifacts_path).startswith('~'):
+        if str(artifacts_path).startswith("~"):
             artifacts_dir = artifacts_path.expanduser()
         else:
             artifacts_dir = artifacts_path
@@ -269,7 +260,9 @@ async def main():
                 logger.info("\nMonitor evaluation progress:")
                 logger.info(f"  • Status: /ml jobs status {job_id}")
                 logger.info(f"  • Logs: /ml jobs logs {job_id}")
-                logger.info(f"  • TensorBoard: tensorboard --logdir tensorboard/run_{job_id}")
+                logger.info(
+                    f"  • TensorBoard: tensorboard --logdir tensorboard/run_{job_id}"
+                )
 
                 # Monitor if requested
                 if args.monitor:
@@ -286,7 +279,7 @@ async def main():
         return 1
     finally:
         # Clean up
-        if 'db_manager' in locals():
+        if "db_manager" in locals():
             db_manager.close()
 
 

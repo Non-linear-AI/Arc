@@ -539,7 +539,7 @@ class DuckDBDatabase(Database):
                         WHERE name IS NULL
                     """)
 
-            # Plan executions table - tracks execution of plan steps (data processing, training, etc.)
+            # Plan executions table - tracks execution of plan steps (data processing, training, etc.)  # noqa: E501
             self.execute("""
                 CREATE TABLE IF NOT EXISTS plan_executions (
                     id TEXT PRIMARY KEY,

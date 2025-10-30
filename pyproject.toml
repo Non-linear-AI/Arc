@@ -124,6 +124,12 @@ select = [
 ]
 ignore = []
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG001", "ARG002", "E501"]  # Allow unused args and long lines in tests
+"scripts/**/*.py" = ["E501"]  # Allow longer lines in scripts
+"src/arc/tools/**/*.py" = ["E501"]  # Allow longer lines in tools (long error messages)
+"src/arc/ml/**/*.py" = ["E501"]  # Allow longer lines in ML code (complex expressions)
+
 [tool.ruff.lint.isort]
 known-first-party = ["arc"]
 

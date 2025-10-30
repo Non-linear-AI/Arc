@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
@@ -433,9 +433,7 @@ class TrainingService:
                         # Keep relative paths relative for project-local storage
                         artifacts_path = Path(config.artifacts_dir)
                         tensorboard_log_dir = str(
-                            artifacts_path.parent
-                            / "tensorboard"
-                            / f"run_{job_id}"
+                            artifacts_path.parent / "tensorboard" / f"run_{job_id}"
                         )
                     else:
                         # Default to project-local .arc directory
@@ -657,9 +655,9 @@ class TrainingService:
 
         # Create a simple loss object for validation
         from types import SimpleNamespace
+
         model_loss = SimpleNamespace(
-            type=loss_config.get("type"),
-            params=loss_config.get("params", {})
+            type=loss_config.get("type"), params=loss_config.get("params", {})
         )
 
         # Extract optimizer configuration
@@ -692,7 +690,9 @@ class TrainingService:
             seed=tc.get("seed"),
             # Optimizer config
             optimizer=optimizer_config.get("type", "adam"),
-            optimizer_params=_sanitize_optimizer_params(optimizer_config.get("params", {})),
+            optimizer_params=_sanitize_optimizer_params(
+                optimizer_config.get("params", {})
+            ),
             # Loss config
             loss_function=model_loss.type,
             loss_params=model_loss.params,
@@ -791,9 +791,9 @@ class TrainingService:
 
             # Create a simple loss object
             from types import SimpleNamespace
+
             model_loss = SimpleNamespace(
-                type=loss_config.get("type"),
-                params=loss_config.get("params", {})
+                type=loss_config.get("type"), params=loss_config.get("params", {})
             )
 
             # Extract optimizer configuration
@@ -826,7 +826,9 @@ class TrainingService:
                 seed=tc.get("seed"),
                 # Optimizer config
                 optimizer=optimizer_config.get("type", "adam"),
-                optimizer_params=_sanitize_optimizer_params(optimizer_config.get("params", {})),
+                optimizer_params=_sanitize_optimizer_params(
+                    optimizer_config.get("params", {})
+                ),
                 # Loss config
                 loss_function=model_loss.type,
                 loss_params=model_loss.params,
@@ -964,8 +966,9 @@ class TrainingService:
             )
 
             train_dataset, val_dataset = random_split(
-                dataset, [train_size, val_size],
-                generator=torch.Generator().manual_seed(42)  # Reproducible split
+                dataset,
+                [train_size, val_size],
+                generator=torch.Generator().manual_seed(42),  # Reproducible split
             )
 
             # Recreate train_loader with split dataset
@@ -973,8 +976,8 @@ class TrainingService:
                 train_dataset,
                 batch_size=training_config.batch_size,
                 shuffle=training_config.shuffle,
-                num_workers=getattr(training_config, 'num_workers', 0),
-                pin_memory=getattr(training_config, 'pin_memory', False),
+                num_workers=getattr(training_config, "num_workers", 0),
+                pin_memory=getattr(training_config, "pin_memory", False),
             )
 
             # Create validation loader
@@ -982,11 +985,13 @@ class TrainingService:
                 val_dataset,
                 batch_size=training_config.batch_size,
                 shuffle=False,  # Never shuffle validation
-                num_workers=getattr(training_config, 'num_workers', 0),
-                pin_memory=getattr(training_config, 'pin_memory', False),
+                num_workers=getattr(training_config, "num_workers", 0),
+                pin_memory=getattr(training_config, "pin_memory", False),
             )
 
-            logger.info(f"Validation loader created from training split for job {job_id}")
+            logger.info(
+                f"Validation loader created from training split for job {job_id}"
+            )
 
         # Run dry-run validation before starting training
         logger.info(f"Running dry-run validation for job {job_id}")
@@ -1031,7 +1036,9 @@ class TrainingService:
                     run = self.tracking_service.get_run_by_job_id(job_id)
                     if run and run.tensorboard_enabled and run.tensorboard_log_dir:
                         tensorboard_log_dir = Path(run.tensorboard_log_dir)
-                        logger.info(f"TensorBoard logging directory: {tensorboard_log_dir}")
+                        logger.info(
+                            f"TensorBoard logging directory: {tensorboard_log_dir}"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to get TensorBoard log directory: {e}")
 

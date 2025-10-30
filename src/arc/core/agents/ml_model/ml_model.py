@@ -80,9 +80,10 @@ class MLModelAgent(BaseAgent):
             data_processing_id: Optional execution ID to load data processing context
 
         Returns:
-            Tuple of (parsed ModelSpec object, unified YAML string, conversation_history)
-            Note: The YAML includes both model and training sections, but only ModelSpec
-            is returned for backward compatibility. Training config extracted separately by tool.
+            Tuple of (ModelSpec, unified YAML, conversation_history)
+            Note: YAML includes both model and training sections, but only
+            ModelSpec is returned for backward compatibility. Training config
+            extracted separately by tool.
 
         Raises:
             MLModelError: If generation fails
@@ -129,13 +130,16 @@ class MLModelAgent(BaseAgent):
         data_processing_context = None
         if data_processing_id:
             try:
-                execution = self.services.plan_executions.get_execution(data_processing_id)
+                execution = self.services.plan_executions.get_execution(
+                    data_processing_id
+                )
                 if execution:
                     # Build context summary from execution record
                     # Defensive access to outputs structure
                     outputs = execution.get("outputs", [])
                     output_tables = [
-                        out["name"] for out in outputs
+                        out["name"]
+                        for out in outputs
                         if isinstance(out, dict) and "name" in out
                     ]
                     data_processing_context = {
@@ -309,11 +313,9 @@ class MLModelAgent(BaseAgent):
                     "error": "Missing required 'loss' field inside 'training' section",
                 }
 
-            # Validate model structure (without training section) using dedicated validator
+            # Validate model structure (without training section) using dedicated validator  # noqa: E501
             # Create a copy with just the model fields for validation
-            model_only = {
-                k: v for k, v in model_dict.items() if k != "training"
-            }
+            model_only = {k: v for k, v in model_dict.items() if k != "training"}
             validate_model_dict(model_only)
 
             # Validate node types against available components
@@ -338,7 +340,10 @@ class MLModelAgent(BaseAgent):
             # Parse into ModelSpec object (from model-only portion)
             try:
                 import yaml
-                model_yaml_str = yaml.dump(model_only, default_flow_style=False, sort_keys=False)
+
+                model_yaml_str = yaml.dump(
+                    model_only, default_flow_style=False, sort_keys=False
+                )
                 model_spec = ModelSpec.from_yaml(model_yaml_str)
             except Exception as e:
                 return {

@@ -116,12 +116,16 @@ class TestGetOptimizer(unittest.TestCase):
 
     def test_get_optimizer_adamw(self):
         """Test getting AdamW optimizer."""
-        optimizer = _get_optimizer("adamw", self.model.parameters(), learning_rate=0.001)
+        optimizer = _get_optimizer(
+            "adamw", self.model.parameters(), learning_rate=0.001
+        )
         self.assertIsInstance(optimizer, torch.optim.AdamW)
 
     def test_get_optimizer_rmsprop(self):
         """Test getting RMSprop optimizer."""
-        optimizer = _get_optimizer("rmsprop", self.model.parameters(), learning_rate=0.01)
+        optimizer = _get_optimizer(
+            "rmsprop", self.model.parameters(), learning_rate=0.01
+        )
         self.assertIsInstance(optimizer, torch.optim.RMSprop)
 
     def test_get_optimizer_with_full_path(self):
@@ -200,7 +204,9 @@ class TestGetLossFunction(unittest.TestCase):
 
     def test_get_loss_with_full_path(self):
         """Test getting loss with full PyTorch path."""
-        loss = _get_loss_function("torch.nn.functional.binary_cross_entropy_with_logits")
+        loss = _get_loss_function(
+            "torch.nn.functional.binary_cross_entropy_with_logits"
+        )
         self.assertIsInstance(loss, nn.BCEWithLogitsLoss)
 
     def test_get_loss_with_nn_path(self):
@@ -315,8 +321,9 @@ class TestTrainModel(unittest.TestCase):
         """Test training with auto device selection."""
         self.training_config.device = "auto"
 
-        with patch("torch.cuda.is_available", return_value=False), patch(
-            "torch.backends.mps.is_available", return_value=False
+        with (
+            patch("torch.cuda.is_available", return_value=False),
+            patch("torch.backends.mps.is_available", return_value=False),
         ):
             result, optimizer = train_model(
                 model=self.model,

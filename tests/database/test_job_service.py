@@ -30,7 +30,7 @@ def sample_job():
     now = datetime.now()
     return Job(
         job_id="test-job-1",
-        model_id=42,
+        model_id="test-model-v1",
         type=JobType.TRAIN_MODEL,
         status=JobStatus.PENDING,
         message="Job initialized",
@@ -47,7 +47,7 @@ def sample_jobs():
     return [
         Job(
             job_id="job-1",
-            model_id=1,
+            model_id="model-1-v1",
             type=JobType.TRAIN_MODEL,
             status=JobStatus.PENDING,
             message="Training job pending",
@@ -57,7 +57,7 @@ def sample_jobs():
         ),
         Job(
             job_id="job-2",
-            model_id=2,
+            model_id="model-2-v1",
             type=JobType.PREDICT_MODEL,
             status=JobStatus.RUNNING,
             message="Inference job running",
@@ -101,7 +101,7 @@ class TestJobDataClass:
     def test_job_creation(self, sample_job):
         """Test creating a Job instance."""
         assert sample_job.job_id == "test-job-1"
-        assert sample_job.model_id == 42
+        assert sample_job.model_id == "test-model-v1"
         assert sample_job.type == JobType.TRAIN_MODEL
         assert sample_job.status == JobStatus.PENDING
         assert sample_job.message == "Job initialized"
@@ -285,7 +285,7 @@ class TestJobServiceUtilities:
 
         old_completed = Job(
             job_id="old-completed",
-            model_id=1,
+            model_id="model-old-v1",
             type=JobType.TRAIN_MODEL,
             status=JobStatus.COMPLETED,
             message="Old completed job",
@@ -295,7 +295,7 @@ class TestJobServiceUtilities:
         )
         recent_completed = Job(
             job_id="recent-completed",
-            model_id=2,
+            model_id="model-recent-v1",
             type=JobType.TRAIN_MODEL,
             status=JobStatus.COMPLETED,
             message="Recent completed job",
@@ -305,7 +305,7 @@ class TestJobServiceUtilities:
         )
         old_running = Job(
             job_id="old-running",
-            model_id=3,
+            model_id="model-running-v1",
             type=JobType.TRAIN_MODEL,
             status=JobStatus.RUNNING,
             message="Old running job",
@@ -356,7 +356,7 @@ class TestJobServiceEdgeCases:
         now = datetime.now()
         special_job = Job(
             job_id="special-job",
-            model_id=1,
+            model_id="special-model-v1",
             type=JobType.VALIDATE_SCHEMA,
             status=JobStatus.PENDING,
             message="Message with 'quotes' and \"double quotes\"",

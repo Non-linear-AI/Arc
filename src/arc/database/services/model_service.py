@@ -220,7 +220,7 @@ class ModelService(BaseService):
         Returns:
             Tuple of (ModelSpec, training_config_dict)
             - ModelSpec: Parsed model architecture (inputs, graph, outputs)
-            - training_config: Dict with training parameters (loss, optimizer, epochs, etc.)
+            - training_config: Dict with training parameters (loss, optimizer, etc.)
 
         Raises:
             DatabaseError: If YAML parsing fails

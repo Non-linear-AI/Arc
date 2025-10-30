@@ -214,7 +214,9 @@ class MLModelTool(BaseTool):
                 # Add remaining fields
                 ordered_spec.update(full_spec)
 
-                unified_yaml = yaml.dump(ordered_spec, default_flow_style=False, sort_keys=False)
+                unified_yaml = yaml.dump(
+                    ordered_spec, default_flow_style=False, sort_keys=False
+                )
 
                 # Show completion message
                 if printer:
@@ -279,10 +281,9 @@ class MLModelTool(BaseTool):
                 ordered_spec["training"] = full_spec.pop("training")
 
                 # Update unified_yaml with the reconstructed version
-                unified_yaml = yaml.dump(ordered_spec, default_flow_style=False, sort_keys=False)
-
-                # Convert back to YAML for model-only storage (without loss)
-                model_yaml = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
+                unified_yaml = yaml.dump(
+                    ordered_spec, default_flow_style=False, sort_keys=False
+                )
 
             except (yaml.YAMLError, ModelValidationError) as exc:
                 return _error_in_section(f"Specification validation failed: {exc}")
@@ -323,9 +324,7 @@ class MLModelTool(BaseTool):
                         # Show cancellation message before closing section
                         if printer:
                             printer.print("")  # Empty line
-                            printer.print(
-                                "[dim]✗ Training cancelled by user.[/dim]"
-                            )
+                            printer.print("[dim]✗ Training cancelled by user.[/dim]")
                         return ToolResult(
                             success=True,
                             output="✗ Training cancelled by user.",
@@ -349,7 +348,9 @@ class MLModelTool(BaseTool):
                         ordered_spec["plan_id"] = full_spec.pop("plan_id")
                     ordered_spec.update(full_spec)
 
-                    unified_yaml = yaml.dump(ordered_spec, default_flow_style=False, sort_keys=False)
+                    unified_yaml = yaml.dump(
+                        ordered_spec, default_flow_style=False, sort_keys=False
+                    )
 
                     # Validate training section still exists
                     training_config = full_spec.get("training")
@@ -359,7 +360,9 @@ class MLModelTool(BaseTool):
                         )
                     loss_config = training_config.get("loss")
                     if not loss_config:
-                        return _error_in_section("Edited YAML missing 'training.loss' section")
+                        return _error_in_section(
+                            "Edited YAML missing 'training.loss' section"
+                        )
                 finally:
                     workflow.cleanup()
 
@@ -420,7 +423,9 @@ class MLModelTool(BaseTool):
                 # Show job monitoring instructions
                 if printer:
                     printer.print("")
-                    printer.print("[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]")
+                    printer.print(
+                        "[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]"
+                    )
                     printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
                     printer.print(f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]")
 
@@ -443,7 +448,9 @@ class MLModelTool(BaseTool):
                             # Log unexpected errors with full traceback
                             import logging
 
-                            logging.exception("Unexpected error during TensorBoard launch")
+                            logging.exception(
+                                "Unexpected error during TensorBoard launch"
+                            )
                             error_msg = f"{e.__class__.__name__}: {e}"
                             if printer:
                                 printer.print(
@@ -466,7 +473,7 @@ class MLModelTool(BaseTool):
                     printer.print("")
                     printer.print(f"[red]{exc}[/red]")
                     printer.print("")
-                    printer.print(f"[dim]Note: Model was registered successfully[/dim]")
+                    printer.print("[dim]Note: Model was registered successfully[/dim]")
 
                 lines.append("")
                 lines.append("⚠ Training Validation Failed")
@@ -578,7 +585,9 @@ class MLModelTool(BaseTool):
             full_spec = yaml.safe_load(yaml_content)
             # Remove training section for validation
             training_section = full_spec.pop("training", None)
-            model_yaml_only = yaml.dump(full_spec, default_flow_style=False, sort_keys=False)
+            model_yaml_only = yaml.dump(
+                full_spec, default_flow_style=False, sort_keys=False
+            )
 
             model_spec = ModelSpec.from_yaml(model_yaml_only)
             _ = model_spec.get_input_names()
@@ -708,7 +717,7 @@ class MLModelTool(BaseTool):
 
         # Get actual TensorBoard log directory from training run database
         logdir = None
-        if self.services and hasattr(self.services, 'training_tracking'):
+        if self.services and hasattr(self.services, "training_tracking"):
             try:
                 run = self.services.training_tracking.get_run_by_job_id(job_id)
                 if run and run.tensorboard_log_dir:
@@ -774,11 +783,10 @@ class MLModelTool(BaseTool):
             job_id: Training job identifier
             section_printer: Section printer for indented output
         """
-        from pathlib import Path
 
         # Get actual TensorBoard log directory from training run database
         logdir = None
-        if self.services and hasattr(self.services, 'training_tracking'):
+        if self.services and hasattr(self.services, "training_tracking"):
             try:
                 run = self.services.training_tracking.get_run_by_job_id(job_id)
                 if run and run.tensorboard_log_dir:

@@ -292,7 +292,6 @@ class TrainingTrackingService(BaseService):
         except Exception as e:
             raise DatabaseError(f"Failed to update run artifact {run_id}: {e}") from e
 
-
     def delete_run(self, run_id: str) -> bool:
         """Delete a training run (manually deletes metrics and checkpoints).
 

@@ -32,15 +32,14 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from arc.database import DatabaseManager
-from arc.database.services import ServiceContainer
-from arc.ml import TensorBoardManager
-from arc.tools.ml import MLModelTool
+from arc.database import DatabaseManager  # noqa: E402
+from arc.database.services import ServiceContainer  # noqa: E402
+from arc.ml import TensorBoardManager  # noqa: E402
+from arc.tools.ml import MLModelTool  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -50,108 +49,91 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Test ml_model tool (unified model + training)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     parser.add_argument(
-        "name",
-        help="Experiment name (used for both model and trainer)"
+        "name", help="Experiment name (used for both model and trainer)"
     )
 
     parser.add_argument(
         "instruction",
-        help="Description of model architecture and training requirements"
+        help="Description of model architecture and training requirements",
     )
 
-    parser.add_argument(
-        "data_table",
-        help="Database table to profile for generation"
-    )
+    parser.add_argument("data_table", help="Database table to profile for generation")
 
-    parser.add_argument(
-        "target_column",
-        help="Target column for prediction"
-    )
+    parser.add_argument("target_column", help="Target column for prediction")
 
     parser.add_argument(
         "--train-table",
-        help="Training data table (defaults to data_table if not provided)"
+        help="Training data table (defaults to data_table if not provided)",
     )
 
     parser.add_argument(
-        "--plan-id",
-        "-p",
-        help="Optional ML plan ID (e.g., 'diabetes-plan-v1')"
+        "--plan-id", "-p", help="Optional ML plan ID (e.g., 'diabetes-plan-v1')"
     )
 
     parser.add_argument(
         "--data-processing-id",
-        help="Optional data processing execution ID from ml_data tool"
+        help="Optional data processing execution ID from ml_data tool",
     )
 
     parser.add_argument(
-        "--api-key",
-        help="API key for LLM calls (default: from ARC_API_KEY env var)"
+        "--api-key", help="API key for LLM calls (default: from ARC_API_KEY env var)"
     )
 
     parser.add_argument(
-        "--base-url",
-        help="Base URL for LLM API (default: from ARC_BASE_URL env var)"
+        "--base-url", help="Base URL for LLM API (default: from ARC_BASE_URL env var)"
     )
 
     parser.add_argument(
-        "--model",
-        help="Model name for LLM (default: from settings or claude-sonnet-4)"
+        "--model", help="Model name for LLM (default: from settings or claude-sonnet-4)"
     )
 
     parser.add_argument(
         "--system-db",
         default="~/.arc/arc_system.db",
-        help="Path to Arc system database (default: ~/.arc/arc_system.db)"
+        help="Path to Arc system database (default: ~/.arc/arc_system.db)",
     )
 
     parser.add_argument(
         "--user-db",
         default="~/.arc/arc_user.db",
-        help="Path to Arc user database (default: ~/.arc/arc_user.db)"
+        help="Path to Arc user database (default: ~/.arc/arc_user.db)",
     )
 
     parser.add_argument(
         "--artifacts-dir",
         default=".arc/artifacts",
-        help="Directory for training artifacts (default: .arc/artifacts)"
+        help="Directory for training artifacts (default: .arc/artifacts)",
     )
 
     parser.add_argument(
         "--auto-confirm",
         action="store_true",
-        help="Skip interactive confirmation workflow"
+        help="Skip interactive confirmation workflow",
     )
 
     parser.add_argument(
-        "--monitor",
-        action="store_true",
-        help="Monitor training job until completion"
+        "--monitor", action="store_true", help="Monitor training job until completion"
     )
 
     parser.add_argument(
         "--tensorboard",
         action="store_true",
-        help="Launch TensorBoard after job submission"
+        help="Launch TensorBoard after job submission",
     )
 
     parser.add_argument(
         "--tensorboard-port",
         type=int,
         default=6006,
-        help="TensorBoard port (default: 6006)"
+        help="TensorBoard port (default: 6006)",
     )
 
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
     return parser.parse_args()
@@ -203,6 +185,7 @@ async def main():
     try:
         # Get API configuration
         import os
+
         api_key = args.api_key or os.getenv("ARC_API_KEY", "")
         base_url = args.base_url or os.getenv("ARC_BASE_URL")
         model = args.model or os.getenv("ARC_MODEL", "claude-sonnet-4")
@@ -221,7 +204,7 @@ async def main():
 
         # Initialize artifacts directory
         artifacts_path = Path(args.artifacts_dir)
-        if str(artifacts_path).startswith('~'):
+        if str(artifacts_path).startswith("~"):
             artifacts_dir = artifacts_path.expanduser()
         else:
             artifacts_dir = artifacts_path
@@ -318,7 +301,7 @@ async def main():
         return 1
     finally:
         # Clean up
-        if 'db_manager' in locals():
+        if "db_manager" in locals():
             db_manager.close()
 
 

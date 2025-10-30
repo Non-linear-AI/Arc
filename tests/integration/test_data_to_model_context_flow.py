@@ -2,11 +2,8 @@
 
 import pytest
 
-from arc.core.agents.ml_data.ml_data import MLDataAgent
-from arc.core.agents.ml_model.ml_model import MLModelAgent
 from arc.database.manager import DatabaseManager
 from arc.database.services.container import ServiceContainer
-from arc.database.services.plan_execution_service import PlanExecutionService
 from arc.graph.features.data_source import DataSourceSpec, DataSourceStep
 
 
@@ -55,10 +52,13 @@ async def test_data_to_model_context_flow(setup_test_data, tmp_path):
 
     # Step 1: Create a mock plan (we just need a plan_id to exist)
     plan_id = "test-plan-v1"
-    services.db_manager.system_execute("""
+    services.db_manager.system_execute(
+        """
         INSERT INTO plans (plan_id, version, user_context, source_tables, plan_yaml, status)
         VALUES (?, 1, 'Test plan', 'test_data', 'mock: yaml', 'active')
-    """, [plan_id])
+    """,
+        [plan_id],
+    )
 
     # Step 2: Simulate ml_data execution
     # In real usage, ml_data agent generates a DataSourceSpec
@@ -95,6 +95,7 @@ async def test_data_to_model_context_flow(setup_test_data, tmp_path):
 
     # Store execution (simulating what ml_data tool does)
     import uuid
+
     data_processing_id = f"data_{uuid.uuid4().hex[:8]}"
 
     services.plan_executions.store_execution(
@@ -129,8 +130,7 @@ async def test_data_to_model_context_flow(setup_test_data, tmp_path):
     # Verify context structure matches what ml_model expects
     outputs = loaded_execution.get("outputs", [])
     output_tables = [
-        out["name"] for out in outputs
-        if isinstance(out, dict) and "name" in out
+        out["name"] for out in outputs if isinstance(out, dict) and "name" in out
     ]
 
     assert len(output_tables) == 1
@@ -143,7 +143,9 @@ async def test_data_to_model_context_flow(setup_test_data, tmp_path):
     assert loaded_execution["outputs"][0]["name"] == "processed_data"
     assert loaded_execution["outputs"][0]["type"] == "table"
     assert loaded_execution["outputs"][0]["row_count"] == 3  # 3 rows (id < 4)
-    assert len(loaded_execution["outputs"][0]["columns"]) == 3  # feature1, feature2, target
+    assert (
+        len(loaded_execution["outputs"][0]["columns"]) == 3
+    )  # feature1, feature2, target
 
     # Step 5: Verify context structure is usable for model generation
     # The context should have all the information needed for the model agent
@@ -160,7 +162,9 @@ async def test_data_to_model_context_flow(setup_test_data, tmp_path):
     assert len(data_processing_context["output_tables"]) > 0
     assert len(data_processing_context["outputs"]) > 0
 
-    print("✓ Integration test passed: Data processing context successfully flows to model generation")
+    print(
+        "✓ Integration test passed: Data processing context successfully flows to model generation"
+    )
 
 
 @pytest.mark.asyncio
@@ -170,6 +174,14 @@ async def test_standalone_execution_storage(setup_test_data, tmp_path):
 
     # Create service container
     services = ServiceContainer(db_manager)
+
+    # Create the "standalone" plan for ad-hoc executions
+    services.db_manager.system_execute(
+        """
+        INSERT INTO plans (plan_id, version, user_context, source_tables, plan_yaml, status)
+        VALUES ('standalone', 0, 'Standalone executions', '', '', 'active')
+    """
+    )
 
     # Create a simple data processing spec
     spec = DataSourceSpec(
@@ -198,6 +210,7 @@ async def test_standalone_execution_storage(setup_test_data, tmp_path):
 
     # Store as standalone execution
     import uuid
+
     data_processing_id = f"data_{uuid.uuid4().hex[:8]}"
 
     services.plan_executions.store_execution(
@@ -218,8 +231,7 @@ async def test_standalone_execution_storage(setup_test_data, tmp_path):
     # Verify it can be loaded and used just like plan-based executions
     outputs = stored_execution.get("outputs", [])
     output_tables = [
-        out["name"] for out in outputs
-        if isinstance(out, dict) and "name" in out
+        out["name"] for out in outputs if isinstance(out, dict) and "name" in out
     ]
 
     assert len(output_tables) == 1

@@ -1,37 +1,36 @@
 """Test PlanExecutionService."""
 
-import json
 import time
 
 import pytest
 
-from arc.database.duckdb import DuckDBDatabase
+from arc.database import DatabaseManager
 from arc.database.services.plan_execution_service import PlanExecutionService
 
 
 @pytest.fixture
-def test_db():
-    """Create test database with schema."""
-    db = DuckDBDatabase(":memory:")
-    db.init_schema()
-    yield db
-    db.close()
+def db_manager(tmp_path):
+    """Create test database manager with schema."""
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    with DatabaseManager(str(system_db), str(user_db)) as manager:
+        yield manager
 
 
 @pytest.fixture
-def service(test_db):
+def service(db_manager):
     """Create service instance."""
-    return PlanExecutionService(test_db)
+    return PlanExecutionService(db_manager)
 
 
 @pytest.fixture
-def test_plan(test_db):
+def test_plan(db_manager):
     """Create a test plan."""
-    test_db.execute("""
+    db_manager.system_execute("""
         INSERT INTO plans (plan_id, version, user_context, source_tables, plan_yaml, status)
         VALUES ('test_plan', 1, 'test context', 'test_table', 'test yaml', 'active')
     """)
-    return 'test_plan'
+    return "test_plan"
 
 
 def test_store_execution(service, test_plan):
@@ -41,7 +40,13 @@ def test_store_execution(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="CREATE TABLE test AS SELECT 1",
-        outputs=[{"name": "test", "row_count": 1, "columns": [{"name": "col1", "type": "INTEGER"}]}]
+        outputs=[
+            {
+                "name": "test",
+                "row_count": 1,
+                "columns": [{"name": "col1", "type": "INTEGER"}],
+            }
+        ],
     )
 
     # Verify it was stored
@@ -65,7 +70,7 @@ def test_store_execution_with_error(service, test_plan):
         context="model: test",
         outputs=[],
         status="failed",
-        error_message="Out of memory"
+        error_message="Out of memory",
     )
 
     exec_record = service.get_execution("exec_fail")
@@ -88,7 +93,7 @@ def test_get_latest_execution(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="SQL 1",
-        outputs=[]
+        outputs=[],
     )
 
     time.sleep(0.01)  # Ensure different timestamps
@@ -98,7 +103,7 @@ def test_get_latest_execution(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="SQL 2",
-        outputs=[]
+        outputs=[],
     )
 
     time.sleep(0.01)
@@ -108,7 +113,7 @@ def test_get_latest_execution(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="SQL 3",
-        outputs=[]
+        outputs=[],
     )
 
     # Get latest
@@ -125,7 +130,7 @@ def test_get_latest_execution_by_type(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="SQL",
-        outputs=[]
+        outputs=[],
     )
 
     time.sleep(0.01)
@@ -135,7 +140,7 @@ def test_get_latest_execution_by_type(service, test_plan):
         plan_id=test_plan,
         step_type="training",
         context="YAML",
-        outputs=[]
+        outputs=[],
     )
 
     # Get latest data processing
@@ -161,7 +166,7 @@ def test_get_all_executions(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="SQL",
-        outputs=[]
+        outputs=[],
     )
 
     time.sleep(0.01)
@@ -171,7 +176,7 @@ def test_get_all_executions(service, test_plan):
         plan_id=test_plan,
         step_type="training",
         context="YAML",
-        outputs=[]
+        outputs=[],
     )
 
     time.sleep(0.01)
@@ -181,7 +186,7 @@ def test_get_all_executions(service, test_plan):
         plan_id=test_plan,
         step_type="evaluation",
         context="Eval config",
-        outputs=[]
+        outputs=[],
     )
 
     # Get all executions
@@ -207,8 +212,8 @@ def test_outputs_json_serialization(service, test_plan):
             "row_count": 100,
             "columns": [
                 {"name": "col1", "type": "INTEGER"},
-                {"name": "col2", "type": "VARCHAR"}
-            ]
+                {"name": "col2", "type": "VARCHAR"},
+            ],
         },
         {
             "name": "table2",
@@ -216,9 +221,9 @@ def test_outputs_json_serialization(service, test_plan):
             "row_count": 50,
             "columns": [
                 {"name": "feature1", "type": "DOUBLE"},
-                {"name": "feature2", "type": "DOUBLE"}
-            ]
-        }
+                {"name": "feature2", "type": "DOUBLE"},
+            ],
+        },
     ]
 
     service.store_execution(
@@ -226,7 +231,7 @@ def test_outputs_json_serialization(service, test_plan):
         plan_id=test_plan,
         step_type="data_processing",
         context="Complex SQL",
-        outputs=complex_outputs
+        outputs=complex_outputs,
     )
 
     exec_record = service.get_execution("exec_complex")

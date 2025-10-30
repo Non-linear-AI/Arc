@@ -121,7 +121,6 @@ class MLRuntime:
 
         return model
 
-
     def register_data_processor(
         self,
         name: str,
@@ -303,11 +302,11 @@ class MLRuntime:
 
         # Parse unified YAML to extract ModelSpec and training_config
         try:
-            model_spec, training_config = self.model_service.parse_model_spec(model_record)
+            model_spec, training_config = self.model_service.parse_model_spec(
+                model_record
+            )
         except Exception as exc:  # noqa: BLE001
-            raise MLRuntimeError(
-                f"Failed to parse model spec: {exc}"
-            ) from exc
+            raise MLRuntimeError(f"Failed to parse model spec: {exc}") from exc
 
         # Extract feature columns from model spec inputs
         feature_columns = []
@@ -395,12 +394,18 @@ class MLRuntime:
             if validation_split is not None
             else training_config.get("validation_split", 0.2)
         )
-        final_epochs = epochs if epochs is not None else training_config.get("epochs", 10)
+        final_epochs = (
+            epochs if epochs is not None else training_config.get("epochs", 10)
+        )
         final_batch_size = (
-            batch_size if batch_size is not None else training_config.get("batch_size", 32)
+            batch_size
+            if batch_size is not None
+            else training_config.get("batch_size", 32)
         )
         final_learning_rate = (
-            learning_rate if learning_rate is not None else training_config.get("learning_rate", 0.001)
+            learning_rate
+            if learning_rate is not None
+            else training_config.get("learning_rate", 0.001)
         )
 
         # Create job config with training_config dict instead of trainer_spec
