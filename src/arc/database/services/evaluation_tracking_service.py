@@ -30,7 +30,7 @@ class EvaluationTrackingService(BaseService):
     def create_run(
         self,
         evaluator_id: str,
-        trainer_id: str,
+        model_id: str,
         dataset: str,
         target_column: str,
         job_id: str | None = None,
@@ -39,7 +39,7 @@ class EvaluationTrackingService(BaseService):
 
         Args:
             evaluator_id: Evaluator ID
-            trainer_id: Trainer ID being evaluated
+            model_id: Model ID being evaluated
             dataset: Dataset table name
             target_column: Target column name
             job_id: Optional associated job ID
@@ -56,7 +56,7 @@ class EvaluationTrackingService(BaseService):
 
             sql = """
             INSERT INTO evaluation_runs (
-                run_id, evaluator_id, job_id, trainer_id,
+                run_id, evaluator_id, job_id, model_id,
                 dataset, target_column, status,
                 created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -66,7 +66,7 @@ class EvaluationTrackingService(BaseService):
                 run_id,
                 evaluator_id,
                 job_id,
-                trainer_id,
+                model_id,
                 dataset,
                 target_column,
                 EvaluationStatus.PENDING.value,
@@ -80,7 +80,7 @@ class EvaluationTrackingService(BaseService):
                 run_id=run_id,
                 evaluator_id=evaluator_id,
                 job_id=job_id,
-                trainer_id=trainer_id,
+                model_id=model_id,
                 dataset=dataset,
                 target_column=target_column,
                 status=EvaluationStatus.PENDING,
@@ -123,7 +123,7 @@ class EvaluationTrackingService(BaseService):
         limit: int = 100,
         status: EvaluationStatus | None = None,
         evaluator_id: str | None = None,
-        trainer_id: str | None = None,
+        model_id: str | None = None,
         job_id: str | None = None,
     ) -> list[EvaluationRun]:
         """List evaluation runs with optional filters.
@@ -132,7 +132,7 @@ class EvaluationTrackingService(BaseService):
             limit: Maximum number of runs to return
             status: Filter by status
             evaluator_id: Filter by evaluator ID
-            trainer_id: Filter by trainer ID
+            model_id: Filter by model ID
             job_id: Filter by job ID
 
         Returns:
@@ -153,9 +153,9 @@ class EvaluationTrackingService(BaseService):
                 conditions.append("evaluator_id = ?")
                 params.append(evaluator_id)
 
-            if trainer_id:
-                conditions.append("trainer_id = ?")
-                params.append(trainer_id)
+            if model_id:
+                conditions.append("model_id = ?")
+                params.append(model_id)
 
             if job_id:
                 conditions.append("job_id = ?")
@@ -316,7 +316,7 @@ class EvaluationTrackingService(BaseService):
                 run_id=str(row["run_id"]),
                 evaluator_id=str(row["evaluator_id"]),
                 job_id=str(row["job_id"]) if row.get("job_id") else None,
-                trainer_id=str(row["trainer_id"]) if row.get("trainer_id") else None,
+                model_id=str(row["model_id"]) if row.get("model_id") else None,
                 dataset=str(row["dataset"]) if row.get("dataset") else "",
                 target_column=str(row["target_column"])
                 if row.get("target_column")

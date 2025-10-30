@@ -88,8 +88,8 @@ def parse_args():
 
     parser.add_argument(
         "--artifacts-dir",
-        default=".arc/artifacts",
-        help="Directory for artifacts (default: .arc/artifacts, project-local)"
+        default="artifacts",
+        help="Directory for artifacts (default: artifacts, project-local)"
     )
 
     parser.add_argument(
@@ -204,7 +204,7 @@ class SimpleUI:
     """Simple UI stub for non-interactive script execution."""
 
     def __init__(self):
-        self._printer = self
+        self._printer = SimplePrinter()
 
     def show_system_error(self, message):
         logger.error(message)
@@ -214,6 +214,34 @@ class SimpleUI:
 
     def show_info(self, message):
         logger.info(message)
+
+
+class SimplePrinter:
+    """Simple printer stub that mimics the section printer interface."""
+
+    def section(self, color="cyan", streaming=False, **kwargs):
+        """Context manager that returns a section printer."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _section():
+            yield SimpleSectionPrinter()
+
+        return _section()
+
+
+class SimpleSectionPrinter:
+    """Simple section printer that logs output."""
+
+    def print(self, *args, **kwargs):
+        """Print to logger."""
+        message = " ".join(str(arg) for arg in args)
+        if message.strip():
+            logger.info(message)
+
+    def print_panel(self, panel, **kwargs):
+        """Print panel to logger."""
+        logger.info(str(panel))
 
 
 async def main():
@@ -304,10 +332,20 @@ async def main():
             logger.error(f"Evaluation failed: {result.error}")
             return 1
 
+        # Debug: show full result
+        logger.debug(f"Result metadata: {result.metadata}")
+        logger.debug(f"Result output: {result.output}")
+
         # Extract job ID from result metadata
         job_id = result.metadata.get("job_id")
         if not job_id:
-            logger.error("No job ID returned from evaluation")
+            # Check if evaluation launch failed
+            if not result.metadata.get("evaluation_launched", True):
+                error_msg = result.metadata.get("evaluation_error", "Unknown error")
+                logger.error(f"Evaluation launch failed: {error_msg}")
+            else:
+                logger.error("No job ID returned from evaluation")
+            logger.error(f"Result metadata: {result.metadata}")
             return 1
 
         logger.info(f"✓ Evaluation job submitted successfully!")

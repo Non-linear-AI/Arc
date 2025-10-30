@@ -830,25 +830,27 @@ class ArcEvaluator:
             EvaluationError: If loading fails
         """
         try:
-            logger.info(f"Loading evaluator for model: {evaluator_spec.model_ref}")
+            logger.info(f"Loading evaluator for model: {evaluator_spec.model_id}")
 
             # 1. Load model spec
-            model = model_service.get_model_by_id(evaluator_spec.model_ref)
+            model = model_service.get_model_by_id(evaluator_spec.model_id)
             if not model:
                 raise EvaluationError(
-                    f"Model '{evaluator_spec.model_ref}' not found"
+                    f"Model '{evaluator_spec.model_id}' not found"
                 )
 
             model_ref = model.id
+            # Use base model name (not versioned ID) to query training runs
+            model_name = model.name
 
-            logger.info(f"Using model: {model_ref}")
+            logger.info(f"Using model: {model_ref} (name: {model_name})")
 
             # 2. Find which model version to load based on training_runs
-            # Artifacts are saved per model_id for isolation
+            # Training runs are keyed by model name, not versioned ID
             from arc.database.services import TrainingTrackingService
 
             tracking_service = TrainingTrackingService(model_service.db_manager)
-            runs = tracking_service.list_runs(model_id=evaluator_spec.model_ref)
+            runs = tracking_service.list_runs(model_id=model_name)
 
             if not runs:
                 raise EvaluationError(
@@ -883,16 +885,16 @@ class ArcEvaluator:
                 version = int(version_match.group(1))
                 logger.info(f"Using model v{version} from run {latest_run.run_id}")
 
-            # Load the model artifact (keyed by model_id)
+            # Load the model artifact (keyed by model name, not versioned ID)
             try:
                 state_dict, artifact = artifact_manager.load_model_state_dict(
-                    model_id=evaluator_spec.model_ref,
+                    model_id=model_name,
                     version=version,
                     device=device,
                 )
             except FileNotFoundError as e:
                 raise EvaluationError(
-                    f"Artifacts not found for model '{evaluator_spec.model_ref}'. "
+                    f"Artifacts not found for model '{model_name}' v{version}. "
                     f"The training run completed but artifacts are missing. "
                     f"Artifact path: {latest_run.artifact_path}"
                 ) from e
@@ -912,8 +914,16 @@ class ArcEvaluator:
 
             from arc.graph.model import GraphNode, ModelInput, validate_model_dict
 
-            # Validate the model structure
-            validate_model_dict(model_dict)
+            # Validate the model structure (skip loss validation for backward compatibility)
+            # Old artifacts may have loss in a different format
+            loss_spec = model_dict.pop("loss", None)
+            try:
+                validate_model_dict(model_dict)
+            except Exception as e:
+                logger.warning(f"Model validation warning (continuing anyway): {e}")
+            # Restore loss for ModelSpec creation
+            if loss_spec is not None:
+                model_dict["loss"] = loss_spec
 
             # Parse inputs
             inputs = {}

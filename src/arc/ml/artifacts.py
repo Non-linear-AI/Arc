@@ -400,7 +400,14 @@ class ModelArtifactManager:
             }
             data["training_config"] = TrainingConfig(**filtered_config)
         if data.get("training_result"):
-            data["training_result"] = TrainingResult(**data["training_result"])
+            # Filter to only include fields that are in TrainingResult dataclass
+            # Old artifacts may have additional fields like 'success' that we no longer use
+            result_data = data["training_result"]
+            valid_fields = {f.name for f in fields(TrainingResult)}
+            filtered_result = {
+                k: v for k, v in result_data.items() if k in valid_fields
+            }
+            data["training_result"] = TrainingResult(**filtered_result)
 
         return ModelArtifact(**data)
 
