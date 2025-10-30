@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 import yaml
@@ -345,6 +346,25 @@ class MLDataTool(BaseTool):
                     # Invalidate schema cache since new tables were created
                     self.services.schema.invalidate_cache(database)
 
+                    # Store execution record in database
+                    data_processing_id = f"data_{uuid.uuid4().hex[:8]}"
+                    if plan_id and execution_result.sql and execution_result.outputs:
+                        try:
+                            self.services.plan_executions.store_execution(
+                                execution_id=data_processing_id,
+                                plan_id=plan_id,
+                                step_type="data_processing",
+                                context=execution_result.sql,
+                                outputs=execution_result.outputs,
+                                status="completed",
+                            )
+                        except Exception as store_error:
+                            # Log but don't fail the operation if storage fails
+                            if printer:
+                                printer.print(
+                                    f"[yellow]⚠️  Failed to store execution record: {store_error}[/yellow]"
+                                )
+
                 except DataSourceExecutionError as e:
                     # Generation and registration succeeded, but execution failed
                     if printer:
@@ -395,19 +415,26 @@ class MLDataTool(BaseTool):
                     f"{', '.join(execution_result.created_tables)} created",
                 ]
 
+                # Build metadata
+                metadata = {
+                    "processor_id": processor.id,
+                    "processor_name": name,
+                    "generation_succeeded": True,
+                    "registration_succeeded": True,
+                    "execution_succeeded": True,
+                    "created_tables": execution_result.created_tables,
+                    "execution_time": execution_result.execution_time,
+                }
+
+                # Add data_processing_id if execution was stored
+                if plan_id and execution_result.sql and execution_result.outputs:
+                    metadata["data_processing_id"] = data_processing_id
+
                 # Return success with detailed metadata
                 return ToolResult(
                     success=True,
                     output="\n".join(lines),
-                    metadata={
-                        "processor_id": processor.id,
-                        "processor_name": name,
-                        "generation_succeeded": True,
-                        "registration_succeeded": True,
-                        "execution_succeeded": True,
-                        "created_tables": execution_result.created_tables,
-                        "execution_time": execution_result.execution_time,
-                    },
+                    metadata=metadata,
                 )
 
             except Exception as e:
