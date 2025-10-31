@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import TYPE_CHECKING
 
@@ -87,6 +88,80 @@ class MLDataTool(BaseTool):
                 "This tool requires a working LLM connection for data processing "
                 "generation."
             ) from e
+
+    def _parse_sql_to_array(self, sql_string: str) -> list[str]:
+        """Parse SQL string into array of clean SQL statements.
+
+        Splits the SQL by step markers and removes transaction boilerplate.
+
+        Args:
+            sql_string: Full SQL string with step markers and transaction
+
+        Returns:
+            List of clean SQL statements without step markers
+        """
+        if not sql_string:
+            return []
+
+        import re
+
+        # Remove transaction markers from the entire SQL first
+        # This handles cases where COMMIT appears at the end of SQL blocks
+        sql_string = sql_string.replace("BEGIN TRANSACTION;", "")
+        sql_string = sql_string.replace("COMMIT;", "")
+
+        # Split by step markers (e.g., "-- Step 1/6: ...")
+        # Pattern: -- Step X/Y: step_name (type)
+        step_pattern = r"-- Step \d+/\d+: [^\n]+\n"
+
+        # Split on step markers but keep the SQL parts
+        parts = re.split(step_pattern, sql_string)
+
+        # Clean and collect non-empty SQL statements
+        sql_statements = []
+        for part in parts:
+            # Clean up whitespace
+            cleaned = part.strip()
+
+            # Skip empty parts
+            if not cleaned:
+                continue
+
+            sql_statements.append(cleaned)
+
+        return sql_statements
+
+    def _build_data_result(
+        self,
+        status: str,
+        data_processing_id: str,
+        output_tables: list[str] | None = None,
+        sql_operations: list[str] | None = None,
+    ) -> str:
+        """Build structured JSON result for ML data tool.
+
+        Args:
+            status: "accepted" or "cancelled"
+            data_processing_id: Data processing execution ID
+            output_tables: List of created table names
+            sql_operations: List of SQL statements (or single string to parse)
+
+        Returns:
+            JSON string with structured data processing result
+        """
+        # Parse SQL if it's a single string
+        if sql_operations and isinstance(sql_operations, str):
+            sql_operations = self._parse_sql_to_array(sql_operations)
+
+        result = {
+            "status": status,
+            "data_processing_id": data_processing_id,
+            "execution": {
+                "output_tables": output_tables or [],
+                "sql_operations": sql_operations or [],
+            },
+        }
+        return json.dumps(result)
 
     async def generate(
         self,
@@ -228,7 +303,7 @@ class MLDataTool(BaseTool):
                 if recommended_knowledge_ids:
                     preloaded_knowledge = (
                         self.generator_agent.knowledge_loader.load_multiple(
-                            recommended_knowledge_ids, phase="model"
+                            recommended_knowledge_ids
                         )
                     )
 
@@ -283,9 +358,17 @@ class MLDataTool(BaseTool):
                             conversation_history,  # Pass history for editing
                         )
                         if not proceed:
+                            # Generate placeholder data_processing_id for cancelled state
+                            cancelled_id = f"cancelled_{uuid.uuid4().hex[:8]}"
+                            output_json = self._build_data_result(
+                                status="cancelled",
+                                data_processing_id=cancelled_id,
+                                output_tables=[],
+                                sql_operations=[],
+                            )
                             return ToolResult(
                                 success=True,
-                                output="✗ Data processor generation cancelled by user.",
+                                output=output_json,
                                 metadata={"cancelled": True},
                             )
                         yaml_content = final_yaml
@@ -349,8 +432,9 @@ class MLDataTool(BaseTool):
                     self.services.schema.invalidate_cache(database)
 
                     # Store execution record in database
-                    # Always store executions (not just when plan_id exists) to track all data processing
-                    data_processing_id = f"data_{uuid.uuid4().hex[:8]}"
+                    # Use processor.id as data_processing_id for consistency with other ML tools
+                    # (e.g., "diabetes-feature-processing-v3" instead of random "data_98f4ac51")
+                    data_processing_id = processor.id
                     if execution_result.sql and execution_result.outputs:
                         try:
                             self.services.plan_executions.store_execution(
@@ -412,12 +496,13 @@ class MLDataTool(BaseTool):
                         f"{execution_result.execution_time:.2f}s)[/dim]"
                     )
 
-                # Build simple output for ToolResult
-                lines = [
-                    f"Data processor '{name}' registered as {processor.id}",
-                    f"Pipeline executed: "
-                    f"{', '.join(execution_result.created_tables)} created",
-                ]
+                # Build structured JSON output
+                output_json = self._build_data_result(
+                    status="accepted",
+                    data_processing_id=data_processing_id,
+                    output_tables=execution_result.created_tables,
+                    sql_operations=execution_result.sql or [],
+                )
 
                 # Build metadata
                 metadata = {
@@ -428,17 +513,13 @@ class MLDataTool(BaseTool):
                     "execution_succeeded": True,
                     "created_tables": execution_result.created_tables,
                     "execution_time": execution_result.execution_time,
+                    "data_processing_id": data_processing_id,
                 }
 
-                # Add data_processing_id if execution was stored
-                # (stored for all executions, not just those with plan_id)
-                if execution_result.sql and execution_result.outputs:
-                    metadata["data_processing_id"] = data_processing_id
-
-                # Return success with detailed metadata
+                # Return success with structured JSON output
                 return ToolResult(
                     success=True,
-                    output="\n".join(lines),
+                    output=output_json,
                     metadata=metadata,
                 )
 

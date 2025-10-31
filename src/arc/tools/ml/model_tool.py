@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -38,6 +40,49 @@ class MLModelTool(BaseTool):
         self.model = model
         self.ui = ui_interface
         self.tensorboard_manager = tensorboard_manager
+
+    def _build_model_result(
+        self,
+        status: str,
+        model_id: str,
+        model_spec_dict: dict | None = None,
+        training_job_id: str | None = None,
+        train_table: str | None = None,
+        training_status: str = "not_started",
+        training_error: str | None = None,
+    ) -> str:
+        """Build structured JSON result for ML model tool.
+
+        Args:
+            status: "accepted" or "cancelled"
+            model_id: Model identifier
+            model_spec_dict: Parsed model specification as dict
+            training_job_id: Training job ID if launched
+            train_table: Training table name
+            training_status: "submitted", "failed", or "not_started"
+            training_error: Error message if training failed
+
+        Returns:
+            JSON string with structured model result
+        """
+        result = {
+            "status": status,
+            "model_id": model_id,
+            "model_spec": model_spec_dict or {},
+            "training": {
+                "status": training_status,
+            },
+        }
+
+        # Add training details if available
+        if training_job_id:
+            result["training"]["job_id"] = training_job_id
+        if train_table:
+            result["training"]["train_table"] = train_table
+        if training_error:
+            result["training"]["error"] = training_error
+
+        return json.dumps(result)
 
     async def execute(
         self,
@@ -119,6 +164,14 @@ class MLModelTool(BaseTool):
                     "ML plan is recommended for full ML workflows."
                 )
 
+            # Validate: if plan_id provided, data_processing_id must be provided
+            if plan_id and not data_processing_id:
+                return _error_in_section(
+                    "Parameter 'data_processing_id' is required when 'plan_id' is provided. "
+                    "This links the model to the specific data processing execution. "
+                    "Extract 'data_processing_id' from the ml_data tool result JSON."
+                )
+
             # Load plan from database if plan_id is provided
             ml_plan = None
             model_plan = None
@@ -177,7 +230,7 @@ class MLModelTool(BaseTool):
             preloaded_knowledge = None
             if recommended_knowledge_ids:
                 preloaded_knowledge = agent.knowledge_loader.load_multiple(
-                    recommended_knowledge_ids, phase="model"
+                    recommended_knowledge_ids
                 )
 
             # Generate unified model + training specification
@@ -261,7 +314,10 @@ class MLModelTool(BaseTool):
                 # Reconstruct unified YAML with loss in both places:
                 # 1. At model spec level (for evaluation and inference)
                 # 2. In training section (for training execution)
-                training_config["loss"] = loss_config  # Add back to training
+                # Use deepcopy to avoid YAML anchors when serializing
+                training_config["loss"] = copy.deepcopy(
+                    loss_config
+                )  # Add back to training
                 full_spec["training"] = training_config  # Add training back to spec
 
                 # Rebuild with proper field ordering
@@ -325,9 +381,27 @@ class MLModelTool(BaseTool):
                         if printer:
                             printer.print("")  # Empty line
                             printer.print("[dim]✗ Training cancelled by user.[/dim]")
+
+                        # Parse the spec dict for JSON output (before we save to DB)
+                        full_spec_dict = yaml.safe_load(unified_yaml)
+
+                        # Generate placeholder model_id for cancelled state
+                        from arc.ml.runtime import _slugify_name
+
+                        base_slug = _slugify_name(str(name))
+                        cancelled_model_id = f"{base_slug}-cancelled"
+
+                        # Return structured JSON with cancelled status
+                        output_json = self._build_model_result(
+                            status="cancelled",
+                            model_id=cancelled_model_id,
+                            model_spec_dict=full_spec_dict,
+                            training_status="not_started",
+                        )
+
                         return ToolResult(
                             success=True,
-                            output="✗ Training cancelled by user.",
+                            output=output_json,
                             metadata={"cancelled": True},
                         )
 
@@ -483,9 +557,42 @@ class MLModelTool(BaseTool):
                 result_metadata["training_launch_failed"] = True
                 result_metadata["training_error"] = str(exc)
 
+            # Parse the unified YAML to get model spec dict for JSON output
+            full_spec_dict = yaml.safe_load(unified_yaml)
+
+            # Build structured JSON output
+            if result_metadata.get("training_launched"):
+                # Training launched successfully
+                output_json = self._build_model_result(
+                    status="accepted",
+                    model_id=model_id,
+                    model_spec_dict=full_spec_dict,
+                    training_job_id=result_metadata.get("job_id"),
+                    train_table=train_table,
+                    training_status="submitted",
+                )
+            elif result_metadata.get("training_launch_failed"):
+                # Training launch failed
+                output_json = self._build_model_result(
+                    status="accepted",
+                    model_id=model_id,
+                    model_spec_dict=full_spec_dict,
+                    train_table=train_table,
+                    training_status="failed",
+                    training_error=result_metadata.get("training_error"),
+                )
+            else:
+                # Shouldn't happen, but handle gracefully
+                output_json = self._build_model_result(
+                    status="accepted",
+                    model_id=model_id,
+                    model_spec_dict=full_spec_dict,
+                    training_status="not_started",
+                )
+
             return ToolResult(
                 success=True,
-                output="\n".join(lines),
+                output=output_json,
                 metadata=result_metadata,
             )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 
 import yaml
 
@@ -28,6 +29,28 @@ class MLPlanTool(BaseTool):
         self.model = model
         self.ui = ui_interface
         self.agent = agent  # Reference to parent agent for auto_accept flag
+
+    def _build_plan_result(self, status: str, plan_id: str, plan_dict: dict) -> str:
+        """Build structured JSON result for ML plan tool.
+
+        Args:
+            status: "accepted" or "cancelled"
+            plan_id: Plan identifier
+            plan_dict: Full plan dictionary with all fields
+
+        Returns:
+            JSON string with structured plan result
+        """
+        result = {
+            "status": status,
+            "plan_id": plan_id,
+            "plan": {
+                "data_plan": plan_dict.get("data_plan", ""),
+                "model_plan": plan_dict.get("model_plan", ""),
+                "knowledge": plan_dict.get("knowledge", {}),
+            },
+        }
+        return json.dumps(result)
 
     async def execute(
         self,
@@ -278,9 +301,8 @@ class MLPlanTool(BaseTool):
 
                     # If auto-accept is enabled, skip workflow
                     if self.agent and self.agent.ml_plan_auto_accept:
-                        output_message = (
-                            f"Plan '{plan_id}' automatically accepted "
-                            f"(auto-accept enabled)"
+                        output_message = self._build_plan_result(
+                            "accepted", plan_id, plan_dict
                         )
                         break
 
@@ -316,9 +338,8 @@ class MLPlanTool(BaseTool):
                                             f"[dim yellow]⚠ Could not update plan "
                                             f"status: {e}[/dim yellow]"
                                         )
-                            output_message = (
-                                f"Plan '{plan_id}' accepted. "
-                                f"Ready to proceed with implementation."
+                            output_message = self._build_plan_result(
+                                "accepted", plan_id, plan_dict
                             )
                             break
                         elif choice == "accept_all":
@@ -338,9 +359,8 @@ class MLPlanTool(BaseTool):
                             # Enable auto-accept for this session
                             if self.agent:
                                 self.agent.ml_plan_auto_accept = True
-                            output_message = (
-                                f"Plan '{plan_id}' accepted. "
-                                f"Auto-accept enabled for this session."
+                            output_message = self._build_plan_result(
+                                "accepted", plan_id, plan_dict
                             )
                             break
                         elif choice == "feedback":
@@ -366,12 +386,14 @@ class MLPlanTool(BaseTool):
                             if printer:
                                 printer.print("")  # Empty line
                                 printer.print("[dim]✗ ML plan cancelled by user.[/dim]")
-                            # Return to main agent with context message
-                            # (Message already displayed in section,
-                            # but agent needs context)
+                            # Return structured JSON with cancelled status
+                            # Include plan content so user can discuss it
+                            output_message = self._build_plan_result(
+                                "cancelled", plan_id, plan_dict
+                            )
                             return ToolResult(
                                 success=True,
-                                output="✗ ML plan cancelled by user.",
+                                output=output_message,
                                 metadata={"cancelled": True, "suppress_output": True},
                             )
                     else:
@@ -382,10 +404,8 @@ class MLPlanTool(BaseTool):
                                 self.services.ml_plans.update_status(
                                     plan_id, "confirmed"
                                 )
-                        formatted_result = plan.format_for_display()
-                        output_message = (
-                            f"Plan '{plan_id}' created successfully.\n\n"
-                            f"{formatted_result}"
+                        output_message = self._build_plan_result(
+                            "accepted", plan_id, plan_dict
                         )
                         break
 
