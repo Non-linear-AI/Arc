@@ -52,8 +52,8 @@ class BaseAgent(abc.ABC):
         from arc.core.agents.shared.knowledge_loader import KnowledgeLoader
 
         self.knowledge_loader = KnowledgeLoader()
-        # Track loaded knowledge (id, phase) tuples to avoid re-listing them
-        self._loaded_knowledge: set[tuple[str, str]] = set()
+        # Track loaded knowledge IDs to avoid re-listing them
+        self._loaded_knowledge: set[str] = set()
 
     @staticmethod
     def _is_verbose_mode() -> bool:
@@ -73,6 +73,14 @@ class BaseAgent(abc.ABC):
 
         Returns:
             Path to the template directory
+        """
+
+    @abc.abstractmethod
+    def get_allowed_phases(self) -> list[str]:
+        """Get the phases this agent is allowed to access.
+
+        Returns:
+            List of allowed phases (subset of ["data", "model"])
         """
 
     def get_template_name(self) -> str:
@@ -592,10 +600,8 @@ class BaseAgent(abc.ABC):
                                             == "read_knowledge_content"
                                         ):
                                             knowledge_id = args.get("knowledge_id", "")
-                                            phase = args.get("phase", "model")
                                             progress_callback(
-                                                f"[dim]▸ Reading: {knowledge_id} "
-                                                f"({phase})[/dim]"
+                                                f"[dim]▸ Reading: {knowledge_id}[/dim]"
                                             )
                                         else:
                                             # For other tools, show name & brief args
@@ -843,26 +849,11 @@ class BaseAgent(abc.ABC):
                         "type": "string",
                         "description": (
                             "The ID of the knowledge document to read "
-                            "(e.g., 'dcn', 'mlp', 'transformer', "
-                            "'feature-interaction', 'sequence-generation')"
+                            "(e.g., 'mlp', 'dcn')"
                         ),
-                    },
-                    "phase": {
-                        "type": "string",
-                        "description": (
-                            "The phase of knowledge to read. "
-                            "Options: 'general' (general guide), "
-                            "'model' (model architectures), "
-                            "'train' (training strategies), "
-                            "'evaluate' (evaluation metrics), "
-                            "'data' (data processing patterns). "
-                            "Use list_available_knowledge to see "
-                            "which phases are available."
-                        ),
-                        "enum": ["general", "model", "train", "evaluate", "data"],
                     },
                 },
-                "required": ["knowledge_id", "phase"],
+                "required": ["knowledge_id"],
             },
         )
 
@@ -888,9 +879,7 @@ class BaseAgent(abc.ABC):
         elif tool_name == "list_available_knowledge":
             return self._handle_list_knowledge()
         elif tool_name == "read_knowledge_content":
-            return self._handle_read_knowledge(
-                args.get("knowledge_id"), args.get("phase")
-            )
+            return self._handle_read_knowledge(args.get("knowledge_id"))
         else:
             return f"Unknown tool: {tool_name}"
 
@@ -898,55 +887,47 @@ class BaseAgent(abc.ABC):
         """Handle list_available_knowledge tool call.
 
         Returns:
-            JSON list of available knowledge with id, description, and available phases.
-            Phases can include "general" (guide.md) and/or specific phases like
-            "model", "train", "evaluate" (phase-specific guides).
-            Excludes knowledge that has already been loaded into the system context.
+            JSON list of available knowledge with id, name, description,
+            and phases. Filters knowledge to only show those available for
+            this agent's allowed phases. Excludes knowledge that has already
+            been loaded into the system context.
         """
         metadata_map = self.knowledge_loader.scan_metadata()
 
         if not metadata_map:
             return "[]"
 
+        # Get agent's allowed phases
+        allowed_phases = self.get_allowed_phases()
+
         knowledge_list = []
         for knowledge_id, metadata in metadata_map.items():
-            # Scan filesystem to determine actually available phases
-            # This includes both "general" and specialized phases
-            available_phases = self.knowledge_loader.get_available_phases(knowledge_id)
-
-            # If no guides found at all, skip this knowledge
-            if not available_phases:
+            # Check if this knowledge has any overlap with agent's allowed phases
+            knowledge_phases = metadata.phases
+            if not any(phase in allowed_phases for phase in knowledge_phases):
+                # Skip knowledge not accessible to this agent
                 continue
 
-            # Filter out phases that have already been loaded
-            remaining_phases = [
-                phase
-                for phase in available_phases
-                if (knowledge_id, phase) not in self._loaded_knowledge
-            ]
-
-            # If all phases have been loaded, skip this knowledge entirely
-            if not remaining_phases:
+            # Skip if already loaded
+            if knowledge_id in self._loaded_knowledge:
                 continue
 
             knowledge_list.append(
                 {
                     "id": knowledge_id,
-                    "description": metadata.description or metadata.name,
-                    "phases": remaining_phases,
+                    "name": metadata.name,
+                    "description": metadata.description,
+                    "phases": knowledge_phases,
                 }
             )
 
         return json.dumps(knowledge_list)
 
-    def _handle_read_knowledge(
-        self, knowledge_id: str, phase: str | None = None
-    ) -> str:
+    def _handle_read_knowledge(self, knowledge_id: str) -> str:
         """Handle read_knowledge_content tool call.
 
         Args:
             knowledge_id: Knowledge document ID
-            phase: Knowledge phase (general, model, train, evaluate, data)
 
         Returns:
             Knowledge content or error message
@@ -954,30 +935,33 @@ class BaseAgent(abc.ABC):
         if not knowledge_id:
             return "Error: knowledge_id parameter is required"
 
-        if not phase:
-            return "Error: phase parameter is required"
+        # Check if agent has access to this knowledge
+        metadata_map = self.knowledge_loader.scan_metadata()
+        metadata = metadata_map.get(knowledge_id)
 
-        # Validate phase parameter
-        valid_phases = ["general", "model", "train", "evaluate", "data"]
-        if phase not in valid_phases:
+        if not metadata:
             return (
-                f"Error: Invalid phase '{phase}'. "
-                f"Must be one of: {', '.join(valid_phases)}"
+                f"Error: Knowledge '{knowledge_id}' not found. "
+                f"Use list_available_knowledge to see available options."
             )
 
-        # Load knowledge content with specified phase
-        content, actual_phase = self.knowledge_loader.load_knowledge(
-            knowledge_id, phase
-        )
+        # Check if knowledge is accessible for this agent's phases
+        allowed_phases = self.get_allowed_phases()
+        if not any(phase in allowed_phases for phase in metadata.phases):
+            return (
+                f"Error: Knowledge '{knowledge_id}' is not available for your "
+                f"allowed phases ({', '.join(allowed_phases)}). "
+                f"This knowledge is only for: {', '.join(metadata.phases)}"
+            )
 
-        if content and actual_phase:
-            # Track the actual phase that was loaded (not requested phase)
-            # This prevents re-listing when fallback to general occurs
-            self._loaded_knowledge.add((knowledge_id, actual_phase))
+        # Load knowledge content
+        content = self.knowledge_loader.load_knowledge(knowledge_id)
+
+        if content:
+            # Track that this knowledge has been loaded
+            self._loaded_knowledge.add(knowledge_id)
 
             # Add header for context
-            metadata_map = self.knowledge_loader.scan_metadata()
-            metadata = metadata_map.get(knowledge_id)
             header = f"# Knowledge: {knowledge_id}"
             if metadata:
                 header += f" - {metadata.name}"
@@ -985,7 +969,7 @@ class BaseAgent(abc.ABC):
             return f"{header}\n\n{content}"
         else:
             return (
-                f"Error: Knowledge '{knowledge_id}' not found for phase '{phase}'. "
+                f"Error: Knowledge '{knowledge_id}' content could not be loaded. "
                 f"Use list_available_knowledge to see available options."
             )
 

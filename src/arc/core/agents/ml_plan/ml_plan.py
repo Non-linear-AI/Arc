@@ -48,6 +48,17 @@ class MLPlanAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
+    def get_allowed_phases(self) -> list[str]:
+        """Get the phases this agent is allowed to access.
+
+        ML Plan agent can access both data and model phases to make
+        comprehensive recommendations.
+
+        Returns:
+            List containing ["data", "model"]
+        """
+        return ["data", "model"]
+
     async def analyze_problem(
         self,
         user_context: str,

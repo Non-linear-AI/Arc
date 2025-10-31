@@ -16,6 +16,10 @@ class MLAgentForTesting(BaseAgent):
         """Return a temporary directory for template rendering."""
         return Path("/tmp")
 
+    def get_allowed_phases(self):
+        """Return all phases for testing."""
+        return ["data", "model"]
+
 
 @pytest.fixture
 def test_agent():
@@ -133,32 +137,33 @@ class TestReadKnowledgeTool:
 
     def test_handle_read_knowledge_missing_id(self, test_agent):
         """Test reading knowledge with missing ID."""
-        result = test_agent._handle_read_knowledge("", "model")
+        result = test_agent._handle_read_knowledge("")
         assert "Error" in result
 
     def test_handle_read_knowledge_invalid_id(self, test_agent):
         """Test reading knowledge with invalid ID."""
-        result = test_agent._handle_read_knowledge("nonexistent_architecture", "model")
+        result = test_agent._handle_read_knowledge("nonexistent_architecture")
         assert "Error" in result or "not found" in result.lower()
 
     def test_handle_read_knowledge_valid_builtin(self, test_agent):
         """Test reading valid builtin knowledge."""
         # DCN is a builtin knowledge
-        result = test_agent._handle_read_knowledge("dcn", "model")
+        result = test_agent._handle_read_knowledge("dcn")
         assert result is not None
         assert isinstance(result, str)
         assert len(result) > 0
         # Should not be an error
         assert "Error" not in result or "Deep & Cross" in result
 
-    def test_handle_read_knowledge_different_phases(self, test_agent):
-        """Test reading knowledge with different phases."""
-        # Try reading with different valid phases
-        for phase in ["model", "train", "evaluate", "data"]:
-            result = test_agent._handle_read_knowledge("dcn", phase)
-            # Should return something, may be knowledge or error if phase not available
-            assert result is not None
-            assert isinstance(result, str)
+    def test_handle_read_knowledge_phase_filtering(self, test_agent):
+        """Test that knowledge is filtered by agent's allowed phases."""
+        # DCN is model phase knowledge
+        result = test_agent._handle_read_knowledge("dcn")
+        # Should succeed since test agent allows "model" phase
+        assert result is not None
+        assert isinstance(result, str)
+        # Should not be an error since DCN is accessible to model phase
+        assert "not available for your allowed phases" not in result
 
 
 class TestExecuteMLTool:
@@ -194,7 +199,7 @@ class TestExecuteMLTool:
 
         result = await test_agent._execute_ml_tool(
             "read_knowledge_content",
-            json.dumps({"knowledge_id": "dcn", "phase": "model"}),
+            json.dumps({"knowledge_id": "dcn"}),
         )
         assert result is not None
         assert isinstance(result, str)

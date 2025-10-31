@@ -1,0 +1,9 @@
+mlp:
+  name: "Multi-Layer Perceptron"
+  description: "Feedforward neural network with fully connected layers for tabular data prediction"
+  phases: ["model"]
+
+dcn:
+  name: "Deep & Cross Network"
+  description: "Combines explicit feature crossing with deep representation learning for CTR prediction and recommendations"
+  phases: ["model"]

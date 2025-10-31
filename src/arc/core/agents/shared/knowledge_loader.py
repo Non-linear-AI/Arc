@@ -14,40 +14,35 @@ logger = logging.getLogger(__name__)
 class KnowledgeMetadata:
     """Metadata for a knowledge document."""
 
-    def __init__(self, data: dict[str, Any]):
-        """Initialize metadata from parsed YAML."""
-        self.id = data.get("id", "")
+    def __init__(self, knowledge_id: str, data: dict[str, Any]):
+        """Initialize metadata from parsed YAML.
+
+        Args:
+            knowledge_id: The knowledge document ID (used as key in metadata.yaml)
+            data: Dictionary containing metadata fields
+        """
+        self.id = knowledge_id
         self.name = data.get("name", "")
-        self.type = data.get("type", "")
         self.description = data.get("description", "")
-        self.keywords = data.get("keywords", [])
-        self.problem_type = data.get("problem_type", "")
-        self.recommended_patterns = data.get("recommended_patterns", [])
-        self.related_knowledge = data.get("related_knowledge", [])
-        self.complexity = data.get("complexity", "")
-        self.domain = data.get("domain", "")
-        self.data_types = data.get("data_types", [])
+        self.phases = data.get("phases", ["model"])  # Default to model phase
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for LLM context."""
         return {
             "id": self.id,
             "name": self.name,
-            "type": self.type,
             "description": self.description,
-            "keywords": self.keywords,
-            "problem_type": self.problem_type,
-            "complexity": self.complexity,
-            "domain": self.domain,
+            "phases": self.phases,
         }
 
     def __str__(self) -> str:
         """String representation for LLM context."""
-        keywords_str = ", ".join(self.keywords) if self.keywords else "none"
+        phases_str = ", ".join(self.phases)
         return (
-            f"- {self.id} (type: {self.type})\n"
-            f"  {self.description}\n"
-            f"  Keywords: {keywords_str}"
+            f"- {self.id}\n"
+            f"  Name: {self.name}\n"
+            f"  Description: {self.description}\n"
+            f"  Phases: {phases_str}"
         )
 
 
@@ -85,8 +80,8 @@ class KnowledgeLoader:
         self.builtin_path = Path(builtin_path)
         self.user_path = Path(user_path)
         self._metadata_cache: dict[str, KnowledgeMetadata] | None = None
-        # Cache for knowledge content: key=(knowledge_id, phase), value=content
-        self._content_cache: dict[tuple[str, str], str | None] = {}
+        # Cache for knowledge content: key=knowledge_id, value=content
+        self._content_cache: dict[str, str | None] = {}
 
     def scan_metadata(self) -> dict[str, KnowledgeMetadata]:
         """Scan all knowledge metadata files from builtin and user paths.
@@ -133,36 +128,47 @@ class KnowledgeLoader:
     ) -> dict[str, KnowledgeMetadata]:
         """Scan metadata from a specific path.
 
+        Reads the single metadata.yaml file at the base path containing all knowledge.
+
         Args:
-            path: Path to scan
+            path: Base path to scan (should contain metadata.yaml)
             source: Source label ("builtin" or "user") for logging
 
         Returns:
             Dictionary mapping knowledge_id to metadata
         """
         metadata_map = {}
+        metadata_file = path / "metadata.yaml"
 
-        for knowledge_dir in path.iterdir():
-            if not knowledge_dir.is_dir():
-                continue
+        if not metadata_file.exists():
+            logger.debug(f"No metadata.yaml at {path}")
+            return metadata_map
 
-            metadata_file = knowledge_dir / "metadata.yaml"
-            if not metadata_file.exists():
-                logger.debug(f"No metadata.yaml in {knowledge_dir}")
-                continue
+        try:
+            with open(metadata_file) as f:
+                all_metadata = yaml.safe_load(f)
 
-            try:
-                with open(metadata_file) as f:
-                    data = yaml.safe_load(f)
-
-                metadata = KnowledgeMetadata(data)
-                metadata_map[metadata.id] = metadata
-
-            except Exception as e:
+            if not isinstance(all_metadata, dict):
                 logger.warning(
-                    f"Failed to load {source} metadata from {metadata_file}: {e}"
+                    f"{source} metadata.yaml is not a dictionary: {metadata_file}"
                 )
-                continue
+                return metadata_map
+
+            # Each key is a knowledge_id, value is its metadata
+            for knowledge_id, data in all_metadata.items():
+                try:
+                    metadata = KnowledgeMetadata(knowledge_id, data)
+                    metadata_map[knowledge_id] = metadata
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse {source} knowledge '{knowledge_id}': {e}"
+                    )
+                    continue
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to load {source} metadata from {metadata_file}: {e}"
+            )
 
         return metadata_map
 
@@ -175,14 +181,11 @@ class KnowledgeLoader:
         metadata_map = self.scan_metadata()
         return list(metadata_map.values())
 
-    def load_multiple(
-        self, knowledge_ids: list[str], phase: str = "model"
-    ) -> list[dict[str, str]]:
+    def load_multiple(self, knowledge_ids: list[str]) -> list[dict[str, str]]:
         """Load multiple knowledge documents.
 
         Args:
             knowledge_ids: List of knowledge IDs to load
-            phase: Which phase guide to read (default: 'model')
 
         Returns:
             List of dicts with keys: 'id', 'name', 'content'
@@ -192,7 +195,7 @@ class KnowledgeLoader:
         metadata_map = self.scan_metadata()
 
         for knowledge_id in knowledge_ids:
-            content, _ = self.load_knowledge(knowledge_id, phase)
+            content = self.load_knowledge(knowledge_id)
             if content:
                 metadata = metadata_map.get(knowledge_id)
                 results.append(
@@ -205,182 +208,121 @@ class KnowledgeLoader:
 
         return results
 
-    def load_knowledge(
-        self, knowledge_id: str, phase: str = "model"
-    ) -> tuple[str | None, str | None]:
+    def load_knowledge(self, knowledge_id: str) -> str | None:
         """Load specific knowledge document with caching.
 
         Checks user path first, then builtin path.
         Results are cached to avoid repeated file I/O.
 
         Args:
-            knowledge_id: ID of the knowledge to read
-                (e.g., 'dcn', 'feature-interaction')
-            phase: Which phase guide to read (default: 'model')
+            knowledge_id: ID of the knowledge to read (e.g., 'mlp', 'dcn')
 
         Returns:
-            Tuple of (content, actual_phase):
-            - content: Content of the knowledge document, or None if not found
-            - actual_phase: The phase that was actually loaded (may differ from
-              requested phase if fallback to general occurred), or None if not found
+            Content of the knowledge document, or None if not found
         """
         # Check cache first
-        cache_key = (knowledge_id, phase)
-        if cache_key in self._content_cache:
-            cached_content = self._content_cache[cache_key]
-            # For backward compatibility, check if cached value is tuple or just content
-            if isinstance(cached_content, tuple):
-                return cached_content
-            # Old cache format - return content with phase
-            return cached_content, phase if cached_content else None
+        if knowledge_id in self._content_cache:
+            return self._content_cache[knowledge_id]
 
         # Try user knowledge first (allows override)
         if self.user_path.exists():
-            content, actual_phase = self._load_knowledge_from_path(
-                self.user_path, knowledge_id, phase
-            )
+            content = self._load_knowledge_from_path(self.user_path, knowledge_id)
             if content is not None:
-                logger.debug(
-                    f"Loaded user knowledge: {knowledge_id} "
-                    f"(requested: {phase}, actual: {actual_phase})"
-                )
+                logger.debug(f"Loaded user knowledge: {knowledge_id}")
                 # Cache the result
-                self._content_cache[cache_key] = (content, actual_phase)
-                return content, actual_phase
+                self._content_cache[knowledge_id] = content
+                return content
 
         # Fall back to builtin knowledge
         if self.builtin_path.exists():
-            content, actual_phase = self._load_knowledge_from_path(
-                self.builtin_path, knowledge_id, phase
-            )
+            content = self._load_knowledge_from_path(self.builtin_path, knowledge_id)
             if content is not None:
-                logger.debug(
-                    f"Loaded builtin knowledge: {knowledge_id} "
-                    f"(requested: {phase}, actual: {actual_phase})"
-                )
+                logger.debug(f"Loaded builtin knowledge: {knowledge_id}")
                 # Cache the result
-                self._content_cache[cache_key] = (content, actual_phase)
-                return content, actual_phase
+                self._content_cache[knowledge_id] = content
+                return content
 
         # Knowledge not found is normal - agent will discover what's available via tools
-        logger.debug(f"Knowledge not found: {knowledge_id} (phase: {phase})")
+        logger.debug(f"Knowledge not found: {knowledge_id}")
         # Cache the negative result to avoid repeated lookups
-        self._content_cache[cache_key] = (None, None)
-        return None, None
+        self._content_cache[knowledge_id] = None
+        return None
 
     def _load_knowledge_from_path(
-        self, base_path: Path, knowledge_id: str, phase: str
-    ) -> tuple[str | None, str | None]:
+        self, base_path: Path, knowledge_id: str
+    ) -> str | None:
         """Load knowledge from a specific base path.
 
         Args:
             base_path: Base path to search (builtin or user)
             knowledge_id: Knowledge ID
-            phase: Phase to load (e.g., "general", "model", "train", "evaluate", "data")
 
         Returns:
-            Tuple of (content, actual_phase):
-            - content: Knowledge content or None if not found
-            - actual_phase: The phase that was actually loaded (may differ from
-              requested if fallback occurred), or None if not found
+            Knowledge content or None if not found
         """
-        knowledge_dir = base_path / knowledge_id
+        knowledge_file = base_path / f"{knowledge_id}.md"
 
-        if not knowledge_dir.exists():
-            return None, None
+        if not knowledge_file.exists():
+            return None
 
-        # If phase is "general", go directly to guide.md
-        if phase == "general":
-            general_guide = knowledge_dir / "guide.md"
-            if general_guide.exists():
-                try:
-                    return general_guide.read_text(), "general"
-                except Exception as e:
-                    logger.error(f"Failed to read {general_guide}: {e}")
-                    return None, None
-            return None, None
-
-        # Try phase-specific guide first (e.g., model-guide.md)
-        phase_guide = knowledge_dir / f"{phase}-guide.md"
-        if phase_guide.exists():
-            try:
-                return phase_guide.read_text(), phase
-            except Exception as e:
-                logger.error(f"Failed to read {phase_guide}: {e}")
-                return None, None
-
-        # Fall back to general guide.md
-        general_guide = knowledge_dir / "guide.md"
-        if general_guide.exists():
-            try:
-                return general_guide.read_text(), "general"
-            except Exception as e:
-                logger.error(f"Failed to read {general_guide}: {e}")
-                return None, None
-
-        return None, None
+        try:
+            return knowledge_file.read_text()
+        except Exception as e:
+            logger.error(f"Failed to read {knowledge_file}: {e}")
+            return None
 
     def get_available_phases(self, knowledge_id: str) -> list[str]:
-        """Get list of actually available phases for a knowledge document.
+        """Get list of available phases for a knowledge document.
 
-        Checks which guide files exist (both phase-specific and general).
+        Reads phases from metadata.
 
         Args:
             knowledge_id: Knowledge document ID
 
         Returns:
-            List of available phases (e.g., ["general", "model", "train"])
+            List of available phases (e.g., ["data", "model"])
         """
-        available_phases = []
+        metadata_map = self.scan_metadata()
+        metadata = metadata_map.get(knowledge_id)
 
-        # Check both user and builtin paths
-        for base_path in [self.user_path, self.builtin_path]:
-            knowledge_dir = base_path / knowledge_id
-            if not knowledge_dir.exists():
-                continue
+        if metadata:
+            return metadata.phases
 
-            # Check for general guide
-            if (
-                knowledge_dir / "guide.md"
-            ).exists() and "general" not in available_phases:
-                available_phases.append("general")
+        return []
 
-            # Check for phase-specific guides
-            for phase in ["model", "train", "evaluate", "data"]:
-                phase_guide = knowledge_dir / f"{phase}-guide.md"
-                if phase_guide.exists() and phase not in available_phases:
-                    available_phases.append(phase)
+    def format_metadata_for_llm(self, allowed_phases: list[str] | None = None) -> str:
+        """Format metadata as a string for LLM context, optionally filtering by phases.
 
-        return available_phases
-
-    def format_metadata_for_llm(self) -> str:
-        """Format all metadata as a string for LLM context.
+        Args:
+            allowed_phases: Optional list of phases to filter by
+                           (e.g., ["data", "model"]).
+                           If None, shows all knowledge documents.
 
         Returns:
-            Formatted string listing all available knowledge
+            Formatted string listing available knowledge
         """
         metadata_list = self.get_metadata_list()
 
         if not metadata_list:
             return "No knowledge documents available."
 
-        lines = ["Available knowledge documents (use read_knowledge tool to access):\n"]
+        # Filter by allowed phases if specified
+        if allowed_phases:
+            filtered_list = []
+            for metadata in metadata_list:
+                # Include if any of the knowledge's phases overlap with allowed phases
+                if any(phase in allowed_phases for phase in metadata.phases):
+                    filtered_list.append(metadata)
+            metadata_list = filtered_list
 
-        # Group by type
-        by_type: dict[str, list[KnowledgeMetadata]] = {}
+        if not metadata_list:
+            phases_str = ", ".join(allowed_phases)
+            return f"No knowledge documents available for phases: {phases_str}"
+
+        lines = ["Available knowledge documents:\n"]
+
         for metadata in metadata_list:
-            if metadata.type not in by_type:
-                by_type[metadata.type] = []
-            by_type[metadata.type].append(metadata)
-
-        # Format each type group
-        for knowledge_type in ["architecture", "pattern", "scenario"]:
-            if knowledge_type not in by_type:
-                continue
-
-            lines.append(f"\n{knowledge_type.upper()}S:")
-            for metadata in by_type[knowledge_type]:
-                lines.append(str(metadata))
-                lines.append("")
+            lines.append(str(metadata))
+            lines.append("")
 
         return "\n".join(lines)

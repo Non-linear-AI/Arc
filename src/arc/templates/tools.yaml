@@ -243,6 +243,21 @@ tools:
 
       The name parameter is used for versioning (e.g., 'diabetes-classifier' becomes 'diabetes-classifier-v1').
       The instruction parameter is used for both initial creation and revisions.
+
+      Returns JSON with the following structure:
+      {
+        "status": "accepted" | "cancelled",
+        "plan_id": "plan-id-v1",
+        "plan": {
+          "data_plan": "Feature engineering strategy...",
+          "model_plan": "Architecture and training approach...",
+          "knowledge": {"data": ["knowledge_id1"], "model": ["knowledge_id2"]}
+        }
+      }
+
+      The plan content is always included regardless of status, allowing you to discuss it with
+      the user. If status is "accepted", proceed with ml_data and ml_model using the plan_id.
+      If status is "cancelled", ask the user what they would like to change.
     parameters:
       type: object
       properties:
@@ -287,9 +302,31 @@ tools:
       This tool replaces the old separate ml_model + ml_train workflow. If plan_id is provided,
       uses unified model_plan guidance (architecture + training).
 
-      IMPORTANT: If ml_data was called previously and returned a data_processing_id in its result,
-      pass that ID to this tool. It will load the SQL transformations and output schemas to
-      understand how training data was prepared, enabling better architecture decisions.
+      IMPORTANT: When plan_id is provided, data_processing_id is REQUIRED. Extract data_processing_id
+      from ml_data's JSON result and pass it to this tool. This links the model to the specific
+      data processing execution. The tool will ERROR if plan_id is provided without data_processing_id.
+
+      Returns JSON with the following structure:
+      {
+        "status": "accepted" | "cancelled",
+        "model_id": "model-v1",
+        "model_spec": {
+          "inputs": {...},
+          "graph": {...},
+          "outputs": {...},
+          "loss": {...},
+          "training": {...}
+        },
+        "training": {
+          "status": "submitted" | "failed" | "not_started",
+          "job_id": "job_xyz789",
+          "train_table": "training_data",
+          "error": "..." // only if failed
+        }
+      }
+
+      The model_spec contains the full architecture and training configuration. Extract job_id
+      to monitor training progress with /ml jobs status.
     parameters:
       type: object
       properties:
@@ -347,6 +384,22 @@ tools:
       - Evaluate a trained model on a hold-out test set
       - Compare multiple models on the same test data
       - Generate comprehensive evaluation reports with visualizations
+
+      Returns JSON with the following structure:
+      {
+        "status": "accepted" | "cancelled",
+        "evaluator_id": "evaluator-id-v1",
+        "evaluation": {
+          "status": "submitted" | "failed" | "not_started",
+          "job_id": "job_abc123",
+          "model_id": "model-v1",
+          "dataset": "test_data",
+          "error": "..." // only if failed
+        }
+      }
+
+      The evaluation runs asynchronously. Extract job_id to monitor progress with /ml jobs status.
+      View detailed metrics and visualizations in TensorBoard.
     parameters:
       type: object
       properties:
@@ -387,6 +440,20 @@ tools:
       For read-only SELECT queries, use database_query for immediate results.
       If plan_id is provided, the agent loads the plan from database and uses its
       feature engineering guidance.
+
+      Returns JSON with the following structure:
+      {
+        "status": "accepted" | "cancelled",
+        "data_processing_id": "data_abc123",
+        "execution": {
+          "output_tables": ["table1", "table2"],
+          "sql_operations": ["CREATE TABLE table1 AS SELECT...", "CREATE TABLE table2 AS SELECT..."]
+        }
+      }
+
+      The data_processing_id is REQUIRED for ml_model when using a plan_id. Extract it from
+      the JSON and pass to ml_model. The sql_operations provide context about the DB transactions
+      performed.
     parameters:
       type: object
       properties:

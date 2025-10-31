@@ -48,6 +48,16 @@ class MLDataAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
+    def get_allowed_phases(self) -> list[str]:
+        """Get the phases this agent is allowed to access.
+
+        ML Data agent only accesses data phase for feature engineering guidance.
+
+        Returns:
+            List containing ["data"]
+        """
+        return ["data"]
+
     async def generate_data_processing_yaml(
         self,
         instruction: str,
@@ -130,16 +140,14 @@ class MLDataAgent(BaseAgent):
                 # New method: knowledge already loaded by tool
                 loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
                 for doc in preloaded_knowledge:
-                    self._loaded_knowledge.add((doc["id"], "data"))
+                    self._loaded_knowledge.add(doc["id"])
             elif recommended_knowledge_ids:
                 # Old method: load knowledge here (deprecated but backward compatible)
                 preloaded_knowledge = []
                 loaded_knowledge_ids = []
                 for knowledge_id in recommended_knowledge_ids:
-                    content, actual_phase = self.knowledge_loader.load_knowledge(
-                        knowledge_id, "data"
-                    )
-                    if content and actual_phase:
+                    content = self.knowledge_loader.load_knowledge(knowledge_id)
+                    if content:
                         preloaded_knowledge.append(
                             {
                                 "id": knowledge_id,
@@ -148,7 +156,7 @@ class MLDataAgent(BaseAgent):
                             }
                         )
                         loaded_knowledge_ids.append(knowledge_id)
-                        self._loaded_knowledge.add((knowledge_id, actual_phase))
+                        self._loaded_knowledge.add(knowledge_id)
             else:
                 preloaded_knowledge = []
                 loaded_knowledge_ids = []

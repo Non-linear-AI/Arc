@@ -28,29 +28,24 @@ class ReadKnowledgeTool(BaseTool):
 
         Args:
             knowledge_id: ID of the knowledge to read
-            phase: Optional phase (model, trainer, evaluator)
 
         Returns:
             ToolResult with knowledge content or error
         """
         knowledge_id = kwargs.get("knowledge_id")
-        phase = kwargs.get("phase", "model")
 
         if not knowledge_id:
             return ToolResult.error_result(
                 "Missing required parameter: knowledge_id",
                 recovery_actions=(
-                    "Specify which knowledge document to read "
-                    "(e.g., 'dcn', 'feature-interaction')"
+                    "Specify which knowledge document to read (e.g., 'dcn', 'mlp')"
                 ),
             )
 
         # Load the knowledge document
-        content, actual_phase = self.knowledge_loader.load_knowledge(
-            knowledge_id, phase
-        )
+        content = self.knowledge_loader.load_knowledge(knowledge_id)
 
-        if content is None or actual_phase is None:
+        if content is None:
             # Get available knowledge for helpful error message
             metadata_map = self.knowledge_loader.scan_metadata()
             available_ids = list(metadata_map.keys())
@@ -73,11 +68,11 @@ class ReadKnowledgeTool(BaseTool):
 
         # Build header with metadata (dim style for UI consistency)
         if metadata:
+            phases_str = ", ".join(metadata.phases)
             header_parts = [f"[dim]▸ Using knowledge: {metadata.name}[/dim]"]
-            if metadata.type:
-                header_parts.append(f"[dim]  Type: {metadata.type}[/dim]")
             if metadata.description:
                 header_parts.append(f"[dim]  {metadata.description}[/dim]")
+            header_parts.append(f"[dim]  Phases: {phases_str}[/dim]")
             header = "\n".join(header_parts) + "\n\n"
         else:
             header = f"[dim]▸ Using knowledge: {knowledge_id}[/dim]\n\n"
@@ -86,5 +81,5 @@ class ReadKnowledgeTool(BaseTool):
 
         return ToolResult.success_result(
             output,
-            metadata={"knowledge_id": knowledge_id, "phase": phase},
+            metadata={"knowledge_id": knowledge_id},
         )
