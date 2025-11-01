@@ -570,9 +570,10 @@ class Printer:
             self._input_active = False
             # Auto-cleanup: reset prompt session to ensure clean state
             self.reset_prompt_session()
-            # Resume escape watcher if callback is set
-            if self._resume_escape_callback:
-                self._resume_escape_callback()
+            # Note: Do NOT resume escape watcher here - it causes race conditions
+            # with prompt_toolkit Applications when get_input_async() is called
+            # immediately after. The escape watcher will auto-resume after the
+            # nested input prompt completes.
 
     def reset_prompt_session(self) -> None:
         """Reset the prompt session to ensure a clean state after nested prompts."""

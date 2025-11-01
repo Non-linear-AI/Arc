@@ -1,5 +1,6 @@
 """Arc AI Agent implementation."""
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -293,6 +294,10 @@ class ArcAgent:
 
         # Track pending tool calls to handle cancellation
         pending_tool_call_ids: set[str] = set()
+        self.logger.debug(
+            f"Starting message stream processing. "
+            f"Current message count: {len(self.messages)}"
+        )
 
         try:
             from arc.tools.tools import get_base_tools
@@ -395,6 +400,9 @@ class ArcAgent:
                 # Track pending tool calls for cancellation handling
                 for tc in current_tool_calls:
                     pending_tool_call_ids.add(tc.id)
+                    self.logger.debug(
+                        f"Added tool call to pending: {tc.function.name} (id: {tc.id})"
+                    )
 
                 # Execute tools and append results
                 for tool_call in current_tool_calls:
@@ -414,22 +422,22 @@ class ArcAgent:
                     )
                     # Remove from pending since we got a result
                     pending_tool_call_ids.discard(tool_call.id)
+                    self.logger.debug(f"Removed tool call from pending: {tool_call.id}")
 
                 tool_rounds += 1
 
+        except asyncio.CancelledError:
+            # Task was cancelled (e.g., via Esc key)
+            # When cli.py calls next_task.cancel(), this exception is raised
+            self._add_cancelled_tool_results(
+                pending_tool_call_ids, exception_type="CancelledError"
+            )
+            raise
         except GeneratorExit:
-            # Generator was closed (e.g., via Esc key interruption)
-            # Add "cancelled" tool results for any pending tool calls
-            # to maintain API conversation history validity
-            for tool_call_id in pending_tool_call_ids:
-                self.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": "Cancelled by user",
-                    }
-                )
-            # Re-raise to properly close the generator
+            # Generator was closed (e.g., via aclose())
+            self._add_cancelled_tool_results(
+                pending_tool_call_ids, exception_type="GeneratorExit"
+            )
             raise
         except Exception as e:
             error_entry = ChatEntry(
@@ -619,6 +627,37 @@ class ArcAgent:
     async def _execute_tool_call(self, tool_call: ArcToolCall) -> ToolResult:
         """Execute a tool call (alias for _execute_tool)."""
         return await self._execute_tool(tool_call)
+
+    def _add_cancelled_tool_results(
+        self, pending_tool_call_ids: set[str], exception_type: str
+    ) -> None:
+        """Add cancelled tool result messages for pending tool calls.
+
+        This maintains API conversation history validity when tool execution
+        is interrupted. OpenAI's API requires every tool_call to have a
+        corresponding tool result message.
+
+        Args:
+            pending_tool_call_ids: Set of tool call IDs awaiting results
+            exception_type: Type of exception that triggered cancellation
+                           (for logging purposes)
+        """
+        self.logger.debug(
+            f"{exception_type} caught - adding cancelled messages for "
+            f"{len(pending_tool_call_ids)} pending tool calls"
+        )
+        for tool_call_id in pending_tool_call_ids:
+            self.logger.debug(
+                f"Adding cancelled message for tool_call_id: {tool_call_id}"
+            )
+            self.messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": "Cancelled by user",
+                }
+            )
+        self.logger.debug(f"Total messages after cleanup: {len(self.messages)}")
 
     def get_chat_history(self) -> list[ChatEntry]:
         """Get the complete chat history."""

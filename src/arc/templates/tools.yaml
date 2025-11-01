@@ -182,6 +182,10 @@ tools:
       Execute READ-ONLY SQL queries (SELECT, SHOW, DESCRIBE) for data exploration and analysis.
       Returns results immediately without confirmation. For data transformations that write/modify
       data (INSERT, UPDATE, DELETE, CREATE TABLE, etc.), use ml_data instead.
+
+      DATABASE ENGINE: DuckDB
+      - Use DuckDB-compatible SQL syntax
+      - For metadata: Use SHOW TABLES, SHOW VIEWS, or information_schema
     parameters:
       type: object
       properties:
