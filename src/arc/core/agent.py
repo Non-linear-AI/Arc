@@ -291,6 +291,9 @@ class ArcAgent:
 
         yield StreamingChunk(type="user_message", content=message)
 
+        # Track pending tool calls to handle cancellation
+        pending_tool_call_ids: set[str] = set()
+
         try:
             from arc.tools.tools import get_base_tools
 
@@ -389,6 +392,10 @@ class ArcAgent:
                     }
                 )
 
+                # Track pending tool calls for cancellation handling
+                for tc in current_tool_calls:
+                    pending_tool_call_ids.add(tc.id)
+
                 # Execute tools and append results
                 for tool_call in current_tool_calls:
                     arc_tool_call = ArcToolCall.from_openai_tool_call(tool_call)
@@ -405,9 +412,25 @@ class ArcAgent:
                             or "Tool completed",
                         }
                     )
+                    # Remove from pending since we got a result
+                    pending_tool_call_ids.discard(tool_call.id)
 
                 tool_rounds += 1
 
+        except GeneratorExit:
+            # Generator was closed (e.g., via Esc key interruption)
+            # Add "cancelled" tool results for any pending tool calls
+            # to maintain API conversation history validity
+            for tool_call_id in pending_tool_call_ids:
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": "Cancelled by user",
+                    }
+                )
+            # Re-raise to properly close the generator
+            raise
         except Exception as e:
             error_entry = ChatEntry(
                 type="assistant", content=f"Sorry, I encountered an error: {str(e)}"
