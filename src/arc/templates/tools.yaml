@@ -296,14 +296,15 @@ tools:
             Optional data processing execution ID from ml_data tool result. When provided,
             loads SQL transformations and output schemas to understand feature engineering.
             Extract this from ml_data's JSON result: result["data_processing_id"]
-        recommended_knowledge_ids:
+        knowledge_references:
           type: array
           items:
             type: string
           description: |
-            Optional list of knowledge IDs to preload for the model generation agent
-            (e.g., ['mlp', 'dcn']). The agent can still use list_available_knowledge
-            and read_knowledge independently.
+            Optional list of knowledge IDs referenced by this request to provide guidance
+            for the model generation agent (e.g., ['mlp', 'dcn']). The agent can use
+            list_available_knowledge and read_knowledge tools to access these or discover
+            additional knowledge as needed.
       required:
         - name
         - instruction
@@ -422,14 +423,15 @@ tools:
             - system
             - user
           description: "Target database: 'system' for Arc metadata, 'user' for training data (default: user)"
-        recommended_knowledge_ids:
+        knowledge_references:
           type: array
           items:
             type: string
           description: |
-            Optional list of knowledge IDs to preload for the data processing agent
-            (e.g., ['ml_data_preparation']). The agent can still use list_available_knowledge
-            and read_knowledge independently.
+            Optional list of knowledge IDs referenced by this request to provide guidance
+            for the data processing agent (e.g., ['ml_data_preparation']). The agent can use
+            list_available_knowledge and read_knowledge tools to access these or discover
+            additional knowledge as needed.
       required:
         - name
         - instruction

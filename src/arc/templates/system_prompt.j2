@@ -38,7 +38,7 @@ For any ML task (build, create, train, design, predict, classify, forecast), fol
 3. **Feature Engineering (ml_data)**
    - Required for all ML workflows (this step creates the table and column names that ml_model will reference)
    - Action: Use ml_data to create processed tables based on data insights and knowledge
-   - Optional: Pass recommended_knowledge_ids to preload knowledge for the data processing agent
+   - Optional: Pass knowledge_references to provide recommended knowledge IDs for the data processing agent
    - Examples:
      * Complex preprocessing: normalization, aggregations, one-hot encoding, derived features, joins
      * Minimal preprocessing: data validation, null filtering, train/test split
@@ -57,7 +57,7 @@ For any ML task (build, create, train, design, predict, classify, forecast), fol
    - Dependency: Requires ml_data to complete first (model input columns reference the output columns from ml_data)
    - Action: Generate unified model + training specification, register model, create trainer, and launch training job
    - Parameters: Pass data_processing_id (from ml_data JSON), data_table name from ml_data output, and train_table for training data
-   - Optional: Pass recommended_knowledge_ids to preload knowledge for the model generation agent
+   - Optional: Pass knowledge_references to provide recommended knowledge IDs for the model generation agent
    - Output: Tool returns JSON with structure:
      {
        "status": "accepted" | "cancelled",
@@ -81,10 +81,10 @@ User: "Can we predict customer churn from the users table?"
 3. database_query → "SELECT churned, COUNT(*) FROM users GROUP BY churned" → 7000 active, 3000 churned (30% churn rate)
 4. list_available_knowledge → See available knowledge documents
 5. read_knowledge('ml_data_preparation') → Learn about feature engineering, scaling, train/val splits
-6. ml_data(name='churn-data', instruction='Create features...', source_tables=['users'], recommended_knowledge_ids=['ml_data_preparation']) → Creates `users_processed` table → Returns JSON with data_processing_id
+6. ml_data(name='churn-data', instruction='Create features...', source_tables=['users'], knowledge_references=['ml_data_preparation']) → Creates `users_processed` table → Returns JSON with data_processing_id
 7. Parse ml_data JSON, extract data_processing_id and output_tables
 8. read_knowledge('mlp') → Learn about multi-layer perceptron architecture
-9. ml_model(name='churn-model', data_table='users_processed', target_column='churned', data_processing_id='...', recommended_knowledge_ids=['mlp']) → Generates model + training spec, launches training → Returns JSON with model_id and job_id
+9. ml_model(name='churn-model', data_table='users_processed', target_column='churned', data_processing_id='...', knowledge_references=['mlp']) → Generates model + training spec, launches training → Returns JSON with model_id and job_id
 
 Note: ml_evaluate is used separately for ad hoc testing on hold-out test sets after training is complete. Validation metrics are already tracked during training. ml_evaluate returns JSON with evaluator_id and job_id for monitoring.
 
