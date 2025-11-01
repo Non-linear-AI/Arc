@@ -273,12 +273,12 @@ class Printer:
 
         This enables automatic terminal state management when showing choice
         dialogs with get_choice_async(). The escape watcher is automatically
-        suspended to prevent terminal state conflicts.
+        suspended before showing the dialog and resumed after it closes.
 
         Args:
             suspend_callback: Function to call to suspend the escape watcher
-            resume_callback: Optional function to resume (typically None as
-                watcher auto-recreates on next agent loop iteration)
+            resume_callback: Optional function to resume the escape watcher
+                after the choice dialog closes
         """
         self._suspend_escape_callback = suspend_callback
         self._resume_escape_callback = resume_callback
@@ -570,6 +570,9 @@ class Printer:
             self._input_active = False
             # Auto-cleanup: reset prompt session to ensure clean state
             self.reset_prompt_session()
+            # Resume escape watcher if callback is set
+            if self._resume_escape_callback:
+                self._resume_escape_callback()
 
     def reset_prompt_session(self) -> None:
         """Reset the prompt session to ensure a clean state after nested prompts."""

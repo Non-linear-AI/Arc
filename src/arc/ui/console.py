@@ -26,11 +26,14 @@ class InteractiveInterface:
     def __init__(self):
         self._printer = Printer()
 
+        # Store escape watcher context for resume functionality
+        self._escape_loop = None
+        self._escape_event = None
+
         # Register escape watcher callbacks for automatic terminal state management
-        # The watcher auto-recreates on next agent loop iteration, so no resume needed
         self._printer.set_escape_handlers(
             suspend_callback=self.suspend_escape,
-            resume_callback=None,  # Watcher auto-recreates on next agent loop
+            resume_callback=self.resume_escape,
         )
 
     def show_welcome(self, _model: str, _directory: str):
@@ -149,6 +152,10 @@ class InteractiveInterface:
         loop = asyncio.get_running_loop()
         event = asyncio.Event()
 
+        # Store loop and event for resume functionality
+        self._escape_loop = loop
+        self._escape_event = event
+
         class EscHandle:
             def __init__(self, watcher, event):
                 self._watcher = watcher
@@ -169,6 +176,9 @@ class InteractiveInterface:
             watcher.stop()
             if getattr(self, "_active_watcher", None) is watcher:
                 self._active_watcher = None
+            # Clear stored context when watcher exits
+            self._escape_loop = None
+            self._escape_event = None
 
     def suspend_escape(self) -> None:
         """Stop any active ESC watcher to avoid stealing input (e.g., menus)."""
@@ -177,6 +187,29 @@ class InteractiveInterface:
             with suppress(Exception):
                 watcher.stop()
             self._active_watcher = None
+
+    def resume_escape(self) -> None:
+        """Resume ESC watcher after it was suspended (e.g., after menus close).
+
+        Creates a new watcher using the stored loop and event from the active
+        escape_watcher context. This allows Esc key monitoring to continue
+        after choice dialogs or other interactive prompts finish.
+        """
+        # Only resume if we have an active escape watcher context (loop and event)
+        # and no watcher is currently running
+        if (
+            self._escape_loop is not None
+            and self._escape_event is not None
+            and getattr(self, "_active_watcher", None) is None
+        ):
+            # Create and start a new watcher using the stored context
+            watcher = self._EscWatcher(
+                self._escape_loop,
+                self._escape_event,
+                is_input_active=self._printer.is_input_active,
+            )
+            watcher.start()
+            self._active_watcher = watcher
 
     def trigger_escape(self) -> None:
         """Programmatically trigger an ESC event to cancel the current task."""
