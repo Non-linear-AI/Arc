@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -40,6 +41,50 @@ class MLEvaluateTool(BaseTool):
         self.runtime = runtime
         self.ui = ui_interface
         self.tensorboard_manager = tensorboard_manager
+
+    def _build_evaluate_result(
+        self,
+        status: str,
+        evaluator_id: str,
+        evaluation_job_id: str | None = None,
+        model_id: str | None = None,
+        dataset: str | None = None,
+        evaluation_status: str = "not_started",
+        evaluation_error: str | None = None,
+    ) -> str:
+        """Build structured JSON result for ML evaluate tool.
+
+        Args:
+            status: "accepted" or "cancelled"
+            evaluator_id: Evaluator identifier
+            evaluation_job_id: Evaluation job ID if launched
+            model_id: Model ID being evaluated
+            dataset: Dataset table name
+            evaluation_status: "submitted", "failed", or "not_started"
+            evaluation_error: Error message if evaluation failed
+
+        Returns:
+            JSON string with structured evaluation result
+        """
+        result = {
+            "status": status,
+            "evaluator_id": evaluator_id,
+            "evaluation": {
+                "status": evaluation_status,
+            },
+        }
+
+        # Add evaluation details if available
+        if evaluation_job_id:
+            result["evaluation"]["job_id"] = evaluation_job_id
+        if model_id:
+            result["evaluation"]["model_id"] = model_id
+        if dataset:
+            result["evaluation"]["dataset"] = dataset
+        if evaluation_error:
+            result["evaluation"]["error"] = evaluation_error
+
+        return json.dumps(result)
 
     def _infer_target_column_from_model(self, model_spec_yaml: str) -> str | None:
         """Infer target column from model spec's loss inputs.
@@ -460,9 +505,19 @@ class MLEvaluateTool(BaseTool):
                 "run_id": eval_run.run_id,
             }
 
+            # Build structured JSON output
+            output_json = self._build_evaluate_result(
+                status="accepted",
+                evaluator_id=evaluator_record.id,
+                evaluation_job_id=job.job_id,
+                model_id=model_record.id,
+                dataset=str(data_table),
+                evaluation_status="submitted",
+            )
+
             return ToolResult(
                 success=True,
-                output="\n".join(lines),
+                output=output_json,
                 metadata=result_metadata,
             )
 

@@ -44,19 +44,32 @@ Your goal is to generate a single, valid YAML configuration that:
 No table schema information is available. You must use the database_query tool to explore tables and columns needed to fulfill the request.
 {% endif %}
 
+# When to Use ML Knowledge
+
+If your task involves creating a **training dataset for machine learning** (e.g., features for model training, train/validation splits, feature scaling), use the knowledge tools:
+
+- **list_available_knowledge()**: See available ML patterns and guidance
+- **read_knowledge_content("ml_data_preparation")**: Get comprehensive ML data preparation guide including:
+  - Output schema requirements (features, target, split columns)
+  - Stratified train/validation splitting patterns
+  - Data leakage prevention (fit on train, apply to both)
+  - Feature engineering patterns (StandardScaler, MinMaxScaler, one-hot encoding, imputation)
+
+For **general data pipelines** (cleanup, aggregation, reporting, transformations), you don't need ML-specific knowledge.
+
 # Available Tools
 
 Use these tools sparingly. Only use them when the provided schema is insufficient.
 
 **database_query(sql: str)**: Execute a read-only SQL query to explore data.
-- Use for: Checking class balance for stratified splits, verifying value distributions (e.g., `SELECT DISTINCT category ...`), finding min/max dates.
+- Use for: Verifying value distributions (e.g., `SELECT DISTINCT category ...`), finding min/max dates, checking data patterns.
 - Do not use for: Extensive analysis or data transformation. The schema above should be your primary source.
 
 **list_available_knowledge()**: List available knowledge documents.
-- Use for: Only if you need guidance on a complex pattern (e.g., "sessionization") not covered in this prompt.
+- Use for: Finding relevant guidance (e.g., ML data preparation patterns, specific transformation techniques).
 
 **read_knowledge_content(doc_name: str)**: Read a specific knowledge document.
-- Use for: Only after finding a relevant document via list_available_knowledge().
+- Use for: Loading detailed guidance after finding a relevant document via list_available_knowledge().
 
 
 {% if existing_yaml %}
@@ -189,24 +202,7 @@ The database engine is unknown (could be PostgreSQL, MySQL, SQLite, DuckDB, etc.
 | USING SAMPLE, TABLESAMPLE | MOD(ROW_NUMBER()...) pattern (see below) |
 | NOW(), GETDATE() | Do not use; all SQL must be deterministic. |
 
-## 4. Random Split Pattern
-
-Use MOD and ROW_NUMBER() for reproducible, pseudo-random splits.
-
-```sql
--- Example: 80/20 train/validation split
-SELECT
-  *,
-  CASE
-    WHEN MOD(ROW_NUMBER() OVER (ORDER BY id), 10) < 8 THEN 'training'
-    ELSE 'validation'
-  END as split
-FROM "source_table"
-```
-
-(Note: ORDER BY id ensures reproducibility. If id is not available, use another unique or semi-unique column. ORDER BY (SELECT NULL) is a last resort for non-deterministic splitting if required.)
-
-## 5. Defensive SQL
+## 4. Defensive SQL
 
 Always handle edge cases.
 
@@ -224,7 +220,7 @@ CASE
 END as click_through_rate
 ```
 
-## 6. Idempotency Pattern
+## 5. Idempotency Pattern
 
 Pipelines must be re-runnable. Always DROP before you CREATE.
 
@@ -270,64 +266,67 @@ steps:
 - Reference a step name in outputs that does not exist in steps.
 
 {% if not existing_yaml %}
-# Example: New Pipeline
+# Example: Data Cleanup and Aggregation Pipeline
 
-This example demonstrates idempotency, NULL handling, window functions, aggregations, and a correct outputs list.
+This example demonstrates a general data processing pipeline for cleaning and aggregating transaction data.
 
 ```yaml
 steps:
-  - name: drop_old_features
+  # Drop old objects for idempotency
+  - name: drop_old_monthly_summary
     type: execute
     depends_on: []
-    sql: DROP TABLE IF EXISTS "user_features"
+    sql: DROP TABLE IF EXISTS "monthly_summary"
 
-  - name: drop_old_clean_data
+  - name: drop_old_clean_transactions
     type: execute
     depends_on: []
-    sql: DROP VIEW IF EXISTS "clean_data"
+    sql: DROP VIEW IF EXISTS "clean_transactions"
 
-  - name: clean_data
+  # Step 1: Clean and filter transactions
+  - name: clean_transactions
     type: view
-    depends_on: [drop_old_clean_data, transactions]
+    depends_on: [drop_old_clean_transactions, transactions]
     sql: |
       SELECT
+        transaction_id,
         user_id,
-        CAST(amount AS DECIMAL(10, 2)) as amount,
-        transaction_date,
-        COALESCE(category, 'UNKNOWN') as category
+        CAST(transaction_date AS DATE) as transaction_date,
+        amount,
+        category,
+        status
       FROM "transactions"
-      WHERE transaction_date >= '2023-01-01'
+      WHERE status = 'completed'
         AND amount > 0
         AND user_id IS NOT NULL
+        AND transaction_date IS NOT NULL
 
-  - name: user_features
+  # Step 2: Aggregate to monthly summary
+  - name: monthly_summary
     type: table
-    depends_on: [drop_old_features, clean_data]
+    depends_on: [drop_old_monthly_summary, clean_transactions]
     sql: |
-      WITH ranked_transactions AS (
-        SELECT
-          user_id,
-          amount,
-          transaction_date,
-          ROW_NUMBER() OVER (
-            PARTITION BY user_id
-            ORDER BY transaction_date DESC
-          ) as rn
-        FROM "clean_data"
-      )
       SELECT
         user_id,
+        SUBSTRING(CAST(transaction_date AS TEXT), 1, 7) as month,
         COUNT(*) as transaction_count,
-        SUM(amount) as total_spent,
-        AVG(amount) as average_spent,
-        MAX(transaction_date) as last_transaction_date,
-        MAX(CASE WHEN rn = 1 THEN amount ELSE 0 END) as most_recent_amount
-      FROM ranked_transactions
-      GROUP BY user_id
-      HAVING COUNT(*) >= 2
+        SUM(amount) as total_amount,
+        AVG(amount) as avg_amount,
+        COUNT(DISTINCT category) as category_count
+      FROM "clean_transactions"
+      GROUP BY user_id, SUBSTRING(CAST(transaction_date AS TEXT), 1, 7)
+      HAVING COUNT(*) >= 1
 
-outputs: [user_features]
+outputs: [monthly_summary]
 ```
+
+**Key features demonstrated**:
+- Idempotency: DROP statements before creating objects
+- Data quality: Filtering NULL values and invalid data
+- Defensive SQL: NULL-safe comparisons, positive amount checks
+- Portable SQL: Using SUBSTRING and CAST for date truncation
+- Clear dependencies: Each step lists its dependencies
+- Modular design: Separate cleaning and aggregation steps
 {% endif %}
 
 # Output Format

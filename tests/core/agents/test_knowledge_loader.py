@@ -10,7 +10,6 @@ from arc.core.agents.shared.knowledge_loader import KnowledgeLoader, KnowledgeMe
 def get_bundled_knowledge_path() -> Path:
     """Get path to bundled knowledge in package."""
     # This is the builtin knowledge path
-
     loader = KnowledgeLoader()
     return loader.builtin_path
 
@@ -21,63 +20,49 @@ class TestKnowledgeMetadata:
     def test_metadata_creation(self):
         """Test creating metadata from dict."""
         data = {
-            "id": "dcn",
             "name": "Deep & Cross Network",
-            "type": "architecture",
             "description": "Test description",
-            "keywords": ["dcn", "feature-crossing"],
-            "problem_type": "classification",
-            "complexity": "intermediate",
-            "domain": "recommendation",
+            "phases": ["model"],
         }
 
-        metadata = KnowledgeMetadata(data)
+        metadata = KnowledgeMetadata("dcn", data)
 
         assert metadata.id == "dcn"
         assert metadata.name == "Deep & Cross Network"
-        assert metadata.type == "architecture"
-        assert metadata.keywords == ["dcn", "feature-crossing"]
-        assert metadata.complexity == "intermediate"
-        assert metadata.domain == "recommendation"
+        assert metadata.description == "Test description"
+        assert metadata.phases == ["model"]
 
     def test_metadata_to_dict(self):
         """Test converting metadata to dict."""
         data = {
-            "id": "test",
             "name": "Test Knowledge",
-            "type": "pattern",
             "description": "Test",
-            "keywords": ["test"],
-            "problem_type": "classification",
             "phases": ["model"],
-            "complexity": "basic",
-            "domain": "general",
         }
 
-        metadata = KnowledgeMetadata(data)
+        metadata = KnowledgeMetadata("test", data)
         result = metadata.to_dict()
 
         assert result["id"] == "test"
-        assert result["type"] == "pattern"
-        assert result["keywords"] == ["test"]
+        assert result["name"] == "Test Knowledge"
+        assert result["description"] == "Test"
+        assert result["phases"] == ["model"]
 
     def test_metadata_str(self):
         """Test string representation."""
         data = {
-            "id": "test",
             "name": "Test",
-            "type": "pattern",
             "description": "Test description",
-            "keywords": ["k1", "k2"],
+            "phases": ["data", "model"],
         }
 
-        metadata = KnowledgeMetadata(data)
+        metadata = KnowledgeMetadata("test", data)
         str_repr = str(metadata)
 
         assert "test" in str_repr
-        assert "pattern" in str_repr
-        assert "k1, k2" in str_repr
+        assert "Test" in str_repr
         assert "Test description" in str_repr
+        assert "data, model" in str_repr
 
 
 class TestKnowledgeBuiltin:
@@ -88,7 +73,10 @@ class TestKnowledgeBuiltin:
         path = get_bundled_knowledge_path()
         assert path.exists()
         assert path.name == "knowledge"
-        assert (path / "dcn").exists()
+        # Check for flat structure
+        assert (path / "metadata.yaml").exists()
+        assert (path / "dcn.md").exists()
+        assert (path / "mlp.md").exists()
 
     def test_builtin_knowledge_loads(self):
         """Test that builtin knowledge loads correctly."""
@@ -104,10 +92,9 @@ class TestKnowledgeBuiltin:
         """Test loading builtin knowledge content."""
         loader = KnowledgeLoader()
 
-        content, actual_phase = loader.load_knowledge("dcn", phase="model")
+        content = loader.load_knowledge("dcn")
 
         assert content is not None
-        assert actual_phase is not None
         assert "Deep & Cross" in content or "DCN" in content
 
 
@@ -120,29 +107,18 @@ class TestKnowledgeLoader:
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
 
-        # Create test knowledge
-        test_knowledge = knowledge_dir / "test_arch"
-        test_knowledge.mkdir()
-
-        # Create metadata
-        metadata = """id: test_arch
-name: "Test Architecture"
-type: architecture
-description: "Test architecture description"
-keywords:
-  - test
-  - architecture
-problem_type: classification
-phases:
-  - model
-complexity: basic
-domain: general
+        # Create metadata.yaml (flat structure)
+        metadata = """test_arch:
+  name: "Test Architecture"
+  description: "Test architecture description"
+  phases:
+    - model
 """
-        (test_knowledge / "metadata.yaml").write_text(metadata)
+        (knowledge_dir / "metadata.yaml").write_text(metadata)
 
-        # Create guide
+        # Create knowledge content file (flat structure)
         guide = "# Test Architecture\n\nThis is a test guide."
-        (test_knowledge / "model-guide.md").write_text(guide)
+        (knowledge_dir / "test_arch.md").write_text(guide)
 
         return knowledge_dir
 
@@ -158,7 +134,7 @@ domain: general
 
         assert "test_arch" in metadata_map
         assert metadata_map["test_arch"].name == "Test Architecture"
-        assert metadata_map["test_arch"].type == "architecture"
+        assert metadata_map["test_arch"].phases == ["model"]
 
     def test_get_metadata_list(self, temp_knowledge_dir):
         """Test getting metadata list."""
@@ -172,10 +148,9 @@ domain: general
     def test_load_knowledge(self, temp_knowledge_dir):
         """Test loading knowledge content."""
         loader = KnowledgeLoader(builtin_path=temp_knowledge_dir, user_path=None)
-        content, actual_phase = loader.load_knowledge("test_arch", phase="model")
+        content = loader.load_knowledge("test_arch")
 
         assert content is not None
-        assert actual_phase == "model"
         assert "Test Architecture" in content
         assert "test guide" in content
 
@@ -186,10 +161,9 @@ domain: general
             builtin_path=temp_knowledge_dir,
             user_path=temp_knowledge_dir / "nonexistent",
         )
-        content, actual_phase = loader.load_knowledge("nonexistent")
+        content = loader.load_knowledge("nonexistent")
 
         assert content is None
-        assert actual_phase is None
 
     def test_format_metadata_for_llm(self, temp_knowledge_dir):
         """Test formatting metadata for LLM."""
@@ -197,7 +171,7 @@ domain: general
         formatted = loader.format_metadata_for_llm()
 
         assert "test_arch" in formatted
-        assert "architecture" in formatted.lower()
+        assert "Test Architecture" in formatted
         assert "Test architecture description" in formatted
 
     def test_metadata_caching(self, temp_knowledge_dir):
@@ -214,27 +188,21 @@ domain: general
 
     def test_user_overrides_builtin(self, tmp_path):
         """Test that user knowledge overrides builtin."""
-        # Create builtin knowledge
+        # Create builtin knowledge (flat structure)
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
-        builtin_knowledge = builtin_dir / "test"
-        builtin_knowledge.mkdir()
-        (builtin_knowledge / "metadata.yaml").write_text(
-            "id: test\nname: Builtin\ntype: architecture\n"
-            "description: Builtin version\nkeywords: [builtin]\nphases: [model]"
+        (builtin_dir / "metadata.yaml").write_text(
+            "test:\n  name: Builtin\n  description: Builtin version\n  phases: [model]"
         )
-        (builtin_knowledge / "model-guide.md").write_text("# Builtin Guide")
+        (builtin_dir / "test.md").write_text("# Builtin Guide")
 
-        # Create user knowledge (override)
+        # Create user knowledge (override, flat structure)
         user_dir = tmp_path / "user"
         user_dir.mkdir()
-        user_knowledge = user_dir / "test"
-        user_knowledge.mkdir()
-        (user_knowledge / "metadata.yaml").write_text(
-            "id: test\nname: User Override\ntype: architecture\n"
-            "description: User version\nkeywords: [user]\nphases: [model]"
+        (user_dir / "metadata.yaml").write_text(
+            "test:\n  name: User Override\n  description: User version\n  phases: [model]"
         )
-        (user_knowledge / "model-guide.md").write_text("# User Guide")
+        (user_dir / "test.md").write_text("# User Guide")
 
         # Load with both paths
         loader = KnowledgeLoader(builtin_path=builtin_dir, user_path=user_dir)
@@ -245,9 +213,8 @@ domain: general
         assert metadata_map["test"].description == "User version"
 
         # Content should be from user
-        content, actual_phase = loader.load_knowledge("test", phase="model")
+        content = loader.load_knowledge("test")
         assert content is not None
-        assert actual_phase == "model"
         assert "User Guide" in content
         assert "Builtin Guide" not in content
 
@@ -265,13 +232,12 @@ class TestKnowledgeLoaderWithRealData:
         assert "dcn" in metadata_map
 
         dcn_metadata = metadata_map["dcn"]
-        assert dcn_metadata.type == "architecture"
-        assert "dcn" in [k.lower() for k in dcn_metadata.keywords]
+        assert dcn_metadata.name == "Deep & Cross Network"
+        assert "model" in dcn_metadata.phases
 
         # Load DCN guide
-        content, actual_phase = loader.load_knowledge("dcn", phase="model")
+        content = loader.load_knowledge("dcn")
         assert content is not None
-        assert actual_phase is not None
         assert "Deep & Cross" in content or "DCN" in content
         assert "cross" in content.lower()
 
@@ -280,7 +246,6 @@ class TestKnowledgeLoaderWithRealData:
         bundled_path = get_bundled_knowledge_path()
         loader = KnowledgeLoader(bundled_path)
 
-        content, actual_phase = loader.load_knowledge("mlp", phase="model")
+        content = loader.load_knowledge("mlp")
         assert content is not None
-        assert actual_phase is not None
         assert "mlp" in content.lower() or "multilayer perceptron" in content.lower()

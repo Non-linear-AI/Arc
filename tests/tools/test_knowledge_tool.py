@@ -21,19 +21,17 @@ class TestReadKnowledgeTool:
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
 
-        # Create test knowledge
-        test_dir = knowledge_dir / "test"
-        test_dir.mkdir()
-
-        metadata = """id: test
-name: "Test Knowledge"
-type: pattern
-description: "Test pattern"
-keywords: [test]
-phases: [model]
+        # Create metadata.yaml (flat structure)
+        metadata = """test:
+  name: "Test Knowledge"
+  description: "Test pattern"
+  phases:
+    - model
 """
-        (test_dir / "metadata.yaml").write_text(metadata)
-        (test_dir / "model-guide.md").write_text("# Test Guide\n\nTest content")
+        (knowledge_dir / "metadata.yaml").write_text(metadata)
+
+        # Create knowledge content file (flat structure)
+        (knowledge_dir / "test.md").write_text("# Test Guide\n\nTest content")
 
         return knowledge_dir
 
@@ -46,13 +44,12 @@ phases: [model]
     async def test_execute_success(self, temp_knowledge_dir):
         """Test successful knowledge read."""
         tool = ReadKnowledgeTool(builtin_path=temp_knowledge_dir, user_path=None)
-        result = await tool.execute(knowledge_id="test", phase="model")
+        result = await tool.execute(knowledge_id="test")
 
         assert result.success is True
         assert "Test Guide" in result.output
         assert "Test content" in result.output
         assert result.metadata["knowledge_id"] == "test"
-        assert result.metadata["phase"] == "model"
 
     @pytest.mark.asyncio
     async def test_execute_missing_knowledge_id(self, temp_knowledge_dir):
@@ -82,17 +79,19 @@ phases: [model]
 
         assert result.success is True
         assert "Test Knowledge" in result.output  # Name from metadata
-        assert "pattern" in result.output  # Type from metadata
         assert "Test pattern" in result.output  # Description from metadata
+        assert "model" in result.output  # Phases from metadata
 
     @pytest.mark.asyncio
     async def test_execute_default_phase(self, temp_knowledge_dir):
-        """Test that default phase is 'model'."""
+        """Test that knowledge_id is in metadata."""
         tool = ReadKnowledgeTool(builtin_path=temp_knowledge_dir, user_path=None)
         result = await tool.execute(knowledge_id="test")
 
         assert result.success is True
-        assert result.metadata["phase"] == "model"
+        assert result.metadata["knowledge_id"] == "test"
+        # Phase is no longer in metadata
+        assert "phase" not in result.metadata
 
 
 class TestReadKnowledgeToolWithRealData:
@@ -104,7 +103,7 @@ class TestReadKnowledgeToolWithRealData:
         bundled_path = get_bundled_knowledge_path()
         tool = ReadKnowledgeTool(bundled_path)
 
-        result = await tool.execute(knowledge_id="dcn", phase="model")
+        result = await tool.execute(knowledge_id="dcn")
 
         assert result.success is True
         assert "Deep & Cross" in result.output or "DCN" in result.output

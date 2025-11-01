@@ -52,6 +52,16 @@ class MLModelAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
+    def get_allowed_phases(self) -> list[str]:
+        """Get the phases this agent is allowed to access.
+
+        ML Model agent only accesses model phase for architecture and training guidance.
+
+        Returns:
+            List containing ["model"]
+        """
+        return ["model"]
+
     async def generate_model(
         self,
         name: str,
@@ -167,7 +177,7 @@ class MLModelAgent(BaseAgent):
             # Knowledge already loaded by tool
             loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
             for doc in preloaded_knowledge:
-                self._loaded_knowledge.add((doc["id"], "model"))
+                self._loaded_knowledge.add(doc["id"])
         else:
             preloaded_knowledge = []
             loaded_knowledge_ids = []

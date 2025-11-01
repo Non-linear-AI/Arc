@@ -55,27 +55,30 @@ class TestMLPlanAgent:
 
     def test_handle_read_knowledge_valid(self, ml_plan_agent):
         """Test reading valid knowledge document."""
-        # Mock knowledge loader - now returns tuple (content, actual_phase)
+        # Mock knowledge loader - now returns just content
         ml_plan_agent.knowledge_loader.load_knowledge = MagicMock(
-            return_value=("# MLP Guide\n\nBest practices for MLPs...", "model")
+            return_value="# MLP Guide\n\nBest practices for MLPs..."
         )
+        # Mock metadata with phases attribute
+        mock_metadata = MagicMock()
+        mock_metadata.name = "Multi-Layer Perceptron Guide"
+        mock_metadata.phases = ["model"]
         ml_plan_agent.knowledge_loader.scan_metadata = MagicMock(
-            return_value={"mlp": MagicMock(name="Multi-Layer Perceptron Guide")}
+            return_value={"mlp": mock_metadata}
         )
 
-        result = ml_plan_agent._handle_read_knowledge("mlp", "model")
+        result = ml_plan_agent._handle_read_knowledge("mlp")
 
         assert "MLP Guide" in result
         assert "Best practices" in result
 
     def test_handle_read_knowledge_invalid(self, ml_plan_agent):
         """Test reading non-existent knowledge."""
-        # Mock returns tuple (None, None) for not found
-        ml_plan_agent.knowledge_loader.load_knowledge = MagicMock(
-            return_value=(None, None)
-        )
+        # Mock returns None for not found
+        ml_plan_agent.knowledge_loader.load_knowledge = MagicMock(return_value=None)
+        ml_plan_agent.knowledge_loader.scan_metadata = MagicMock(return_value={})
 
-        result = ml_plan_agent._handle_read_knowledge("invalid", "model")
+        result = ml_plan_agent._handle_read_knowledge("invalid")
 
         assert "Error" in result
         assert "not found" in result
@@ -129,7 +132,7 @@ class TestMLPlanAgent:
 
         # Test read_knowledge_content
         result = await ml_plan_agent._execute_ml_tool(
-            "read_knowledge_content", '{"knowledge_id": "mlp", "phase": "model"}'
+            "read_knowledge_content", '{"knowledge_id": "mlp"}'
         )
         assert result is not None
         assert isinstance(result, str)

@@ -97,10 +97,10 @@ class MLRuntime:
         except Exception as exc:  # noqa: BLE001 - propagate as runtime error
             raise MLRuntimeError(f"Invalid model schema: {exc}") from exc
 
-        latest = self.model_service.get_latest_model_by_name(name)
-        version = 1 if latest is None else latest.version + 1
-        base_slug = _slugify_name(name)
-        model_id = f"{base_slug}-v{version}"
+        # Generate ID using validated name directly (no slugification needed)
+        # Names are already restricted to [a-zA-Z0-9_-] by validation
+        version = self.model_service.get_next_version_for_id_prefix(name)
+        model_id = f"{name}-v{version}"
 
         now = datetime.now(UTC)
         model = Model(
@@ -152,15 +152,27 @@ class MLRuntime:
 
         # Convert spec to YAML string for storage
         spec_yaml = spec.to_yaml()
-        base_slug = _slugify_name(name)
 
         # Retry logic to handle race conditions where multiple processes
         # try to insert the same version number simultaneously
         max_retries = 5
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         for attempt in range(max_retries):
-            # Get next version (always create new version)
-            next_version = self.services.data_processors.get_next_version_for_name(name)
-            processor_id = f"{base_slug}-v{next_version}"
+            # Get next version using validated name directly (no slugification needed)
+            # Names are already restricted to [a-zA-Z0-9_-] by validation
+            next_version = self.services.data_processors.get_next_version_for_id_prefix(
+                name
+            )
+            processor_id = f"{name}-v{next_version}"
+
+            if attempt > 0:
+                logger.debug(
+                    f"Retry attempt {attempt + 1}/{max_retries} for data processor "
+                    f"'{name}' with version {next_version}"
+                )
 
             # Create DataProcessor
             now = datetime.now(UTC)
@@ -178,6 +190,11 @@ class MLRuntime:
             try:
                 self.services.data_processors.create_data_processor(processor)
                 # Success - return the processor
+                if attempt > 0:
+                    logger.info(
+                        f"Successfully registered data processor '{name}' as {processor_id} "
+                        f"after {attempt + 1} attempts"
+                    )
                 return processor
             except DatabaseError as exc:
                 # Check if this is a duplicate key error
@@ -189,6 +206,11 @@ class MLRuntime:
                 )
 
                 if is_duplicate and attempt < max_retries - 1:
+                    # Log the duplicate key error for debugging
+                    logger.debug(
+                        f"Duplicate key error for {processor_id}, will retry "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
                     # Retry with fresh version number
                     # Small delay to reduce contention
                     import time
@@ -197,9 +219,17 @@ class MLRuntime:
                     continue
                 else:
                     # Not a duplicate error or max retries exceeded
-                    raise MLRuntimeError(
-                        f"Failed to register data processor: {exc}"
-                    ) from exc
+                    if is_duplicate:
+                        raise MLRuntimeError(
+                            f"Failed to register data processor '{name}': "
+                            f"Version conflict persisted after {max_retries} retries. "
+                            f"Last attempted version was {next_version}. "
+                            f"This may indicate a database issue or high concurrency."
+                        ) from exc
+                    else:
+                        raise MLRuntimeError(
+                            f"Failed to register data processor: {exc}"
+                        ) from exc
 
         # Should never reach here due to return/raise in loop
         raise MLRuntimeError(
@@ -620,11 +650,6 @@ def _validate_model_name(name: str) -> None:
         raise MLRuntimeError(
             "Model name should not start or end with hyphens or underscores"
         )
-
-
-def _slugify_name(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug or "model"
 
 
 __all__ = [

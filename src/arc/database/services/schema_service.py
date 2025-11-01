@@ -135,32 +135,44 @@ class SchemaService(BaseService):
             ) from e
 
     def _discover_tables(self, target_db: str) -> list[TableInfo]:
-        """Discover tables in the specified database.
+        """Discover tables and views in the specified database.
 
-        Uses DuckDB's duckdb_tables() function to discover tables across all
-        attached databases (e.g., Snowflake), not just the main catalog.
+        Uses DuckDB's duckdb_tables() and duckdb_views() functions to discover
+        all table-like objects across all attached databases (e.g., Snowflake).
         INFORMATION_SCHEMA.TABLES only shows the current catalog, so it misses
         attached databases.
+
+        Note: SHOW TABLES includes both tables and views, so we need to query both.
 
         Args:
             target_db: Target database ("system" or "user")
 
         Returns:
-            List of TableInfo objects
+            List of TableInfo objects (includes both tables and views)
         """
-        # Use duckdb_tables() to discover tables across all attached databases
-        # This includes tables from Snowflake and other attached catalogs
+        # Query both tables and views to match SHOW TABLES behavior
+        # UNION ALL to combine results from both system functions
         query = """
         SELECT
             database_name,
             schema_name,
             table_name,
-            CASE
-                WHEN internal = true THEN 'INTERNAL'
-                ELSE 'BASE TABLE'
-            END as table_type
+            'BASE TABLE' as table_type
         FROM duckdb_tables()
         WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
+          AND internal = false
+
+        UNION ALL
+
+        SELECT
+            database_name,
+            schema_name,
+            view_name as table_name,
+            'VIEW' as table_type
+        FROM duckdb_views()
+        WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
+          AND internal = false
+
         ORDER BY database_name, schema_name, table_name
         """
 

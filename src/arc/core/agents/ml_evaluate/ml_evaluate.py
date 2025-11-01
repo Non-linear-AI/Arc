@@ -73,6 +73,17 @@ class MLEvaluateAgent(BaseAgent):
         """
         return Path(__file__).parent / "templates"
 
+    def get_allowed_phases(self) -> list[str]:
+        """Get the phases this agent is allowed to access.
+
+        ML Evaluate agent accesses model phase for evaluation guidance
+        (evaluation is considered part of model phase).
+
+        Returns:
+            List containing ["model"]
+        """
+        return ["model"]
+
     async def generate_evaluator(
         self,
         name: str,
@@ -156,17 +167,15 @@ class MLEvaluateAgent(BaseAgent):
         loaded_knowledge_ids = []
         if recommended_knowledge_ids:
             for knowledge_id in recommended_knowledge_ids:
-                content, actual_phase = self.knowledge_loader.load_knowledge(
-                    knowledge_id, "evaluate"
-                )
-                if content and actual_phase:
+                content = self.knowledge_loader.load_knowledge(knowledge_id)
+                if content:
                     # Successfully loaded - add to system context
                     recommended_knowledge += (
                         f"\n\n# Evaluation Knowledge: {knowledge_id}\n\n{content}"
                     )
                     loaded_knowledge_ids.append(knowledge_id)
-                    # Track actual phase that was loaded (not requested phase)
-                    self._loaded_knowledge.add((knowledge_id, actual_phase))
+                    # Track that this knowledge was loaded
+                    self._loaded_knowledge.add(knowledge_id)
                 # If missing, silently skip (already logged at debug level)
 
         # Build system message with all context

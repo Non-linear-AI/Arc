@@ -23,7 +23,7 @@ class SchemaDiscoveryTool(BaseTool):
     async def execute(
         self,
         action: str = "list_tables",
-        target_db: str = "system",
+        target_db: str = "user",
         table_name: str | None = None,
         force_refresh: bool = False,
     ) -> ToolResult:
@@ -35,7 +35,7 @@ class SchemaDiscoveryTool(BaseTool):
                    - "describe_table": Show detailed table structure
                    - "show_schema": Show complete database schema summary
                    - "refresh_cache": Force refresh of schema cache
-            target_db: Target database - "system" (default) or "user"
+            target_db: Target database name (default: "user")
             table_name: Specific table name (required for "describe_table")
             force_refresh: Force refresh of schema cache before operation
 
@@ -43,16 +43,6 @@ class SchemaDiscoveryTool(BaseTool):
             ToolResult with schema information
         """
         try:
-            # Validate target database
-            if target_db not in ["system", "user"]:
-                return ToolResult.error_result(
-                    f"Invalid target database: {target_db}. "
-                    "Must be 'system' or 'user'.",
-                    recovery_actions=(
-                        "Use 'system' for Arc metadata or 'user' for training data."
-                    ),
-                )
-
             # Validate action
             valid_actions = [
                 "list_tables",
@@ -153,19 +143,22 @@ class SchemaDiscoveryTool(BaseTool):
 
             # Add columns
             table.add_column("Table", no_wrap=False)
+            table.add_column("Type", no_wrap=False)
             table.add_column("Columns", no_wrap=False, justify="right")
 
             # Build JSON output for agent (all tables)
             table_list = []
             for tbl in tables:
                 column_count = len(schema_info.get_columns_for_table(tbl.name))
-                table_list.append({"table": tbl.name, "columns": column_count})
+                table_list.append(
+                    {"table": tbl.name, "type": tbl.table_type, "columns": column_count}
+                )
                 # Add to Rich table (limit to 5 for display)
                 if len(table_list) <= 5:
-                    table.add_row(tbl.name, str(column_count))
+                    table.add_row(tbl.name, tbl.table_type, str(column_count))
 
             if total > 5:
-                table.add_row("...", "...", style="dim")
+                table.add_row("...", "...", "...", style="dim")
 
             # Format as JSON (compact)
             json_output = json.dumps(table_list)
