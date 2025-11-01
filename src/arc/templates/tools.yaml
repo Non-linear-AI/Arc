@@ -248,8 +248,8 @@ tools:
       4) Creates trainer from training config
       5) Launches training immediately
 
-      IMPORTANT: Consider reading architecture knowledge (e.g., 'mlp', 'dcn', 'transformer')
-      before calling this tool to understand model design patterns and best practices.
+      Use the knowledge_references parameter to suggest relevant architecture knowledge IDs
+      (e.g., ['mlp', 'dcn', 'transformer']) for the model generation sub-agent to explore.
 
       Returns JSON with the following structure:
       {
@@ -301,10 +301,9 @@ tools:
           items:
             type: string
           description: |
-            Optional list of knowledge IDs referenced by this request to provide guidance
-            for the model generation agent (e.g., ['mlp', 'dcn']). The agent can use
-            list_available_knowledge and read_knowledge tools to access these or discover
-            additional knowledge as needed.
+            Optional list of knowledge IDs to suggest to the model generation sub-agent
+            (e.g., ['mlp', 'dcn']). The sub-agent will use its own knowledge tools to
+            access these or discover additional knowledge as needed.
       required:
         - name
         - instruction
@@ -388,8 +387,8 @@ tools:
       4) Create output tables.
       For read-only SELECT queries, use database_query for immediate results.
 
-      IMPORTANT: Consider reading 'ml_data_preparation' knowledge before calling this tool
-      to learn about feature engineering patterns, scaling, encoding, and train/val splits.
+      Use the knowledge_references parameter to suggest relevant knowledge IDs
+      (e.g., ['ml_data_preparation']) for the data processing sub-agent to explore.
 
       Returns JSON with the following structure:
       {
@@ -428,10 +427,9 @@ tools:
           items:
             type: string
           description: |
-            Optional list of knowledge IDs referenced by this request to provide guidance
-            for the data processing agent (e.g., ['ml_data_preparation']). The agent can use
-            list_available_knowledge and read_knowledge tools to access these or discover
-            additional knowledge as needed.
+            Optional list of knowledge IDs to suggest to the data processing sub-agent
+            (e.g., ['ml_data_preparation']). The sub-agent will use its own knowledge tools
+            to access these or discover additional knowledge as needed.
       required:
         - name
         - instruction
