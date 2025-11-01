@@ -175,7 +175,7 @@ class MLModelTool(BaseTool):
             # Load plan from database if plan_id is provided
             ml_plan = None
             model_plan = None
-            recommended_knowledge_ids = None
+            knowledge_references = None
             if plan_id:
                 ml_plan, plan = _load_ml_plan(self.services, plan_id)
                 if ml_plan is None:
@@ -196,7 +196,7 @@ class MLModelTool(BaseTool):
                 model_plan = plan.model_plan
 
                 # Extract stage-specific knowledge IDs from plan
-                recommended_knowledge_ids = plan.knowledge.get("model", [])
+                knowledge_references = plan.knowledge.get("model", [])
 
             # Validate required parameters
             if not name or not data_table or not target_column:
@@ -226,13 +226,6 @@ class MLModelTool(BaseTool):
             else:
                 agent.progress_callback = None
 
-            # Preload stage-specific knowledge from plan
-            preloaded_knowledge = None
-            if recommended_knowledge_ids:
-                preloaded_knowledge = agent.knowledge_loader.load_multiple(
-                    recommended_knowledge_ids
-                )
-
             # Generate unified model + training specification
             try:
                 (
@@ -245,7 +238,7 @@ class MLModelTool(BaseTool):
                     table_name=str(data_table),
                     target_column=target_column,
                     model_plan=model_plan,
-                    preloaded_knowledge=preloaded_knowledge,
+                    knowledge_references=knowledge_references,
                     data_processing_id=data_processing_id,
                 )
 

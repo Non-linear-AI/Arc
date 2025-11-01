@@ -65,7 +65,7 @@ class MLDataAgent(BaseAgent):
         source_tables: list[str] | None = None,
         database: str = "user",
         existing_yaml: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
+        knowledge_references: list[str] | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
@@ -82,8 +82,8 @@ class MLDataAgent(BaseAgent):
             existing_yaml: Existing YAML content to edit (optional).
                 If provided, switches to editing mode where instruction
                 describes the changes to make.
-            recommended_knowledge_ids: Optional list of knowledge IDs (deprecated)
-            preloaded_knowledge: Optional list of preloaded knowledge docs
+            knowledge_references: Optional list of knowledge IDs referenced by this request
+            preloaded_knowledge: Optional list of preloaded knowledge docs (deprecated)
             conversation_history: Optional conversation history for editing workflow
 
         Returns:
@@ -101,7 +101,7 @@ class MLDataAgent(BaseAgent):
                 source_tables=source_tables,
                 database=database,
                 existing_yaml=existing_yaml,
-                recommended_knowledge_ids=recommended_knowledge_ids,
+                knowledge_references=knowledge_references,
                 preloaded_knowledge=preloaded_knowledge,
             )
         else:
@@ -119,7 +119,7 @@ class MLDataAgent(BaseAgent):
         source_tables: list[str] | None = None,
         database: str = "user",
         existing_yaml: str | None = None,
-        recommended_knowledge_ids: list[str] | None = None,
+        knowledge_references: list[str] | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
@@ -135,32 +135,6 @@ class MLDataAgent(BaseAgent):
                 source_tables, database, include_row_counts=False
             )
 
-            # Use preloaded knowledge if provided, otherwise fall back to old method
-            if preloaded_knowledge:
-                # New method: knowledge already loaded by tool
-                loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
-                for doc in preloaded_knowledge:
-                    self._loaded_knowledge.add(doc["id"])
-            elif recommended_knowledge_ids:
-                # Old method: load knowledge here (deprecated but backward compatible)
-                preloaded_knowledge = []
-                loaded_knowledge_ids = []
-                for knowledge_id in recommended_knowledge_ids:
-                    content = self.knowledge_loader.load_knowledge(knowledge_id)
-                    if content:
-                        preloaded_knowledge.append(
-                            {
-                                "id": knowledge_id,
-                                "name": knowledge_id,
-                                "content": content,
-                            }
-                        )
-                        loaded_knowledge_ids.append(knowledge_id)
-                        self._loaded_knowledge.add(knowledge_id)
-            else:
-                preloaded_knowledge = []
-                loaded_knowledge_ids = []
-
             # Build system message with all context
             system_message = self._render_template(
                 "prompt.j2",
@@ -170,11 +144,10 @@ class MLDataAgent(BaseAgent):
                     "schema_info": schema_info,
                     "source_tables": source_tables or [],
                     "existing_yaml": existing_yaml,
-                    "preloaded_knowledge": preloaded_knowledge,
                 },
             )
 
-            # User message guides tool usage and lists pre-loaded knowledge
+            # User message guides tool usage and mentions knowledge references
             if existing_yaml:
                 user_message = (
                     f"Edit the existing data processing specification with "
@@ -183,18 +156,18 @@ class MLDataAgent(BaseAgent):
             else:
                 user_message = "Generate the data processing specification."
 
-            # Tell agent which knowledge IDs are already provided
-            if loaded_knowledge_ids:
+            # Add knowledge references hint if provided
+            if knowledge_references:
                 user_message += (
-                    f"\n\nPre-loaded knowledge (already in system message): "
-                    f"{', '.join(loaded_knowledge_ids)}. "
-                    f"Do NOT reload these. Only use knowledge tools for "
-                    f"additional guidance if needed."
+                    f"\n\nThis request references the following knowledge: "
+                    f"{', '.join(knowledge_references)}. "
+                    f"Use list_available_knowledge and read_knowledge_content to "
+                    f"review these references or discover additional knowledge as needed."
                 )
             else:
                 user_message += (
-                    "\n\nNo knowledge was pre-loaded. Use list_available_knowledge "
-                    "and read_knowledge_content if you need data processing guidance."
+                    "\n\nUse list_available_knowledge and read_knowledge_content "
+                    "if you need data processing guidance."
                 )
 
             # Get ML tools from BaseAgent

@@ -170,7 +170,7 @@ class MLDataTool(BaseTool):
         instruction: str | None = None,
         database: str = "user",
         auto_confirm: bool = False,
-        recommended_knowledge_ids: list[str] | None = None,
+        knowledge_references: list[str] | None = None,
     ) -> ToolResult:
         """Generate YAML configuration from instruction using LLM.
 
@@ -181,16 +181,16 @@ class MLDataTool(BaseTool):
             instruction: Detailed instruction for data processing
             database: Database to use - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
-            recommended_knowledge_ids: Optional list of knowledge IDs to preload
-                for the data processing agent (e.g., ['ml_data_preparation'])
+            knowledge_references: Optional list of knowledge IDs referenced by
+                this request (e.g., ['ml_data_preparation'])
 
         Returns:
             ToolResult with operation result
         """
         # Build metadata for section title (do this before validation for clean code)
         metadata_parts = []
-        if recommended_knowledge_ids:
-            metadata_parts.extend(recommended_knowledge_ids)
+        if knowledge_references:
+            metadata_parts.extend(knowledge_references)
 
         # Use context manager for section printing (automatic cleanup and spacing)
         with self._section_printer(
@@ -249,15 +249,6 @@ class MLDataTool(BaseTool):
                 else:
                     self.generator_agent.progress_callback = None
 
-                # Preload stage-specific knowledge from plan
-                preloaded_knowledge = None
-                if recommended_knowledge_ids:
-                    preloaded_knowledge = (
-                        self.generator_agent.knowledge_loader.load_multiple(
-                            recommended_knowledge_ids
-                        )
-                    )
-
                 # Generate using LLM (generator_agent is guaranteed to exist)
                 (
                     spec,
@@ -268,7 +259,7 @@ class MLDataTool(BaseTool):
                     name=name,
                     source_tables=source_tables,
                     database=database,
-                    preloaded_knowledge=preloaded_knowledge,
+                    knowledge_references=knowledge_references,
                 )
 
                 # Show completion message
@@ -545,7 +536,7 @@ class MLDataTool(BaseTool):
                     source_tables=context.get("source_tables"),
                     database=context.get("database", "user"),
                     existing_yaml=yaml_content,
-                    recommended_knowledge_ids=None,  # Editing uses conversation_history
+                    knowledge_references=None,  # Editing uses conversation_history
                     conversation_history=conversation_history,  # Continue conversation
                 )
                 return edited_yaml, updated_history

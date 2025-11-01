@@ -59,17 +59,19 @@ For **general data pipelines** (cleanup, aggregation, reporting, transformations
 
 # Available Tools
 
-Use these tools sparingly. Only use them when the provided schema is insufficient.
+Use these tools when you need additional information beyond what's provided in the system message.
 
 **database_query(sql: str)**: Execute a read-only SQL query to explore data.
-- Use for: Verifying value distributions (e.g., `SELECT DISTINCT category ...`), finding min/max dates, checking data patterns.
-- Do not use for: Extensive analysis or data transformation. The schema above should be your primary source.
+- Use when you need to understand data distributions, check value ranges, or verify relationships
+- Only use if the provided schema doesn't provide sufficient information
 
 **list_available_knowledge()**: List available knowledge documents.
-- Use for: Finding relevant guidance (e.g., ML data preparation patterns, specific transformation techniques).
+- Use when you need to discover relevant data processing patterns and guidance
 
 **read_knowledge_content(doc_name: str)**: Read a specific knowledge document.
-- Use for: Loading detailed guidance after finding a relevant document via list_available_knowledge().
+- Use when you need detailed guidance for your specific data processing task
+
+**Tool Usage Guidance**: Tool results remain in your conversation context - once you've read a knowledge document, don't re-read it; reference the previous result.
 
 
 {% if existing_yaml %}
@@ -80,20 +82,6 @@ Use these tools sparingly. Only use them when the provided schema is insufficien
 ```
 
 Apply the user's requested changes while preserving the existing structure and quality standards. Pay close attention to dependencies.
-{% endif %}
-
-{% if preloaded_knowledge -%}
-# Recommended Knowledge
-
-The ML Plan has recommended the following knowledge for the data processing stage:
-
-{% for doc in preloaded_knowledge %}
-## {{ doc.name }}
-
-{{ doc.content }}
-
-{% endfor %}
-**Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your data pipeline.
 {% endif %}
 
 # YAML Structure
