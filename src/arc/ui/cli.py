@@ -1172,7 +1172,10 @@ async def run_interactive_mode(
                                 esc_task.cancel()
 
                 if interrupted:
+                    # Add blank line before and after interrupted message
+                    ui._printer.print("")  # Blank line before
                     ui.show_info("⏹ Interrupted.")
+                    ui._printer.print("")  # Blank line after
 
             except KeyboardInterrupt:
                 ui.show_goodbye()
