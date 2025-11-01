@@ -213,68 +213,19 @@ def validate_model_dict(data: dict[str, Any]) -> None:
                 f"model.outputs.{output_name} has invalid reference: {source_ref}"
             ) from e
 
-    # Validate loss section if present (optional for backward compatibility)
+    # Reject top-level loss section (must be in training section)
     if "loss" in data:
-        loss = data["loss"]
-        if not isinstance(loss, dict):
-            raise ModelValidationError("model.loss must be a mapping")
-
-        # Validate loss type
-        loss_type = _require(loss, "type", "model.loss.type required")
-        if not isinstance(loss_type, str):
-            raise ModelValidationError("model.loss.type must be a string")
-
-        # Validate loss type is a supported loss function
-        try:
-            from arc.graph.model.components import get_component_class_or_function
-
-            get_component_class_or_function(loss_type)
-        except ValueError as e:
-            raise ModelValidationError(f"model.loss.type: {e}") from e
-
-        # Validate loss inputs
-        if "inputs" in loss:
-            loss_inputs = loss["inputs"]
-            if not isinstance(loss_inputs, dict):
-                raise ModelValidationError("model.loss.inputs must be a mapping")
-
-            # Validate each loss input
-            for input_name, source_ref in loss_inputs.items():
-                if input_name == "target":
-                    # Target should be a column name (string), not a node reference
-                    if not isinstance(source_ref, str):
-                        type_name = type(source_ref).__name__
-                        raise ModelValidationError(
-                            f"model.loss.inputs.target must be a string (column name), "
-                            f"got: {type_name}"
-                        )
-                    # No further validation needed for target - it's a column name
-                else:
-                    # Other inputs must reference output field names only
-                    if not isinstance(source_ref, str):
-                        type_name = type(source_ref).__name__
-                        raise ModelValidationError(
-                            f"model.loss.inputs.{input_name} must be a string, "
-                            f"got: {type_name}"
-                        )
-
-                    if source_ref not in outputs:
-                        available_outputs = list(outputs.keys())
-                        msg = (
-                            f"model.loss.inputs.{input_name} must reference "
-                            f"an output field. '{source_ref}' is not defined "
-                            f"in outputs section. Available: {available_outputs}"
-                        )
-                        raise ModelValidationError(msg)
-
-        # Validate loss parameters if present
-        if "params" in loss and loss["params"] is not None:
-            try:
-                from arc.graph.model.components import validate_component_params
-
-                validate_component_params(loss_type, loss["params"])
-            except ValueError as e:
-                raise ModelValidationError(f"model.loss.params: {e}") from e
+        raise ModelValidationError(
+            "Top-level 'loss' field is no longer supported. "
+            "Loss must be defined inside the 'training' section as 'training.loss'. "
+            "Example:\n"
+            "training:\n"
+            "  loss:\n"
+            "    type: torch.nn.BCEWithLogitsLoss\n"
+            "    inputs:\n"
+            "      input: logits\n"
+            "      target: target_column"
+        )
 
 
 def validate_graph_nodes(
