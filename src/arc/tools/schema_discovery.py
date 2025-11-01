@@ -153,19 +153,19 @@ class SchemaDiscoveryTool(BaseTool):
                 table_list.append(
                     {"table": tbl.name, "type": tbl.table_type, "columns": column_count}
                 )
-                # Add to Rich table (limit to 5 for display)
-                if len(table_list) <= 5:
+                # Add to Rich table (limit to 100 for display)
+                if len(table_list) <= 100:
                     table.add_row(tbl.name, tbl.table_type, str(column_count))
 
-            if total > 5:
+            if total > 100:
                 table.add_row("...", "...", "...", style="dim")
 
             # Format as JSON (compact)
             json_output = json.dumps(table_list)
 
             # Prepare summary for UI
-            if total > 5:
-                summary = f"Showing 5 of {total} tables"
+            if total > 100:
+                summary = f"Showing 100 of {total} tables"
             else:
                 table_text = "table" if total == 1 else "tables"
                 summary = f"{total} {table_text}"
@@ -238,19 +238,19 @@ class SchemaDiscoveryTool(BaseTool):
             column_list = []
             for col in columns:
                 column_list.append({"column": col.column_name, "type": col.data_type})
-                # Add to Rich table (limit to 5 for display)
-                if len(column_list) <= 5:
+                # Add to Rich table (limit to 100 for display)
+                if len(column_list) <= 100:
                     table.add_row(col.column_name, col.data_type)
 
-            if total_cols > 5:
+            if total_cols > 100:
                 table.add_row("...", "...", style="dim")
 
             # Format as JSON (compact)
             json_output = json.dumps(column_list)
 
             # Prepare summary for UI
-            if total_cols > 5:
-                summary = f"Showing 5 of {total_cols} columns"
+            if total_cols > 100:
+                summary = f"Showing 100 of {total_cols} columns"
             else:
                 col_text = "column" if total_cols == 1 else "columns"
                 summary = f"{total_cols} {col_text}"
