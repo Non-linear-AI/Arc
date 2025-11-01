@@ -150,11 +150,9 @@ class SchemaDiscoveryTool(BaseTool):
             table_list = []
             for tbl in tables:
                 column_count = len(schema_info.get_columns_for_table(tbl.name))
-                table_list.append({
-                    "table": tbl.name,
-                    "type": tbl.table_type,
-                    "columns": column_count
-                })
+                table_list.append(
+                    {"table": tbl.name, "type": tbl.table_type, "columns": column_count}
+                )
                 # Add to Rich table (limit to 5 for display)
                 if len(table_list) <= 5:
                     table.add_row(tbl.name, tbl.table_type, str(column_count))

@@ -157,6 +157,7 @@ class MLRuntime:
         # try to insert the same version number simultaneously
         max_retries = 5
         import logging
+
         logger = logging.getLogger(__name__)
 
         for attempt in range(max_retries):
