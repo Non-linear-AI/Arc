@@ -181,7 +181,7 @@ tools:
     description: |
       Execute READ-ONLY SQL queries (SELECT, SHOW, DESCRIBE) for data exploration and analysis.
       Returns results immediately without confirmation. For data transformations that write/modify
-      data (INSERT, UPDATE, DELETE, CREATE TABLE, etc.), use data_process instead.
+      data (INSERT, UPDATE, DELETE, CREATE TABLE, etc.), use ml_data instead.
     parameters:
       type: object
       properties:
@@ -193,7 +193,18 @@ tools:
           enum:
             - system
             - user
-          description: "Target database: 'system' for read-only queries (default), 'user' for full SQL access"
+          description: |
+            Target database (default: 'user'):
+            - 'system': Arc ML metadata (models, jobs, training_runs, evaluation_runs, ml_plans, data_processors) - read-only
+            - 'user': User's training/application data (full SQL access)
+
+            IMPORTANT: Always specify target_db='system' when querying ML metadata tables like:
+            - jobs (training jobs, evaluation jobs)
+            - models (registered models)
+            - training_runs (training metrics and logs)
+            - evaluation_runs (evaluation results)
+            - ml_plans (ML workflow plans)
+            - data_processors (data processing pipelines)
         validate_schema:
           type: boolean
           description: Whether to validate query against database schema (default true)

@@ -260,15 +260,35 @@ Current Working Directory: {{ current_directory }}
 {{ system_schema }}
 
 **Database Usage Strategy:**
-- **System Database**: Schema provided above. Query directly for ML workflows, model management, and job tracking.
-- **User Database**: Schema unknown. Always use schema_discovery first to understand structure.
-- **Job Tracking**: Query the system `jobs` table using database_query to check training and prediction job status.
+
+You have access to TWO separate databases:
+
+1. **System Database** (target_db='system'):
+   - Contains Arc ML metadata: models, jobs, training_runs, evaluation_runs, ml_plans, data_processors
+   - Schema is provided above
+   - Read-only access
+   - ALWAYS use `target_db='system'` when querying ML metadata
+
+2. **User Database** (target_db='user', default):
+   - Contains user's training/application data
+   - Schema unknown - use schema_discovery first
+   - Full SQL access (read/write)
+
+**Critical: Always specify target_db when querying:**
+- ML metadata (jobs, models, training_runs, etc.) → `database_query(query="...", target_db="system")`
+- User data (training datasets, application tables) → `database_query(query="...", target_db="user")` or omit target_db
+
+**Examples:**
+- Check training job status → `database_query(query="SELECT * FROM jobs WHERE job_id = '...'", target_db="system")`
+- View training metrics → `database_query(query="SELECT * FROM training_runs WHERE model_id = '...'", target_db="system")`
+- Explore user data → `database_query(query="SELECT * FROM my_data", target_db="user")`
 
 {% else %}
 You have access to Arc's system and user databases:
-- **System Database**: Contains ML workflow data (models, jobs, runs, plugins)
-- **User Database**: Contains user's data. Use schema_discovery to explore it.
-- **Job Tracking**: Job status available in system `jobs` table, query with database_query
+- **System Database** (target_db='system'): Contains ML workflow data (models, jobs, runs, plugins) - read-only
+- **User Database** (target_db='user', default): Contains user's data - full SQL access
+
+**Always specify target_db='system' when querying ML metadata** (jobs, models, training_runs, evaluation_runs, etc.)
 
 Use database_query for SQL operations and schema_discovery for exploring user database schema.
 {% endif %}
