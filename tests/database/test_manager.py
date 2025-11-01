@@ -9,6 +9,26 @@ import pytest
 from arc.database import DatabaseError, DatabaseManager
 
 
+@pytest.fixture
+def shared_manager(tmp_path):
+    """Shared database manager instance for multi-threaded tests.
+
+    Creates a single DatabaseManager and initializes connections before
+    tests run to avoid concurrent extension installation issues.
+    """
+    system_db = tmp_path / "system.db"
+    user_db = tmp_path / "user.db"
+    manager = DatabaseManager(str(system_db), str(user_db))
+
+    # Initialize connections to install extensions before threads start
+    manager.system_query("SELECT 1")
+    manager.user_execute("SELECT 1")
+
+    yield manager
+
+    manager.close()
+
+
 def test_database_manager_initialization():
     """Test DatabaseManager initialization."""
     system_db = ":memory:"
@@ -104,23 +124,22 @@ def test_pathlib_paths():
         assert manager.get_user_db_path() == str(user_path)
 
 
-def test_thread_local_connections():
+def test_thread_local_connections(shared_manager):
     """Test that each thread gets its own database connections."""
-    manager = DatabaseManager(":memory:", ":memory:")
     results = {}
 
     def worker_thread(thread_id):
         """Worker function that operates on the database."""
         # Create a test table and insert thread-specific data
-        manager.user_execute(
+        shared_manager.user_execute(
             f"CREATE TABLE IF NOT EXISTS thread_test_{thread_id} (value TEXT)"
         )
-        manager.user_execute(
+        shared_manager.user_execute(
             f"INSERT INTO thread_test_{thread_id} VALUES ('thread_{thread_id}')"
         )
 
         # Each thread should see its own data
-        result = manager.user_query(f"SELECT value FROM thread_test_{thread_id}")
+        result = shared_manager.user_query(f"SELECT value FROM thread_test_{thread_id}")
         results[thread_id] = result.first()["value"]
 
     # Create multiple threads
@@ -138,13 +157,9 @@ def test_thread_local_connections():
     for i in range(5):
         assert results[i] == f"thread_{i}"
 
-    manager.close()
 
-
-def test_concurrent_system_database_access(tmp_path):
+def test_concurrent_system_database_access(shared_manager):
     """Test concurrent access to system database from multiple threads."""
-    system_db = tmp_path / "system.db"
-    manager = DatabaseManager(str(system_db))
     results = []
     errors = []
 
@@ -152,7 +167,7 @@ def test_concurrent_system_database_access(tmp_path):
         """Worker function that performs system database operations."""
         try:
             # Insert a model record
-            manager.system_execute(
+            shared_manager.system_execute(
                 """
                 INSERT INTO models (id, name, version, type)
                 VALUES (?, ?, ?, ?)
@@ -161,7 +176,7 @@ def test_concurrent_system_database_access(tmp_path):
             )
 
             # Query the model back
-            result = manager.system_query(
+            result = shared_manager.system_query(
                 "SELECT name FROM models WHERE id = ?", [f"model_{thread_id}"]
             )
 
@@ -190,14 +205,9 @@ def test_concurrent_system_database_access(tmp_path):
     for thread_id, name in results:
         assert name == f"model_{thread_id}"
 
-    manager.close()
 
-
-def test_mixed_concurrent_operations(tmp_path):
+def test_mixed_concurrent_operations(shared_manager):
     """Test mixing system and user database operations across threads."""
-    system_db = tmp_path / "system.db"
-    user_db = tmp_path / "user.db"
-    manager = DatabaseManager(str(system_db), str(user_db))
     system_results = []
     user_results = []
     errors = []
@@ -206,7 +216,7 @@ def test_mixed_concurrent_operations(tmp_path):
         """Worker that performs both system and user operations."""
         try:
             # System operation - insert a job
-            manager.system_execute(
+            shared_manager.system_execute(
                 """
                 INSERT INTO jobs (job_id, type, status, message)
                 VALUES (?, ?, ?, ?)
@@ -216,19 +226,19 @@ def test_mixed_concurrent_operations(tmp_path):
 
             # User operation - create table and insert data
             table_name = f"user_data_{thread_id}"
-            manager.user_execute(
+            shared_manager.user_execute(
                 f"CREATE TABLE IF NOT EXISTS {table_name} (id INTEGER, name TEXT)"
             )
-            manager.user_execute(
+            shared_manager.user_execute(
                 f"INSERT INTO user_data_{thread_id} VALUES (?, ?)",
                 [thread_id, f"user_{thread_id}"],
             )
 
             # Query both databases
-            job_result = manager.system_query(
+            job_result = shared_manager.system_query(
                 "SELECT message FROM jobs WHERE job_id = ?", [f"job_{thread_id}"]
             )
-            user_result = manager.user_query(
+            user_result = shared_manager.user_query(
                 f"SELECT name FROM user_data_{thread_id} WHERE id = ?", [thread_id]
             )
 
@@ -263,13 +273,15 @@ def test_mixed_concurrent_operations(tmp_path):
     for thread_id, name in user_results:
         assert name == f"user_{thread_id}"
 
-    manager.close()
-
 
 def test_thread_isolation_with_database_switching(tmp_path):
     """Test that database switching is properly isolated per thread."""
     system_db = tmp_path / "system.db"
     manager = DatabaseManager(str(system_db))
+
+    # Initialize system connection before threads start
+    manager.system_query("SELECT 1")
+
     results = {}
 
     def worker_with_db_switch(thread_id):
@@ -315,6 +327,10 @@ def test_connection_cleanup_per_thread(tmp_path):
     system_db = tmp_path / "system.db"
     user_db = tmp_path / "user.db"
     manager = DatabaseManager(str(system_db), str(user_db))
+
+    # Initialize connections before thread starts
+    manager.system_query("SELECT 1")
+    manager.user_execute("SELECT 1")
 
     def worker_with_cleanup():
         """Worker that creates connections and then cleans them up."""
