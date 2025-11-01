@@ -137,26 +137,31 @@ class MLModelAgent(BaseAgent):
         It builds the complete system message with data profiling and knowledge loading.
         """
         # Load data processing context if execution ID provided
+        # (data_processing_id is the processor.id from the data processor registry)
         data_processing_context = None
         if data_processing_id:
             try:
-                execution = self.services.plan_executions.get_execution(
+                # Load processor from registry instead of plan_executions
+                processor = self.services.data_processors.get_data_processor_by_id(
                     data_processing_id
                 )
-                if execution:
-                    # Build context summary from execution record
-                    # Defensive access to outputs structure
-                    outputs = execution.get("outputs", [])
-                    output_tables = [
-                        out["name"]
-                        for out in outputs
-                        if isinstance(out, dict) and "name" in out
-                    ]
+                if processor:
+                    # Parse spec to extract output tables
+                    from arc.graph.features.data_source import DataSourceSpec
+
+                    spec = DataSourceSpec.from_yaml(processor.spec)
+
+                    # Extract output table names from steps
+                    output_tables = []
+                    for step in spec.steps:
+                        if step.output_type in ["table", "view"]:
+                            output_tables.append(step.name)
+
                     data_processing_context = {
                         "execution_id": data_processing_id,
-                        "sql_context": execution["context"],
+                        "processor_name": processor.name,
                         "output_tables": output_tables,
-                        "outputs": execution["outputs"],
+                        "description": processor.description,
                     }
                     # Use first output table as the primary table for profiling
                     if output_tables and not table_name:

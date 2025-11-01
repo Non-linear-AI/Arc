@@ -170,7 +170,6 @@ class MLDataTool(BaseTool):
         instruction: str | None = None,
         database: str = "user",
         auto_confirm: bool = False,
-        plan_id: str | None = None,
         recommended_knowledge_ids: list[str] | None = None,
     ) -> ToolResult:
         """Generate YAML configuration from instruction using LLM.
@@ -179,32 +178,17 @@ class MLDataTool(BaseTool):
             name: Name for the data processor (will be registered in database)
             source_tables: List of source tables to read from (required to narrow
                 scope of data exploration)
-            instruction: Detailed instruction for data processing (PRIMARY driver,
-                shaped by main agent or provided directly)
+            instruction: Detailed instruction for data processing
             database: Database to use - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
-            plan_id: Optional ML plan ID (e.g., 'pidd-plan-v1') containing
-                feature engineering guidance (SECONDARY baseline)
-
-        Note on instruction vs plan_id precedence:
-            - instruction: PRIMARY driver - user's immediate, specific data
-              processing request
-            - plan_id: SECONDARY baseline - loads plan from DB for feature
-              engineering guidance
-            - When there's a conflict, instruction takes precedence
-            - Example: If instruction says "create interaction features" but plan says
-              "use raw features only", the processor should create interaction features
-              (instruction wins)
-            - The LLM agent should use plan as baseline feature engineering guidance
-              and augment/override it with specifics from instruction
+            recommended_knowledge_ids: Optional list of knowledge IDs to preload
+                for the data processing agent (e.g., ['ml_data_preparation'])
 
         Returns:
             ToolResult with operation result
         """
         # Build metadata for section title (do this before validation for clean code)
         metadata_parts = []
-        if plan_id:
-            metadata_parts.append(plan_id)
         if recommended_knowledge_ids:
             metadata_parts.extend(recommended_knowledge_ids)
 
@@ -249,41 +233,8 @@ class MLDataTool(BaseTool):
                     f"Invalid database: {database}. Must be 'system' or 'user'."
                 )
 
-            # Load plan from database if plan_id is provided
-            # If plan is provided, use it as baseline and augment with instruction
-            ml_plan_data_plan = None
-            if plan_id:
-                try:
-                    # Load plan from database using service
-                    ml_plan = self.services.ml_plans.get_plan_content(plan_id)
-
-                    from arc.core.ml_plan import MLPlan
-
-                    plan = MLPlan.from_dict(ml_plan)
-                    # Extract data plan guidance for data processing
-                    ml_plan_data_plan = plan.data_plan
-
-                    # Extract stage-specific knowledge IDs from plan
-                    if not recommended_knowledge_ids:
-                        recommended_knowledge_ids = plan.knowledge.get("data", [])
-                except ValueError as e:
-                    return _error_in_section(f"Failed to load ML plan '{plan_id}': {e}")
-                except Exception as e:
-                    return _error_in_section(
-                        f"Unexpected error loading ML plan '{plan_id}': {e}"
-                    )
-
-            # Build final instruction: use ML plan as baseline context if available
-            # Main agent can provide shaped instruction that builds on the plan
-            if ml_plan_data_plan:
-                # ML plan provides baseline, instruction adds specifics
-                enhanced_instruction = (
-                    f"{instruction}\n\n"
-                    f"ML Plan Data Plan Guidance (use as baseline):\n"
-                    f"{ml_plan_data_plan}"
-                )
-            else:
-                enhanced_instruction = instruction
+            # Use instruction directly (no plan loading needed)
+            enhanced_instruction = instruction
 
             # Show task description
             if printer:
@@ -431,27 +382,12 @@ class MLDataTool(BaseTool):
                     # Invalidate schema cache since new tables were created
                     self.services.schema.invalidate_cache(database)
 
-                    # Store execution record in database
                     # Use processor.id as data_processing_id for consistency with other ML tools
                     # (e.g., "diabetes-feature-processing-v3" instead of random "data_98f4ac51")
                     data_processing_id = processor.id
-                    if execution_result.sql and execution_result.outputs:
-                        try:
-                            self.services.plan_executions.store_execution(
-                                execution_id=data_processing_id,
-                                plan_id=plan_id
-                                or "standalone",  # Use "standalone" for ad-hoc executions
-                                step_type="data_processing",
-                                context=execution_result.sql,
-                                outputs=execution_result.outputs,
-                                status="completed",
-                            )
-                        except Exception as store_error:
-                            # Log but don't fail the operation if storage fails
-                            if printer:
-                                printer.print(
-                                    f"[yellow]⚠️  Failed to store execution record: {store_error}[/yellow]"
-                                )
+
+                    # Note: Execution records are no longer stored since we removed ml_plan
+                    # The data processor registration already tracks all necessary metadata
 
                 except DataSourceExecutionError as e:
                     # Generation and registration succeeded, but execution failed
