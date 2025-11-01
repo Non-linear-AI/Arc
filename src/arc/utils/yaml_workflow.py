@@ -166,9 +166,26 @@ class YamlEditorHelper:
                 f.write(header_comment + yaml_content)
                 temp_path = f.name
 
+            # Build editor command with appropriate flags for GUI editors
+            # GUI editors need --wait flag to block until file is closed
+            editor_cmd = [editor]
+            editor_base = os.path.basename(editor)
+
+            # Add wait flags for known GUI editors
+            if editor_base in (
+                "code",
+                "code-insiders",
+                "subl",
+                "sublime",
+                "atom",
+            ):
+                editor_cmd.append("--wait")
+
+            editor_cmd.append(temp_path)
+
             # Create subprocess without redirecting stdout/stderr
             # so editor can interact with terminal
-            process = await asyncio.create_subprocess_exec(editor, temp_path)
+            process = await asyncio.create_subprocess_exec(*editor_cmd)
 
             await process.wait()
 
@@ -318,6 +335,9 @@ class YamlConfirmationWorkflow:
                 # Reset prompt session after nested AI editing prompts
                 if self.ui:
                     self.ui._printer.reset_prompt_session()
+                    # Resume escape watcher after input prompt completes
+                    if hasattr(self.ui, 'resume_escape'):
+                        self.ui.resume_escape()
                 continue
 
             elif choice == "edit_manual":
@@ -344,6 +364,9 @@ class YamlConfirmationWorkflow:
                 # Reset prompt session after manual editing
                 if self.ui:
                     self.ui._printer.reset_prompt_session()
+                    # Resume escape watcher after manual editing completes
+                    if hasattr(self.ui, 'resume_escape'):
+                        self.ui.resume_escape()
                 continue
 
             elif choice == "cancel" or choice == "__esc__":
