@@ -241,6 +241,9 @@ class EvaluatorService(BaseService):
     def get_next_version_for_name(self, name: str) -> int:
         """Get the next version number for an evaluator name.
 
+        Uses a direct SQL MAX query to ensure we get the latest version
+        even in concurrent scenarios.
+
         Args:
             name: Evaluator name
 
@@ -251,14 +254,52 @@ class EvaluatorService(BaseService):
             DatabaseError: If version calculation fails
         """
         try:
-            evaluators = self.get_evaluators_by_name(name)
-            if not evaluators:
+            escaped_name = self._escape_string(name)
+            sql = f"""SELECT COALESCE(MAX(version), 0) as max_version
+                     FROM evaluators
+                     WHERE name = '{escaped_name}'"""
+            result = self._system_query(sql)
+
+            if result.empty():
                 return 1
 
-            max_version = max(evaluator.version for evaluator in evaluators)
-            return max_version + 1
+            max_version = result.first()["max_version"]
+            return int(max_version) + 1
         except Exception as e:
             raise DatabaseError(f"Failed to get next version for {name}: {e}") from e
+
+    def get_next_version_for_id_prefix(self, id_prefix: str) -> int:
+        """Get the next version number for an evaluator ID prefix (slug).
+
+        Queries by ID pattern to ensure version lookup matches the ID namespace.
+        This prevents conflicts when different names slugify to the same ID.
+
+        Args:
+            id_prefix: Evaluator ID prefix (slugified name)
+
+        Returns:
+            Next version number (max_version + 1)
+
+        Raises:
+            DatabaseError: If version calculation fails
+        """
+        try:
+            escaped_prefix = self._escape_string(id_prefix)
+            # Query for IDs that match the pattern: prefix-v*
+            sql = f"""SELECT COALESCE(MAX(version), 0) as max_version
+                     FROM evaluators
+                     WHERE id LIKE '{escaped_prefix}-v%'"""
+            result = self._system_query(sql)
+
+            if result.empty():
+                return 1
+
+            max_version = result.first()["max_version"]
+            return int(max_version) + 1
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to get next version for ID prefix {id_prefix}: {e}"
+            ) from e
 
     def _result_to_evaluator(self, row: dict[str, Any]) -> Evaluator:
         """Convert a database row to an Evaluator object.

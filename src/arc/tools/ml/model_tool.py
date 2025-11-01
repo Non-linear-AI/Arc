@@ -386,10 +386,8 @@ class MLModelTool(BaseTool):
                         full_spec_dict = yaml.safe_load(unified_yaml)
 
                         # Generate placeholder model_id for cancelled state
-                        from arc.ml.runtime import _slugify_name
-
-                        base_slug = _slugify_name(str(name))
-                        cancelled_model_id = f"{base_slug}-cancelled"
+                        # Use raw name directly (already validated to be safe)
+                        cancelled_model_id = f"{name}-cancelled"
 
                         # Return structured JSON with cancelled status
                         output_json = self._build_model_result(
@@ -685,7 +683,6 @@ class MLModelTool(BaseTool):
 
         from arc.database.models.model import Model
         from arc.graph.model import ModelSpec
-        from arc.ml.runtime import _slugify_name
 
         # Validate YAML first - need to separate model and training sections
         try:
@@ -706,13 +703,11 @@ class MLModelTool(BaseTool):
         except Exception as exc:
             raise ValueError(f"Invalid model YAML: {exc}") from exc
 
-        # Get next version
-        latest = self.services.models.get_latest_model_by_name(name)
-        version = 1 if latest is None else latest.version + 1
+        # Get next version using ID-based lookup (raw name already validated)
+        version = self.services.models.get_next_version_for_id_prefix(name)
 
-        # Create model ID
-        base_slug = _slugify_name(name)
-        model_id = f"{base_slug}-v{version}"
+        # Create model ID using raw name directly
+        model_id = f"{name}-v{version}"
 
         # Create model object
         now = datetime.now(UTC)

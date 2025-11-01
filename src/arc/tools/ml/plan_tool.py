@@ -244,7 +244,6 @@ class MLPlanTool(BaseTool):
                             from arc.database.models.ml_plan import (
                                 MLPlan as MLPlanModel,
                             )
-                            from arc.ml.runtime import _slugify_name
 
                             # Convert plan to dict for storage
                             plan_dict = plan.to_dict()
@@ -255,9 +254,8 @@ class MLPlanTool(BaseTool):
                                 plan_dict, default_flow_style=False, sort_keys=False
                             )
 
-                            # Create database model - use name for plan ID
-                            base_slug = _slugify_name(str(name))
-                            plan_id = f"{base_slug}-v{version}"
+                            # Create database model - use validated name directly for plan ID
+                            plan_id = f"{name}-v{version}"
 
                             now = datetime.now(UTC)
                             db_plan = MLPlanModel(
