@@ -178,18 +178,9 @@ Your output must strictly validate against this JSON schema:
 
 # SQL Requirements
 
-## 1. Dialect: DuckDB SQL
+## 1. Dialect: Standard ANSI SQL Only
 
-The database engine is **DuckDB**. Use DuckDB-compatible SQL syntax.
-
-**For database metadata queries**, use DuckDB's built-in commands:
-- `SHOW TABLES` - List all tables
-- `SHOW VIEWS` - List all views
-- `SELECT * FROM information_schema.tables WHERE table_name = '...'` - Query table metadata
-
-**DO NOT use SQLite-specific syntax** like `sqlite_master` or `sqlite_temp_master`.
-
-For general queries, use standard ANSI SQL that works across databases.
+The database engine is unknown (could be PostgreSQL, MySQL, SQLite, DuckDB, etc.). You must use only portable, standard SQL.
 
 ## 2. Quoting Rules (CRITICAL)
 

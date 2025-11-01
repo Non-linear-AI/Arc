@@ -336,7 +336,7 @@ class YamlConfirmationWorkflow:
                 if self.ui:
                     self.ui._printer.reset_prompt_session()
                     # Resume escape watcher after input prompt completes
-                    if hasattr(self.ui, 'resume_escape'):
+                    if hasattr(self.ui, "resume_escape"):
                         self.ui.resume_escape()
                 continue
 
@@ -365,7 +365,7 @@ class YamlConfirmationWorkflow:
                 if self.ui:
                     self.ui._printer.reset_prompt_session()
                     # Resume escape watcher after manual editing completes
-                    if hasattr(self.ui, 'resume_escape'):
+                    if hasattr(self.ui, "resume_escape"):
                         self.ui.resume_escape()
                 continue
 

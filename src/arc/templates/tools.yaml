@@ -186,7 +186,6 @@ tools:
       DATABASE ENGINE: DuckDB
       - Use DuckDB-compatible SQL syntax
       - For metadata: Use SHOW TABLES, SHOW VIEWS, or information_schema
-      - DO NOT use SQLite-specific syntax like sqlite_master
     parameters:
       type: object
       properties:

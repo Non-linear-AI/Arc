@@ -259,7 +259,6 @@ Current Working Directory: {{ current_directory }}
 **DATABASE ENGINE: DuckDB**
 - All databases use DuckDB SQL dialect
 - For metadata queries: Use `SHOW TABLES`, `SHOW VIEWS`, or `information_schema`
-- DO NOT use SQLite-specific syntax like `sqlite_master`
 
 {% if system_schema %}
 {{ system_schema }}

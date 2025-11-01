@@ -401,8 +401,7 @@ class ArcAgent:
                 for tc in current_tool_calls:
                     pending_tool_call_ids.add(tc.id)
                     self.logger.debug(
-                        f"Added tool call to pending: {tc.function.name} "
-                        f"(id: {tc.id})"
+                        f"Added tool call to pending: {tc.function.name} (id: {tc.id})"
                     )
 
                 # Execute tools and append results
