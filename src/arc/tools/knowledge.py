@@ -1,9 +1,66 @@
 """Knowledge reading tool for ML agents."""
 
+import json
 from pathlib import Path
 
 from arc.core.agents.shared.knowledge_loader import KnowledgeLoader
 from arc.tools.base import BaseTool, ToolResult
+
+
+class ListAvailableKnowledgeTool(BaseTool):
+    """Tool for listing available knowledge documents."""
+
+    def __init__(
+        self,
+        builtin_path: Path | None = None,
+        user_path: Path | None = None,
+    ):
+        """Initialize list available knowledge tool.
+
+        Args:
+            builtin_path: Path to builtin knowledge (default: package resources)
+            user_path: Path to user knowledge (default: ~/.arc/knowledge)
+        """
+        super().__init__()
+        self.knowledge_loader = KnowledgeLoader(builtin_path, user_path)
+
+    async def execute(self, **_kwargs) -> ToolResult:
+        """Execute list_available_knowledge operation.
+
+        Returns:
+            ToolResult with JSON list of available knowledge documents
+        """
+        # Scan metadata for all knowledge documents
+        metadata_map = self.knowledge_loader.scan_metadata()
+
+        if not metadata_map:
+            return ToolResult.success_result(
+                "No knowledge documents available.",
+                metadata={"knowledge_count": 0},
+            )
+
+        # Build list of knowledge metadata
+        knowledge_list = []
+        for knowledge_id, metadata in metadata_map.items():
+            knowledge_list.append(
+                {
+                    "id": knowledge_id,
+                    "name": metadata.name,
+                    "description": metadata.description or "",
+                    "phases": metadata.phases,
+                }
+            )
+
+        # Sort by ID for consistent output
+        knowledge_list.sort(key=lambda x: x["id"])
+
+        # Format as JSON for easy parsing
+        output = json.dumps(knowledge_list, indent=2)
+
+        return ToolResult.success_result(
+            output,
+            metadata={"knowledge_count": len(knowledge_list)},
+        )
 
 
 class ReadKnowledgeTool(BaseTool):

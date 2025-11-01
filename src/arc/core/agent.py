@@ -15,8 +15,8 @@ from arc.tools.base import ToolResult
 from arc.tools.bash import BashTool
 from arc.tools.database_query import DatabaseQueryTool
 from arc.tools.file_editor import CreateFileTool, EditFileTool, ViewFileTool
-from arc.tools.knowledge import ReadKnowledgeTool
-from arc.tools.ml import MLEvaluateTool, MLModelTool, MLPlanTool
+from arc.tools.knowledge import ListAvailableKnowledgeTool, ReadKnowledgeTool
+from arc.tools.ml import MLEvaluateTool, MLModelTool
 from arc.tools.ml_data import MLDataTool
 from arc.tools.schema_discovery import SchemaDiscoveryTool
 from arc.tools.search import SearchTool
@@ -113,9 +113,6 @@ class ArcAgent:
         self.current_model_name = model
         self.logger.info(f"ArcAgent initialized with model: {self.current_model_name}")
 
-        # ML Plan management
-        self.ml_plan_auto_accept: bool = False  # Session-scoped auto-accept flag
-
         # Initialize tool registry
         from arc.tools.registry import ToolRegistry
 
@@ -133,8 +130,9 @@ class ArcAgent:
         self.create_todo_tool = CreateTodoListTool(self.todo_manager)
         self.update_todo_tool = UpdateTodoListTool(self.todo_manager)
 
-        # Initialize knowledge tool
+        # Initialize knowledge tools
         self.read_knowledge_tool = ReadKnowledgeTool()
+        self.list_available_knowledge_tool = ListAvailableKnowledgeTool()
 
         # Register basic tools
         self.tool_registry.register("view_file", self.view_file_tool)
@@ -145,6 +143,9 @@ class ArcAgent:
         self.tool_registry.register("create_todo_list", self.create_todo_tool)
         self.tool_registry.register("update_todo_list", self.update_todo_tool)
         self.tool_registry.register("read_knowledge", self.read_knowledge_tool)
+        self.tool_registry.register(
+            "list_available_knowledge", self.list_available_knowledge_tool
+        )
 
         # Initialize TensorBoard manager
         try:
@@ -164,14 +165,6 @@ class ArcAgent:
         # Initialize and register database/ML tools
         self.database_query_tool = DatabaseQueryTool(services)
         self.schema_discovery_tool = SchemaDiscoveryTool(services)
-        self.ml_plan_tool = MLPlanTool(
-            services,
-            self.api_key,
-            self.base_url,
-            model,
-            self.ui_interface,
-            agent=self,  # Pass agent reference for auto_accept flag
-        )
         self.ml_model_tool = MLModelTool(
             services,
             services.ml_runtime,
@@ -198,7 +191,6 @@ class ArcAgent:
         # Register database and ML tools
         self.tool_registry.register("database_query", self.database_query_tool)
         self.tool_registry.register("schema_discovery", self.schema_discovery_tool)
-        self.tool_registry.register("ml_plan", self.ml_plan_tool)
         self.tool_registry.register("ml_model", self.ml_model_tool)
         self.tool_registry.register("ml_evaluate", self.ml_evaluate_tool)
         self.tool_registry.register("ml_data", self.ml_data_tool)
@@ -616,7 +608,7 @@ class ArcAgent:
         """Execute a tool call using the tool registry."""
         # Use tool registry for execution
         # ML tools should not have timeouts since they wait for user input
-        ml_tools = {"ml_plan", "ml_model", "ml_evaluate", "ml_data"}
+        ml_tools = {"ml_model", "ml_evaluate", "ml_data"}
         if tool_call.name in ml_tools:
             # No timeout for ML tools (they wait for user interaction)
             return await self.tool_registry.execute(tool_call, timeout=None)
@@ -680,8 +672,6 @@ class ArcAgent:
         self.arc_client.set_model(model)
         self.token_counter = TokenCounter(model)
         self.current_model_name = model
-        if getattr(self, "ml_plan_tool", None):
-            self.ml_plan_tool.model = model
         if getattr(self, "ml_model_tool", None):
             self.ml_model_tool.model = model
 
