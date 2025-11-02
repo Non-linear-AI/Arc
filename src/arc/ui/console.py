@@ -37,12 +37,9 @@ class InteractiveInterface:
         )
 
     def show_welcome(self, _model: str, _directory: str):
-        """Display ASCII banner with thin dim borders."""
+        """Display ASCII banner with single bottom border."""
         # Blank line for breathing room
         self._printer.print()
-
-        # Top border - thin dim line
-        self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
 
         # Logo in cyan, manually centered (logo is 29 chars, center in 80 = 25 space padding)
         self._printer.print("[cyan]                         ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗[/cyan]")
@@ -55,7 +52,7 @@ class InteractiveInterface:
         # Tagline dimmed, manually centered (28 chars, center in 80 = 26 space padding)
         self._printer.print("[dim]                          From Question to Prediction[/dim]")
 
-        # Bottom border - thin dim line
+        # Bottom border - thin dim line (only separator)
         self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
 
         # Blank line for breathing room
