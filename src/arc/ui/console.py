@@ -329,7 +329,16 @@ class InteractiveInterface:
         if tool_name in TOOLS_WITH_OWN_SECTIONS:
             return
 
-        label = self._action_label(tool_name)
+        # Special handling for schema_discovery - label depends on what's being shown
+        if tool_name == "schema_discovery" and result.metadata:
+            # If table_name is present, we're showing columns for a specific table
+            if "table_name" in result.metadata:
+                label = "Columns"
+            else:
+                # Otherwise, we're showing tables in the database
+                label = "Tables"
+        else:
+            label = self._action_label(tool_name)
 
         # Append metadata to label if present
         if result.metadata:
