@@ -437,20 +437,6 @@ The unified specification now includes a `training:` section with optimizer and 
 4. `metrics` MUST be an array appropriate for the task type
 5. All five core parameters are required: loss, optimizer, epochs, batch_size, validation_split, metrics
 
-{% if preloaded_knowledge -%}
-## Recommended Knowledge
-
-The ML Plan has recommended the following knowledge for the model architecture stage:
-
-{% for doc in preloaded_knowledge %}
-### {{ doc.name }}
-
-{{ doc.content }}
-
-{% endfor %}
-**Using This Knowledge**: This guidance has been specifically selected for your task. Follow these patterns and best practices when generating your specification.
-{% endif %}
-
 ## Available Tools
 
 You have access to the following tools for exploration when needed:
@@ -460,14 +446,12 @@ You have access to the following tools for exploration when needed:
    - Only use if the data profile doesn't provide sufficient information
 
 2. **list_available_knowledge**: List all available architecture knowledge documents
-   - Use when you need to see what other architectural patterns are available
-   - Only use if the recommended knowledge above is insufficient
+   - Use when you need to discover relevant architectural patterns and guidance
 
 3. **read_knowledge_content**: Read specific architecture knowledge documents
-   - Use when you need additional architectural guidance beyond what's provided above
-   - Only use if the recommended knowledge doesn't cover your specific needs
+   - Use when you need detailed architectural guidance for your specific task
 
-**Tool Usage Guidance**: The recommended knowledge above should be sufficient for most cases. Only use these tools if you genuinely need additional information that isn't provided in the system message. **IMPORTANT**: Tool results remain in your conversation context - once you've read a knowledge document, don't re-read it; reference the previous result.
+**Tool Usage Guidance**: Use these tools when you need additional information beyond what's provided in the system message. **IMPORTANT**: Tool results remain in your conversation context - once you've read a knowledge document, don't re-read it; reference the previous result.
 
 ## Requirements
 1. **Schema Compliance**: Valid Arc-Graph unified YAML structure (model + training)

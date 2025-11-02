@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from arc.core import ArcAgent, SettingsManager
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
-from arc.ml.runtime import MLRuntime, MLRuntimeError
+from arc.ml.runtime import MLRuntime
 from arc.ui.console import InteractiveInterface
 from arc.utils import ConfirmationService
 from arc.utils.cli_parsing import OptionParsingError, parse_options
@@ -259,22 +259,14 @@ async def handle_ml_command(
         return
 
     if len(tokens) < 2:
-        ui.show_system_error(
-            "Usage: /ml <plan|revise-plan|data|model|evaluate|predict|jobs> ..."
-        )
+        ui.show_system_error("Usage: /ml <data|model|evaluate|jobs> ...")
         return
 
     subcommand = tokens[1]
     args = tokens[2:]
 
     try:
-        if subcommand == "plan":
-            await _ml_plan(args, ui, agent)
-        elif subcommand == "revise-plan":
-            await _ml_revise_plan(args, ui, agent)
-        elif subcommand == "predict":
-            _ml_predict(args, ui, runtime)
-        elif subcommand == "jobs":
+        if subcommand == "jobs":
             _ml_jobs(args, ui, runtime)
         elif subcommand == "model":
             await _ml_model(args, ui, runtime, agent)
@@ -288,173 +280,6 @@ async def handle_ml_command(
         ui.show_system_error(str(e))
     except Exception as e:
         ui.show_system_error(f"ML command failed: {e}")
-
-
-async def _ml_plan(
-    args: list[str], ui: InteractiveInterface, agent: "ArcAgent | None"
-) -> None:
-    """Create an ML workflow plan."""
-    if not agent:
-        raise CommandError("Agent not available for ML planning")
-
-    if not agent.ml_plan_tool:
-        raise CommandError(
-            "ML plan tool not available. Database services not initialized."
-        )
-
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "instruction": True,
-            "source-tables": True,
-            "verbose": False,  # Flag option (no value required)
-        },
-        command_name="/ml plan",
-    )
-
-    name = options.get("name")
-    instruction = options.get("instruction")
-    source_tables = options.get("source-tables")
-    verbose = options.get("verbose", False)
-
-    if not name or not instruction or not source_tables:
-        raise CommandError(
-            "/ml plan requires --name, --instruction, and --source-tables"
-        )
-
-    # Execute ML plan tool
-    result = await agent.ml_plan_tool.execute(
-        name=str(name),
-        instruction=str(instruction),
-        source_tables=str(source_tables),
-        previous_plan=agent.current_ml_plan,
-        verbose=bool(verbose),
-    )
-
-    if result.success:
-        # Store the new plan
-        if result.metadata and "ml_plan" in result.metadata:
-            agent.current_ml_plan = result.metadata["ml_plan"]
-
-        # Display assistant's question (unless suppressed)
-        suppress = result.metadata and result.metadata.get("suppress_output", False)
-        if result.output and not suppress:
-            ui.show_info(result.output)
-    else:
-        raise CommandError(f"Failed to create ML plan: {result.error}")
-
-
-async def _ml_revise_plan(
-    args: list[str], ui: InteractiveInterface, agent: "ArcAgent | None"
-) -> None:
-    """Revise the current ML workflow plan based on instruction."""
-    if not agent:
-        raise CommandError("Agent not available for ML planning")
-
-    if not agent.ml_plan_tool:
-        raise CommandError(
-            "ML plan tool not available. Database services not initialized."
-        )
-
-    if not agent.current_ml_plan:
-        raise CommandError(
-            "No current ML plan to revise. Create a plan first with /ml plan"
-        )
-
-    options = _parse_options(
-        args,
-        {
-            "name": True,
-            "instruction": True,
-            "source-tables": True,
-        },
-        command_name="/ml revise-plan",
-    )
-
-    name = options.get("name")
-    instruction = options.get("instruction")
-    source_tables = options.get("source-tables")
-
-    if not instruction:
-        raise CommandError("/ml revise-plan requires --instruction")
-
-    # Use name from current plan if not provided
-    if not name:
-        name = agent.current_ml_plan.get("name")
-        if not name:
-            raise CommandError(
-                "/ml revise-plan requires --name (not found in current plan)"
-            )
-
-    # Use source_tables from current plan if not provided
-    if not source_tables:
-        source_tables = agent.current_ml_plan.get("source_tables")
-        if not source_tables:
-            raise CommandError(
-                "/ml revise-plan requires --source-tables (not found in current plan)"
-            )
-
-    # Execute ML plan tool with revision instruction
-    result = await agent.ml_plan_tool.execute(
-        name=str(name),
-        instruction=str(instruction),
-        source_tables=str(source_tables),
-        previous_plan=agent.current_ml_plan,
-    )
-
-    if result.success:
-        # Store the revised plan
-        if result.metadata and "ml_plan" in result.metadata:
-            agent.current_ml_plan = result.metadata["ml_plan"]
-
-        # Display assistant's question (unless suppressed)
-        suppress = result.metadata and result.metadata.get("suppress_output", False)
-        if result.output and not suppress:
-            ui.show_info(result.output)
-    else:
-        raise CommandError(f"Failed to revise ML plan: {result.error}")
-
-
-def _ml_predict(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    options = _parse_options(
-        args,
-        {
-            "model": True,
-            "data": True,
-            "output": True,
-        },
-        command_name="/ml predict",
-    )
-
-    model_name = options.get("model")
-    table_name = options.get("data")
-
-    if not model_name or not table_name:
-        raise CommandError("/ml predict requires --model and --data")
-
-    # Parse optional output table parameter
-    output_table = options.get("output")
-
-    try:
-        summary = runtime.predict(
-            model_name=str(model_name),
-            table_name=str(table_name),
-            output_table=output_table,
-        )
-    except MLRuntimeError as exc:
-        raise CommandError(str(exc)) from exc
-
-    outputs_display = ", ".join(summary.outputs) if summary.outputs else "None"
-    ui.show_system_success(
-        f"Generated {summary.total_predictions} predictions "
-        f"with outputs: {outputs_display}"
-    )
-
-    if summary.saved_table:
-        ui.show_system_success(f"Predictions saved to table '{summary.saved_table}'")
 
 
 def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
@@ -1172,10 +997,24 @@ async def run_interactive_mode(
                                 esc_task.cancel()
 
                 if interrupted:
-                    # Add blank line before and after interrupted message
-                    ui._printer.print("")  # Blank line before
-                    ui.show_info("⏹ Interrupted.")
-                    ui._printer.print("")  # Blank line after
+                    # Check if agent added an interruption message to chat history
+                    # If so, display it; otherwise show default message
+                    last_message = None
+                    if agent and agent.chat_history:
+                        last_entry = agent.chat_history[-1]
+                        if last_entry.type == "assistant":
+                            last_message = last_entry.content
+
+                    # Add blank line before message
+                    ui._printer.print("")
+                    if last_message:
+                        # Display agent's interruption message
+                        ui.show_assistant_step(last_message)
+                    else:
+                        # Fallback to default message if agent didn't add one
+                        ui.show_info("⏹ Interrupted.")
+                    # Add blank line after message
+                    ui._printer.print("")
 
             except KeyboardInterrupt:
                 ui.show_goodbye()

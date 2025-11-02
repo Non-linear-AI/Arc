@@ -71,6 +71,7 @@ class MLModelAgent(BaseAgent):
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
         model_plan: str | None = None,
+        knowledge_references: list[str] | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
         data_processing_id: str | None = None,
@@ -84,10 +85,16 @@ class MLModelAgent(BaseAgent):
             target_column: Optional target column name for task-aware generation
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
-            model_plan: Optional ML plan guidance (architecture + training unified)
+            model_plan: Optional ML plan guidance (architecture + training
+                unified)
+            knowledge_references: Optional list of knowledge IDs referenced
+                by this request
             preloaded_knowledge: Optional list of preloaded knowledge docs
-            conversation_history: Optional conversation history for editing workflow
-            data_processing_id: Optional execution ID to load data processing context
+                (deprecated)
+            conversation_history: Optional conversation history for editing
+                workflow
+            data_processing_id: Optional execution ID to load data processing
+                context
 
         Returns:
             Tuple of (ModelSpec, unified YAML, conversation_history)
@@ -109,6 +116,7 @@ class MLModelAgent(BaseAgent):
                 existing_yaml=existing_yaml,
                 editing_instructions=editing_instructions,
                 model_plan=model_plan,
+                knowledge_references=knowledge_references,
                 preloaded_knowledge=preloaded_knowledge,
                 data_processing_id=data_processing_id,
             )
@@ -128,6 +136,7 @@ class MLModelAgent(BaseAgent):
         existing_yaml: str | None = None,
         editing_instructions: str | None = None,
         model_plan: str | None = None,
+        knowledge_references: list[str] | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
         data_processing_id: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
@@ -137,26 +146,31 @@ class MLModelAgent(BaseAgent):
         It builds the complete system message with data profiling and knowledge loading.
         """
         # Load data processing context if execution ID provided
+        # (data_processing_id is the processor.id from the data processor registry)
         data_processing_context = None
         if data_processing_id:
             try:
-                execution = self.services.plan_executions.get_execution(
+                # Load processor from registry instead of plan_executions
+                processor = self.services.data_processors.get_data_processor_by_id(
                     data_processing_id
                 )
-                if execution:
-                    # Build context summary from execution record
-                    # Defensive access to outputs structure
-                    outputs = execution.get("outputs", [])
-                    output_tables = [
-                        out["name"]
-                        for out in outputs
-                        if isinstance(out, dict) and "name" in out
-                    ]
+                if processor:
+                    # Parse spec to extract output tables
+                    from arc.graph.features.data_source import DataSourceSpec
+
+                    spec = DataSourceSpec.from_yaml(processor.spec)
+
+                    # Extract output table names from steps
+                    output_tables = []
+                    for step in spec.steps:
+                        if step.type in ["table", "view"]:
+                            output_tables.append(step.name)
+
                     data_processing_context = {
                         "execution_id": data_processing_id,
-                        "sql_context": execution["context"],
+                        "processor_name": processor.name,
                         "output_tables": output_tables,
-                        "outputs": execution["outputs"],
+                        "description": processor.description,
                     }
                     # Use first output table as the primary table for profiling
                     if output_tables and not table_name:
@@ -172,16 +186,6 @@ class MLModelAgent(BaseAgent):
         # Build unified data profile with target-aware analysis
         data_profile = await self._get_unified_data_profile(table_name, target_column)
 
-        # Use preloaded knowledge if provided
-        if preloaded_knowledge:
-            # Knowledge already loaded by tool
-            loaded_knowledge_ids = [doc["id"] for doc in preloaded_knowledge]
-            for doc in preloaded_knowledge:
-                self._loaded_knowledge.add(doc["id"])
-        else:
-            preloaded_knowledge = []
-            loaded_knowledge_ids = []
-
         # Build system message with all context
         system_message = self._render_template(
             self.get_template_name(),
@@ -191,7 +195,6 @@ class MLModelAgent(BaseAgent):
                 "data_profile": data_profile,
                 "available_components": self._get_model_components(),
                 "model_plan": model_plan,
-                "preloaded_knowledge": preloaded_knowledge,
                 "existing_yaml": existing_yaml,
                 "editing_instructions": editing_instructions,
                 "is_editing": existing_yaml is not None,
@@ -199,7 +202,7 @@ class MLModelAgent(BaseAgent):
             },
         )
 
-        # User message guides tool usage and lists pre-loaded knowledge
+        # User message guides tool usage and mentions knowledge references
         if existing_yaml:
             user_message = (
                 f"Edit the existing Arc-Graph specification with these changes: "
@@ -208,18 +211,24 @@ class MLModelAgent(BaseAgent):
         else:
             user_message = f"Generate the Arc-Graph model specification for '{name}'."
 
-        # Tell agent which knowledge IDs are already provided
-        if loaded_knowledge_ids:
+        # Add knowledge references hint if provided
+        # Note: Handle legacy preloaded_knowledge parameter by extracting IDs
+        final_knowledge_refs = knowledge_references or []
+        if preloaded_knowledge and not final_knowledge_refs:
+            # Legacy: extract IDs if knowledge_references not provided
+            final_knowledge_refs = [doc["id"] for doc in preloaded_knowledge]
+
+        if final_knowledge_refs:
             user_message += (
-                f"\n\nPre-loaded knowledge (already in system message): "
-                f"{', '.join(loaded_knowledge_ids)}. "
-                f"Do NOT reload these. Only use knowledge tools for "
-                f"additional guidance if needed."
+                f"\n\nThis request references the following knowledge: "
+                f"{', '.join(final_knowledge_refs)}. "
+                f"Use list_available_knowledge and read_knowledge_content to "
+                f"review these references or discover additional knowledge as needed."
             )
         else:
             user_message += (
-                "\n\nNo knowledge was pre-loaded. Use list_available_knowledge "
-                "and read_knowledge_content if you need architecture guidance."
+                "\n\nUse list_available_knowledge and read_knowledge_content "
+                "if you need architecture guidance."
             )
 
         # Get ML tools from BaseAgent

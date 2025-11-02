@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -175,7 +174,7 @@ class MLModelTool(BaseTool):
             # Load plan from database if plan_id is provided
             ml_plan = None
             model_plan = None
-            recommended_knowledge_ids = None
+            knowledge_references = None
             if plan_id:
                 ml_plan, plan = _load_ml_plan(self.services, plan_id)
                 if ml_plan is None:
@@ -196,7 +195,7 @@ class MLModelTool(BaseTool):
                 model_plan = plan.model_plan
 
                 # Extract stage-specific knowledge IDs from plan
-                recommended_knowledge_ids = plan.knowledge.get("model", [])
+                knowledge_references = plan.knowledge.get("model", [])
 
             # Validate required parameters
             if not name or not data_table or not target_column:
@@ -226,13 +225,6 @@ class MLModelTool(BaseTool):
             else:
                 agent.progress_callback = None
 
-            # Preload stage-specific knowledge from plan
-            preloaded_knowledge = None
-            if recommended_knowledge_ids:
-                preloaded_knowledge = agent.knowledge_loader.load_multiple(
-                    recommended_knowledge_ids
-                )
-
             # Generate unified model + training specification
             try:
                 (
@@ -245,7 +237,7 @@ class MLModelTool(BaseTool):
                     table_name=str(data_table),
                     target_column=target_column,
                     model_plan=model_plan,
-                    preloaded_knowledge=preloaded_knowledge,
+                    knowledge_references=knowledge_references,
                     data_processing_id=data_processing_id,
                 )
 
@@ -285,61 +277,32 @@ class MLModelTool(BaseTool):
                     f"Unexpected error during model generation: {exc}"
                 )
 
-            # Parse unified YAML to extract model and training sections
+            # Validate unified YAML before showing to user
             try:
                 full_spec = yaml.safe_load(unified_yaml)
 
-                # Extract training config (which contains loss)
-                training_config = full_spec.pop("training", None)
+                # Verify training section exists
+                training_config = full_spec.get("training")
                 if not training_config:
                     return _error_in_section(
                         "Generated YAML missing required 'training' section. "
                         "The unified specification must include both model and training config."
                     )
 
-                # Extract loss from within training
-                loss_config = training_config.pop("loss", None)
+                # Verify loss is in training section
+                loss_config = training_config.get("loss")
                 if not loss_config:
                     return _error_in_section(
                         "Generated YAML missing required 'training.loss' section. "
                         "The training configuration must include a loss function."
                     )
 
-                # Validate model portion (without loss - loss is in training config)
-                validate_model_dict(full_spec)
+                # Validate model portion (extract just model fields for validation)
+                model_only = {k: v for k, v in full_spec.items() if k != "training"}
+                validate_model_dict(model_only)
 
-                # Add loss to model spec level for easy access by other tools (e.g., evaluate)
-                full_spec["loss"] = loss_config
-
-                # Reconstruct unified YAML with loss in both places:
-                # 1. At model spec level (for evaluation and inference)
-                # 2. In training section (for training execution)
-                # Use deepcopy to avoid YAML anchors when serializing
-                training_config["loss"] = copy.deepcopy(
-                    loss_config
-                )  # Add back to training
-                full_spec["training"] = training_config  # Add training back to spec
-
-                # Rebuild with proper field ordering
-                ordered_spec = {}
-                if "name" in full_spec:
-                    ordered_spec["name"] = full_spec.pop("name")
-                if "data_table" in full_spec:
-                    ordered_spec["data_table"] = full_spec.pop("data_table")
-                if "plan_id" in full_spec:
-                    ordered_spec["plan_id"] = full_spec.pop("plan_id")
-                ordered_spec["inputs"] = full_spec.pop("inputs")
-                if "modules" in full_spec:
-                    ordered_spec["modules"] = full_spec.pop("modules")
-                ordered_spec["graph"] = full_spec.pop("graph")
-                ordered_spec["outputs"] = full_spec.pop("outputs")
-                ordered_spec["loss"] = full_spec.pop("loss")
-                ordered_spec["training"] = full_spec.pop("training")
-
-                # Update unified_yaml with the reconstructed version
-                unified_yaml = yaml.dump(
-                    ordered_spec, default_flow_style=False, sort_keys=False
-                )
+                # DO NOT duplicate loss to top-level - keep it only in training section
+                # unified_yaml already has correct structure from agent
 
             except (yaml.YAMLError, ModelValidationError) as exc:
                 return _error_in_section(f"Specification validation failed: {exc}")
@@ -598,13 +561,28 @@ class MLModelTool(BaseTool):
         """Create validator function for the workflow.
 
         Returns:
-            Function that validates YAML and returns list of error strings
+            Function that validates unified YAML (model + training) and returns list of error strings
         """
 
         def validate(yaml_str: str) -> list[str]:
             try:
-                model_dict = yaml.safe_load(yaml_str)
-                validate_model_dict(model_dict)
+                full_spec = yaml.safe_load(yaml_str)
+
+                # Verify training section exists
+                if "training" not in full_spec:
+                    return ["Missing required 'training' section"]
+
+                # Verify loss is in training section, not at top-level
+                if "loss" in full_spec:
+                    return [
+                        "Top-level 'loss' field is not supported. "
+                        "Loss must be defined inside 'training' section as 'training.loss'"
+                    ]
+
+                # Validate model portion (without training)
+                model_only = {k: v for k, v in full_spec.items() if k != "training"}
+                validate_model_dict(model_only)
+
                 return []  # No errors
             except yaml.YAMLError as e:
                 return [f"Invalid YAML: {e}"]

@@ -239,72 +239,6 @@ tools:
       required:
         - action
 
-  - name: ml_plan
-    description: |
-      Create or revise comprehensive ML workflow plan for a modeling task. This tool
-      analyzes data, user requirements, and creates a detailed plan covering feature
-      engineering, model architecture, and training/validation strategy (including
-      validation metrics to track during training).
-
-      IMPORTANT: Use this tool AFTER exploring the data with schema_discovery and database_query.
-      Include data insights in the instruction parameter for better plan quality.
-
-      Use for:
-      - Initial plan creation: Provide name, instruction with ML problem description AND data insights
-        from exploration (e.g., "Build classifier for X. Data insights: 1000 samples, binary
-        classification (70/30 split), 5 numeric features with range 0-100, no missing values.")
-      - Plan revision: Use existing plan's name and provide instruction describing the requested changes
-        (e.g., "change the model architecture to use 4 layers", "use different features")
-
-      The name parameter is used for versioning (e.g., 'diabetes-classifier' becomes 'diabetes-classifier-v1').
-      The instruction parameter is used for both initial creation and revisions.
-
-      Returns JSON with the following structure:
-      {
-        "status": "accepted" | "cancelled",
-        "plan_id": "plan-id-v1",
-        "plan": {
-          "data_plan": "Feature engineering strategy...",
-          "model_plan": "Architecture and training approach...",
-          "knowledge": {"data": ["knowledge_id1"], "model": ["knowledge_id2"]}
-        }
-      }
-
-      The plan content is always included regardless of status, allowing you to discuss it with
-      the user. If status is "accepted", proceed with ml_data and ml_model using the plan_id.
-      If status is "cancelled", ask the user what they would like to change.
-    parameters:
-      type: object
-      properties:
-        name:
-          type: string
-          description: |
-            Name for the ML plan, used for versioning and identification (e.g., 'diabetes-classifier',
-            'fraud-detection-model'). This name will be used to track plan versions in the database.
-            Choose a descriptive, kebab-case name suitable for versioning.
-        instruction:
-          type: string
-          description: |
-            For initial creation: Description of the ML problem, goals, requirements, AND
-            data insights from exploration (sample count, class distribution, feature ranges,
-            missing values, correlations, etc.). Including data insights leads to better plans.
-
-            For revisions: Description of the changes to make to the existing plan
-            (e.g., "change the model architecture to use 4 layers", "use different features",
-            "adjust training strategy to use 100 epochs").
-
-            Example initial instruction with insights:
-            "Build binary classifier for diabetes prediction. Data insights: 768 samples,
-            binary outcome (500 positive, 268 negative = 35% positive rate), 8 numeric
-            features (glucose 0-200, BMI 0-67, age 21-81), no missing values."
-        source_tables:
-          type: string
-          description: Comma-separated list of database tables to analyze (e.g., 'users,transactions' or 'pidd')
-      required:
-        - name
-        - instruction
-        - source_tables
-
   - name: ml_model
     description: |
       Generate unified model + training specification and launch training. This tool:
@@ -314,12 +248,8 @@ tools:
       4) Creates trainer from training config
       5) Launches training immediately
 
-      This tool replaces the old separate ml_model + ml_train workflow. If plan_id is provided,
-      uses unified model_plan guidance (architecture + training).
-
-      IMPORTANT: When plan_id is provided, data_processing_id is REQUIRED. Extract data_processing_id
-      from ml_data's JSON result and pass it to this tool. This links the model to the specific
-      data processing execution. The tool will ERROR if plan_id is provided without data_processing_id.
+      Use the knowledge_references parameter to suggest relevant architecture knowledge IDs
+      (e.g., ['mlp', 'dcn', 'transformer']) for the model generation sub-agent to explore.
 
       Returns JSON with the following structure:
       {
@@ -360,17 +290,20 @@ tools:
         target_column:
           type: string
           description: Target column for prediction
-        plan_id:
-          type: string
-          description: |
-            Optional ML plan ID (e.g., 'pidd-plan-v1'). When provided, loads plan
-            from database and uses its unified model_plan guidance.
         data_processing_id:
           type: string
           description: |
             Optional data processing execution ID from ml_data tool result. When provided,
             loads SQL transformations and output schemas to understand feature engineering.
-            Extract this from ml_data's result metadata: result.metadata.data_processing_id
+            Extract this from ml_data's JSON result: result["data_processing_id"]
+        knowledge_references:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional list of knowledge IDs to suggest to the model generation sub-agent
+            (e.g., ['mlp', 'dcn']). The sub-agent will use its own knowledge tools to
+            access these or discover additional knowledge as needed.
       required:
         - name
         - instruction
@@ -453,8 +386,9 @@ tools:
       3) Execute pipeline after confirmation,
       4) Create output tables.
       For read-only SELECT queries, use database_query for immediate results.
-      If plan_id is provided, the agent loads the plan from database and uses its
-      feature engineering guidance.
+
+      Use the knowledge_references parameter to suggest relevant knowledge IDs
+      (e.g., ['ml_data_preparation']) for the data processing sub-agent to explore.
 
       Returns JSON with the following structure:
       {
@@ -466,9 +400,8 @@ tools:
         }
       }
 
-      The data_processing_id is REQUIRED for ml_model when using a plan_id. Extract it from
-      the JSON and pass to ml_model. The sql_operations provide context about the DB transactions
-      performed.
+      The data_processing_id can be passed to ml_model to link the model to specific
+      data processing. The sql_operations provide context about the DB transactions performed.
     parameters:
       type: object
       properties:
@@ -489,24 +422,31 @@ tools:
             - system
             - user
           description: "Target database: 'system' for Arc metadata, 'user' for training data (default: user)"
-        plan_id:
-          type: string
-          description: |
-            Optional ML plan ID to use for data processing (e.g., 'pidd-plan-v1').
-            When provided, the agent loads the plan from database and uses its
-            feature engineering guidance (feature_engineering section).
-        recommended_knowledge_ids:
+        knowledge_references:
           type: array
           items:
             type: string
           description: |
-            Optional list of knowledge IDs recommended by ml_plan (e.g., ['mlp', 'dcn']).
-            When provided from ml_plan result, these are displayed in the section metadata
-            for visibility and can inform data processing decisions.
+            Optional list of knowledge IDs to suggest to the data processing sub-agent
+            (e.g., ['ml_data_preparation']). The sub-agent will use its own knowledge tools
+            to access these or discover additional knowledge as needed.
       required:
         - name
         - instruction
         - source_tables
+
+  - name: list_available_knowledge
+    description: |
+      List all available knowledge documents including architectures, patterns, and scenarios.
+      Returns metadata with knowledge ID, name, description, and applicable phases (model, trainer, evaluator).
+
+      Use this tool to:
+      - Explore available architectural patterns (MLP, DCN, Transformer, etc.)
+      - Discover training strategies and evaluation techniques
+      - Find data processing patterns and best practices
+    parameters:
+      type: object
+      properties: {}
 
   - name: read_knowledge
     description: |
@@ -519,8 +459,7 @@ tools:
       - Learn problem-specific patterns and best practices
       - Discover relevant techniques and patterns
 
-      Available knowledge is listed in your context. Read relevant documents before
-      generating specifications to ensure high-quality outputs.
+      Use list_available_knowledge first to see what's available, then read specific documents.
     parameters:
       type: object
       properties:

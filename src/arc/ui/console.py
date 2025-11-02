@@ -253,14 +253,6 @@ class InteractiveInterface:
             p.print("ML Commands")
             ml_commands = [
                 (
-                    "/ml plan --name NAME --instruction DESC --source-tables TABLES",
-                    "Create ML workflow plan (data processing + model + training)",
-                ),
-                (
-                    "/ml revise-plan --instruction CHANGES [--name NAME]",
-                    "Revise the current ML plan based on feedback or training results",
-                ),
-                (
                     "/ml data --name NAME --instruction INST --source-tables TABLES",
                     "Generate data processing pipeline from natural language",
                 ),
@@ -273,10 +265,6 @@ class InteractiveInterface:
                     "/ml evaluate --model-id MODEL_ID --data-table TABLE "
                     "[--metrics METRICS] [--output-table TABLE]",
                     "Evaluate trained model on test dataset",
-                ),
-                (
-                    "/ml predict --model NAME --data TABLE --output TABLE",
-                    "Run inference and save predictions",
                 ),
                 ("/ml jobs list", "Show recent ML jobs"),
                 ("/ml jobs status JOB_ID", "Inspect an individual job"),
