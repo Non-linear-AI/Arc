@@ -60,12 +60,16 @@ def format_chat_history(chat_history: list, max_messages: int = 20) -> str:
         Formatted chat history string
     """
     # Take last N messages
-    recent = chat_history[-max_messages:] if len(chat_history) > max_messages else chat_history
+    recent = (
+        chat_history[-max_messages:]
+        if len(chat_history) > max_messages
+        else chat_history
+    )
 
     formatted = []
     for msg in recent:
-        role = msg.type if hasattr(msg, 'type') else 'unknown'
-        content = msg.content if hasattr(msg, 'content') else str(msg)
+        role = msg.type if hasattr(msg, "type") else "unknown"
+        content = msg.content if hasattr(msg, "content") else str(msg)
 
         # Truncate very long messages
         if len(content) > 2000:
@@ -90,7 +94,7 @@ async def generate_bug_report(
         Dict with keys: title, description, steps, expected, actual, context
         Returns None if generation fails or no issue detected
     """
-    if not agent or not hasattr(agent, 'chat_history') or not agent.chat_history:
+    if not agent or not hasattr(agent, "chat_history") or not agent.chat_history:
         return None
 
     # Format chat history
@@ -100,9 +104,7 @@ async def generate_bug_report(
     prompt = _render_bug_report_prompt(chat_text, issue_hint)
 
     # Create messages for LLM
-    messages = [
-        {"role": "user", "content": prompt}
-    ]
+    messages = [{"role": "user", "content": prompt}]
 
     try:
         # Call LLM using agent's ArcClient
@@ -121,6 +123,7 @@ async def generate_bug_report(
     except Exception as e:
         # Log the error for debugging
         import logging
+
         logging.error(f"Bug report generation failed: {e}")
         return None
 
@@ -140,33 +143,33 @@ def parse_bug_report(content: str) -> dict[str, str]:
         "steps": "",
         "expected": "",
         "actual": "",
-        "context": ""
+        "context": "",
     }
 
     # Split by section headers
-    lines = content.split('\n')
+    lines = content.split("\n")
     current_section = None
 
     for line in lines:
         line_upper = line.strip().upper()
 
-        if line_upper.startswith('TITLE:'):
-            sections['title'] = line.split(':', 1)[1].strip()
+        if line_upper.startswith("TITLE:"):
+            sections["title"] = line.split(":", 1)[1].strip()
             current_section = None
-        elif line_upper.startswith('DESCRIPTION:'):
-            current_section = 'description'
-        elif line_upper.startswith('STEPS TO REPRODUCE:'):
-            current_section = 'steps'
-        elif line_upper.startswith('EXPECTED BEHAVIOR:'):
-            current_section = 'expected'
-        elif line_upper.startswith('ACTUAL BEHAVIOR:'):
-            current_section = 'actual'
-        elif line_upper.startswith('CONTEXT:'):
-            current_section = 'context'
+        elif line_upper.startswith("DESCRIPTION:"):
+            current_section = "description"
+        elif line_upper.startswith("STEPS TO REPRODUCE:"):
+            current_section = "steps"
+        elif line_upper.startswith("EXPECTED BEHAVIOR:"):
+            current_section = "expected"
+        elif line_upper.startswith("ACTUAL BEHAVIOR:"):
+            current_section = "actual"
+        elif line_upper.startswith("CONTEXT:"):
+            current_section = "context"
         elif current_section and line.strip():
             # Append to current section
             if sections[current_section]:
-                sections[current_section] += '\n' + line.strip()
+                sections[current_section] += "\n" + line.strip()
             else:
                 sections[current_section] = line.strip()
 
@@ -185,38 +188,38 @@ def format_bug_report_for_display(report: dict[str, str]) -> str:
     parts = []
 
     # Title with bold label
-    if report['title']:
+    if report["title"]:
         parts.append(f"**Title** {report['title']}")
         parts.append("")
 
     # Description
-    if report['description']:
+    if report["description"]:
         parts.append("**Description**")
-        parts.append(report['description'])
+        parts.append(report["description"])
         parts.append("")
 
     # Steps to reproduce
-    if report['steps']:
+    if report["steps"]:
         parts.append("**Steps to Reproduce**")
-        parts.append(report['steps'])
+        parts.append(report["steps"])
         parts.append("")
 
     # Expected behavior
-    if report['expected']:
+    if report["expected"]:
         parts.append("**Expected Behavior**")
-        parts.append(report['expected'])
+        parts.append(report["expected"])
         parts.append("")
 
     # Actual behavior
-    if report['actual']:
+    if report["actual"]:
         parts.append("**Actual Behavior**")
-        parts.append(report['actual'])
+        parts.append(report["actual"])
         parts.append("")
 
     # Context
-    if report['context']:
+    if report["context"]:
         parts.append("**Context**")
-        parts.append(report['context'])
+        parts.append(report["context"])
 
     return "\n".join(parts)
 
@@ -237,33 +240,33 @@ def format_bug_report_for_editing(report: dict[str, str]) -> str:
     parts.append("")
 
     # Description
-    if report.get('description'):
+    if report.get("description"):
         parts.append("## Description")
-        parts.append(report['description'])
+        parts.append(report["description"])
         parts.append("")
 
     # Steps to reproduce
-    if report.get('steps'):
+    if report.get("steps"):
         parts.append("## Steps to Reproduce")
-        parts.append(report['steps'])
+        parts.append(report["steps"])
         parts.append("")
 
     # Expected behavior
-    if report.get('expected'):
+    if report.get("expected"):
         parts.append("## Expected Behavior")
-        parts.append(report['expected'])
+        parts.append(report["expected"])
         parts.append("")
 
     # Actual behavior
-    if report.get('actual'):
+    if report.get("actual"):
         parts.append("## Actual Behavior")
-        parts.append(report['actual'])
+        parts.append(report["actual"])
         parts.append("")
 
     # Context
-    if report.get('context'):
+    if report.get("context"):
         parts.append("## Context")
-        parts.append(report['context'])
+        parts.append(report["context"])
 
     return "\n".join(parts)
 
@@ -283,39 +286,39 @@ def parse_bug_report_from_markdown(markdown: str) -> dict[str, str]:
         "steps": "",
         "expected": "",
         "actual": "",
-        "context": ""
+        "context": "",
     }
 
-    lines = markdown.split('\n')
+    lines = markdown.split("\n")
     current_section = None
     content_lines = []
 
     for line in lines:
         # Check for title (# Title)
-        if line.startswith('# '):
+        if line.startswith("# "):
             if current_section:
-                report[current_section] = '\n'.join(content_lines).strip()
+                report[current_section] = "\n".join(content_lines).strip()
                 content_lines = []
-            report['title'] = line[2:].strip()
+            report["title"] = line[2:].strip()
             current_section = None
 
         # Check for section headers (## Header)
-        elif line.startswith('## '):
+        elif line.startswith("## "):
             if current_section:
-                report[current_section] = '\n'.join(content_lines).strip()
+                report[current_section] = "\n".join(content_lines).strip()
                 content_lines = []
 
             header = line[3:].strip().lower()
-            if 'description' in header:
-                current_section = 'description'
-            elif 'steps' in header:
-                current_section = 'steps'
-            elif 'expected' in header:
-                current_section = 'expected'
-            elif 'actual' in header:
-                current_section = 'actual'
-            elif 'context' in header:
-                current_section = 'context'
+            if "description" in header:
+                current_section = "description"
+            elif "steps" in header:
+                current_section = "steps"
+            elif "expected" in header:
+                current_section = "expected"
+            elif "actual" in header:
+                current_section = "actual"
+            elif "context" in header:
+                current_section = "context"
             else:
                 current_section = None
 
@@ -325,6 +328,6 @@ def parse_bug_report_from_markdown(markdown: str) -> dict[str, str]:
 
     # Save last section
     if current_section:
-        report[current_section] = '\n'.join(content_lines).strip()
+        report[current_section] = "\n".join(content_lines).strip()
 
     return report

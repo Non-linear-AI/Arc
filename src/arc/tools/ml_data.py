@@ -240,6 +240,7 @@ class MLDataTool(BaseTool):
             if printer:
                 # Check verbose mode from settings
                 from arc.core.config import SettingsManager
+
                 settings = SettingsManager()
                 if settings.get_verbose_mode():
                     printer.print(f"[dim]Task: {instruction}[/dim]")
@@ -338,7 +339,9 @@ class MLDataTool(BaseTool):
                     # Display registration confirmation in the Data Processor section
                     if printer:
                         printer.print("")
-                        printer.print(f"[dim]✓ Data processor registered: {processor.id}[/dim]")
+                        printer.print(
+                            f"[dim]✓ Data processor registered: {processor.id}[/dim]"
+                        )
                         printer.print(f"[dim]  {len(spec.steps)} steps[/dim]")
                 except MLRuntimeError as e:
                     return _error_in_section(
@@ -418,8 +421,12 @@ class MLDataTool(BaseTool):
                 if printer:
                     printer.print("")
                     printer.print("[dim]✓ Pipeline executed successfully[/dim]")
-                    printer.print(f"[dim]  Table: {', '.join(execution_result.created_tables)}[/dim]")
-                    printer.print(f"[dim]  Time: {execution_result.execution_time:.2f}s[/dim]")
+                    printer.print(
+                        f"[dim]  Table: {', '.join(execution_result.created_tables)}[/dim]"
+                    )
+                    printer.print(
+                        f"[dim]  Time: {execution_result.execution_time:.2f}s[/dim]"
+                    )
 
                 # Build structured JSON output
                 output_json = self._build_data_result(

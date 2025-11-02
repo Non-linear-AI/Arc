@@ -114,7 +114,6 @@ class TodoManager:
 
         # Calculate progress
         completed = sum(1 for todo in self.todos if todo.status == "completed")
-        in_progress = sum(1 for todo in self.todos if todo.status == "in_progress")
         total = len(self.todos)
 
         # Header with just progress count

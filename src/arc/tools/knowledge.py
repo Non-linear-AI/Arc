@@ -1,6 +1,5 @@
 """Knowledge reading tool for ML agents."""
 
-import json
 from pathlib import Path
 
 from arc.core.agents.shared.knowledge_loader import KnowledgeLoader
@@ -46,11 +45,13 @@ class ListAvailableKnowledgeTool(BaseTool):
             for phase in metadata.phases:
                 if phase not in phase_groups:
                     phase_groups[phase] = []
-                phase_groups[phase].append({
-                    "id": knowledge_id,
-                    "name": metadata.name,
-                    "description": metadata.description or "",
-                })
+                phase_groups[phase].append(
+                    {
+                        "id": knowledge_id,
+                        "name": metadata.name,
+                        "description": metadata.description or "",
+                    }
+                )
 
         # Build categorized output
         lines = []
@@ -157,16 +158,18 @@ class ReadKnowledgeTool(BaseTool):
             file_path = builtin_file
 
         # Count lines in content
-        line_count = len(content.split('\n'))
+        line_count = len(content.split("\n"))
 
-        # Extract first few sections for summary (stop at first ## heading or after ~200 chars)
-        lines = content.split('\n')
+        # Split content into lines
+        lines = content.split("\n")
+
+        # Extract content summary (first few sections, stop at ## heading or ~200 chars)
         summary_lines = []
         char_count = 0
         max_chars = 200
 
         for line in lines[:20]:  # Look at first 20 lines max
-            if line.strip().startswith('## ') and summary_lines:
+            if line.strip().startswith("## ") and summary_lines:
                 # Stop at second-level heading if we already have content
                 break
             summary_lines.append(line)
@@ -175,9 +178,9 @@ class ReadKnowledgeTool(BaseTool):
                 # Stop after we've exceeded char limit at a natural break
                 break
 
-        summary = '\n'.join(summary_lines).strip()
+        summary = "\n".join(summary_lines).strip()
 
-        # Build output with brief summary + file link
+        # Build output with metadata + summary + file link
         output_parts = []
 
         if metadata:
@@ -186,27 +189,17 @@ class ReadKnowledgeTool(BaseTool):
             if metadata.description:
                 output_parts.append(f"{metadata.description}")
 
-            # Extract key topics from content (look for bullet points or section headings)
-            topics = []
-            for line in lines[:50]:
-                stripped = line.strip()
-                # Look for bullet points or section headings
-                if stripped.startswith('- ') or stripped.startswith('* '):
-                    topic = stripped[2:].strip()
-                    if len(topic) < 80:  # Reasonable length
-                        topics.append(topic)
-                    if len(topics) >= 3:
-                        break
-                elif stripped.startswith('## ') and topics:
-                    # Stop at section heading if we have some topics
-                    break
+            # Show phases
+            if metadata.phases:
+                phases_str = ", ".join(metadata.phases)
+                output_parts.append(f"Phases: {phases_str}")
 
-            if topics:
-                output_parts.append("")  # Single blank line before topics
-                output_parts.append("Key topics:")
-                for topic in topics:
-                    output_parts.append(f"• {topic}")
-        else:
+        # Add content summary
+        if summary:
+            output_parts.append("")  # Blank line before summary
+            output_parts.append(summary)
+        elif not metadata:
+            # Fallback if no metadata and no summary
             output_parts.append(knowledge_id)
 
         # Add file link

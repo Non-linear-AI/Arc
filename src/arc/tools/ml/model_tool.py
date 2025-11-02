@@ -131,6 +131,7 @@ class MLModelTool(BaseTool):
             if printer:
                 # Check verbose mode from settings
                 from arc.core.config import SettingsManager
+
                 settings = SettingsManager()
                 if settings.get_verbose_mode():
                     printer.print(f"[dim]Task: {instruction}[/dim]")
@@ -490,7 +491,9 @@ class MLModelTool(BaseTool):
                             )
                             error_msg = f"{e.__class__.__name__}: {e}"
                             if printer:
-                                printer.print(f"⚠ TensorBoard setup failed: {error_msg}")
+                                printer.print(
+                                    f"⚠ TensorBoard setup failed: {error_msg}"
+                                )
                             self._show_manual_tensorboard_instructions(job_id, printer)
                     else:
                         # No TensorBoard manager available
@@ -724,10 +727,14 @@ class MLModelTool(BaseTool):
             settings.set_tensorboard_mode(mode)
             if section_printer:
                 section_printer.print("")
-                section_printer.print(f"[dim]✓ TensorBoard preference saved: {mode}[/dim]")
+                section_printer.print(
+                    f"[dim]✓ TensorBoard preference saved: {mode}[/dim]"
+                )
             else:
                 self.ui._printer.console.print()
-                self.ui._printer.console.print(f"[dim]✓ TensorBoard preference saved: {mode}[/dim]")
+                self.ui._printer.console.print(
+                    f"[dim]✓ TensorBoard preference saved: {mode}[/dim]"
+                )
 
             # Launch immediately if user chose to
             if should_launch:
@@ -760,10 +767,14 @@ class MLModelTool(BaseTool):
                 settings.set_tensorboard_mode("always")
                 if section_printer:
                     section_printer.print("")
-                    section_printer.print("[dim]✓ TensorBoard preference updated: always[/dim]")
+                    section_printer.print(
+                        "[dim]✓ TensorBoard preference updated: always[/dim]"
+                    )
                 else:
                     self.ui._printer.console.print()
-                    self.ui._printer.console.print("[dim]✓ TensorBoard preference updated: always[/dim]")
+                    self.ui._printer.console.print(
+                        "[dim]✓ TensorBoard preference updated: always[/dim]"
+                    )
                 await self._launch_tensorboard(job_id, section_printer)
             elif choice == "yes":
                 await self._launch_tensorboard(job_id, section_printer)
@@ -831,7 +842,9 @@ class MLModelTool(BaseTool):
             if section_printer:
                 section_printer.print(f"⚠ Failed to launch TensorBoard: {error_msg}")
             else:
-                self.ui._printer.console.print(f"⚠ Failed to launch TensorBoard: {error_msg}")
+                self.ui._printer.console.print(
+                    f"⚠ Failed to launch TensorBoard: {error_msg}"
+                )
             self._show_manual_tensorboard_instructions(job_id, section_printer)
 
     def _show_manual_tensorboard_instructions(self, job_id: str, section_printer=None):
@@ -864,4 +877,6 @@ class MLModelTool(BaseTool):
             self.ui._printer.console.print()
             self.ui._printer.console.print("[dim]ℹ View training results[/dim]")
             self.ui._printer.console.print(f"[dim]  /ml jobs status {job_id}[/dim]")
-            self.ui._printer.console.print(f"[dim]  tensorboard --logdir {logdir}[/dim]")
+            self.ui._printer.console.print(
+                f"[dim]  tensorboard --logdir {logdir}[/dim]"
+            )

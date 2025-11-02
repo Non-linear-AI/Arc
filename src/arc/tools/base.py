@@ -89,7 +89,9 @@ class BaseTool(ABC):
             shape = shape_map.get(title, "▸")  # Default to narrative marker
 
             # Use shape instead of color for semantic meaning
-            with ui_interface._printer.section(shape=shape, color=color, add_dot=True) as printer:
+            with ui_interface._printer.section(
+                shape=shape, color=color, add_dot=True
+            ) as printer:
                 # Build title with metadata using bullet separators
                 full_title = title
                 if metadata:

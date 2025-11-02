@@ -308,7 +308,7 @@ class Printer:
         Args:
             shape: Shape character for the prefix (default: "▸" for narrative)
             color: Optional color for the shape prefix (if None, no color applied)
-            add_dot: Whether to add a shape prefix (can be disabled for welcome messages)
+            add_dot: Whether to add a shape prefix (disabled for welcome)  # noqa: E501
             streaming: Whether this section supports streaming output
             prefix: Optional prefix text (like for assistant responses, only used
                 when streaming=True)
@@ -356,9 +356,7 @@ class Printer:
                         if lines:
                             # Add shape prefix to first line (with optional color)
                             if self.color:
-                                prefixed_first = (
-                                    f"[{self.color}]{self.shape}[/{self.color}] {lines[0]}"
-                                )
+                                prefixed_first = f"[{self.color}]{self.shape}[/{self.color}] {lines[0]}"  # noqa: E501
                             else:
                                 prefixed_first = f"{self.shape} {lines[0]}"
                             # Indent all subsequent lines with 2 spaces
@@ -418,7 +416,9 @@ class Printer:
                 self._current_text += text + end
                 if self.live:
                     if self.color:
-                        prefix = f"[{self.color}]{self.shape}[/{self.color}] {self.prefix}"
+                        prefix = (
+                            f"[{self.color}]{self.shape}[/{self.color}] {self.prefix}"
+                        )
                     else:
                         prefix = f"{self.shape} {self.prefix}"
                     update_str = f"{prefix}{self._current_text}{self._cursor_markup}"
@@ -428,7 +428,9 @@ class Printer:
                 if not self._streaming_started and self.add_dot:
                     # Create a live region so we can replace content later cleanly
                     if self.color:
-                        initial = f"[{self.color}]{self.shape}[/{self.color}] {self.prefix}"
+                        initial = (
+                            f"[{self.color}]{self.shape}[/{self.color}] {self.prefix}"
+                        )
                     else:
                         initial = f"{self.shape} {self.prefix}"
                     self.live = Live(
@@ -470,12 +472,14 @@ class Printer:
                         if not section_printer._finalized:
                             # Update one last time without the cursor
                             if section_printer.color:
-                                prefix = (
-                                    f"[{section_printer.color}]{section_printer.shape}[/{section_printer.color}] "
+                                prefix = (  # noqa: E501
+                                    f"[{section_printer.color}]{section_printer.shape}[/{section_printer.color}] "  # noqa: E501
                                     f"{section_printer.prefix}"
                                 )
                             else:
-                                prefix = f"{section_printer.shape} {section_printer.prefix}"
+                                prefix = (
+                                    f"{section_printer.shape} {section_printer.prefix}"
+                                )
                             final_text = f"{prefix}{section_printer._current_text}"
                             section_printer.live.update(final_text)
                         section_printer.live.stop()

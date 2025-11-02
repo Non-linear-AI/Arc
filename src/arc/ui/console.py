@@ -10,7 +10,6 @@ from contextlib import contextmanager, suppress
 from typing import Any
 
 from rich import box
-from rich.align import Align
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -41,19 +40,35 @@ class InteractiveInterface:
         # Blank line for breathing room
         self._printer.print()
 
-        # Logo in cyan, manually centered (logo is 29 chars, center in 80 = 25 space padding)
-        self._printer.print("[cyan]                         ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗[/cyan]")
-        self._printer.print("[cyan]                        ▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝[/cyan]")
-        self._printer.print("[cyan]                        ▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║[/cyan]")
-        self._printer.print("[cyan]                        ▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║[/cyan]")
-        self._printer.print("[cyan]                        ▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗[/cyan]")
-        self._printer.print("[cyan]                        ╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝[/cyan]")
+        # Logo in cyan, manually centered (logo is 29 chars, center 80 = 25 pad)  # noqa: E501
+        self._printer.print(
+            "[cyan]                         ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝[/cyan]"
+        )
 
         # Tagline dimmed, manually centered (28 chars, center in 80 = 26 space padding)
-        self._printer.print("[dim]                          From Question to Prediction[/dim]")
+        self._printer.print(
+            "[dim]                          From Question to Prediction[/dim]"
+        )
 
-        # Bottom border - thin dim line with 2-space padding (consistent with section indentation)
-        self._printer.print("[dim]  ───────────────────────────────────────────────────────────────────────────[/dim]")
+        # Bottom border - thin dim line with 2-space padding  # noqa: E501
+        self._printer.print(  # noqa: E501
+            "[dim]  ───────────────────────────────────────────────────────────────────────────[/dim]"  # noqa: E501
+        )
 
         # Blank line for breathing room
         self._printer.print()
@@ -225,7 +240,9 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         with self._printer.section(shape="ℹ") as p:
             p.print("How to Use Arc")
-            p.print("[dim]Ask questions in natural language or use slash commands.[/dim]")
+            p.print(
+                "[dim]Ask questions in natural language or use slash commands.[/dim]"
+            )
 
             p.print()
             p.print("[bold]System Commands[/bold]")
@@ -293,7 +310,12 @@ class InteractiveInterface:
         """
         if tool_name in ["database_query", "schema_discovery"]:
             return "◆"  # Database operations
-        elif tool_name in ["ml_predict", "ml_evaluate", "ml_model", "ml_trainer_generator"]:
+        elif tool_name in [
+            "ml_predict",
+            "ml_evaluate",
+            "ml_model",
+            "ml_trainer_generator",
+        ]:
             return "●"  # ML operations
         elif tool_name in ["ml_data", "create_todo_list", "update_todo_list"]:
             return "◇"  # Data processing & planning
@@ -331,12 +353,7 @@ class InteractiveInterface:
 
         # Special handling for schema_discovery - label depends on what's being shown
         if tool_name == "schema_discovery" and result.metadata:
-            # If table_name is present, we're showing columns for a specific table
-            if "table_name" in result.metadata:
-                label = "Columns"
-            else:
-                # Otherwise, we're showing tables in the database
-                label = "Tables"
+            label = "Columns" if "table_name" in result.metadata else "Tables"
         else:
             label = self._action_label(tool_name)
 
@@ -348,7 +365,7 @@ class InteractiveInterface:
             if tool_name == "database_query":
                 # Show database name directly (without prefix)
                 if "target_db" in result.metadata:
-                    metadata_parts.append(result.metadata['target_db'])
+                    metadata_parts.append(result.metadata["target_db"])
                 # Show execution time only if >= 1 second
                 if "execution_time" in result.metadata:
                     exec_time = result.metadata["execution_time"]
@@ -359,7 +376,7 @@ class InteractiveInterface:
                 if "table_name" in result.metadata:
                     metadata_parts.append(result.metadata["table_name"])
                 elif "target_db" in result.metadata:
-                    metadata_parts.append(result.metadata['target_db'])
+                    metadata_parts.append(result.metadata["target_db"])
             elif tool_name == "list_available_knowledge":
                 # Show knowledge count
                 if "knowledge_count" in result.metadata:
@@ -580,7 +597,9 @@ class InteractiveInterface:
                 stream.stream_text("Hello ")
                 stream.stream_text("world!")
         """
-        streaming_context = self._printer.section(shape="▸", color="cyan", streaming=True)
+        streaming_context = self._printer.section(
+            shape="▸", color="cyan", streaming=True
+        )
         stream_printer = streaming_context.__enter__()
         try:
             yield stream_printer
@@ -910,10 +929,10 @@ class InteractiveInterface:
             p.print("Configuration")
 
             # Parse config_text and format with alignment
-            lines = config_text.strip().split('\n')
+            lines = config_text.strip().split("\n")
             for line in lines:
-                if ':' in line:
-                    key, value = line.split(':', 1)
+                if ":" in line:
+                    key, value = line.split(":", 1)
                     key = key.strip()
                     value = value.strip()
                     p.print(f"{key:<18} [cyan]{value}[/cyan]")

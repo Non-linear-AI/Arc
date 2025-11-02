@@ -934,7 +934,7 @@ async def run_interactive_mode(
                         with ui._printer.section(shape="ℹ") as p:
                             p.print("Create Bug Report")
                             p.print(
-                                "[dim]I'll help you create a detailed bug report based on our conversation.[/dim]"
+                                "[dim]I'll help you create a detailed bug report based on our conversation.[/dim]"  # noqa: E501
                             )
 
                             if not can_use_llm:
@@ -942,14 +942,14 @@ async def run_interactive_mode(
                                 p.print()
                                 if agent:
                                     p.print(
-                                        "▸ [dim]Auto-detect unavailable: No conversation history yet[/dim]"
+                                        "▸ [dim]Auto-detect unavailable: No conversation history yet[/dim]"  # noqa: E501
                                     )
                                 else:
                                     p.print(
-                                        "▸ [dim]Auto-detect unavailable: No AI agent initialized[/dim]"
+                                        "▸ [dim]Auto-detect unavailable: No AI agent initialized[/dim]"  # noqa: E501
                                     )
                                 p.print(
-                                    "  [dim]Have a conversation first, then use /report to analyze issues[/dim]"
+                                    "  [dim]Have a conversation first, then use /report to analyze issues[/dim]"  # noqa: E501
                                 )
                                 # Manual entry for no-LLM case
                                 title = await ui.get_user_input_async("  Title: ")
@@ -964,7 +964,9 @@ async def run_interactive_mode(
 
                                 if not issue_hint.strip():
                                     p.print()
-                                    p.print("[dim]Bug report cancelled (no issue provided)[/dim]")
+                                    p.print(
+                                        "[dim]Bug report cancelled (no issue provided)[/dim]"  # noqa: E501
+                                    )
                                     continue
 
                                 p.print()
@@ -978,7 +980,9 @@ async def run_interactive_mode(
                                     # Edit loop - allow multiple iterations
                                     while True:
                                         # Display generated report in markdown panel
-                                        formatted = format_bug_report_for_display(report)
+                                        formatted = format_bug_report_for_display(
+                                            report
+                                        )
 
                                         # Use Rich's Markdown renderer with panel
                                         md = Markdown(formatted, justify="left")
@@ -993,7 +997,9 @@ async def run_interactive_mode(
                                         # Flush terminal to prevent race condition
                                         ui._printer.console.file.flush()
                                         try:
-                                            if hasattr(ui._printer.console.file, "fileno"):
+                                            if hasattr(
+                                                ui._printer.console.file, "fileno"
+                                            ):
                                                 termios.tcdrain(
                                                     ui._printer.console.file.fileno()
                                                 )
@@ -1022,15 +1028,15 @@ async def run_interactive_mode(
                                                 desc_parts.append(report["description"])
                                             if report["steps"]:
                                                 desc_parts.append(
-                                                    f"\n\n**Steps to Reproduce:**\n{report['steps']}"
+                                                    f"\n\n**Steps to Reproduce:**\n{report['steps']}"  # noqa: E501
                                                 )
                                             if report["expected"]:
                                                 desc_parts.append(
-                                                    f"\n\n**Expected Behavior:**\n{report['expected']}"
+                                                    f"\n\n**Expected Behavior:**\n{report['expected']}"  # noqa: E501
                                                 )
                                             if report["actual"]:
                                                 desc_parts.append(
-                                                    f"\n\n**Actual Behavior:**\n{report['actual']}"
+                                                    f"\n\n**Actual Behavior:**\n{report['actual']}"  # noqa: E501
                                                 )
                                             if report["context"]:
                                                 desc_parts.append(
@@ -1040,25 +1046,31 @@ async def run_interactive_mode(
                                             break  # Exit edit loop
                                         elif choice == "edit":
                                             # Launch system editor
-                                            markdown_content = format_bug_report_for_editing(report)
-                                            header = "# Edit bug report and save to confirm\n\n"
+                                            markdown_content = (
+                                                format_bug_report_for_editing(report)
+                                            )
+                                            header = "# Edit bug report and save to confirm\n\n"  # noqa: E501
 
-                                            edited_content = await YamlEditorHelper.edit_with_system_editor(
+                                            edited_content = await YamlEditorHelper.edit_with_system_editor(  # noqa: E501
                                                 markdown_content,
                                                 header_comment=header,
                                                 yaml_suffix=".md",
                                             )
 
                                             if edited_content:
-                                                # Parse edited markdown back to report dict
-                                                report = parse_bug_report_from_markdown(edited_content)
+                                                # Parse edited markdown back to report dict # noqa: E501
+                                                report = parse_bug_report_from_markdown(
+                                                    edited_content
+                                                )
                                                 p.print()
                                                 p.print("[dim]✓ Report updated[/dim]")
                                                 # Loop back to preview
                                             else:
                                                 p.print()
-                                                p.print("[yellow]⚠ Edit cancelled or failed[/yellow]")
-                                                # Loop back to preview with unchanged report
+                                                p.print(
+                                                    "[yellow]⚠ Edit cancelled or failed[/yellow]"  # noqa: E501
+                                                )
+                                                # Loop back to preview with unchanged report # noqa: E501
                                         else:
                                             # User cancelled
                                             p.print()
@@ -1073,7 +1085,7 @@ async def run_interactive_mode(
                                     # LLM couldn't generate report, use manual entry
                                     p.print()
                                     p.print(
-                                        "[yellow]Could not auto-detect issue from conversation[/yellow]"
+                                        "[yellow]Could not auto-detect issue from conversation[/yellow]"  # noqa: E501
                                     )
                                     title = await ui.get_user_input_async("  Title: ")
                                     desc = await ui.get_user_input_async(
@@ -1107,7 +1119,7 @@ async def run_interactive_mode(
                                 opened = open_in_browser(issue_url)
                                 if opened:
                                     p.print(
-                                        "[dim]✓ Opened browser to GitHub issues page[/dim]"
+                                        "[dim]✓ Opened browser to GitHub issues page[/dim]"  # noqa: E501
                                     )
                                 else:
                                     p.print("[dim]Could not open browser[/dim]")
