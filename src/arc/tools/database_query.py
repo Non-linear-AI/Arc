@@ -70,8 +70,8 @@ class DatabaseQueryTool(BaseTool):
             result = self.services.query.execute_query(query, target_db)
             execution_time = time.time() - start_time
 
-            # Truncate query if too long (max 100 chars)
-            display_query = query if len(query) <= 100 else query[:97] + "..."
+            # Use full query (no truncation)
+            display_query = query
 
             # Prepare metadata for section title
             metadata = {"execution_time": execution_time, "target_db": target_db}
