@@ -12,9 +12,8 @@ COMMAND_FILE=$(mktemp)
 trap 'rm -f "$COMMAND_FILE"' EXIT
 
 cat > "$COMMAND_FILE" <<EOF
-/sql CREATE TABLE iris_raw AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv');
-/sql CREATE TABLE iris AS SELECT column0 as pregnancies, column1 as glucose, column2 as blood_pressure, column3 as skin_thickness, column4 as insulin, column5 as bmi, column6 as diabetes_pedigree, column7 as age, column8 as outcome FROM iris_raw;
-/ml model --name "pima_classifier" --instruction "Binary classification model for diabetes prediction using logistic regression" --data-table "iris" --target-column "outcome"
+Load and prepare the Pima Indians diabetes dataset from https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv into a table called diabetes with columns: pregnancies, glucose, blood_pressure, skin_thickness, insulin, bmi, diabetes_pedigree, age, outcome
+/ml model --name "pima_classifier" --instruction "Binary classification model for diabetes prediction using logistic regression" --data-table "diabetes" --target-column "outcome"
 /ml jobs list
 /exit
 EOF

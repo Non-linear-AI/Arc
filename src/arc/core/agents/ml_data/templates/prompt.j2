@@ -44,18 +44,39 @@ Your goal is to generate a single, valid YAML configuration that:
 No table schema information is available. You must use the database_query tool to explore tables and columns needed to fulfill the request.
 {% endif %}
 
-# When to Use ML Knowledge
+# When to Use Knowledge Documents
 
-If your task involves creating a **training dataset for machine learning** (e.g., features for model training, train/validation splits, feature scaling), use the knowledge tools:
+The ml_data tool can handle both generic data operations and ML-specific transformations. Use knowledge documents to guide your work:
 
-- **list_available_knowledge()**: See available ML patterns and guidance
-- **read_knowledge_content("ml_data_preparation")**: Get comprehensive ML data preparation guide including:
+## For Loading External Data Files
+
+If your task involves **loading external data files** (CSV, Parquet, JSON, etc.) into the database:
+
+- **read_knowledge_content("data_loading")**: Get comprehensive data loading guide including:
+  - CSV loading with auto-detection and explicit schema
+  - Parquet and JSON file loading
+  - MovieLens and Pima diabetes dataset examples
+  - Best practices for idempotency and validation
+
+Quick reference for DuckDB native functions:
+- `read_csv_auto('path')`: Auto-detect CSV schema and load
+- `read_csv('path', delim='::', header=false, columns={...})`: Load CSV with explicit schema
+- `read_parquet('path')`: Load Parquet files
+- `read_json_auto('path')`: Load JSON files
+
+## For ML Training Datasets
+
+If your task involves creating a **training dataset for machine learning** (e.g., features for model training, train/validation splits, feature scaling):
+
+- **read_knowledge_content("ml_data_preparation")**: Get ML-specific data preparation guide including:
   - Output schema requirements (features, target, split columns)
   - Stratified train/validation splitting patterns
   - Data leakage prevention (fit on train, apply to both)
   - Feature engineering patterns (StandardScaler, MinMaxScaler, one-hot encoding, imputation)
 
-For **general data pipelines** (cleanup, aggregation, reporting, transformations), you don't need ML-specific knowledge.
+## For General Data Pipelines
+
+For **general data pipelines** (cleanup, aggregation, reporting, transformations), you don't need specific knowledge documents. Use the SQL patterns and best practices described in this prompt.
 
 # Available Tools
 

@@ -65,9 +65,9 @@ class DatabaseQueryTool(BaseTool):
                     # Don't fail the query if schema validation fails
                     schema_warnings.append("Schema validation unavailable.")
 
-            # Execute query using the interactive query service
+            # Execute query using the interactive query service (read-only mode)
             start_time = time.time()
-            result = self.services.query.execute_query(query, target_db)
+            result = self.services.query.execute_query(query, target_db, read_only=True)
             execution_time = time.time() - start_time
 
             # Use full query (no truncation)
