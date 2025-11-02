@@ -372,6 +372,16 @@ class InteractiveInterface:
                     metadata_parts.append(result.metadata["table_name"])
                 elif "target_db" in result.metadata:
                     metadata_parts.append(result.metadata['target_db'])
+            elif tool_name == "list_available_knowledge":
+                # Show knowledge count
+                if "knowledge_count" in result.metadata:
+                    count = result.metadata["knowledge_count"]
+                    doc_text = "document" if count == 1 else "documents"
+                    metadata_parts.append(f"{count} {doc_text}")
+            elif tool_name == "read_knowledge":
+                # Show knowledge ID
+                if "knowledge_id" in result.metadata:
+                    metadata_parts.append(result.metadata["knowledge_id"])
             else:
                 # Default metadata handling for other tools
                 # Show table name first if present (for describe_table)
