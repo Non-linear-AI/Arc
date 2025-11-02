@@ -53,7 +53,7 @@ class InteractiveInterface:
         self._printer.print("[dim]                          From Question to Prediction[/dim]")
 
         # Bottom border - thin dim line with 2-space padding (consistent with section indentation)
-        self._printer.print("[dim]  ─────────────────────────────────────────────────────────────────────────────[/dim]")
+        self._printer.print("[dim]  ───────────────────────────────────────────────────────────────────────────[/dim]")
 
         # Blank line for breathing room
         self._printer.print()
