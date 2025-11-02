@@ -224,53 +224,31 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         with self._printer.section(shape="ℹ") as p:
             p.print("How to Use Arc")
-            p.print(
-                "[dim]Ask questions in natural language or use slash commands "
-                "below.[/dim]"
-            )
-            p.print(
-                "[dim]Examples: 'analyze my data', 'help me train a model', "
-                "'/config'[/dim]"
-            )
+            p.print("[dim]  Ask questions in natural language or use slash commands.[/dim]")
 
             p.print()
-            p.print("System Commands")
+            p.print("  [bold]System Commands[/bold]")
             commands = [
-                ("/help", "Show available commands and features"),
+                ("/help", "Show available commands"),
                 ("/config", "View or edit configuration"),
-                ("/report", "Report a bug or feedback on GitHub"),
-                (
-                    "/sql use [system|user] | /sql <query>",
-                    "Switch database or execute SQL query ",
-                ),
+                ("/report", "Report bug or feedback"),
+                ("/sql <query>", "Execute SQL or switch database"),
                 ("/clear", "Clear the screen"),
-                ("/exit", "Exit the application"),
+                ("/exit", "Exit Arc"),
             ]
             for cmd, desc in commands:
-                p.print(f"- [cyan]{cmd}[/cyan]: {desc}")
+                p.print(f"    [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
 
             p.print()
-            p.print("ML Commands")
+            p.print("  [bold]ML Commands[/bold]")
             ml_commands = [
-                (
-                    "/ml data --name NAME --instruction INST --source-tables TABLES",
-                    "Generate data processing pipeline from natural language",
-                ),
-                (
-                    "/ml model --name NAME --instruction DESC "
-                    "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
-                    "Generate model + trainer and launch training",
-                ),
-                (
-                    "/ml evaluate --model-id MODEL_ID --data-table TABLE "
-                    "[--metrics METRICS] [--output-table TABLE]",
-                    "Evaluate trained model on test dataset",
-                ),
-                ("/ml jobs list", "Show recent ML jobs"),
-                ("/ml jobs status JOB_ID", "Inspect an individual job"),
+                ("/ml data", "Generate data processing pipeline"),
+                ("/ml model", "Generate and train model"),
+                ("/ml evaluate", "Evaluate trained model"),
+                ("/ml jobs", "View job history and status"),
             ]
             for cmd, desc in ml_commands:
-                p.print(f"- [cyan]{cmd}[/cyan]: {desc}")
+                p.print(f"    [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
@@ -917,15 +895,20 @@ class InteractiveInterface:
         self._printer.clear()
 
     def show_config_panel(self, config_text: str) -> None:
-        with self._printer.section(color="blue") as p:
-            p.print_panel(
-                Panel(
-                    config_text,
-                    expand=False,
-                    border_style="color(240)",
-                    title="Configuration (edit via /config; env vars override)",
-                )
-            )
+        """Display configuration in minimal format without panel borders."""
+        with self._printer.section(shape="◇") as p:
+            p.print("Configuration")
+
+            # Parse config_text and format with alignment
+            lines = config_text.strip().split('\n')
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    p.print(f"  {key:<20} [cyan]{value}[/cyan]")
+                else:
+                    p.print(f"  {line}")
 
     def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         table = Table(title=title, box=box.SIMPLE_HEAVY)
