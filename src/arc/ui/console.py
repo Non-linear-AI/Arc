@@ -496,9 +496,9 @@ class InteractiveInterface:
         else:
             target.print(label)
 
-        # Print todo items with simple 2-space indentation
+        # Print todo items (section context provides indentation)
         for item in todo_items:
-            target.print(f"  {item}")
+            target.print(item)
 
     def _print_todo_content(self, content: str) -> None:
         """Print todo content with progress bar format."""
