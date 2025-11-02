@@ -904,53 +904,134 @@ async def run_interactive_mode(
                         )
                         continue
                     elif cmd.startswith("report"):
-                        # Simple interactive GitHub issue reporter
-                        # Optional initial title after /report
-                        initial = user_input[7:].strip() if len(user_input) > 7 else ""
-                        ui.show_info(
-                            "This will open a prefilled GitHub issue in your browser."
-                        )
-                        title_prompt = "Issue title (optional): "
-                        title = await ui.get_user_input_async(title_prompt)
-                        if not title and initial:
-                            title = initial
-
-                        desc = await ui.get_user_input_async(
-                            "Brief description (one line): "
+                        # LLM-assisted bug report generation
+                        from arc.utils.bug_report_prompt import (
+                            format_bug_report_for_display,
+                            generate_bug_report,
                         )
 
+                        with ui._printer.section(shape="ℹ") as p:
+                            p.print("Create Bug Report")
+                            p.print(
+                                "[dim]I'll help you create a detailed bug report based on our conversation.[/dim]"
+                            )
+
+                        # Check if we can use LLM assistance
+                        can_use_llm = (
+                            agent
+                            and hasattr(agent, 'chat_history')
+                            and agent.chat_history
+                            and len(agent.chat_history) > 0
+                        )
+
+                        title = ""
+                        desc = ""
+
+                        if can_use_llm:
+                            # Ask user if they want auto-detect or manual entry
+                            choice = await ui.get_user_input_async(
+                                "\n  What issue would you like to report? (or press Enter to auto-detect from recent chat): "
+                            )
+
+                            if not choice.strip():
+                                # Auto-detect using LLM
+                                with ui._printer.section(shape="▸", color="cyan") as p:
+                                    p.print("Analyzing recent conversation...")
+
+                                report = await generate_bug_report(agent, max_messages=20)
+
+                                if report and report.get('title'):
+                                    # Show generated report
+                                    ui._printer.print()
+                                    with ui._printer.section(shape="▸") as p:
+                                        p.print("Generated Report:")
+                                        p.print()
+                                        formatted = format_bug_report_for_display(report)
+                                        for line in formatted.split('\n'):
+                                            p.print(f"[dim]{line}[/dim]")
+
+                                    # Ask for confirmation
+                                    ui._printer.print()
+                                    confirm_choice = await ui.get_user_input_async(
+                                        "  Does this look good? (Y/n/edit): "
+                                    )
+
+                                    if confirm_choice.strip().lower() in ['', 'y', 'yes']:
+                                        title = report['title']
+                                        # Compose full description from sections
+                                        desc_parts = []
+                                        if report['description']:
+                                            desc_parts.append(report['description'])
+                                        if report['steps']:
+                                            desc_parts.append(f"\n\n**Steps to Reproduce:**\n{report['steps']}")
+                                        if report['expected']:
+                                            desc_parts.append(f"\n\n**Expected Behavior:**\n{report['expected']}")
+                                        if report['actual']:
+                                            desc_parts.append(f"\n\n**Actual Behavior:**\n{report['actual']}")
+                                        if report['context']:
+                                            desc_parts.append(f"\n\n**Context:**\n{report['context']}")
+                                        desc = "".join(desc_parts)
+                                    elif confirm_choice.strip().lower() == 'edit':
+                                        # Allow user to edit
+                                        title = await ui.get_user_input_async(
+                                            f"  Title [{report['title']}]: "
+                                        )
+                                        if not title.strip():
+                                            title = report['title']
+                                        desc = await ui.get_user_input_async(
+                                            "  Description (one line, or press Enter to keep generated): "
+                                        )
+                                        if not desc.strip():
+                                            # Keep generated description
+                                            desc_parts = []
+                                            if report['description']:
+                                                desc_parts.append(report['description'])
+                                            if report['steps']:
+                                                desc_parts.append(f"\n\n**Steps to Reproduce:**\n{report['steps']}")
+                                            desc = "".join(desc_parts)
+                                    else:
+                                        # User rejected, fall back to manual
+                                        title = await ui.get_user_input_async("  Title: ")
+                                        desc = await ui.get_user_input_async("  Description: ")
+                                else:
+                                    # LLM couldn't generate report
+                                    ui.show_warning("Could not auto-detect issue from conversation.")
+                                    title = await ui.get_user_input_async("  Title: ")
+                                    desc = await ui.get_user_input_async("  Description: ")
+                            else:
+                                # User provided manual description
+                                title = await ui.get_user_input_async("  Title: ")
+                                desc = choice  # Use what they typed as description
+                        else:
+                            # No agent or chat history - fall back to manual entry
+                            title = await ui.get_user_input_async("\n  Title: ")
+                            desc = await ui.get_user_input_async("  Description: ")
+
+                        # Build issue URL
                         try:
-                            model_name = agent.get_current_model()
+                            model_name = agent.get_current_model() if agent else None
                         except Exception:
                             model_name = None
                         body = compose_issue_body(desc, model=model_name)
                         issue_url = build_issue_url(title, body)
 
-                        confirm = (
-                            (
-                                await ui.get_user_input_async(
-                                    "Open browser to create the issue? (Y/n): "
-                                )
-                            )
-                            .strip()
-                            .lower()
+                        # Ask to open browser
+                        ui._printer.print()
+                        open_browser_resp = await ui.get_user_input_async(
+                            "  Open browser to create the issue? (Y/n): "
                         )
-                        yes = (not confirm) or confirm.startswith("y")
-                        if yes:
+
+                        if not open_browser_resp.strip() or open_browser_resp.strip().lower() in ['y', 'yes']:
                             opened = open_in_browser(issue_url)
                             if opened:
-                                ui.show_system_success(
-                                    "Opened browser to GitHub issues page."
-                                )
+                                ui.show_system_success("Opened browser to GitHub issues page.")
                             else:
-                                ui.show_warning(
-                                    "Could not open browser. Please use the URL below."
-                                )
+                                ui.show_warning("Could not open browser. Use the URL below.")
+                                ui.show_info(f"URL: {issue_url}")
                         else:
-                            ui.show_info("Okay, not opening the browser.")
+                            ui.show_info("You can create the issue at:")
+                            ui.show_info(f"{issue_url}")
 
-                        ui.show_info("You can also open this URL to file the issue:")
-                        ui.show_info(issue_url)
                         continue
                     else:
                         ui.show_system_error(f"Unknown system command: /{cmd}")
