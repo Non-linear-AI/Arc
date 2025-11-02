@@ -813,10 +813,11 @@ async def run_interactive_mode(
                         ui.show_config_panel(config_text)
 
                         # Offer inline editing of baseURL, model, and apiKey
+                        # Print prompt with section indentation to match config output
                         edit_resp = (
                             (
                                 await ui.get_user_input_async(
-                                    "\nEdit configuration values now? (y/N): "
+                                    "  Edit configuration values now? (y/N): "
                                 )
                             )
                             .strip()
