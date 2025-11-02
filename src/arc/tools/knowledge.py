@@ -184,7 +184,7 @@ class ReadKnowledgeTool(BaseTool):
             # Show name and description
             output_parts.append(f"{metadata.name}")
             if metadata.description:
-                output_parts.append(f"\n{metadata.description}")
+                output_parts.append(f"{metadata.description}")
 
             # Extract key topics from content (look for bullet points or section headings)
             topics = []
@@ -202,14 +202,15 @@ class ReadKnowledgeTool(BaseTool):
                     break
 
             if topics:
-                output_parts.append("\n\nKey topics:")
+                output_parts.append("")  # Single blank line before topics
+                output_parts.append("Key topics:")
                 for topic in topics:
                     output_parts.append(f"• {topic}")
         else:
             output_parts.append(knowledge_id)
 
         # Add file link
-        output_parts.append("")
+        output_parts.append("")  # Single blank line before file path
         if file_path:
             output_parts.append(f"📄 {file_path} ({line_count} lines)")
         else:
