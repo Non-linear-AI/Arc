@@ -37,25 +37,33 @@ class InteractiveInterface:
         )
 
     def show_welcome(self, _model: str, _directory: str):
-        """Display a centered ASCII banner in an 80-char panel."""
-        banner = (
-            " ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗\n"
-            "▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝\n"
-            "▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║\n"
-            "▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║\n"
-            "▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗\n"
-            "╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝\n"
-            " From Question to Prediction\n"
-        )
+        """Display ASCII banner with thin dim borders."""
+        # Blank line for breathing room
+        self._printer.print()
 
-        panel = Panel(
-            Align.center(banner, style="cyan"),
-            border_style="cyan",
-            box=box.DOUBLE,
-            padding=(1, 0, 0, 0),
-            width=80,
-        )
-        self._printer.print(Align.left(panel))
+        # Top border - thin dim line
+        self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
+
+        # Logo in cyan, centered
+        logo_lines = [
+            " ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗",
+            "▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝",
+            "▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║",
+            "▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║",
+            "▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗",
+            "╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝",
+        ]
+        for line in logo_lines:
+            self._printer.print(Align.center(f"[cyan]{line}[/cyan]", width=80))
+
+        # Tagline dimmed, centered
+        self._printer.print(Align.center("[dim]From Question to Prediction[/dim]", width=80))
+
+        # Bottom border - thin dim line
+        self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
+
+        # Blank line for breathing room
+        self._printer.print()
 
         # Single concise hint
         self._printer.print(" Use /help for more information. Press Esc to interrupt.")
