@@ -816,12 +816,13 @@ async def run_interactive_mode(
                         edit_resp = (
                             (
                                 await ui.get_user_input_async(
-                                    "Edit configuration values now? (y/N): "
+                                    "\nEdit configuration values now? (y/N): "
                                 )
                             )
                             .strip()
                             .lower()
                         )
+
                         if edit_resp.startswith("y"):
                             # Note: environment variables override settings at runtime.
                             # Editing here updates ~/.arc/user-settings.json.
@@ -891,6 +892,9 @@ async def run_interactive_mode(
                                     ui.show_system_error(
                                         f"Failed to initialize agent: {init_exc}"
                                     )
+
+                        # Add separator before returning to prompt
+                        ui._printer.add_separator()
                         continue
                     elif cmd.startswith("sql"):
                         # Handle SQL queries and update current database context

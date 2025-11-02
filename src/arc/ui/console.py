@@ -224,10 +224,10 @@ class InteractiveInterface:
         """Display available slash commands in a concise list."""
         with self._printer.section(shape="ℹ") as p:
             p.print("How to Use Arc")
-            p.print("[dim]  Ask questions in natural language or use slash commands.[/dim]")
+            p.print("[dim]Ask questions in natural language or use slash commands.[/dim]")
 
             p.print()
-            p.print("  [bold]System Commands[/bold]")
+            p.print("[bold]System Commands[/bold]")
             commands = [
                 ("/help", "Show available commands"),
                 ("/config", "View or edit configuration"),
@@ -237,10 +237,10 @@ class InteractiveInterface:
                 ("/exit", "Exit Arc"),
             ]
             for cmd, desc in commands:
-                p.print(f"    [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
+                p.print(f"  [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
 
             p.print()
-            p.print("  [bold]ML Commands[/bold]")
+            p.print("[bold]ML Commands[/bold]")
             ml_commands = [
                 ("/ml data", "Generate data processing pipeline"),
                 ("/ml model", "Generate and train model"),
@@ -248,7 +248,7 @@ class InteractiveInterface:
                 ("/ml jobs", "View job history and status"),
             ]
             for cmd, desc in ml_commands:
-                p.print(f"    [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
+                p.print(f"  [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
@@ -906,9 +906,9 @@ class InteractiveInterface:
                     key, value = line.split(':', 1)
                     key = key.strip()
                     value = value.strip()
-                    p.print(f"  {key:<20} [cyan]{value}[/cyan]")
+                    p.print(f"{key:<18} [cyan]{value}[/cyan]")
                 else:
-                    p.print(f"  {line}")
+                    p.print(f"{line}")
 
     def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         table = Table(title=title, box=box.SIMPLE_HEAVY)
