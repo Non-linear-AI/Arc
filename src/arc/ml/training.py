@@ -331,9 +331,13 @@ def train_model(
     loss_params = getattr(training_config, "loss_params", {})
     loss_fn = _get_loss_function(loss_fn_name, **loss_params)
 
+    # Move loss function to device (needed for loss functions with parameters like BCEWithLogitsLoss with pos_weight)
+    loss_fn = loss_fn.to(device)
+
     # Training state
     train_losses = []
     val_losses = []
+    metrics_history = {}  # Track validation metrics over epochs
     best_val_loss = float("inf")
     best_epoch = 0
     global_step = 0  # Track global step for TensorBoard logging
@@ -366,6 +370,7 @@ def train_model(
                     final_train_loss=train_losses[-1] if train_losses else None,
                     final_val_loss=val_losses[-1] if val_losses else None,
                     best_val_loss=best_val_loss if val_losses else None,
+                    metrics_history=metrics_history if metrics_history else None,
                     training_time=time.time() - start_time,
                     total_epochs=epoch - 1,
                     best_epoch=best_epoch,
@@ -392,6 +397,7 @@ def train_model(
                         final_train_loss=train_losses[-1] if train_losses else None,
                         final_val_loss=val_losses[-1] if val_losses else None,
                         best_val_loss=best_val_loss if val_losses else None,
+                        metrics_history=metrics_history if metrics_history else None,
                         training_time=time.time() - start_time,
                         total_epochs=epoch - 1,
                         best_epoch=best_epoch,
@@ -572,6 +578,12 @@ def train_model(
                             if isinstance(value, torch.Tensor):
                                 value = value.item()
                             val_metrics[metric_name] = value
+
+                        # Accumulate metrics into history
+                        for metric_name, metric_value in val_metrics.items():
+                            if metric_name not in metrics_history:
+                                metrics_history[metric_name] = []
+                            metrics_history[metric_name].append(metric_value)
 
                         # Log visualizations to TensorBoard for classification tasks
                         if tensorboard_writer and "accuracy" in val_metrics:
@@ -789,6 +801,7 @@ def train_model(
             final_train_loss=train_losses[-1] if train_losses else None,
             final_val_loss=val_losses[-1] if val_losses else None,
             best_val_loss=best_val_loss if val_losses else None,
+            metrics_history=metrics_history if metrics_history else None,
             training_time=training_time,
             total_epochs=len(train_losses),
             best_epoch=best_epoch if val_losses else None,
@@ -816,6 +829,7 @@ def train_model(
             final_train_loss=train_losses[-1] if train_losses else None,
             final_val_loss=val_losses[-1] if val_losses else None,
             best_val_loss=best_val_loss if val_losses else None,
+            metrics_history=metrics_history if metrics_history else None,
             training_time=time.time() - start_time,
             total_epochs=len(train_losses),
             best_epoch=best_epoch if val_losses else None,
