@@ -929,7 +929,6 @@ async def run_interactive_mode(
 
                         if not can_use_llm:
                             # Show why auto-detect isn't available
-                            ui._printer.print()
                             with ui._printer.section(shape="▸") as p:
                                 if not agent:
                                     p.print("[dim]Auto-detect unavailable: No AI agent initialized[/dim]")
@@ -940,7 +939,7 @@ async def run_interactive_mode(
                         if can_use_llm:
                             # Ask user if they want auto-detect or manual entry
                             choice = await ui.get_user_input_async(
-                                "\n  Describe the issue (or press Enter to auto-detect): "
+                                "  Describe the issue (or press Enter to auto-detect): "
                             )
 
                             # Always use LLM when available (with or without user input)
@@ -951,23 +950,20 @@ async def run_interactive_mode(
 
                             if report and report.get('title'):
                                 # Show generated report
-                                ui._printer.print()
                                 with ui._printer.section(shape="▸") as p:
-                                    p.print("Generated Report:")
-                                    p.print()
+                                    p.print("Generated Report")
                                     formatted = format_bug_report_for_display(report)
                                     for line in formatted.split('\n'):
-                                        p.print(f"[dim]{line}[/dim]")
+                                        if line.strip():  # Only print non-empty lines
+                                            p.print(f"[dim]{line}[/dim]")
 
                                 # If user typed something, show it as additional context
                                 if choice.strip():
-                                    ui._printer.print()
                                     with ui._printer.section(shape="▸") as p:
-                                        p.print("Your additional context:")
+                                        p.print("Your Additional Context")
                                         p.print(f"[dim]{choice}[/dim]")
 
                                 # Ask for confirmation
-                                ui._printer.print()
                                 confirm_choice = await ui.get_user_input_async(
                                     "  Does this look good? (Y/n/edit): "
                                 )
@@ -1021,7 +1017,8 @@ async def run_interactive_mode(
                                         desc = await ui.get_user_input_async("  Description: ")
                             else:
                                 # LLM couldn't generate report, use manual entry
-                                ui.show_warning("Could not auto-detect issue from conversation.")
+                                with ui._printer.section(shape="▸") as p:
+                                    p.print("[yellow]Could not auto-detect issue from conversation[/yellow]")
                                 title = await ui.get_user_input_async("  Title: ")
                                 if choice.strip():
                                     desc = choice  # Use what they typed
@@ -1029,7 +1026,7 @@ async def run_interactive_mode(
                                     desc = await ui.get_user_input_async("  Description: ")
                         else:
                             # No agent or chat history - fall back to manual entry
-                            title = await ui.get_user_input_async("\n  Title: ")
+                            title = await ui.get_user_input_async("  Title: ")
                             desc = await ui.get_user_input_async("  Description: ")
 
                         # Build issue URL
@@ -1041,21 +1038,21 @@ async def run_interactive_mode(
                         issue_url = build_issue_url(title, body)
 
                         # Ask to open browser
-                        ui._printer.print()
                         open_browser_resp = await ui.get_user_input_async(
                             "  Open browser to create the issue? (Y/n): "
                         )
 
-                        if not open_browser_resp.strip() or open_browser_resp.strip().lower() in ['y', 'yes']:
-                            opened = open_in_browser(issue_url)
-                            if opened:
-                                ui.show_system_success("Opened browser to GitHub issues page.")
+                        with ui._printer.section(shape="▸") as p:
+                            if not open_browser_resp.strip() or open_browser_resp.strip().lower() in ['y', 'yes']:
+                                opened = open_in_browser(issue_url)
+                                if opened:
+                                    p.print("[green]✓[/green] Opened browser to GitHub issues page")
+                                else:
+                                    p.print("[yellow]Could not open browser[/yellow]")
+                                    p.print(f"URL: {issue_url}")
                             else:
-                                ui.show_warning("Could not open browser. Use the URL below.")
-                                ui.show_info(f"URL: {issue_url}")
-                        else:
-                            ui.show_info("You can create the issue at:")
-                            ui.show_info(f"{issue_url}")
+                                p.print("You can create the issue at:")
+                                p.print(f"[cyan]{issue_url}[/cyan]")
 
                         continue
                     else:
