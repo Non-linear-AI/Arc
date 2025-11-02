@@ -268,7 +268,7 @@ class MLDataTool(BaseTool):
 
                 # Show completion message
                 if printer:
-                    printer.print("[dim]✓ Data processor generated successfully[/dim]")
+                    printer.print("[dim]✓ Data processor generated[/dim]")
 
                 # Spec is already validated by agent (with retries)
                 # No need for redundant validation here
@@ -338,10 +338,8 @@ class MLDataTool(BaseTool):
                     # Display registration confirmation in the Data Processor section
                     if printer:
                         printer.print("")
-                        printer.print(
-                            f"[dim]✓ Data processor '{name}' registered to database "
-                            f"({processor.id} • {len(spec.steps)} steps)[/dim]"
-                        )
+                        printer.print(f"[dim]✓ Data processor registered: {processor.id}[/dim]")
+                        printer.print(f"[dim]  {len(spec.steps)} steps[/dim]")
                 except MLRuntimeError as e:
                     return _error_in_section(
                         f"Failed to register data processor: {str(e)}"
@@ -356,7 +354,7 @@ class MLDataTool(BaseTool):
                 # Show execution message
                 if printer:
                     printer.print("")
-                    printer.print("[dim]→ Executing data processing pipeline...[/dim]")
+                    printer.print("→ Executing data processing pipeline")
 
                 # Define progress callback for real-time updates
                 def progress_callback(message: str, level: str):
@@ -388,9 +386,7 @@ class MLDataTool(BaseTool):
                     # Generation and registration succeeded, but execution failed
                     if printer:
                         printer.print("")
-                        printer.print(
-                            f"[yellow]⚠️  Pipeline execution failed: {str(e)}[/yellow]"
-                        )
+                        printer.print(f"⚠ Pipeline execution failed: {str(e)}")
                         printer.print("")
                         printer.print(
                             "[dim]The data processor was successfully generated and "
@@ -421,11 +417,9 @@ class MLDataTool(BaseTool):
                 # Show success summary
                 if printer:
                     printer.print("")
-                    printer.print(
-                        f"[dim]✓ Pipeline executed successfully "
-                        f"({', '.join(execution_result.created_tables)} created • "
-                        f"{execution_result.execution_time:.2f}s)[/dim]"
-                    )
+                    printer.print("[dim]✓ Pipeline executed successfully[/dim]")
+                    printer.print(f"[dim]  Table: {', '.join(execution_result.created_tables)}[/dim]")
+                    printer.print(f"[dim]  Time: {execution_result.execution_time:.2f}s[/dim]")
 
                 # Build structured JSON output
                 output_json = self._build_data_result(
