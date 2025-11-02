@@ -913,8 +913,11 @@ async def run_interactive_mode(
 
                         from arc.utils.bug_report_prompt import (
                             format_bug_report_for_display,
+                            format_bug_report_for_editing,
                             generate_bug_report,
+                            parse_bug_report_from_markdown,
                         )
+                        from arc.utils.yaml_workflow import YamlEditorHelper
 
                         # Check if we can use LLM assistance
                         can_use_llm = (
@@ -953,84 +956,67 @@ async def run_interactive_mode(
                                 desc = await ui.get_user_input_async("  Description: ")
                             else:
                                 # Auto-detect from conversation using LLM
+                                # First, prompt for issue context
+                                p.print()
+                                issue_hint = await ui.get_user_input_async(
+                                    "  What issue would you like to report? "
+                                )
+
+                                if not issue_hint.strip():
+                                    p.print()
+                                    p.print("[dim]Bug report cancelled (no issue provided)[/dim]")
+                                    continue
+
                                 p.print()
                                 p.print("▸ [dim]Analyzing conversation...[/dim]")
 
-                                report = await generate_bug_report(agent, max_messages=20)
+                                report = await generate_bug_report(
+                                    agent, max_messages=20, issue_hint=issue_hint
+                                )
 
                                 if report and report.get("title"):
-                                    # Display generated report in markdown panel
-                                    formatted = format_bug_report_for_display(report)
+                                    # Edit loop - allow multiple iterations
+                                    while True:
+                                        # Display generated report in markdown panel
+                                        formatted = format_bug_report_for_display(report)
 
-                                    # Use Rich's Markdown renderer with panel (like ml_plan workflow)
-                                    md = Markdown(formatted, justify="left")
-                                    panel = Panel(
-                                        md, border_style="color(245)", expand=False
-                                    )
-                                    # Add 2-space left padding to nest under section
-                                    padded_panel = Padding(panel, (0, 0, 0, 2))
-                                    ui._printer.console.print(padded_panel)
-                                    ui._printer.console.print()  # Blank line
-
-                                    # Flush terminal to prevent race condition
-                                    ui._printer.console.file.flush()
-                                    try:
-                                        if hasattr(ui._printer.console.file, "fileno"):
-                                            termios.tcdrain(
-                                                ui._printer.console.file.fileno()
-                                            )
-                                    except (OSError, AttributeError):
-                                        pass
-
-                                    # Use arrow key selection for confirmation
-                                    options = [
-                                        ("accept", "Accept and create issue"),
-                                        ("edit", "Edit title/description"),
-                                        ("cancel", "Cancel"),
-                                    ]
-
-                                    choice = await ui._printer.get_choice_async(
-                                        options, default="accept"
-                                    )
-
-                                    # Reset prompt state after choice
-                                    ui._printer.reset_prompt_session()
-
-                                    if choice == "accept":
-                                        title = report["title"]
-                                        # Compose full description from sections
-                                        desc_parts = []
-                                        if report["description"]:
-                                            desc_parts.append(report["description"])
-                                        if report["steps"]:
-                                            desc_parts.append(
-                                                f"\n\n**Steps to Reproduce:**\n{report['steps']}"
-                                            )
-                                        if report["expected"]:
-                                            desc_parts.append(
-                                                f"\n\n**Expected Behavior:**\n{report['expected']}"
-                                            )
-                                        if report["actual"]:
-                                            desc_parts.append(
-                                                f"\n\n**Actual Behavior:**\n{report['actual']}"
-                                            )
-                                        if report["context"]:
-                                            desc_parts.append(
-                                                f"\n\n**Context:**\n{report['context']}"
-                                            )
-                                        desc = "".join(desc_parts)
-                                    elif choice == "edit":
-                                        # Allow user to edit
-                                        title = await ui.get_user_input_async(
-                                            f"  Title [{report['title']}]: "
+                                        # Use Rich's Markdown renderer with panel
+                                        md = Markdown(formatted, justify="left")
+                                        panel = Panel(
+                                            md, border_style="color(245)", expand=False
                                         )
-                                        if not title.strip():
+                                        # Add 2-space left padding to nest under section
+                                        padded_panel = Padding(panel, (0, 0, 0, 2))
+                                        ui._printer.console.print(padded_panel)
+                                        ui._printer.console.print()  # Blank line
+
+                                        # Flush terminal to prevent race condition
+                                        ui._printer.console.file.flush()
+                                        try:
+                                            if hasattr(ui._printer.console.file, "fileno"):
+                                                termios.tcdrain(
+                                                    ui._printer.console.file.fileno()
+                                                )
+                                        except (OSError, AttributeError):
+                                            pass
+
+                                        # Use arrow key selection for confirmation
+                                        options = [
+                                            ("accept", "Accept and create issue"),
+                                            ("edit", "Edit in system editor"),
+                                            ("cancel", "Cancel"),
+                                        ]
+
+                                        choice = await ui._printer.get_choice_async(
+                                            options, default="accept"
+                                        )
+
+                                        # Reset prompt state after choice
+                                        ui._printer.reset_prompt_session()
+
+                                        if choice == "accept":
                                             title = report["title"]
-                                        desc = await ui.get_user_input_async(
-                                            "  Description (or press Enter to keep generated): "
-                                        )
-                                        if not desc.strip():
-                                            # Keep generated description
+                                            # Compose full description from sections
                                             desc_parts = []
                                             if report["description"]:
                                                 desc_parts.append(report["description"])
@@ -1038,11 +1024,50 @@ async def run_interactive_mode(
                                                 desc_parts.append(
                                                     f"\n\n**Steps to Reproduce:**\n{report['steps']}"
                                                 )
+                                            if report["expected"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Expected Behavior:**\n{report['expected']}"
+                                                )
+                                            if report["actual"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Actual Behavior:**\n{report['actual']}"
+                                                )
+                                            if report["context"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Context:**\n{report['context']}"
+                                                )
                                             desc = "".join(desc_parts)
-                                    else:
-                                        # User cancelled
-                                        p.print()
-                                        p.print("[dim]Bug report cancelled[/dim]")
+                                            break  # Exit edit loop
+                                        elif choice == "edit":
+                                            # Launch system editor
+                                            markdown_content = format_bug_report_for_editing(report)
+                                            header = "# Edit bug report and save to confirm\n\n"
+
+                                            edited_content = await YamlEditorHelper.edit_with_system_editor(
+                                                markdown_content,
+                                                header_comment=header,
+                                                yaml_suffix=".md",
+                                            )
+
+                                            if edited_content:
+                                                # Parse edited markdown back to report dict
+                                                report = parse_bug_report_from_markdown(edited_content)
+                                                p.print()
+                                                p.print("[dim]✓ Report updated[/dim]")
+                                                # Loop back to preview
+                                            else:
+                                                p.print()
+                                                p.print("[yellow]⚠ Edit cancelled or failed[/yellow]")
+                                                # Loop back to preview with unchanged report
+                                        else:
+                                            # User cancelled
+                                            p.print()
+                                            p.print("[dim]Bug report cancelled[/dim]")
+                                            title = None  # Signal cancellation
+                                            break  # Exit edit loop
+
+                                    # If cancelled, skip to next command
+                                    if title is None:
                                         continue
                                 else:
                                     # LLM couldn't generate report, use manual entry
