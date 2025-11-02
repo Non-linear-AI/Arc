@@ -266,10 +266,6 @@ class InteractiveInterface:
                     "[--metrics METRICS] [--output-table TABLE]",
                     "Evaluate trained model on test dataset",
                 ),
-                (
-                    "/ml predict --model NAME --data TABLE --output TABLE",
-                    "Run inference and save predictions",
-                ),
                 ("/ml jobs list", "Show recent ML jobs"),
                 ("/ml jobs status JOB_ID", "Inspect an individual job"),
             ]

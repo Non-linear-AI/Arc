@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from arc.core import ArcAgent, SettingsManager
 from arc.database import DatabaseError, DatabaseManager, QueryValidationError
 from arc.database.services import ServiceContainer
-from arc.ml.runtime import MLRuntime, MLRuntimeError
+from arc.ml.runtime import MLRuntime
 from arc.ui.console import InteractiveInterface
 from arc.utils import ConfirmationService
 from arc.utils.cli_parsing import OptionParsingError, parse_options
@@ -259,18 +259,14 @@ async def handle_ml_command(
         return
 
     if len(tokens) < 2:
-        ui.show_system_error(
-            "Usage: /ml <data|model|evaluate|predict|jobs> ..."
-        )
+        ui.show_system_error("Usage: /ml <data|model|evaluate|jobs> ...")
         return
 
     subcommand = tokens[1]
     args = tokens[2:]
 
     try:
-        if subcommand == "predict":
-            _ml_predict(args, ui, runtime)
-        elif subcommand == "jobs":
+        if subcommand == "jobs":
             _ml_jobs(args, ui, runtime)
         elif subcommand == "model":
             await _ml_model(args, ui, runtime, agent)
@@ -284,47 +280,6 @@ async def handle_ml_command(
         ui.show_system_error(str(e))
     except Exception as e:
         ui.show_system_error(f"ML command failed: {e}")
-
-
-def _ml_predict(
-    args: list[str], ui: InteractiveInterface, runtime: "MLRuntime"
-) -> None:
-    options = _parse_options(
-        args,
-        {
-            "model": True,
-            "data": True,
-            "output": True,
-        },
-        command_name="/ml predict",
-    )
-
-    model_name = options.get("model")
-    table_name = options.get("data")
-
-    if not model_name or not table_name:
-        raise CommandError("/ml predict requires --model and --data")
-
-    # Parse optional output table parameter
-    output_table = options.get("output")
-
-    try:
-        summary = runtime.predict(
-            model_name=str(model_name),
-            table_name=str(table_name),
-            output_table=output_table,
-        )
-    except MLRuntimeError as exc:
-        raise CommandError(str(exc)) from exc
-
-    outputs_display = ", ".join(summary.outputs) if summary.outputs else "None"
-    ui.show_system_success(
-        f"Generated {summary.total_predictions} predictions "
-        f"with outputs: {outputs_display}"
-    )
-
-    if summary.saved_table:
-        ui.show_system_success(f"Predictions saved to table '{summary.saved_table}'")
 
 
 def _ml_jobs(args: list[str], ui: InteractiveInterface, runtime: MLRuntime) -> None:
