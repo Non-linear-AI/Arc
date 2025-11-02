@@ -101,20 +101,23 @@ async def generate_bug_report(agent, max_messages: int = 20) -> dict[str, str] |
     ]
 
     try:
-        # Call LLM using agent's client
-        response = await agent.client.create_chat_completion(
+        # Call LLM using agent's ArcClient
+        response = await agent.arc_client.chat(
             messages=messages,
-            temperature=0.3,  # Lower temperature for more focused output
+            # Note: ArcClient.chat() uses fixed temperature=0.7
         )
 
         # Extract content
-        content = response.choices[0].message.content
+        content = response.content
 
         # Parse structured response
         report = parse_bug_report(content)
         return report
 
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logging.error(f"Bug report generation failed: {e}")
         return None
 
 
