@@ -1,5 +1,6 @@
 """File editing and viewing tools."""
 
+import json
 from pathlib import Path
 
 from arc.editing import EditInstruction, EditorManager
@@ -19,6 +20,44 @@ class FileEditorTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         """Execute file operation. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement execute()")
+
+    def _build_file_operation_result(
+        self,
+        status: str,
+        operation_type: str,
+        file_path: str,
+        success_message: str | None = None,
+        error_message: str | None = None,
+        **details,
+    ) -> str:
+        """Build structured JSON result for file operations.
+
+        Args:
+            status: "completed", "cancelled", or "failed"
+            operation_type: "create_file" or "edit_file"
+            file_path: Path to the file
+            success_message: Success message if completed
+            error_message: Error message if failed
+            **details: Additional operation-specific details
+
+        Returns:
+            JSON string with structured file operation result
+        """
+        result = {
+            "status": status,
+            "operation": {
+                "type": operation_type,
+                "file_path": file_path,
+                **details,
+            },
+        }
+
+        if success_message:
+            result["operation"]["message"] = success_message
+        if error_message:
+            result["operation"]["error"] = error_message
+
+        return json.dumps(result)
 
     @cached(ttl=60, use_file_cache=False)  # Cache for 1 minute
     @timed("file_view_time")
@@ -131,9 +170,17 @@ class FileEditorTool(BaseTool):
                 )
 
                 if not confirmation_result.confirmed:
-                    return ToolResult.error_result(
-                        confirmation_result.feedback
-                        or "User denied permission to create files"
+                    # User cancelled - return structured JSON with success=True
+                    output_json = self._build_file_operation_result(
+                        status="cancelled",
+                        operation_type="create_file",
+                        file_path=path,
+                        content_preview=preview,
+                    )
+                    return ToolResult(
+                        success=True,
+                        output=output_json,
+                        metadata={"cancelled": True},
                     )
 
             # Create edit instruction for new file
@@ -145,15 +192,46 @@ class FileEditorTool(BaseTool):
             result = await self.editor_manager.apply_edit(instruction)
 
             if result.success:
-                strategy_info = f" (strategy: {result.strategy_used})"
-                return ToolResult.success_result(f"{result.message}{strategy_info}")
+                # Success - return structured JSON
+                output_json = self._build_file_operation_result(
+                    status="completed",
+                    operation_type="create_file",
+                    file_path=path,
+                    success_message=result.message,
+                    strategy_used=result.strategy_used,
+                )
+                return ToolResult(
+                    success=True,
+                    output=output_json,
+                    metadata={"strategy": result.strategy_used},
+                )
             else:
-                return ToolResult.error_result(
-                    f"File creation failed: {result.message}"
+                # Failed - return structured JSON with error
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="create_file",
+                    file_path=path,
+                    error_message=f"File creation failed: {result.message}",
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "creation_failed"},
                 )
 
         except Exception as e:
-            return ToolResult.error_result(f"Failed to create file '{path}': {str(e)}")
+            # Exception - return structured JSON with error
+            output_json = self._build_file_operation_result(
+                status="failed",
+                operation_type="create_file",
+                file_path=path,
+                error_message=f"Failed to create file: {str(e)}",
+            )
+            return ToolResult(
+                success=False,
+                output=output_json,
+                metadata={"error": "exception"},
+            )
 
     @timed("file_edit_time")
     async def edit_file(
@@ -169,43 +247,98 @@ class FileEditorTool(BaseTool):
 
             # Check if file exists
             if not file_path.exists():
-                return ToolResult.error_result(
-                    f"File does not exist: {path}. Use create_file for new files."
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message="File does not exist. Use create_file for new files.",
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "file_not_found"},
                 )
 
             if not file_path.is_file():
-                return ToolResult.error_result(f"Path is not a file: {path}")
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message="Path is not a file",
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "not_a_file"},
+                )
 
             # Read current content
             try:
                 with open(file_path, encoding="utf-8") as f:
                     content = f.read()
             except UnicodeDecodeError:
-                return ToolResult.error_result(
-                    f"Cannot read file '{path}': not a text file"
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message="Cannot read file: not a text file",
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "unicode_decode_error"},
                 )
             except PermissionError:
-                return ToolResult.error_result(
-                    f"Permission denied reading file: {path}"
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message="Permission denied reading file",
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "permission_denied_read"},
                 )
 
             # Count occurrences for exact match
             count = content.count(old_str)
 
             if count == 0:
-                # Provide helpful error message
-                return ToolResult.error_result(
-                    f"String not found in {path}. "
-                    f"The old_str must match exactly (including whitespace). "
-                    f"Use view_file to see the current content and try again."
+                # String not found - return structured JSON
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message=(
+                        "String not found in file. "
+                        "The old_str must match exactly (including whitespace). "
+                        "Use view_file to see the current content and try again."
+                    ),
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "string_not_found"},
                 )
 
             if count > 1 and not replace_all:
-                return ToolResult.error_result(
-                    f"String appears {count} times in {path}. "
-                    f"Either:\n"
-                    f"1. Provide more context in old_str to make it unique, or\n"
-                    f"2. Set replace_all=true to replace all occurrences"
+                # Multiple occurrences without replace_all - return structured JSON
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message=(
+                        f"String appears {count} times in file. "
+                        f"Either provide more context in old_str to make it unique, "
+                        f"or set replace_all=true to replace all occurrences."
+                    ),
+                    occurrence_count=count,
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "multiple_occurrences", "count": count},
                 )
 
             # Request confirmation from user
@@ -228,9 +361,19 @@ class FileEditorTool(BaseTool):
                 )
 
                 if not confirmation_result.confirmed:
-                    return ToolResult.error_result(
-                        confirmation_result.feedback
-                        or "User denied permission to edit files"
+                    # User cancelled - return structured JSON with success=True
+                    output_json = self._build_file_operation_result(
+                        status="cancelled",
+                        operation_type="edit_file",
+                        file_path=path,
+                        old_string_preview=old_str[:100] + ("..." if len(old_str) > 100 else ""),
+                        new_string_preview=new_str[:100] + ("..." if len(new_str) > 100 else ""),
+                        occurrence_count=count,
+                    )
+                    return ToolResult(
+                        success=True,
+                        output=output_json,
+                        metadata={"cancelled": True},
                     )
 
             # Perform replacement
@@ -245,16 +388,47 @@ class FileEditorTool(BaseTool):
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(new_content)
             except PermissionError:
-                return ToolResult.error_result(
-                    f"Permission denied writing to file: {path}"
+                # Permission error - return structured JSON
+                output_json = self._build_file_operation_result(
+                    status="failed",
+                    operation_type="edit_file",
+                    file_path=path,
+                    error_message=f"Permission denied writing to file: {path}",
+                )
+                return ToolResult(
+                    success=False,
+                    output=output_json,
+                    metadata={"error": "permission_denied"},
                 )
 
-            return ToolResult.success_result(
-                f"Successfully replaced {count} occurrence(s) in {path}"
+            # Success - return structured JSON
+            output_json = self._build_file_operation_result(
+                status="completed",
+                operation_type="edit_file",
+                file_path=path,
+                success_message=f"Successfully replaced {count} occurrence(s)",
+                occurrence_count=count,
+                replace_all=replace_all,
+            )
+            return ToolResult(
+                success=True,
+                output=output_json,
+                metadata={"occurrences_replaced": count},
             )
 
         except Exception as e:
-            return ToolResult.error_result(f"Failed to edit file '{path}': {str(e)}")
+            # Exception - return structured JSON
+            output_json = self._build_file_operation_result(
+                status="failed",
+                operation_type="edit_file",
+                file_path=path,
+                error_message=f"Failed to edit file: {str(e)}",
+            )
+            return ToolResult(
+                success=False,
+                output=output_json,
+                metadata={"error": "exception"},
+            )
 
 
 class ViewFileTool(FileEditorTool):
