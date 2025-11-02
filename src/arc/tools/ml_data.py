@@ -236,10 +236,14 @@ class MLDataTool(BaseTool):
             # Use instruction directly (no plan loading needed)
             enhanced_instruction = instruction
 
-            # Show task description
+            # Show task description only in verbose mode
             if printer:
-                printer.print(f"[dim]Task: {instruction}[/dim]")
-                printer.print("")  # Empty line after task
+                # Check verbose mode from settings
+                from arc.core.config import SettingsManager
+                settings = SettingsManager()
+                if settings.get_verbose_mode():
+                    printer.print(f"[dim]Task: {instruction}[/dim]")
+                    printer.print("")  # Empty line after task
 
             try:
                 # Set progress callback for this invocation

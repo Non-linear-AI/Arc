@@ -127,10 +127,14 @@ class MLModelTool(BaseTool):
         with self._section_printer(
             self.ui, "ML Model + Training", metadata=metadata_parts
         ) as printer:
-            # Show task description
+            # Show task description only in verbose mode
             if printer:
-                printer.print(f"[dim]Task: {instruction}[/dim]")
-                printer.print("")  # Empty line after task
+                # Check verbose mode from settings
+                from arc.core.config import SettingsManager
+                settings = SettingsManager()
+                if settings.get_verbose_mode():
+                    printer.print(f"[dim]Task: {instruction}[/dim]")
+                    printer.print("")  # Empty line after task
 
             # Helper to show error and return
             def _error_in_section(message: str) -> ToolResult:
