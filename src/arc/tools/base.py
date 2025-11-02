@@ -62,7 +62,7 @@ class BaseTool(ABC):
         Args:
             ui_interface: UI interface instance (or None for non-UI contexts)
             title: Section title text
-            color: Section color (default: magenta)
+            color: Section color (deprecated, kept for compatibility)
             metadata: Optional list of metadata strings to append to title
 
         Yields:
@@ -78,12 +78,24 @@ class BaseTool(ABC):
                 # Section cleanup happens automatically
         """
         if ui_interface:
-            # Use add_dot=True for proper visual hierarchy (indentation)
-            with ui_interface._printer.section(color=color, add_dot=True) as printer:
-                # Build title with metadata
+            # Map tool titles to semantic shapes
+            shape_map = {
+                "ML Data": "◇",  # Data processing
+                "ML Model": "●",  # ML operations
+                "ML Train": "●",  # ML operations
+                "ML Model + Training": "●",  # ML operations
+                "ML Evaluate": "●",  # ML operations
+            }
+            shape = shape_map.get(title, "▸")  # Default to narrative marker
+
+            # Use shape instead of color for semantic meaning
+            with ui_interface._printer.section(
+                shape=shape, color=color, add_dot=True
+            ) as printer:
+                # Build title with metadata using bullet separators
                 full_title = title
                 if metadata:
-                    full_title += f" [dim]({' • '.join(metadata)})[/dim]"
+                    full_title += f" • [dim]{' • '.join(metadata)}[/dim]"
                 printer.print(full_title)
 
                 yield printer

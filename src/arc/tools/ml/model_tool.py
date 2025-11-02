@@ -127,10 +127,15 @@ class MLModelTool(BaseTool):
         with self._section_printer(
             self.ui, "ML Model + Training", metadata=metadata_parts
         ) as printer:
-            # Show task description
+            # Show task description only in verbose mode
             if printer:
-                printer.print(f"[dim]Task: {instruction}[/dim]")
-                printer.print("")  # Empty line after task
+                # Check verbose mode from settings
+                from arc.core.config import SettingsManager
+
+                settings = SettingsManager()
+                if settings.get_verbose_mode():
+                    printer.print(f"[dim]Task: {instruction}[/dim]")
+                    printer.print("")  # Empty line after task
 
             # Helper to show error and return
             def _error_in_section(message: str) -> ToolResult:
@@ -265,7 +270,7 @@ class MLModelTool(BaseTool):
 
                 # Show completion message
                 if printer:
-                    printer.print("[dim]✓ Model generated successfully[/dim]")
+                    printer.print("[dim]✓ Model generated[/dim]")
 
             except Exception as exc:
                 # Import here to avoid circular imports
@@ -343,7 +348,7 @@ class MLModelTool(BaseTool):
                         # Show cancellation message before closing section
                         if printer:
                             printer.print("")  # Empty line
-                            printer.print("[dim]✗ Training cancelled by user.[/dim]")
+                            printer.print("[dim]✗ Training cancelled[/dim]")
 
                         # Parse the spec dict for JSON output (before we save to DB)
                         full_spec_dict = yaml.safe_load(unified_yaml)
@@ -418,11 +423,11 @@ class MLModelTool(BaseTool):
             # Display registration confirmation
             if printer:
                 printer.print("")  # Empty line before confirmation
+                printer.print(f"[dim]✓ Model registered: {model_id}[/dim]")
                 printer.print(
-                    f"[dim]✓ Model '{name}' registered to database "
-                    f"({model_id} • {len(model_spec.inputs)} inputs • "
+                    f"[dim]  {len(model_spec.inputs)} inputs • "
                     f"{len(model_spec.graph)} nodes • "
-                    f"{len(model_spec.outputs)} outputs)[/dim]"
+                    f"{len(model_spec.outputs)} outputs[/dim]"
                 )
 
             # Build simple output for ToolResult (detailed output already shown in UI)
@@ -441,7 +446,7 @@ class MLModelTool(BaseTool):
             # The training config is embedded in the unified model YAML
             if printer:
                 printer.print("")
-                printer.print(f"→ Launching training for model '{name}'...")
+                printer.print("→ Launching training")
 
             try:
                 job_id = await asyncio.to_thread(
@@ -457,12 +462,12 @@ class MLModelTool(BaseTool):
 
                 # Show job monitoring instructions
                 if printer:
+                    printer.print(f"[dim]  Job: {job_id}[/dim]")
+                    printer.print(f"[dim]  Table: {train_table}[/dim]")
                     printer.print("")
-                    printer.print(
-                        "[dim][cyan]ℹ Monitor training progress:[/cyan][/dim]"
-                    )
-                    printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
-                    printer.print(f"[dim]  • Logs: /ml jobs logs {job_id}[/dim]")
+                    printer.print("[dim]ℹ Monitor progress[/dim]")
+                    printer.print(f"[dim]  /ml jobs status {job_id}[/dim]")
+                    printer.print(f"[dim]  /ml jobs logs {job_id}[/dim]")
 
                 result_metadata["training_launched"] = True
                 result_metadata["job_id"] = job_id
@@ -475,9 +480,7 @@ class MLModelTool(BaseTool):
                         except (OSError, RuntimeError) as e:
                             # Known TensorBoard launch failures
                             if printer:
-                                printer.print(
-                                    f"[yellow]⚠️  TensorBoard setup failed: {e}[/yellow]"
-                                )
+                                printer.print(f"⚠ TensorBoard setup failed: {e}")
                             self._show_manual_tensorboard_instructions(job_id, printer)
                         except Exception as e:
                             # Log unexpected errors with full traceback
@@ -489,7 +492,7 @@ class MLModelTool(BaseTool):
                             error_msg = f"{e.__class__.__name__}: {e}"
                             if printer:
                                 printer.print(
-                                    f"[yellow]⚠️  TensorBoard setup failed: {error_msg}[/yellow]"
+                                    f"⚠ TensorBoard setup failed: {error_msg}"
                                 )
                             self._show_manual_tensorboard_instructions(job_id, printer)
                     else:
@@ -504,9 +507,9 @@ class MLModelTool(BaseTool):
             except MLRuntimeError as exc:
                 # Training launch failed but model was created
                 if printer:
-                    printer.print("⚠ Training Validation Failed")
+                    printer.print("⚠ Training validation failed")
                     printer.print("")
-                    printer.print(f"[red]{exc}[/red]")
+                    printer.print(f"{exc}")
                     printer.print("")
                     printer.print("[dim]Note: Model was registered successfully[/dim]")
 
@@ -725,12 +728,12 @@ class MLModelTool(BaseTool):
             if section_printer:
                 section_printer.print("")
                 section_printer.print(
-                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                    f"[dim]✓ TensorBoard preference saved: {mode}[/dim]"
                 )
             else:
                 self.ui._printer.console.print()
                 self.ui._printer.console.print(
-                    f"[green]✓ TensorBoard preference saved: {mode}[/green]"
+                    f"[dim]✓ TensorBoard preference saved: {mode}[/dim]"
                 )
 
             # Launch immediately if user chose to
@@ -745,14 +748,10 @@ class MLModelTool(BaseTool):
         elif mode == "ask":
             if section_printer:
                 section_printer.print("")
-                section_printer.print(
-                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
-                )
+                section_printer.print("[dim]Launch TensorBoard?[/dim]")
             else:
                 self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[cyan]Launch TensorBoard? (http://localhost:6006)[/cyan]"
-                )
+                self.ui._printer.console.print("[dim]Launch TensorBoard?[/dim]")
             choice = await self.ui._printer.get_choice_async(
                 options=[
                     ("yes", "Yes, launch now"),
@@ -769,12 +768,12 @@ class MLModelTool(BaseTool):
                 if section_printer:
                     section_printer.print("")
                     section_printer.print(
-                        "[green]✓ TensorBoard preference updated: always[/green]"
+                        "[dim]✓ TensorBoard preference updated: always[/dim]"
                     )
                 else:
                     self.ui._printer.console.print()
                     self.ui._printer.console.print(
-                        "[green]✓ TensorBoard preference updated: always[/green]"
+                        "[dim]✓ TensorBoard preference updated: always[/dim]"
                     )
                 await self._launch_tensorboard(job_id, section_printer)
             elif choice == "yes":
@@ -817,28 +816,22 @@ class MLModelTool(BaseTool):
 
             if section_printer:
                 section_printer.print("")
-                section_printer.print("[green]→ Launching TensorBoard...[/green]")
-                section_printer.print(f"  • URL: [bold]{url}[/bold]")
-                section_printer.print(f"[dim]  • Process ID: {pid}[/dim]")
-                section_printer.print(f"[dim]  • Logs: {logdir}[/dim]")
+                section_printer.print("→ Launching TensorBoard")
+                section_printer.print(f"[dim]  URL: {url}[/dim]")
+                section_printer.print(f"[dim]  PID: {pid}[/dim]")
+                section_printer.print(f"[dim]  Logs: {logdir}[/dim]")
             else:
                 self.ui._printer.console.print()
-                self.ui._printer.console.print(
-                    "[green]→ Launching TensorBoard...[/green]"
-                )
-                self.ui._printer.console.print(f"  • URL: [bold]{url}[/bold]")
-                self.ui._printer.console.print(f"  • Process ID: {pid}")
-                self.ui._printer.console.print(f"  • Logs: {logdir}")
+                self.ui._printer.console.print("→ Launching TensorBoard")
+                self.ui._printer.console.print(f"[dim]  URL: {url}[/dim]")
+                self.ui._printer.console.print(f"[dim]  PID: {pid}[/dim]")
+                self.ui._printer.console.print(f"[dim]  Logs: {logdir}[/dim]")
         except (OSError, RuntimeError) as e:
             # Known TensorBoard launch failures
             if section_printer:
-                section_printer.print(
-                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
-                )
+                section_printer.print(f"⚠ Failed to launch TensorBoard: {e}")
             else:
-                self.ui._printer.console.print(
-                    f"[yellow]⚠️  Failed to launch TensorBoard: {e}[/yellow]"
-                )
+                self.ui._printer.console.print(f"⚠ Failed to launch TensorBoard: {e}")
             self._show_manual_tensorboard_instructions(job_id, section_printer)
         except Exception as e:
             # Log unexpected errors with full traceback
@@ -847,12 +840,10 @@ class MLModelTool(BaseTool):
             logging.exception("Unexpected error during TensorBoard launch")
             error_msg = f"{e.__class__.__name__}: {e}"
             if section_printer:
-                section_printer.print(
-                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
-                )
+                section_printer.print(f"⚠ Failed to launch TensorBoard: {error_msg}")
             else:
                 self.ui._printer.console.print(
-                    f"[yellow]⚠️  Failed to launch TensorBoard: {error_msg}[/yellow]"
+                    f"⚠ Failed to launch TensorBoard: {error_msg}"
                 )
             self._show_manual_tensorboard_instructions(job_id, section_printer)
 
@@ -879,15 +870,13 @@ class MLModelTool(BaseTool):
             logdir = f"tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
-            section_printer.print("[dim][cyan]ℹ View training results:[/cyan][/dim]")
-            section_printer.print(f"[dim]  • Status: /ml jobs status {job_id}[/dim]")
-            section_printer.print(
-                f"[dim]  • TensorBoard: tensorboard --logdir {logdir}[/dim]"
-            )
+            section_printer.print("[dim]ℹ View training results[/dim]")
+            section_printer.print(f"[dim]  /ml jobs status {job_id}[/dim]")
+            section_printer.print(f"[dim]  tensorboard --logdir {logdir}[/dim]")
         else:
             self.ui._printer.console.print()
-            self.ui._printer.console.print("[cyan]ℹ View training results:[/cyan]")
-            self.ui._printer.console.print(f"  • Status: /ml jobs status {job_id}")
+            self.ui._printer.console.print("[dim]ℹ View training results[/dim]")
+            self.ui._printer.console.print(f"[dim]  /ml jobs status {job_id}[/dim]")
             self.ui._printer.console.print(
-                f"  • TensorBoard: tensorboard --logdir {logdir}"
+                f"[dim]  tensorboard --logdir {logdir}[/dim]"
             )

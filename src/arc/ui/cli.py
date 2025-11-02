@@ -813,15 +813,17 @@ async def run_interactive_mode(
                         ui.show_config_panel(config_text)
 
                         # Offer inline editing of baseURL, model, and apiKey
+                        # Print prompt with section indentation to match config output
                         edit_resp = (
                             (
                                 await ui.get_user_input_async(
-                                    "Edit configuration values now? (y/N): "
+                                    "  Edit configuration values now? (y/N): "
                                 )
                             )
                             .strip()
                             .lower()
                         )
+
                         if edit_resp.startswith("y"):
                             # Note: environment variables override settings at runtime.
                             # Editing here updates ~/.arc/user-settings.json.
@@ -891,6 +893,9 @@ async def run_interactive_mode(
                                     ui.show_system_error(
                                         f"Failed to initialize agent: {init_exc}"
                                     )
+
+                        # Add separator before returning to prompt
+                        ui._printer.add_separator()
                         continue
                     elif cmd.startswith("sql"):
                         # Handle SQL queries and update current database context
@@ -899,53 +904,230 @@ async def run_interactive_mode(
                         )
                         continue
                     elif cmd.startswith("report"):
-                        # Simple interactive GitHub issue reporter
-                        # Optional initial title after /report
-                        initial = user_input[7:].strip() if len(user_input) > 7 else ""
-                        ui.show_info(
-                            "This will open a prefilled GitHub issue in your browser."
+                        # LLM-assisted bug report generation
+                        import termios
+
+                        from rich.markdown import Markdown
+                        from rich.padding import Padding
+                        from rich.panel import Panel
+
+                        from arc.utils.bug_report_prompt import (
+                            format_bug_report_for_display,
+                            format_bug_report_for_editing,
+                            generate_bug_report,
+                            parse_bug_report_from_markdown,
                         )
-                        title_prompt = "Issue title (optional): "
-                        title = await ui.get_user_input_async(title_prompt)
-                        if not title and initial:
-                            title = initial
+                        from arc.utils.yaml_workflow import YamlEditorHelper
 
-                        desc = await ui.get_user_input_async(
-                            "Brief description (one line): "
+                        # Check if we can use LLM assistance
+                        can_use_llm = (
+                            agent
+                            and hasattr(agent, "chat_history")
+                            and agent.chat_history
+                            and len(agent.chat_history) > 0
                         )
 
-                        try:
-                            model_name = agent.get_current_model()
-                        except Exception:
-                            model_name = None
-                        body = compose_issue_body(desc, model=model_name)
-                        issue_url = build_issue_url(title, body)
+                        title = ""
+                        desc = ""
 
-                        confirm = (
-                            (
-                                await ui.get_user_input_async(
-                                    "Open browser to create the issue? (Y/n): "
-                                )
+                        # Keep entire /report flow within one section for proper nesting
+                        with ui._printer.section(shape="ℹ") as p:
+                            p.print("Create Bug Report")
+                            p.print(
+                                "[dim]I'll help you create a detailed bug report based on our conversation.[/dim]"  # noqa: E501
                             )
-                            .strip()
-                            .lower()
-                        )
-                        yes = (not confirm) or confirm.startswith("y")
-                        if yes:
-                            opened = open_in_browser(issue_url)
-                            if opened:
-                                ui.show_system_success(
-                                    "Opened browser to GitHub issues page."
-                                )
-                            else:
-                                ui.show_warning(
-                                    "Could not open browser. Please use the URL below."
-                                )
-                        else:
-                            ui.show_info("Okay, not opening the browser.")
 
-                        ui.show_info("You can also open this URL to file the issue:")
-                        ui.show_info(issue_url)
+                            if not can_use_llm:
+                                # Show why auto-detect isn't available
+                                p.print()
+                                if agent:
+                                    p.print(
+                                        "▸ [dim]Auto-detect unavailable: No conversation history yet[/dim]"  # noqa: E501
+                                    )
+                                else:
+                                    p.print(
+                                        "▸ [dim]Auto-detect unavailable: No AI agent initialized[/dim]"  # noqa: E501
+                                    )
+                                p.print(
+                                    "  [dim]Have a conversation first, then use /report to analyze issues[/dim]"  # noqa: E501
+                                )
+                                # Manual entry for no-LLM case
+                                title = await ui.get_user_input_async("  Title: ")
+                                desc = await ui.get_user_input_async("  Description: ")
+                            else:
+                                # Auto-detect from conversation using LLM
+                                # First, prompt for issue context
+                                p.print()
+                                issue_hint = await ui.get_user_input_async(
+                                    "  What issue would you like to report? "
+                                )
+
+                                if not issue_hint.strip():
+                                    p.print()
+                                    p.print(
+                                        "[dim]Bug report cancelled (no issue provided)[/dim]"  # noqa: E501
+                                    )
+                                    continue
+
+                                p.print()
+                                p.print("▸ [dim]Analyzing conversation...[/dim]")
+
+                                report = await generate_bug_report(
+                                    agent, max_messages=20, issue_hint=issue_hint
+                                )
+
+                                if report and report.get("title"):
+                                    # Edit loop - allow multiple iterations
+                                    while True:
+                                        # Display generated report in markdown panel
+                                        formatted = format_bug_report_for_display(
+                                            report
+                                        )
+
+                                        # Use Rich's Markdown renderer with panel
+                                        md = Markdown(formatted, justify="left")
+                                        panel = Panel(
+                                            md, border_style="color(245)", expand=False
+                                        )
+                                        # Add 2-space left padding to nest under section
+                                        padded_panel = Padding(panel, (0, 0, 0, 2))
+                                        ui._printer.console.print(padded_panel)
+                                        ui._printer.console.print()  # Blank line
+
+                                        # Flush terminal to prevent race condition
+                                        ui._printer.console.file.flush()
+                                        try:
+                                            if hasattr(
+                                                ui._printer.console.file, "fileno"
+                                            ):
+                                                termios.tcdrain(
+                                                    ui._printer.console.file.fileno()
+                                                )
+                                        except (OSError, AttributeError):
+                                            pass
+
+                                        # Use arrow key selection for confirmation
+                                        options = [
+                                            ("accept", "Accept and create issue"),
+                                            ("edit", "Edit in system editor"),
+                                            ("cancel", "Cancel"),
+                                        ]
+
+                                        choice = await ui._printer.get_choice_async(
+                                            options, default="accept"
+                                        )
+
+                                        # Reset prompt state after choice
+                                        ui._printer.reset_prompt_session()
+
+                                        if choice == "accept":
+                                            title = report["title"]
+                                            # Compose full description from sections
+                                            desc_parts = []
+                                            if report["description"]:
+                                                desc_parts.append(report["description"])
+                                            if report["steps"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Steps to Reproduce:**\n{report['steps']}"  # noqa: E501
+                                                )
+                                            if report["expected"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Expected Behavior:**\n{report['expected']}"  # noqa: E501
+                                                )
+                                            if report["actual"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Actual Behavior:**\n{report['actual']}"  # noqa: E501
+                                                )
+                                            if report["context"]:
+                                                desc_parts.append(
+                                                    f"\n\n**Context:**\n{report['context']}"
+                                                )
+                                            desc = "".join(desc_parts)
+                                            break  # Exit edit loop
+                                        elif choice == "edit":
+                                            # Launch system editor
+                                            markdown_content = (
+                                                format_bug_report_for_editing(report)
+                                            )
+                                            header = "# Edit bug report and save to confirm\n\n"  # noqa: E501
+
+                                            edited_content = await YamlEditorHelper.edit_with_system_editor(  # noqa: E501
+                                                markdown_content,
+                                                header_comment=header,
+                                                yaml_suffix=".md",
+                                            )
+
+                                            if edited_content:
+                                                # Parse edited markdown back to report dict # noqa: E501
+                                                report = parse_bug_report_from_markdown(
+                                                    edited_content
+                                                )
+                                                p.print()
+                                                p.print("[dim]✓ Report updated[/dim]")
+                                                # Loop back to preview
+                                            else:
+                                                p.print()
+                                                p.print(
+                                                    "[yellow]⚠ Edit cancelled or failed[/yellow]"  # noqa: E501
+                                                )
+                                                # Loop back to preview with unchanged report # noqa: E501
+                                        else:
+                                            # User cancelled
+                                            p.print()
+                                            p.print("[dim]Bug report cancelled[/dim]")
+                                            title = None  # Signal cancellation
+                                            break  # Exit edit loop
+
+                                    # If cancelled, skip to next command
+                                    if title is None:
+                                        continue
+                                else:
+                                    # LLM couldn't generate report, use manual entry
+                                    p.print()
+                                    p.print(
+                                        "[yellow]Could not auto-detect issue from conversation[/yellow]"  # noqa: E501
+                                    )
+                                    title = await ui.get_user_input_async("  Title: ")
+                                    desc = await ui.get_user_input_async(
+                                        "  Description: "
+                                    )
+
+                            # Build issue URL
+                            try:
+                                model_name = (
+                                    agent.get_current_model() if agent else None
+                                )
+                            except Exception:
+                                model_name = None
+                            body = compose_issue_body(desc, model=model_name)
+                            issue_url = build_issue_url(title, body)
+
+                            # Ask to open browser using arrow key selection
+                            p.print()
+                            open_options = [
+                                ("yes", "Open browser"),
+                                ("no", "Show URL only"),
+                            ]
+
+                            open_choice = await ui._printer.get_choice_async(
+                                open_options, default="yes"
+                            )
+                            ui._printer.reset_prompt_session()
+
+                            p.print()
+                            if open_choice == "yes":
+                                opened = open_in_browser(issue_url)
+                                if opened:
+                                    p.print(
+                                        "[dim]✓ Opened browser to GitHub issues page[/dim]"  # noqa: E501
+                                    )
+                                else:
+                                    p.print("[dim]Could not open browser[/dim]")
+                                    p.print(f"[dim]URL: {issue_url}[/dim]")
+                            else:
+                                p.print("[dim]You can create the issue at:[/dim]")
+                                p.print(f"[dim][cyan]{issue_url}[/cyan][/dim]")
+
                         continue
                     else:
                         ui.show_system_error(f"Unknown system command: /{cmd}")

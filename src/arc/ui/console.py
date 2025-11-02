@@ -10,7 +10,6 @@ from contextlib import contextmanager, suppress
 from typing import Any
 
 from rich import box
-from rich.align import Align
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -37,28 +36,45 @@ class InteractiveInterface:
         )
 
     def show_welcome(self, _model: str, _directory: str):
-        """Display a centered ASCII banner in an 80-char panel."""
-        banner = (
-            " ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗\n"
-            "▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝\n"
-            "▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║\n"
-            "▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║\n"
-            "▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗\n"
-            "╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝\n"
-            " From Question to Prediction\n"
+        """Display ASCII banner with single bottom border."""
+        # Blank line for breathing room
+        self._printer.print()
+
+        # Logo in cyan, manually centered (logo is 29 chars, center 80 = 25 pad)  # noqa: E501
+        self._printer.print(
+            "[cyan]                         ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗[/cyan]"
+        )
+        self._printer.print(
+            "[cyan]                        ╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝[/cyan]"
         )
 
-        panel = Panel(
-            Align.center(banner, style="cyan"),
-            border_style="cyan",
-            box=box.DOUBLE,
-            padding=(1, 0, 0, 0),
-            width=80,
+        # Tagline dimmed, manually centered (28 chars, center in 80 = 26 space padding)
+        self._printer.print(
+            "[dim]                          From Question to Prediction[/dim]"
         )
-        self._printer.print(Align.left(panel))
 
-        # Single concise hint
-        self._printer.print(" Use /help for more information. Press Esc to interrupt.")
+        # Bottom border - thin dim line with 2-space padding  # noqa: E501
+        self._printer.print(  # noqa: E501
+            "[dim]  ───────────────────────────────────────────────────────────────────────────[/dim]"  # noqa: E501
+        )
+
+        # Blank line for breathing room
+        self._printer.print()
+
+        # Single concise hint with 2-space indentation (aligned with separator)
+        self._printer.print("  Use /help for more information. Press Esc to interrupt.")
         self._printer.add_separator()
 
     # Lightweight ESC watcher used during streaming (no prompt active)
@@ -222,72 +238,54 @@ class InteractiveInterface:
 
     def show_commands(self) -> None:
         """Display available slash commands in a concise list."""
-        with self._printer.section(color="blue") as p:
+        with self._printer.section(shape="ℹ") as p:
             p.print("How to Use Arc")
             p.print(
-                "[dim]Ask questions in natural language or use slash commands "
-                "below.[/dim]"
-            )
-            p.print(
-                "[dim]Examples: 'analyze my data', 'help me train a model', "
-                "'/config'[/dim]"
+                "[dim]Ask questions in natural language or use slash commands.[/dim]"
             )
 
             p.print()
-            p.print("System Commands")
+            p.print("[bold]System Commands[/bold]")
             commands = [
-                ("/help", "Show available commands and features"),
+                ("/help", "Show available commands"),
                 ("/config", "View or edit configuration"),
-                ("/report", "Report a bug or feedback on GitHub"),
-                (
-                    "/sql use [system|user] | /sql <query>",
-                    "Switch database or execute SQL query ",
-                ),
+                ("/report", "Report bug or feedback"),
+                ("/sql <query>", "Execute SQL or switch database"),
                 ("/clear", "Clear the screen"),
-                ("/exit", "Exit the application"),
+                ("/exit", "Exit Arc"),
             ]
             for cmd, desc in commands:
-                p.print(f"- [cyan]{cmd}[/cyan]: {desc}")
+                p.print(f"  [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
 
             p.print()
-            p.print("ML Commands")
+            p.print("[bold]ML Commands[/bold]")
             ml_commands = [
-                (
-                    "/ml data --name NAME --instruction INST --source-tables TABLES",
-                    "Generate data processing pipeline from natural language",
-                ),
-                (
-                    "/ml model --name NAME --instruction DESC "
-                    "--data-table TABLE [--target-column COL] [--plan-id PLAN_ID]",
-                    "Generate model + trainer and launch training",
-                ),
-                (
-                    "/ml evaluate --model-id MODEL_ID --data-table TABLE "
-                    "[--metrics METRICS] [--output-table TABLE]",
-                    "Evaluate trained model on test dataset",
-                ),
-                ("/ml jobs list", "Show recent ML jobs"),
-                ("/ml jobs status JOB_ID", "Inspect an individual job"),
+                ("/ml data", "Generate data processing pipeline"),
+                ("/ml model", "Generate and train model"),
+                ("/ml evaluate", "Evaluate trained model"),
+                ("/ml jobs", "View job history and status"),
             ]
             for cmd, desc in ml_commands:
-                p.print(f"- [cyan]{cmd}[/cyan]: {desc}")
+                p.print(f"  [cyan]{cmd:<20}[/cyan] [dim]{desc}[/dim]")
 
     def _action_label(self, tool_name: str) -> str:
         mapping = {
             "view_file": "Read",
             "create_file": "Create",
-            "edit_file": "Update",
-            "bash": "Bash",
+            "edit_file": "Edit",
+            "bash": "Run",
             "search": "Search",
-            "create_todo_list": "Create Plan",
-            "update_todo_list": "Update Plan",
-            "database_query": "SQL Query",
-            "schema_discovery": "Schema Discovery",
-            "ml_predict": "Predict",
-            "ml_evaluate": "Evaluate Model",
-            "ml_model": "Model Generator",
-            "ml_trainer_generator": "Trainer Generator",
-            "ml_data": "ML Data",
+            "create_todo_list": "Plan",
+            "update_todo_list": "Plan",
+            "database_query": "SQL",
+            "schema_discovery": "Schema",
+            "ml_predict": "ML Predict",
+            "ml_evaluate": "ML Evaluate",
+            "ml_model": "ML Train",
+            "ml_trainer_generator": "ML Trainer",
+            "ml_data": "Data Pipeline",
+            "list_available_knowledge": "Knowledge Catalog",
+            "read_knowledge": "Knowledge",
         }
         # Also handle MCP-prefixed tools nicely
         if tool_name.startswith("mcp__"):
@@ -298,37 +296,39 @@ class InteractiveInterface:
                 return f"{server.title()}({actual})"
         return mapping.get(tool_name, tool_name)
 
-    def _get_dot_color(self, tool_name: str) -> str:
-        """Get color for the dot based on semantic action type.
+    def _get_tool_shape(self, tool_name: str) -> str:
+        """Get shape character for tool based on category.
 
-        Color scheme:
-        - Blue: System operations, configuration, databases
-        - Green: Success operations, ML training/prediction
-        - Yellow: File operations, search, user attention
-        - Red: System commands, potentially risky operations
-        - Default: Neutral tool output, informational
+        Shape mapping:
+        - ◆ Database operations (SQL queries, schema)
+        - ● ML operations (training, evaluation, prediction)
+        - ◇ Data processing & planning (pipelines, todos)
+        - ■ File operations (read, write, edit)
+        - ◎ Search operations
+        - ◐ Knowledge operations
+        - ▶ System commands (bash)
         """
-        if tool_name in ["create_todo_list", "update_todo_list"]:
-            return "blue"  # Planning/system operations
-        elif tool_name in ["bash"]:
-            return "red"  # System commands (potentially risky)
-        elif tool_name in ["search"]:
-            return "yellow"  # Search operations (attention/discovery)
-        elif tool_name in ["view_file", "create_file", "edit_file"]:
-            return "yellow"  # File operations (user attention needed)
-        elif tool_name in ["database_query", "schema_discovery"]:
-            return "blue"  # Database/system operations
+        if tool_name in ["database_query", "schema_discovery"]:
+            return "◆"  # Database operations
         elif tool_name in [
             "ml_predict",
             "ml_evaluate",
             "ml_model",
             "ml_trainer_generator",
         ]:
-            return "green"  # ML operations (success/completion focused)
-        elif tool_name in ["ml_data"]:
-            return "bright_yellow"
+            return "●"  # ML operations
+        elif tool_name in ["ml_data", "create_todo_list", "update_todo_list"]:
+            return "◇"  # Data processing & planning
+        elif tool_name in ["view_file", "create_file", "edit_file"]:
+            return "■"  # File operations
+        elif tool_name in ["search"]:
+            return "◎"  # Search operations
+        elif tool_name in ["list_available_knowledge", "read_knowledge"]:
+            return "◐"  # Knowledge operations
+        elif tool_name in ["bash"]:
+            return "▶"  # System commands
         else:
-            return "white"  # Default/neutral informational output
+            return "▸"  # Default narrative marker
 
     def show_tool_execution(self, _tool_name: str, _args: dict[str, Any]):
         """Show tool execution line that will be replaced with result."""
@@ -351,7 +351,11 @@ class InteractiveInterface:
         if tool_name in TOOLS_WITH_OWN_SECTIONS:
             return
 
-        label = self._action_label(tool_name)
+        # Special handling for schema_discovery - label depends on what's being shown
+        if tool_name == "schema_discovery" and result.metadata:
+            label = "Columns" if "table_name" in result.metadata else "Tables"
+        else:
+            label = self._action_label(tool_name)
 
         # Append metadata to label if present
         if result.metadata:
@@ -359,22 +363,30 @@ class InteractiveInterface:
 
             # Special handling for database_query and schema_discovery tools
             if tool_name == "database_query":
-                # Show database name with "db:" prefix
+                # Show database name directly (without prefix)
                 if "target_db" in result.metadata:
-                    metadata_parts.append(f"db: {result.metadata['target_db']}")
+                    metadata_parts.append(result.metadata["target_db"])
                 # Show execution time only if >= 1 second
                 if "execution_time" in result.metadata:
                     exec_time = result.metadata["execution_time"]
                     if exec_time >= 1.0:
                         metadata_parts.append(f"{exec_time:.1f}s")
             elif tool_name == "schema_discovery":
-                # Show table name if present, otherwise show database with "db:" prefix
+                # Show table name or database name directly
                 if "table_name" in result.metadata:
-                    # When describing a specific table, just show table name
                     metadata_parts.append(result.metadata["table_name"])
                 elif "target_db" in result.metadata:
-                    # When listing tables, show database with "db:" prefix
-                    metadata_parts.append(f"db: {result.metadata['target_db']}")
+                    metadata_parts.append(result.metadata["target_db"])
+            elif tool_name == "list_available_knowledge":
+                # Show knowledge count
+                if "knowledge_count" in result.metadata:
+                    count = result.metadata["knowledge_count"]
+                    doc_text = "document" if count == 1 else "documents"
+                    metadata_parts.append(f"{count} {doc_text}")
+            elif tool_name == "read_knowledge":
+                # Show knowledge ID
+                if "knowledge_id" in result.metadata:
+                    metadata_parts.append(result.metadata["knowledge_id"])
             else:
                 # Default metadata handling for other tools
                 # Show table name first if present (for describe_table)
@@ -402,7 +414,7 @@ class InteractiveInterface:
                         metadata_parts.append(f"{exec_time:.3f}s")
 
             if metadata_parts:
-                label += f" [dim]({', '.join(metadata_parts)})[/dim]"
+                label += f" • [dim]{' • '.join(metadata_parts)}[/dim]"
 
         if self._working_active:
             self._working_active = False
@@ -410,8 +422,8 @@ class InteractiveInterface:
         content = result.output if result.success else result.error
         content = content or ""
 
-        dot_color = self._get_dot_color(tool_name)
-        with self._printer.section(color=dot_color) as p:
+        tool_shape = self._get_tool_shape(tool_name)
+        with self._printer.section(shape=tool_shape) as p:
             if (
                 tool_name in ["create_todo_list", "update_todo_list"]
                 and content.strip()
@@ -466,32 +478,25 @@ class InteractiveInterface:
         content: str,
         printer: Any | None = None,
     ) -> None:
-        """Print todo with progress bar inline with the action label."""
+        """Print todo with progress count inline with the action label."""
         lines = content.splitlines()
         if not lines:
             return
 
-        # Find the progress bar line and extract it
-        progress_line = None
-        todo_items = []
-
-        for line in lines:
-            line = line.strip()
-            if line.startswith("📋"):
-                # Extract just the progress bar part
-                if "[" in line and "]" in line:
-                    start = line.find("[")
-                    end = line.find("]") + 1
-                    progress_part = line[start:end]
-                    # Also get the ratio part
-                    ratio_part = line.split("]")[-1].strip()
-                    progress_line = f"{progress_part} {ratio_part}"
-            elif line.startswith("└"):
-                todo_items.append(line)
+        # First line is the progress count (e.g., "2/5")
+        # Remaining lines are todo items (e.g., "✓ Task 1")
+        progress_count = lines[0].strip() if lines else ""
+        todo_items = [line.strip() for line in lines[1:] if line.strip()]
 
         target = printer if printer else self._printer
-        if progress_line:
-            target.print(f"{label} {progress_line}")
+
+        # Print label with progress count using bullet separator
+        if progress_count:
+            target.print(f"{label} • {progress_count}")
+        else:
+            target.print(label)
+
+        # Print todo items (section context provides indentation)
         for item in todo_items:
             target.print(item)
 
@@ -570,15 +575,15 @@ class InteractiveInterface:
             self._printer.add_separator()
 
     def show_assistant_step(self, content: str):
-        """Render assistant thoughts as a cyan dot step with the content."""
+        """Render assistant thoughts as a narrative step with the content."""
         text = content.strip()
         if not text:
             return
 
-        # Render each line with a single cyan dot header once, then plain lines
+        # Render each line with a single narrative marker once, then plain lines
         lines = text.split("\n")
         if lines:
-            with self._printer.section(color="cyan") as p:
+            with self._printer.section(shape="▸", color="cyan") as p:
                 p.print(f"{lines[0]}")
                 for ln in lines[1:]:
                     p.print(ln)
@@ -592,7 +597,9 @@ class InteractiveInterface:
                 stream.stream_text("Hello ")
                 stream.stream_text("world!")
         """
-        streaming_context = self._printer.section(color="cyan", streaming=True)
+        streaming_context = self._printer.section(
+            shape="▸", color="cyan", streaming=True
+        )
         stream_printer = streaming_context.__enter__()
         try:
             yield stream_printer
@@ -825,7 +832,7 @@ class InteractiveInterface:
 
     def show_streaming_response(self, content: str):
         """Show streaming response with typing effect."""
-        with self._printer.section(color="cyan", streaming=True) as stream:
+        with self._printer.section(shape="▸", color="cyan", streaming=True) as stream:
             for char in content:
                 stream.stream_text(char, end="")
 
@@ -841,7 +848,7 @@ class InteractiveInterface:
         if execution_time is not None:
             header += f" - {execution_time:.3f}s"
 
-        with self._printer.section(color="blue") as p:
+        with self._printer.section(shape="◆") as p:
             # Header
             p.print(f"{header}")
 
@@ -917,15 +924,20 @@ class InteractiveInterface:
         self._printer.clear()
 
     def show_config_panel(self, config_text: str) -> None:
-        with self._printer.section(color="blue") as p:
-            p.print_panel(
-                Panel(
-                    config_text,
-                    expand=False,
-                    border_style="color(240)",
-                    title="Configuration (edit via /config; env vars override)",
-                )
-            )
+        """Display configuration in minimal format without panel borders."""
+        with self._printer.section(shape="◇") as p:
+            p.print("Configuration")
+
+            # Parse config_text and format with alignment
+            lines = config_text.strip().split("\n")
+            for line in lines:
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    p.print(f"{key:<18} [cyan]{value}[/cyan]")
+                else:
+                    p.print(f"{line}")
 
     def show_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         table = Table(title=title, box=box.SIMPLE_HEAVY)

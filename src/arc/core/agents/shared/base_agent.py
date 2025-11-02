@@ -579,13 +579,8 @@ class BaseAgent(abc.ABC):
                                             query = args.get("query", "")
                                             # Clean up query (remove extra whitespace)
                                             query_clean = " ".join(query.split())
-                                            # Truncate at 80 chars
-                                            if len(query_clean) > 80:
-                                                query_brief = query_clean[:80] + "..."
-                                            else:
-                                                query_brief = query_clean
                                             progress_callback(
-                                                f"[dim]▸ Query: {query_brief}[/dim]"
+                                                f"[dim]▸ Query: {query_clean}[/dim]"
                                             )
                                         # Special formatting for knowledge tools
                                         elif (

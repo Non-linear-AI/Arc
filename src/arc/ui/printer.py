@@ -295,18 +295,20 @@ class Printer:
     @contextmanager
     def section(
         self,
-        color: str = "cyan",
+        shape: str = "▸",
+        color: str | None = None,
         add_dot: bool = True,
         streaming: bool = False,
         prefix: str = "",
         separator_style: str = "blank",
     ):
         """Unified context manager for both regular and streaming output with
-        automatic dot prefix and line separation.
+        automatic shape prefix and line separation.
 
         Args:
-            color: Color for the dot prefix
-            add_dot: Whether to add a dot prefix (can be disabled for welcome messages)
+            shape: Shape character for the prefix (default: "▸" for narrative)
+            color: Optional color for the shape prefix (if None, no color applied)
+            add_dot: Whether to add a shape prefix (disabled for welcome)  # noqa: E501
             streaming: Whether this section supports streaming output
             prefix: Optional prefix text (like for assistant responses, only used
                 when streaming=True)
@@ -317,9 +319,10 @@ class Printer:
 
         class UnifiedSectionPrinter:
             def __init__(
-                self, printer, color, add_dot, streaming, prefix, separator_style
+                self, printer, shape, color, add_dot, streaming, prefix, separator_style
             ):
                 self.printer = printer
+                self.shape = shape
                 self.color = color
                 self.add_dot = add_dot
                 self.streaming = streaming
@@ -345,16 +348,17 @@ class Printer:
                 # Standard indent for content alignment (2 spaces to match dot width)
                 indent = "  "
 
-                # Add dot prefix on first print call within this section
+                # Add shape prefix on first print call within this section
                 if not self.printer._section_started and self.add_dot:
                     if args:
                         first_arg = str(args[0])
                         lines = first_arg.split("\n")
                         if lines:
-                            # Add dot prefix to first line
-                            prefixed_first = (
-                                f"[{self.color}]⏺[/{self.color}] {lines[0]}"
-                            )
+                            # Add shape prefix to first line (with optional color)
+                            if self.color:
+                                prefixed_first = f"[{self.color}]{self.shape}[/{self.color}] {lines[0]}"  # noqa: E501
+                            else:
+                                prefixed_first = f"{self.shape} {lines[0]}"
                             # Indent all subsequent lines with 2 spaces
                             if len(lines) > 1:
                                 indented_rest = "\n".join(
@@ -408,17 +412,27 @@ class Printer:
                 if not self._streaming_started:
                     self._start_streaming()
 
-                # Accumulate and update the live render inline with the dot prefix
+                # Accumulate and update the live render inline with the shape prefix
                 self._current_text += text + end
                 if self.live:
-                    prefix = f"[{self.color}]⏺[/{self.color}] {self.prefix}"
+                    if self.color:
+                        prefix = (
+                            f"[{self.color}]{self.shape}[/{self.color}] {self.prefix}"
+                        )
+                    else:
+                        prefix = f"{self.shape} {self.prefix}"
                     update_str = f"{prefix}{self._current_text}{self._cursor_markup}"
                     self.live.update(update_str)
 
             def _start_streaming(self):
                 if not self._streaming_started and self.add_dot:
                     # Create a live region so we can replace content later cleanly
-                    initial = f"[{self.color}]⏺[/{self.color}] {self.prefix}"
+                    if self.color:
+                        initial = (
+                            f"[{self.color}]{self.shape}[/{self.color}] {self.prefix}"
+                        )
+                    else:
+                        initial = f"{self.shape} {self.prefix}"
                     self.live = Live(
                         initial,
                         console=self.printer.console,
@@ -442,7 +456,7 @@ class Printer:
                     self.printer.console.print(panel)
 
         section_printer = UnifiedSectionPrinter(
-            self, color, add_dot, streaming, prefix, separator_style
+            self, shape, color, add_dot, streaming, prefix, separator_style
         )
         try:
             yield section_printer
@@ -457,10 +471,15 @@ class Printer:
                     with suppress(Exception):
                         if not section_printer._finalized:
                             # Update one last time without the cursor
-                            prefix = (
-                                f"[{section_printer.color}]⏺[/{section_printer.color}] "
-                                f"{section_printer.prefix}"
-                            )
+                            if section_printer.color:
+                                prefix = (  # noqa: E501
+                                    f"[{section_printer.color}]{section_printer.shape}[/{section_printer.color}] "  # noqa: E501
+                                    f"{section_printer.prefix}"
+                                )
+                            else:
+                                prefix = (
+                                    f"{section_printer.shape} {section_printer.prefix}"
+                                )
                             final_text = f"{prefix}{section_printer._current_text}"
                             section_printer.live.update(final_text)
                         section_printer.live.stop()

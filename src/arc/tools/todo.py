@@ -104,10 +104,10 @@ class TodoManager:
         return updated_count, self.format_todo_list()
 
     def format_todo_list(self) -> str:
-        """Format TODO list with progress bar style.
+        """Format TODO list with minimal style.
 
         Returns:
-            Formatted string with progress bar and todo items
+            Formatted string with progress count and todo items
         """
         if not self.todos:
             return "No todos created yet"
@@ -116,22 +116,20 @@ class TodoManager:
         completed = sum(1 for todo in self.todos if todo.status == "completed")
         total = len(self.todos)
 
-        # Create progress bar (10 blocks)
-        progress_ratio = completed / total if total > 0 else 0
-        filled_blocks = int(progress_ratio * 10)
-        progress_bar = "█" * filled_blocks + "░" * (10 - filled_blocks)
+        # Header with just progress count
+        lines = [f"{completed}/{total}"]
 
-        # Header with progress - simpler title
-        lines = [f"📋 [{progress_bar}] {completed}/{total}"]
-
-        # Add todo items with IDs shown for reference
+        # Add todo items with status symbols
         for todo in self.todos:
             if todo.status == "completed":
-                marker = "●"
-                line_text = f"  └ {marker} [strike]{todo.content}[/strike]"
+                marker = "✓"
+                line_text = f"{marker} {todo.content}"
+            elif todo.status == "in_progress":
+                marker = "→"
+                line_text = f"{marker} {todo.content}"
             else:
                 marker = "○"
-                line_text = f"  └ {marker} {todo.content}"
+                line_text = f"{marker} {todo.content}"
 
             lines.append(line_text)
 
@@ -172,7 +170,7 @@ class CreateTodoListTool(BaseTool):
         """
         try:
             formatted = self.todo_manager.create_todos(todos)
-            return ToolResult.success_result(f"Todo list created:\n{formatted}")
+            return ToolResult.success_result(formatted)
         except Exception as e:
             return ToolResult.error_result(f"Failed to create todo list: {str(e)}")
 
@@ -200,9 +198,7 @@ class UpdateTodoListTool(BaseTool):
         """
         try:
             updated_count, formatted = self.todo_manager.update_todos(updates)
-            return ToolResult.success_result(
-                f"Updated {updated_count} TODO item(s):\n{formatted}"
-            )
+            return ToolResult.success_result(formatted)
         except ValueError as e:
             return ToolResult.error_result(str(e))
         except Exception as e:
