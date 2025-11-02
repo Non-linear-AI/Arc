@@ -37,28 +37,16 @@ class InteractiveInterface:
         )
 
     def show_welcome(self, _model: str, _directory: str):
-        """Display a centered ASCII banner in an 80-char panel."""
-        banner = (
-            " ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗\n"
-            "▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝\n"
-            "▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║\n"
-            "▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║\n"
-            "▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗\n"
-            "╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝\n"
-            " From Question to Prediction\n"
-        )
-
-        panel = Panel(
-            Align.center(banner, style="cyan"),
-            border_style="cyan",
-            box=box.DOUBLE,
-            padding=(1, 0, 0, 0),
-            width=80,
-        )
-        self._printer.print(Align.left(panel))
-
-        # Single concise hint
-        self._printer.print(" Use /help for more information. Press Esc to interrupt.")
+        """Display minimal Arc welcome with light ASCII logo."""
+        self._printer.print("[cyan] █████╗ ██████╗  ██████╗[/cyan]")
+        self._printer.print("[cyan]██╔══██╗██╔══██╗██╔════╝[/cyan]")
+        self._printer.print("[cyan]███████║██████╔╝██║[/cyan]")
+        self._printer.print("[cyan]██╔══██║██╔══██╗██║[/cyan]")
+        self._printer.print("[cyan]██║  ██║██║  ██║╚██████╗[/cyan]")
+        self._printer.print("[cyan]╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝[/cyan]")
+        self._printer.print("[dim]From Question to Prediction[/dim]")
+        self._printer.print()
+        self._printer.print("Use /help for more information. Press Esc to interrupt.")
         self._printer.add_separator()
 
     # Lightweight ESC watcher used during streaming (no prompt active)
