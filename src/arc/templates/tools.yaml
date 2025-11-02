@@ -413,11 +413,23 @@ tools:
         instruction:
           type: string
           description: Natural language description of data processing requirements
-        source_tables:
+        data_source_type:
+          type: string
+          enum:
+            - file
+            - table
+          description: |
+            Type of data sources:
+            - 'file': External files (CSV, Parquet, JSON, URLs) to load into database
+            - 'table': Existing database tables to transform
+        data_sources:
           type: array
           items:
             type: string
-          description: List of source database tables to analyze for generation (required to narrow scope)
+          description: |
+            List of data sources (required to narrow scope):
+            - For 'file': File paths or URLs (e.g., ['data.csv', 'https://example.com/data.parquet'])
+            - For 'table': Database table names (e.g., ['users', 'transactions'])
         database:
           type: string
           enum:
@@ -430,12 +442,13 @@ tools:
             type: string
           description: |
             Optional list of knowledge IDs to suggest to the data processing sub-agent
-            (e.g., ['ml_data_preparation']). The sub-agent will use its own knowledge tools
+            (e.g., ['ml_data_preparation', 'data_loading']). The sub-agent will use its own knowledge tools
             to access these or discover additional knowledge as needed.
       required:
         - name
         - instruction
-        - source_tables
+        - data_source_type
+        - data_sources
 
   - name: list_available_knowledge
     description: |

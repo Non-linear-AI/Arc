@@ -27,14 +27,26 @@ Your goal is to generate a single, valid YAML configuration that:
 
 **Requirements**: {{ user_instruction }}
 {% endif %}
-{% if source_tables %}
-**Source Tables**: {{ source_tables | join(", ") }}
+**Data Source Type**: {{ data_source_type }}
+{% if data_sources %}
+**Data Sources**: {{ data_sources | join(", ") }}
 {% endif %}
 **Database**: {{ schema_info.database }}
 
 # Available Data
 
-{% if schema_info.tables %}{% for table in schema_info.tables %}
+{% if data_source_type == "file" %}
+**Data Source Type**: External files (CSV, Parquet, JSON, URLs)
+
+You will be loading data from external files. Use DuckDB's native data loading functions:
+- `read_csv_auto('path')` for auto-detection
+- `read_csv('path', delim='::', header=false, columns={...})` for explicit schema
+- `read_parquet('path')` for Parquet files
+- `read_json_auto('path')` for JSON files
+
+The files are specified in the data_sources list above. If you need guidance on data loading patterns, use `read_knowledge_content("data_loading")`.
+{% elif schema_info.tables %}
+{% for table in schema_info.tables %}
 **Table: {{ table.name }}**
 {% for column in table.columns %}
   - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
