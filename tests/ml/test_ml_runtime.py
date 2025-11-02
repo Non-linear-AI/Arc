@@ -175,3 +175,49 @@ def test_load_nonexistent_data_processor_raises(runtime):
     """Test that loading a nonexistent processor raises an error."""
     with pytest.raises(MLRuntimeError, match="not found"):
         runtime.load_data_processor("nonexistent_processor")
+
+
+def test_default_artifacts_path_project_local(db_manager):
+    """Test that MLRuntime defaults to project-local .arc/artifacts directory."""
+
+    # Create runtime without specifying artifacts_dir
+    services = ServiceContainer(db_manager, artifacts_dir=None)
+    runtime = services.ml_runtime
+
+    try:
+        # Verify artifacts root is in project-local .arc/
+        expected_path = Path(".arc") / "artifacts"
+        assert runtime.artifacts_root == expected_path
+    finally:
+        runtime.shutdown()
+
+
+def test_custom_artifacts_path(db_manager, tmp_path):
+    """Test that MLRuntime can use custom artifacts directory."""
+    custom_artifacts = tmp_path / "custom_artifacts"
+
+    services = ServiceContainer(db_manager, artifacts_dir=str(custom_artifacts))
+    runtime = services.ml_runtime
+
+    try:
+        # Verify custom path is used
+        assert runtime.artifacts_root == custom_artifacts
+    finally:
+        runtime.shutdown()
+
+
+def test_artifacts_path_not_in_home_directory(db_manager):
+    """Test that default artifacts are NOT in home directory."""
+
+    services = ServiceContainer(db_manager, artifacts_dir=None)
+    runtime = services.ml_runtime
+
+    try:
+        # Artifacts should not be in home directory
+        home_str = str(Path.home())
+        artifacts_str = str(runtime.artifacts_root)
+
+        assert not artifacts_str.startswith(home_str)
+        assert artifacts_str.startswith(".arc")
+    finally:
+        runtime.shutdown()

@@ -55,7 +55,7 @@ class MLRuntime:
         self.job_service = services.jobs
         self.ml_data_service = services.ml_data
 
-        self.artifacts_root = Path(artifacts_dir or "artifacts")
+        self.artifacts_root = Path(artifacts_dir or ".arc/artifacts")
         self.artifacts_root.mkdir(parents=True, exist_ok=True)
 
         self.artifact_manager = ModelArtifactManager(self.artifacts_root)

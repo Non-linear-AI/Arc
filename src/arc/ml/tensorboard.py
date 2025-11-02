@@ -39,7 +39,7 @@ class TensorBoardManager:
         """Launch TensorBoard for a training job using default log directory.
 
         Automatically determines the log directory from the job ID using the
-        standard Arc convention: ~/.arc/tensorboard/run_{job_id}
+        standard Arc convention: .arc/tensorboard/run_{job_id}
 
         Args:
             job_id: Training job identifier
@@ -51,8 +51,8 @@ class TensorBoardManager:
         Raises:
             TensorBoardError: If TensorBoard fails to launch
         """
-        # Use standard Arc tensorboard directory structure
-        logdir = Path.home() / ".arc" / "tensorboard" / f"run_{job_id}"
+        # Use project-local .arc tensorboard directory structure
+        logdir = Path(".arc") / "tensorboard" / f"run_{job_id}"
         return self.launch(job_id, logdir, port)
 
     def launch(self, job_id: str, logdir: Path, port: int = 6006) -> tuple[str, int]:
