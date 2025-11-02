@@ -171,7 +171,7 @@ class CreateTodoListTool(BaseTool):
         """
         try:
             formatted = self.todo_manager.create_todos(todos)
-            return ToolResult.success_result(f"Todo list created:\n{formatted}")
+            return ToolResult.success_result(formatted)
         except Exception as e:
             return ToolResult.error_result(f"Failed to create todo list: {str(e)}")
 
@@ -199,9 +199,7 @@ class UpdateTodoListTool(BaseTool):
         """
         try:
             updated_count, formatted = self.todo_manager.update_todos(updates)
-            return ToolResult.success_result(
-                f"Updated {updated_count} TODO item(s):\n{formatted}"
-            )
+            return ToolResult.success_result(formatted)
         except ValueError as e:
             return ToolResult.error_result(str(e))
         except Exception as e:
