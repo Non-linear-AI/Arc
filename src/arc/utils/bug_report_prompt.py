@@ -170,42 +170,48 @@ def parse_bug_report(content: str) -> dict[str, str]:
 
 
 def format_bug_report_for_display(report: dict[str, str]) -> str:
-    """Format parsed bug report for user preview.
+    """Format parsed bug report as markdown for user preview.
 
     Args:
         report: Parsed bug report dict
 
     Returns:
-        Formatted string for display
+        Markdown formatted string for display
     """
     parts = []
 
+    # Title with bold label
     if report['title']:
-        parts.append(f"Title: {report['title']}")
+        parts.append(f"**Title** {report['title']}")
         parts.append("")
 
+    # Description
     if report['description']:
-        parts.append("Description:")
+        parts.append("**Description**")
         parts.append(report['description'])
         parts.append("")
 
+    # Steps to reproduce
     if report['steps']:
-        parts.append("Steps to Reproduce:")
+        parts.append("**Steps to Reproduce**")
         parts.append(report['steps'])
         parts.append("")
 
+    # Expected behavior
     if report['expected']:
-        parts.append("Expected Behavior:")
+        parts.append("**Expected Behavior**")
         parts.append(report['expected'])
         parts.append("")
 
+    # Actual behavior
     if report['actual']:
-        parts.append("Actual Behavior:")
+        parts.append("**Actual Behavior**")
         parts.append(report['actual'])
         parts.append("")
 
+    # Context
     if report['context']:
-        parts.append("Context:")
+        parts.append("**Context**")
         parts.append(report['context'])
 
     return "\n".join(parts)
