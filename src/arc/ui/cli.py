@@ -1042,13 +1042,13 @@ async def run_interactive_mode(
                                     else:
                                         # User cancelled
                                         p.print()
-                                        p.print("▸ [dim]Bug report cancelled[/dim]")
+                                        p.print("[dim]Bug report cancelled[/dim]")
                                         continue
                                 else:
                                     # LLM couldn't generate report, use manual entry
                                     p.print()
                                     p.print(
-                                        "▸ [yellow]Could not auto-detect issue from conversation[/yellow]"
+                                        "[yellow]Could not auto-detect issue from conversation[/yellow]"
                                     )
                                     title = await ui.get_user_input_async("  Title: ")
                                     desc = await ui.get_user_input_async(
@@ -1082,14 +1082,14 @@ async def run_interactive_mode(
                                 opened = open_in_browser(issue_url)
                                 if opened:
                                     p.print(
-                                        "▸ [green]✓[/green] Opened browser to GitHub issues page"
+                                        "[dim]✓ Opened browser to GitHub issues page[/dim]"
                                     )
                                 else:
-                                    p.print("▸ [yellow]Could not open browser[/yellow]")
-                                    p.print(f"  URL: {issue_url}")
+                                    p.print("[dim]Could not open browser[/dim]")
+                                    p.print(f"[dim]URL: {issue_url}[/dim]")
                             else:
-                                p.print("▸ You can create the issue at:")
-                                p.print(f"  [cyan]{issue_url}[/cyan]")
+                                p.print("[dim]You can create the issue at:[/dim]")
+                                p.print(f"[dim][cyan]{issue_url}[/cyan][/dim]")
 
                         continue
                     else:
