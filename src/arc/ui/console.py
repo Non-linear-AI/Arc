@@ -463,34 +463,27 @@ class InteractiveInterface:
         content: str,
         printer: Any | None = None,
     ) -> None:
-        """Print todo with progress bar inline with the action label."""
+        """Print todo with progress count inline with the action label."""
         lines = content.splitlines()
         if not lines:
             return
 
-        # Find the progress bar line and extract it
-        progress_line = None
-        todo_items = []
-
-        for line in lines:
-            line = line.strip()
-            if line.startswith("📋"):
-                # Extract just the progress bar part
-                if "[" in line and "]" in line:
-                    start = line.find("[")
-                    end = line.find("]") + 1
-                    progress_part = line[start:end]
-                    # Also get the ratio part
-                    ratio_part = line.split("]")[-1].strip()
-                    progress_line = f"{progress_part} {ratio_part}"
-            elif line.startswith("└"):
-                todo_items.append(line)
+        # First line is the progress count (e.g., "2/5")
+        # Remaining lines are todo items (e.g., "✓ Task 1")
+        progress_count = lines[0].strip() if lines else ""
+        todo_items = [line.strip() for line in lines[1:] if line.strip()]
 
         target = printer if printer else self._printer
-        if progress_line:
-            target.print(f"{label} {progress_line}")
+
+        # Print label with progress count using bullet separator
+        if progress_count:
+            target.print(f"{label} • {progress_count}")
+        else:
+            target.print(label)
+
+        # Print todo items with simple 2-space indentation
         for item in todo_items:
-            target.print(item)
+            target.print(f"  {item}")
 
     def _print_todo_content(self, content: str) -> None:
         """Print todo content with progress bar format."""

@@ -133,6 +133,7 @@ tools:
                 type: string
                 enum:
                   - pending
+                  - in_progress
                   - completed
                 description: Current status of the todo item (default pending)
             required:
@@ -160,6 +161,7 @@ tools:
                 type: string
                 enum:
                   - pending
+                  - in_progress
                   - completed
                 description: New status for the todo item
               content:
