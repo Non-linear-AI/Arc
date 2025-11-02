@@ -8,16 +8,22 @@ Usage:
     python scripts/test_ml_data.py <name> <instruction> <data-source-type> <data-sources> [options]
 
 Examples:
-    # Basic test with single source table
+    # Load CSV file
+    python scripts/test_ml_data.py pidd_import "Load diabetes data" csv /path/to/diabetes.csv
+
+    # Load Parquet file
+    python scripts/test_ml_data.py data_import "Load sales data" parquet https://example.com/sales.parquet
+
+    # Load JSON file
+    python scripts/test_ml_data.py events_import "Load event logs" json /path/to/events.json
+
+    # Transform existing table
     python scripts/test_ml_data.py diabetes_processed "Split into train/validation with 80/20 split" table pidd
 
-    # Test with multiple source tables
+    # Join multiple tables
     python scripts/test_ml_data.py merged_data "Join users and transactions" table users,transactions
 
-    # Test with external file
-    python scripts/test_ml_data.py pidd_import "Load diabetes data" file /path/to/diabetes.csv
-
-    # Test with plan_id
+    # With plan_id
     python scripts/test_ml_data.py diabetes_features "Create features" table pidd --plan-id diabetes-plan-v1
 """
 
@@ -59,8 +65,8 @@ def parse_args():
 
     parser.add_argument(
         "data_source_type",
-        choices=["file", "table"],
-        help="Type of data sources: 'file' for external files, 'table' for database tables",
+        choices=["csv", "parquet", "json", "table"],
+        help="Type of data sources: 'csv', 'parquet', 'json' for external files, 'table' for database tables",
     )
 
     parser.add_argument(

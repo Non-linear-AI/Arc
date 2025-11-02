@@ -78,7 +78,8 @@ class MLDataAgent(BaseAgent):
                 For editing: user feedback on what to change.
             name: Name for the data processor (provided by user/tool).
                 Used directly in YAML instead of asking LLM to generate it.
-            data_source_type: Type of data sources - "file" or "table"
+            data_source_type: Type of data sources - "csv", "parquet",
+                "json", or "table"
             data_sources: List of data sources (file paths/URLs or table names)
             database: Database to use for schema discovery
             existing_yaml: Existing YAML content to edit (optional).
@@ -266,7 +267,8 @@ class MLDataAgent(BaseAgent):
         """Get schema information with statistics for context.
 
         Args:
-            data_source_type: Type of data sources - "file" or "table"
+            data_source_type: Type of data sources - "csv", "parquet",
+                "json", or "table"
             data_sources: List of data sources (file paths/URLs or table names)
             database: Database to use
             include_row_counts: Whether to fetch row counts (default: True).
@@ -275,13 +277,14 @@ class MLDataAgent(BaseAgent):
         Returns:
             Dictionary with schema information and table statistics
         """
-        # For file sources, return minimal context (no tables to analyze)
-        if data_source_type == "file":
+        # For file sources (csv, parquet, json), return minimal context
+        # (no tables to analyze)
+        if data_source_type in ["csv", "parquet", "json"]:
             return {
                 "database": database,
                 "tables": [],
                 "total_tables": 0,
-                "data_source_type": "file",
+                "data_source_type": data_source_type,
             }
 
         # For table sources, fetch schema information

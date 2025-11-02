@@ -177,7 +177,7 @@ class MLDataTool(BaseTool):
 
         Args:
             name: Name for the data processor (will be registered in database)
-            data_source_type: Type of data sources - "file" or "table"
+            data_source_type: Type of data sources - "csv", "parquet", "json", or "table"
             data_sources: List of data sources (file paths/URLs or table names)
             instruction: Detailed instruction for data processing
             database: Database to use - "system" or "user"
@@ -225,26 +225,29 @@ class MLDataTool(BaseTool):
             if not data_source_type:
                 return _error_in_section(
                     "data_source_type is required. "
-                    "Specify either 'file' or 'table'."
+                    "Specify 'csv', 'parquet', 'json', or 'table'."
                 )
 
-            if data_source_type not in ["file", "table"]:
+            valid_types = ["csv", "parquet", "json", "table"]
+            if data_source_type not in valid_types:
                 return _error_in_section(
                     f"Invalid data_source_type: {data_source_type}. "
-                    "Must be 'file' or 'table'."
+                    f"Must be one of: {', '.join(valid_types)}."
                 )
 
-            # Validate data_sources
+            # Validate data_sources with type-specific hints
             if not data_sources or len(data_sources) == 0:
+                hints = {
+                    "csv": "CSV file paths or URLs (e.g., ['data.csv', 'https://example.com/data.csv'])",
+                    "parquet": "Parquet file paths or URLs (e.g., ['data.parquet', 'https://...'])",
+                    "json": "JSON file paths or URLs (e.g., ['data.json', 'https://...'])",
+                    "table": "table names (e.g., ['users', 'transactions'])",
+                }
+                hint = hints.get(data_source_type, "data sources")
+
                 return _error_in_section(
                     "data_sources is required to narrow the scope of data exploration. "
-                    f"For data_source_type='{data_source_type}', specify "
-                    + (
-                        "file paths or URLs (e.g., ['data.csv', 'https://...'])"
-                        if data_source_type == "file"
-                        else "table names (e.g., ['users', 'transactions'])"
-                    )
-                    + "."
+                    f"For data_source_type='{data_source_type}', specify {hint}."
                 )
 
             # Validate database

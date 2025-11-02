@@ -416,11 +416,15 @@ tools:
         data_source_type:
           type: string
           enum:
-            - file
+            - csv
+            - parquet
+            - json
             - table
           description: |
-            Type of data sources:
-            - 'file': External files (CSV, Parquet, JSON, URLs) to load into database
+            Type of data sources (required):
+            - 'csv': CSV files to load with read_csv_auto() or read_csv()
+            - 'parquet': Parquet files to load with read_parquet()
+            - 'json': JSON files to load with read_json_auto() or read_json()
             - 'table': Existing database tables to transform
         data_sources:
           type: array
@@ -428,7 +432,9 @@ tools:
             type: string
           description: |
             List of data sources (required to narrow scope):
-            - For 'file': File paths or URLs (e.g., ['data.csv', 'https://example.com/data.parquet'])
+            - For 'csv': CSV file paths or URLs (e.g., ['data.csv', 'https://example.com/data.csv'])
+            - For 'parquet': Parquet file paths or URLs (e.g., ['data.parquet'])
+            - For 'json': JSON file paths or URLs (e.g., ['data.json'])
             - For 'table': Database table names (e.g., ['users', 'transactions'])
         database:
           type: string

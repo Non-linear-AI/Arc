@@ -35,16 +35,22 @@ Your goal is to generate a single, valid YAML configuration that:
 
 # Available Data
 
-{% if data_source_type == "file" %}
-**Data Source Type**: External files (CSV, Parquet, JSON, URLs)
+{% if data_source_type in ["csv", "parquet", "json"] %}
+**Data Source Type**: External {{ data_source_type.upper() }} files
 
-You will be loading data from external files. Use DuckDB's native data loading functions:
-- `read_csv_auto('path')` for auto-detection
-- `read_csv('path', delim='::', header=false, columns={...})` for explicit schema
-- `read_parquet('path')` for Parquet files
-- `read_json_auto('path')` for JSON files
+You will be loading data from external {{ data_source_type.upper() }} files. Use DuckDB's native loading function:
+{% if data_source_type == "csv" %}
+- `read_csv_auto('path')` for auto-detection (recommended for simple CSVs)
+- `read_csv('path', delim=',', header=true, columns={...})` for explicit schema
+- `read_csv('path', delim='::', header=false, columns={...})` for custom delimiters
+{% elif data_source_type == "parquet" %}
+- `read_parquet('path')` to load Parquet files
+{% elif data_source_type == "json" %}
+- `read_json_auto('path')` for auto-detection (recommended)
+- `read_json('path', columns={...})` for explicit schema
+{% endif %}
 
-The files are specified in the data_sources list above. If you need guidance on data loading patterns, use `read_knowledge_content("data_loading")`.
+The {{ data_source_type.upper() }} files are specified in the data_sources list above. If you need guidance on data loading patterns, use `read_knowledge_content("data_loading")`.
 {% elif schema_info.tables %}
 {% for table in schema_info.tables %}
 **Table: {{ table.name }}**

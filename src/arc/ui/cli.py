@@ -640,20 +640,25 @@ async def _ml_data_processing(
 
     if not data_source_type:
         raise CommandError(
-            "/ml data requires --data-source-type (either 'file' or 'table')"
+            "/ml data requires --data-source-type "
+            "('csv', 'parquet', 'json', or 'table')"
         )
 
-    if data_source_type not in ["file", "table"]:
+    valid_types = ["csv", "parquet", "json", "table"]
+    if data_source_type not in valid_types:
         raise CommandError(
-            f"Invalid data-source-type: {data_source_type}. Must be 'file' or 'table'"
+            f"Invalid data-source-type: {data_source_type}. "
+            f"Must be one of: {', '.join(valid_types)}"
         )
 
     if not data_sources_str:
-        hint = (
-            "file paths or URLs (e.g., 'data.csv,https://...')"
-            if data_source_type == "file"
-            else "table names (e.g., 'users,transactions')"
-        )
+        hints = {
+            "csv": "CSV file paths or URLs (e.g., 'data.csv,https://example.com/data.csv')",
+            "parquet": "Parquet file paths or URLs (e.g., 'data.parquet')",
+            "json": "JSON file paths or URLs (e.g., 'data.json')",
+            "table": "table names (e.g., 'users,transactions')",
+        }
+        hint = hints.get(data_source_type, "data sources")
         raise CommandError(
             f"/ml data requires --data-sources to narrow the scope. "
             f"For data-source-type='{data_source_type}', provide {hint}"
