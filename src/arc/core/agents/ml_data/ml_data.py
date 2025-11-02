@@ -82,9 +82,12 @@ class MLDataAgent(BaseAgent):
             existing_yaml: Existing YAML content to edit (optional).
                 If provided, switches to editing mode where instruction
                 describes the changes to make.
-            knowledge_references: Optional list of knowledge IDs referenced by this request
-            preloaded_knowledge: Optional list of preloaded knowledge docs (deprecated)
-            conversation_history: Optional conversation history for editing workflow
+            knowledge_references: Optional list of knowledge IDs referenced
+                by this request
+            preloaded_knowledge: Optional list of preloaded knowledge docs
+                (deprecated)
+            conversation_history: Optional conversation history for editing
+                workflow
 
         Returns:
             Tuple of (DataSourceSpec object, YAML string, conversation_history)
@@ -120,7 +123,7 @@ class MLDataAgent(BaseAgent):
         database: str = "user",
         existing_yaml: str | None = None,
         knowledge_references: list[str] | None = None,
-        preloaded_knowledge: list[dict[str, str]] | None = None,
+        preloaded_knowledge: list[dict[str, str]] | None = None,  # noqa: ARG002
     ) -> tuple[DataSourceSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -161,8 +164,9 @@ class MLDataAgent(BaseAgent):
                 user_message += (
                     f"\n\nThis request references the following knowledge: "
                     f"{', '.join(knowledge_references)}. "
-                    f"Use list_available_knowledge and read_knowledge_content to "
-                    f"review these references or discover additional knowledge as needed."
+                    f"Use list_available_knowledge and read_knowledge_content "
+                    f"to review these references or discover additional "
+                    f"knowledge as needed."
                 )
             else:
                 user_message += (

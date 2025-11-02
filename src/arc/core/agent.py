@@ -24,6 +24,17 @@ from arc.tools.todo import CreateTodoListTool, TodoManager, UpdateTodoListTool
 from arc.utils import TokenCounter
 
 
+class UserCancelledException(Exception):
+    """Exception raised when user cancels or interrupts an operation.
+
+    This exception is used to signal that the user explicitly cancelled
+    an operation (via Cancel button or Esc key) and execution should stop
+    immediately to ask for user input.
+    """
+
+    pass
+
+
 class StreamingToolCallFunction:
     """Adapter for streaming tool call function data."""
 
@@ -418,19 +429,48 @@ class ArcAgent:
 
                 tool_rounds += 1
 
+        except UserCancelledException as e:
+            # User cancelled an operation (via Cancel button in ml_data/ml_model)
+            # Add tool results for pending calls to maintain API validity
+            self._add_cancelled_tool_results(
+                pending_tool_call_ids, exception_type="UserCancelledException"
+            )
+            # Stop execution and ask for user input
+            cancellation_msg = str(e)
+            cancellation_entry = ChatEntry(type="assistant", content=cancellation_msg)
+            self.chat_history.append(cancellation_entry)
+            # Add to API conversation history so LLM sees it in next turn
+            self.messages.append({"role": "assistant", "content": cancellation_msg})
+            yield StreamingChunk(type="content", content=cancellation_msg)
+            yield StreamingChunk(type="done")
         except asyncio.CancelledError:
             # Task was cancelled (e.g., via Esc key)
             # When cli.py calls next_task.cancel(), this exception is raised
             self._add_cancelled_tool_results(
                 pending_tool_call_ids, exception_type="CancelledError"
             )
-            raise
+            # Add interruption message for user
+            interruption_msg = "Operation interrupted. What would you like to do next?"
+            interruption_entry = ChatEntry(type="assistant", content=interruption_msg)
+            self.chat_history.append(interruption_entry)
+            # Add to API conversation history so LLM sees it in next turn
+            self.messages.append({"role": "assistant", "content": interruption_msg})
+            yield StreamingChunk(type="content", content=interruption_msg)
+            yield StreamingChunk(type="done")
+            # Don't re-raise - we've handled it gracefully
         except GeneratorExit:
-            # Generator was closed (e.g., via aclose())
+            # Generator was closed (e.g., via aclose() when Esc is pressed)
             self._add_cancelled_tool_results(
                 pending_tool_call_ids, exception_type="GeneratorExit"
             )
-            raise
+            # Add interruption message to conversation history
+            # Note: Can't yield chunks since generator is closing, but we can
+            # still add to history for next turn and for CLI to display
+            interruption_msg = "Operation interrupted. What would you like to do next?"
+            interruption_entry = ChatEntry(type="assistant", content=interruption_msg)
+            self.chat_history.append(interruption_entry)
+            self.messages.append({"role": "assistant", "content": interruption_msg})
+            raise  # Must re-raise GeneratorExit
         except Exception as e:
             error_entry = ChatEntry(
                 type="assistant", content=f"Sorry, I encountered an error: {str(e)}"
@@ -447,6 +487,7 @@ class ArcAgent:
 
         new_entries = [user_entry]
         tool_rounds = 0
+        current_tool_call_id: str | None = None  # Track for cancellation
 
         try:
             from arc.tools.tools import get_base_tools
@@ -501,6 +542,7 @@ class ArcAgent:
                     # Execute tool calls
                     for openai_tool_call in current_response.tool_calls:
                         tool_call = ArcToolCall.from_openai_tool_call(openai_tool_call)
+                        current_tool_call_id = tool_call.id  # Track for cancellation
 
                         # Create tool call entry
                         tool_call_entry = ChatEntry(
@@ -511,8 +553,9 @@ class ArcAgent:
                         self.chat_history.append(tool_call_entry)
                         new_entries.append(tool_call_entry)
 
-                        # Execute the tool
-                        result = await self._execute_tool(tool_call)
+                        # Execute the tool (with cancellation checking)
+                        result = await self._execute_tool_call(tool_call)
+                        current_tool_call_id = None  # Clear after successful execution
 
                         # Update the tool call entry to tool result
                         tool_call_entry.type = "tool_result"
@@ -569,6 +612,44 @@ class ArcAgent:
 
             return new_entries
 
+        except UserCancelledException as e:
+            # User cancelled an operation (via Cancel button in ml_data/ml_model)
+            # Add tool result for the current tool call if it was being executed
+            if current_tool_call_id:
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": current_tool_call_id,
+                        "content": "Cancelled by user",
+                    }
+                )
+            # Stop execution and ask for user input
+            cancellation_msg = str(e)
+            cancellation_entry = ChatEntry(type="assistant", content=cancellation_msg)
+            self.chat_history.append(cancellation_entry)
+            new_entries.append(cancellation_entry)
+            # Add to API conversation history so LLM sees it in next turn
+            self.messages.append({"role": "assistant", "content": cancellation_msg})
+            return new_entries
+        except asyncio.CancelledError:
+            # Task was cancelled (e.g., via Esc key) in non-streaming mode
+            # Add tool result for the current tool call if it was being executed
+            if current_tool_call_id:
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": current_tool_call_id,
+                        "content": "Cancelled by user",
+                    }
+                )
+            # This is less common but can happen during tool execution
+            interruption_msg = "Operation interrupted. What would you like to do next?"
+            interruption_entry = ChatEntry(type="assistant", content=interruption_msg)
+            self.chat_history.append(interruption_entry)
+            new_entries.append(interruption_entry)
+            # Add to API conversation history so LLM sees it in next turn
+            self.messages.append({"role": "assistant", "content": interruption_msg})
+            return new_entries
         except Exception as e:
             error_entry = ChatEntry(
                 type="assistant",
@@ -617,8 +698,33 @@ class ArcAgent:
             return await self.tool_registry.execute(tool_call)
 
     async def _execute_tool_call(self, tool_call: ArcToolCall) -> ToolResult:
-        """Execute a tool call (alias for _execute_tool)."""
-        return await self._execute_tool(tool_call)
+        """Execute a tool call and check for user cancellation.
+
+        This method wraps tool execution to enforce cancellation handling.
+        If a tool returns metadata["cancelled"] = True (from ml_data or ml_model),
+        we raise UserCancelledException to stop execution and ask for user input.
+
+        Args:
+            tool_call: The tool call to execute
+
+        Returns:
+            ToolResult from the tool execution
+
+        Raises:
+            UserCancelledException: If the user cancelled the operation
+        """
+        result = await self._execute_tool(tool_call)
+
+        # Check if user cancelled the operation (ml_data, ml_model, ml_plan)
+        if result.metadata and result.metadata.get("cancelled"):
+            self.logger.info(
+                f"User cancelled {tool_call.name} operation - stopping execution"
+            )
+            raise UserCancelledException(
+                "Operation cancelled. What would you like to do next?"
+            )
+
+        return result
 
     def _add_cancelled_tool_results(
         self, pending_tool_call_ids: set[str], exception_type: str

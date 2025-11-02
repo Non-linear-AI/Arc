@@ -85,11 +85,16 @@ class MLModelAgent(BaseAgent):
             target_column: Optional target column name for task-aware generation
             existing_yaml: Optional existing YAML to edit
             editing_instructions: Optional instructions for editing existing YAML
-            model_plan: Optional ML plan guidance (architecture + training unified)
-            knowledge_references: Optional list of knowledge IDs referenced by this request
-            preloaded_knowledge: Optional list of preloaded knowledge docs (deprecated)
-            conversation_history: Optional conversation history for editing workflow
-            data_processing_id: Optional execution ID to load data processing context
+            model_plan: Optional ML plan guidance (architecture + training
+                unified)
+            knowledge_references: Optional list of knowledge IDs referenced
+                by this request
+            preloaded_knowledge: Optional list of preloaded knowledge docs
+                (deprecated)
+            conversation_history: Optional conversation history for editing
+                workflow
+            data_processing_id: Optional execution ID to load data processing
+                context
 
         Returns:
             Tuple of (ModelSpec, unified YAML, conversation_history)
@@ -158,7 +163,7 @@ class MLModelAgent(BaseAgent):
                     # Extract output table names from steps
                     output_tables = []
                     for step in spec.steps:
-                        if step.output_type in ["table", "view"]:
+                        if step.type in ["table", "view"]:
                             output_tables.append(step.name)
 
                     data_processing_context = {
@@ -210,7 +215,7 @@ class MLModelAgent(BaseAgent):
         # Note: Handle legacy preloaded_knowledge parameter by extracting IDs
         final_knowledge_refs = knowledge_references or []
         if preloaded_knowledge and not final_knowledge_refs:
-            # Legacy: extract IDs from preloaded_knowledge if knowledge_references not provided
+            # Legacy: extract IDs if knowledge_references not provided
             final_knowledge_refs = [doc["id"] for doc in preloaded_knowledge]
 
         if final_knowledge_refs:

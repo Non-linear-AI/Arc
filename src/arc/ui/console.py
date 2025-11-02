@@ -253,14 +253,6 @@ class InteractiveInterface:
             p.print("ML Commands")
             ml_commands = [
                 (
-                    "/ml plan --name NAME --instruction DESC --source-tables TABLES",
-                    "Create ML workflow plan (data processing + model + training)",
-                ),
-                (
-                    "/ml revise-plan --instruction CHANGES [--name NAME]",
-                    "Revise the current ML plan based on feedback or training results",
-                ),
-                (
                     "/ml data --name NAME --instruction INST --source-tables TABLES",
                     "Generate data processing pipeline from natural language",
                 ),
