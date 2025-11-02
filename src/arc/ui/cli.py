@@ -967,8 +967,8 @@ async def run_interactive_mode(
                                     panel = Panel(
                                         md, border_style="color(245)", expand=False
                                     )
-                                    # Add 4-space left padding to nest under section
-                                    padded_panel = Padding(panel, (0, 0, 0, 4))
+                                    # Add 2-space left padding to nest under section
+                                    padded_panel = Padding(panel, (0, 0, 0, 2))
                                     ui._printer.console.print(padded_panel)
                                     ui._printer.console.print()  # Blank line
 
