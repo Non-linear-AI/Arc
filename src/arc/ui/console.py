@@ -52,14 +52,14 @@ class InteractiveInterface:
         # Tagline dimmed, manually centered (28 chars, center in 80 = 26 space padding)
         self._printer.print("[dim]                          From Question to Prediction[/dim]")
 
-        # Bottom border - thin dim line (only separator)
-        self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
+        # Bottom border - thin dim line with 2-space padding (consistent with section indentation)
+        self._printer.print("[dim]  ─────────────────────────────────────────────────────────────────────────────[/dim]")
 
         # Blank line for breathing room
         self._printer.print()
 
-        # Single concise hint
-        self._printer.print(" Use /help for more information. Press Esc to interrupt.")
+        # Single concise hint with 2-space indentation (aligned with separator)
+        self._printer.print("  Use /help for more information. Press Esc to interrupt.")
         self._printer.add_separator()
 
     # Lightweight ESC watcher used during streaming (no prompt active)
