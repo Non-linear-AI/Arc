@@ -35,17 +35,18 @@ def _load_template(template_name: str) -> jinja2.Template:
     return env.get_template(template_name)
 
 
-def _render_bug_report_prompt(chat_history: str) -> str:
+def _render_bug_report_prompt(chat_history: str, issue_hint: str | None = None) -> str:
     """Render the bug report prompt template.
 
     Args:
         chat_history: Formatted chat history string
+        issue_hint: Optional user-provided description of the issue
 
     Returns:
         Rendered prompt string
     """
     template = _load_template("bug_report.j2")
-    return template.render(chat_history=chat_history)
+    return template.render(chat_history=chat_history, issue_hint=issue_hint)
 
 
 def format_chat_history(chat_history: list, max_messages: int = 20) -> str:
@@ -75,12 +76,15 @@ def format_chat_history(chat_history: list, max_messages: int = 20) -> str:
     return "\n\n".join(formatted)
 
 
-async def generate_bug_report(agent, max_messages: int = 20) -> dict[str, str] | None:
+async def generate_bug_report(
+    agent, max_messages: int = 20, issue_hint: str | None = None
+) -> dict[str, str] | None:
     """Generate bug report from chat history using LLM.
 
     Args:
         agent: ArcAgent instance with chat history
         max_messages: Maximum number of recent messages to analyze
+        issue_hint: Optional user-provided description of the issue to focus on
 
     Returns:
         Dict with keys: title, description, steps, expected, actual, context
@@ -92,8 +96,8 @@ async def generate_bug_report(agent, max_messages: int = 20) -> dict[str, str] |
     # Format chat history
     chat_text = format_chat_history(agent.chat_history, max_messages)
 
-    # Render prompt from Jinja2 template
-    prompt = _render_bug_report_prompt(chat_text)
+    # Render prompt from Jinja2 template with optional issue hint
+    prompt = _render_bug_report_prompt(chat_text, issue_hint)
 
     # Create messages for LLM
     messages = [
@@ -215,3 +219,112 @@ def format_bug_report_for_display(report: dict[str, str]) -> str:
         parts.append(report['context'])
 
     return "\n".join(parts)
+
+
+def format_bug_report_for_editing(report: dict[str, str]) -> str:
+    """Format bug report as editable markdown for system editor.
+
+    Args:
+        report: Parsed bug report dict
+
+    Returns:
+        Markdown formatted string for editing
+    """
+    parts = []
+
+    # Title
+    parts.append(f"# {report.get('title', '')}")
+    parts.append("")
+
+    # Description
+    if report.get('description'):
+        parts.append("## Description")
+        parts.append(report['description'])
+        parts.append("")
+
+    # Steps to reproduce
+    if report.get('steps'):
+        parts.append("## Steps to Reproduce")
+        parts.append(report['steps'])
+        parts.append("")
+
+    # Expected behavior
+    if report.get('expected'):
+        parts.append("## Expected Behavior")
+        parts.append(report['expected'])
+        parts.append("")
+
+    # Actual behavior
+    if report.get('actual'):
+        parts.append("## Actual Behavior")
+        parts.append(report['actual'])
+        parts.append("")
+
+    # Context
+    if report.get('context'):
+        parts.append("## Context")
+        parts.append(report['context'])
+
+    return "\n".join(parts)
+
+
+def parse_bug_report_from_markdown(markdown: str) -> dict[str, str]:
+    """Parse edited markdown back into bug report dict.
+
+    Args:
+        markdown: Edited markdown content
+
+    Returns:
+        Bug report dict with parsed sections
+    """
+    report = {
+        "title": "",
+        "description": "",
+        "steps": "",
+        "expected": "",
+        "actual": "",
+        "context": ""
+    }
+
+    lines = markdown.split('\n')
+    current_section = None
+    content_lines = []
+
+    for line in lines:
+        # Check for title (# Title)
+        if line.startswith('# '):
+            if current_section:
+                report[current_section] = '\n'.join(content_lines).strip()
+                content_lines = []
+            report['title'] = line[2:].strip()
+            current_section = None
+
+        # Check for section headers (## Header)
+        elif line.startswith('## '):
+            if current_section:
+                report[current_section] = '\n'.join(content_lines).strip()
+                content_lines = []
+
+            header = line[3:].strip().lower()
+            if 'description' in header:
+                current_section = 'description'
+            elif 'steps' in header:
+                current_section = 'steps'
+            elif 'expected' in header:
+                current_section = 'expected'
+            elif 'actual' in header:
+                current_section = 'actual'
+            elif 'context' in header:
+                current_section = 'context'
+            else:
+                current_section = None
+
+        # Collect content lines
+        elif current_section:
+            content_lines.append(line)
+
+    # Save last section
+    if current_section:
+        report[current_section] = '\n'.join(content_lines).strip()
+
+    return report
