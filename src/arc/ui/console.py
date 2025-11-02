@@ -44,20 +44,16 @@ class InteractiveInterface:
         # Top border - thin dim line
         self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
 
-        # Logo in cyan, centered
-        logo_lines = [
-            " ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗",
-            "▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝",
-            "▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║",
-            "▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║",
-            "▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗",
-            "╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝",
-        ]
-        for line in logo_lines:
-            self._printer.print(Align.center(f"[cyan]{line}[/cyan]", width=80))
+        # Logo in cyan, manually centered (logo is 29 chars, center in 80 = 25 space padding)
+        self._printer.print("[cyan]                         ▓▓▓▓▓╗   ▓▓▓▓▓▓╗    ▓▓▓▓▓▓╗[/cyan]")
+        self._printer.print("[cyan]                        ▓▓╔══▓▓╗  ▓▓╔══▓▓╗  ▓▓╔════╝[/cyan]")
+        self._printer.print("[cyan]                        ▓▓▓▓▓▓▓║  ▓▓▓▓▓▓╔╝  ▓▓║[/cyan]")
+        self._printer.print("[cyan]                        ▓▓╔══▓▓║  ▓▓╔══▓▓╗  ▓▓║[/cyan]")
+        self._printer.print("[cyan]                        ▓▓║  ▓▓║  ▓▓║  ╚▓▓╗ ╚▓▓▓▓▓▓╗[/cyan]")
+        self._printer.print("[cyan]                        ╚═╝  ╚═╝  ╚═╝   ╚═╝  ╚═════╝[/cyan]")
 
-        # Tagline dimmed, centered
-        self._printer.print(Align.center("[dim]From Question to Prediction[/dim]", width=80))
+        # Tagline dimmed, manually centered (28 chars, center in 80 = 26 space padding)
+        self._printer.print("[dim]                          From Question to Prediction[/dim]")
 
         # Bottom border - thin dim line
         self._printer.print("[dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
