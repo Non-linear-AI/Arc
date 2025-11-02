@@ -154,12 +154,10 @@ cython_debug/
 # Database files
 *.db
 
-# Model artifacts
-/artifacts/
-/tensorboard/
-
 # Claude Code
 /CLAUDE.md
 
 /data/
+
+# Arc project-local data (databases, artifacts, tensorboard)
 /.arc/

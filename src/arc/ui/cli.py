@@ -109,7 +109,7 @@ def chat(
     system_db_path = settings_manager.get_system_database_path()
     user_db_path = settings_manager.get_user_database_path()
     db_manager = DatabaseManager(system_db_path, user_db_path)
-    services = ServiceContainer(db_manager, artifacts_dir="artifacts")
+    services = ServiceContainer(db_manager, artifacts_dir=".arc/artifacts")
 
     # Run interactive mode
     asyncio.run(
