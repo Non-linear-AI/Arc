@@ -927,6 +927,16 @@ async def run_interactive_mode(
                         title = ""
                         desc = ""
 
+                        if not can_use_llm:
+                            # Show why auto-detect isn't available
+                            ui._printer.print()
+                            with ui._printer.section(shape="▸") as p:
+                                if not agent:
+                                    p.print("[dim]Auto-detect unavailable: No AI agent initialized[/dim]")
+                                else:
+                                    p.print("[dim]Auto-detect unavailable: No conversation history yet[/dim]")
+                                p.print("[dim]Have a conversation first, then use /report to analyze issues[/dim]")
+
                         if can_use_llm:
                             # Ask user if they want auto-detect or manual entry
                             choice = await ui.get_user_input_async(
