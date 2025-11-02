@@ -1,46 +1,51 @@
-"""Bug report generation prompt template."""
+"""Bug report generation using Jinja2 template."""
 
-BUG_REPORT_SYSTEM_PROMPT = """You are a bug report assistant. Analyze the conversation history and generate a detailed bug report.
+from pathlib import Path
 
-Your task:
-1. Identify what the user was trying to accomplish
-2. Identify what went wrong (errors, unexpected behavior, confusion)
-3. Extract relevant context (commands run, error messages, data)
-4. Generate a clear, actionable bug report
+import jinja2
 
-Output format (use this exact structure):
 
-TITLE: [One-line summary of the issue]
+def _get_template_directory() -> Path:
+    """Get the template directory for bug report prompts.
 
-DESCRIPTION:
-[2-3 sentences describing what happened]
+    Returns:
+        Path to the templates directory
+    """
+    return Path(__file__).parent / "templates"
 
-STEPS TO REPRODUCE:
-1. [First step from conversation]
-2. [Second step]
-3. [Where the problem occurred]
 
-EXPECTED BEHAVIOR:
-[What should have happened]
+def _load_template(template_name: str) -> jinja2.Template:
+    """Load a Jinja2 template.
 
-ACTUAL BEHAVIOR:
-[What actually happened - include error messages if any]
+    Args:
+        template_name: Name of the template file
 
-CONTEXT:
-[Any relevant context from the conversation]
+    Returns:
+        Loaded Jinja2 template
 
-Guidelines:
-- Be specific and concise
-- Include exact commands/error messages from the chat
-- Focus on the most recent issue if multiple problems discussed
-- If no clear issue, state "No specific issue detected in recent conversation"
-"""
+    Raises:
+        Exception: If template loading fails
+    """
+    template_dir = _get_template_directory()
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(template_dir),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    return env.get_template(template_name)
 
-BUG_REPORT_USER_PROMPT = """Analyze the following conversation and generate a bug report:
 
-{chat_history}
+def _render_bug_report_prompt(chat_history: str) -> str:
+    """Render the bug report prompt template.
 
-Generate a detailed bug report following the specified format."""
+    Args:
+        chat_history: Formatted chat history string
+
+    Returns:
+        Rendered prompt string
+    """
+    template = _load_template("bug_report.j2")
+    return template.render(chat_history=chat_history)
 
 
 def format_chat_history(chat_history: list, max_messages: int = 20) -> str:
@@ -87,10 +92,12 @@ async def generate_bug_report(agent, max_messages: int = 20) -> dict[str, str] |
     # Format chat history
     chat_text = format_chat_history(agent.chat_history, max_messages)
 
+    # Render prompt from Jinja2 template
+    prompt = _render_bug_report_prompt(chat_text)
+
     # Create messages for LLM
     messages = [
-        {"role": "system", "content": BUG_REPORT_SYSTEM_PROMPT},
-        {"role": "user", "content": BUG_REPORT_USER_PROMPT.format(chat_history=chat_text)}
+        {"role": "user", "content": prompt}
     ]
 
     try:
