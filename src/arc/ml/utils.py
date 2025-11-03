@@ -136,8 +136,19 @@ class ShapeInferenceError(Exception):
 class ShapeValidator:
     """Validates and infers tensor shapes in Arc-Graph models."""
 
-    def __init__(self, var_registry: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        var_registry: dict[str, Any] | None = None,
+        modules: dict[str, Any] | None = None,
+    ):
+        """Initialize ShapeValidator.
+
+        Args:
+            var_registry: Registry of resolved variables
+            modules: Dictionary of ModuleDefinition objects for arc.stack support
+        """
         self.var_registry = var_registry or {}
+        self.modules = modules or {}
         self.shape_cache: dict[str, list[int | None]] = {}
         self.layer_output_shapes: dict[str, list[int | None]] = {}
 
@@ -270,6 +281,10 @@ class ShapeValidator:
         # Stack (similar to concat but adds new dimension)
         elif layer_type == "torch.stack":
             return self._infer_stack_shape(resolved_params, input_shapes)
+
+        # Arc-specific stack (sequential module repetition)
+        elif layer_type == "arc.stack":
+            return self._infer_arc_stack_shape(resolved_params, input_shapes)
 
         # Element-wise addition
         elif layer_type in ["core.Add", "torch.add"]:
@@ -524,6 +539,132 @@ class ShapeValidator:
         # Insert new dimension at specified position
         output_shape = first_shape[:dim] + [len(shapes)] + first_shape[dim:]
         return output_shape
+
+    def _infer_arc_stack_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer arc.stack output shape.
+
+        Arc.stack creates a sequential stack of N identical modules.
+        The output shape is the module's output shape (sequential stacking preserves shape).
+        """
+        if len(input_shapes) != 1:
+            raise ShapeInferenceError("arc.stack expects exactly one input")
+
+        # Get module name from params
+        module_name = params.get("module")
+        if module_name is None:
+            raise ShapeInferenceError("arc.stack missing 'module' parameter")
+
+        # Look up module definition
+        if module_name not in self.modules:
+            raise ShapeInferenceError(
+                f"arc.stack references unknown module: {module_name}"
+            )
+
+        module_def = self.modules[module_name]
+
+        # Infer module output shape by processing its internal graph
+        module_output_shape = self._infer_module_output_shape(
+            module_def, input_shapes
+        )
+
+        # Sequential stacking preserves shape: input → module → module → ... → output
+        # The output shape is the same as the module's output shape
+        return module_output_shape
+
+    def _infer_module_output_shape(
+        self, module_def: Any, input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer output shape for a module by validating its internal graph.
+
+        Args:
+            module_def: ModuleDefinition with inputs, graph, and outputs
+            input_shapes: Input shapes provided to the module
+
+        Returns:
+            Module's output shape
+
+        Raises:
+            ShapeInferenceError: If module shape inference fails
+        """
+        # Create a temporary shape cache for the module's internal computation
+        saved_cache = self.shape_cache.copy()
+        saved_layer_shapes = self.layer_output_shapes.copy()
+
+        try:
+            # Initialize module's input shapes in the cache
+            # Module inputs are parameter names (e.g., ["x"])
+            if hasattr(module_def, "inputs"):
+                module_input_names = module_def.inputs
+                if len(module_input_names) != len(input_shapes):
+                    raise ShapeInferenceError(
+                        f"Module expects {len(module_input_names)} inputs, "
+                        f"got {len(input_shapes)}"
+                    )
+
+                # Map provided input shapes to module's parameter names
+                for param_name, input_shape in zip(
+                    module_input_names, input_shapes.values(), strict=False
+                ):
+                    self.shape_cache[param_name] = input_shape
+
+            # Process module's graph nodes
+            if hasattr(module_def, "graph"):
+                # Build input mappings for module's internal graph
+                module_input_mappings = {}
+                for node in module_def.graph:
+                    if hasattr(node, "inputs") and node.inputs:
+                        module_input_mappings[node.name] = node.inputs
+
+                # Validate shapes through the module's graph
+                for node in module_def.graph:
+                    # Get input shapes for this node
+                    node_input_shapes = self._get_layer_input_shapes(
+                        node.name, module_input_mappings
+                    )
+
+                    # Infer output shape
+                    output_shape = self.infer_layer_output_shape(
+                        node.name, node.type, node.params or {}, node_input_shapes
+                    )
+
+                    # Cache the output shape
+                    self.shape_cache[node.name] = output_shape
+                    self.shape_cache[f"{node.name}.output"] = output_shape
+                    self.layer_output_shapes[node.name] = output_shape
+
+            # Get module's output shape from the outputs mapping
+            if hasattr(module_def, "outputs") and module_def.outputs:
+                # Module outputs is a dict mapping output names to node references
+                # Get the first output's shape
+                first_output_ref = next(iter(module_def.outputs.values()))
+
+                # Resolve the reference
+                if first_output_ref in self.shape_cache:
+                    result_shape = self.shape_cache[first_output_ref]
+                elif f"{first_output_ref}.output" in self.shape_cache:
+                    result_shape = self.shape_cache[f"{first_output_ref}.output"]
+                else:
+                    raise ShapeInferenceError(
+                        f"Cannot find output shape for module output: {first_output_ref}"
+                    )
+
+                return result_shape
+            else:
+                # No explicit outputs - use last node's output
+                if module_def.graph:
+                    last_node_name = module_def.graph[-1].name
+                    return self.shape_cache.get(
+                        last_node_name, self.shape_cache.get(f"{last_node_name}.output")
+                    )
+                else:
+                    raise ShapeInferenceError("Module has no graph nodes")
+
+        finally:
+            # Restore original cache (module validation is temporary)
+            self.shape_cache = saved_cache
+            self.layer_output_shapes = saved_layer_shapes
 
     def _infer_squeeze_shape(
         self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]

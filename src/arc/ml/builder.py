@@ -203,7 +203,9 @@ class ModelBuilder:
 
         # Initialize shape validator
         if self.enable_shape_validation:
-            self.shape_validator = ShapeValidator(self.var_registry)
+            self.shape_validator = ShapeValidator(
+                self.var_registry, graph.modules
+            )
 
         # Compute execution order and input mappings
         execution_order, input_mappings = self._compute_execution_order(graph)
@@ -449,6 +451,6 @@ class ModelBuilder:
         if not self.enable_shape_validation:
             return inputs
 
-        validator = ShapeValidator(self.var_registry)
+        validator = ShapeValidator(self.var_registry, graph.modules)
         validator.validate_input_shapes(inputs, graph.model.inputs)
         return inputs
