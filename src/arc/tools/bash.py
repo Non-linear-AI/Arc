@@ -71,7 +71,6 @@ class BashTool(BaseTool):
                 confirmation_result = (
                     await self.confirmation_service.request_confirmation(
                         operation="Run bash command",
-                        target=command,
                         operation_type="bash",
                         content=f"Command: {command}\n"
                         f"Working directory: {self._current_directory}",
