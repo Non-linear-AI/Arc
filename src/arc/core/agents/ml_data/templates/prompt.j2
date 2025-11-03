@@ -27,14 +27,37 @@ Your goal is to generate a single, valid YAML configuration that:
 
 **Requirements**: {{ user_instruction }}
 {% endif %}
-{% if source_tables %}
-**Source Tables**: {{ source_tables | join(", ") }}
+**Data Source Type**: {{ data_source_type }}
+{% if data_sources %}
+**Data Sources**: {{ data_sources | join(", ") }}
 {% endif %}
 **Database**: {{ schema_info.database }}
 
 # Available Data
 
-{% if schema_info.tables %}{% for table in schema_info.tables %}
+{% if data_source_type in ["csv", "parquet", "json"] %}
+**Data Source Type**: External {{ data_source_type.upper() }} files
+
+You will be loading data from external {{ data_source_type.upper() }} files. Use DuckDB's native loading function:
+{% if data_source_type == "csv" %}
+- `read_csv_auto('path')` for auto-detection (recommended for simple CSVs)
+- `read_csv('path', delim=',', header=true, columns={...})` for explicit schema
+- `read_csv('path', delim='::', header=false, columns={...})` for custom delimiters
+{% elif data_source_type == "parquet" %}
+- `read_parquet('path')` to load Parquet files
+{% elif data_source_type == "json" %}
+- `read_json_auto('path')` for auto-detection (recommended)
+- `read_json('path', columns={...})` for explicit schema
+{% endif %}
+
+The {{ data_source_type.upper() }} files are specified in the data_sources list above.
+
+**IMPORTANT**: For file loading tasks, you MUST read the data_loading knowledge document first:
+- Use `read_knowledge_content("data_loading")` to get comprehensive guidance on DuckDB loading functions
+- This knowledge includes complete examples, best practices, and troubleshooting for {{ data_source_type.upper() }} files
+- After reading the knowledge, apply the patterns to your specific task
+{% elif schema_info.tables %}
+{% for table in schema_info.tables %}
 **Table: {{ table.name }}**
 {% for column in table.columns %}
   - {{ column.name }} ({{ column.type }}{% if not column.nullable %}, NOT NULL{% endif %})
@@ -44,18 +67,58 @@ Your goal is to generate a single, valid YAML configuration that:
 No table schema information is available. You must use the database_query tool to explore tables and columns needed to fulfill the request.
 {% endif %}
 
-# When to Use ML Knowledge
+# When to Use Knowledge Documents
 
-If your task involves creating a **training dataset for machine learning** (e.g., features for model training, train/validation splits, feature scaling), use the knowledge tools:
+Follow this decision tree to determine which knowledge to read:
 
-- **list_available_knowledge()**: See available ML patterns and guidance
-- **read_knowledge_content("ml_data_preparation")**: Get comprehensive ML data preparation guide including:
-  - Output schema requirements (features, target, split columns)
-  - Stratified train/validation splitting patterns
-  - Data leakage prevention (fit on train, apply to both)
-  - Feature engineering patterns (StandardScaler, MinMaxScaler, one-hot encoding, imputation)
+## 1. Loading External Files? → Use data_loading
 
-For **general data pipelines** (cleanup, aggregation, reporting, transformations), you don't need ML-specific knowledge.
+**If your task involves loading external data files into the database**, you MUST read data_loading knowledge:
+
+```
+Task Type: Import CSV/Parquet/JSON files → read_knowledge_content("data_loading")
+```
+
+**When to use:**
+- Loading CSV files (with any delimiter)
+- Loading Parquet files
+- Loading JSON/JSONL files
+- Importing data from URLs
+- Creating raw tables from external sources
+
+**What you'll get:**
+- Complete DuckDB loading function reference (read_csv_auto, read_csv, read_parquet, read_json_auto)
+- Delimiter handling patterns (::, |, tab-delimited, etc.)
+- Schema detection vs explicit schema guidance
+- Real examples: MovieLens dataset, Pima diabetes dataset
+- Best practices for idempotency and validation
+- Troubleshooting guide for common loading errors
+
+## 2. Creating ML Training Datasets? → Use ml_data_preparation
+
+**If your task involves preparing data for ML model training**, read ml_data_preparation knowledge:
+
+```
+Task Type: Feature engineering, train/val splits, scaling → read_knowledge_content("ml_data_preparation")
+```
+
+**When to use:**
+- Creating features from existing database tables
+- Splitting data into train/validation sets (stratified or random)
+- Normalizing/scaling features (StandardScaler, MinMaxScaler)
+- Feature engineering (one-hot encoding, binning, derived features)
+- Preventing data leakage (fit on train, apply to validation)
+
+**What you'll get:**
+- Output schema requirements (features, target, split columns)
+- Stratified split patterns for imbalanced datasets
+- Feature scaling patterns with proper train/val separation
+- Data leakage prevention techniques
+- Complete ML pipeline examples
+
+## 3. General Data Transformations? → No knowledge needed
+
+For **general data pipelines** (cleanup, aggregation, joins, reporting), you don't need knowledge documents. Use the SQL patterns and best practices described in this prompt.
 
 # Available Tools
 

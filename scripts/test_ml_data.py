@@ -5,17 +5,26 @@ This script allows you to test data processing execution directly
 without going through the agent.
 
 Usage:
-    python scripts/test_ml_data.py <name> <instruction> <source_tables> [options]
+    python scripts/test_ml_data.py <name> <instruction> <data-source-type> <data-sources> [options]
 
 Examples:
-    # Basic test with single source table
-    python scripts/test_ml_data.py diabetes_processed "Split into train/validation with 80/20 split" pidd
+    # Load CSV file
+    python scripts/test_ml_data.py pidd_import "Load diabetes data" csv /path/to/diabetes.csv
 
-    # Test with multiple source tables
-    python scripts/test_ml_data.py merged_data "Join users and transactions" users,transactions
+    # Load Parquet file
+    python scripts/test_ml_data.py data_import "Load sales data" parquet https://example.com/sales.parquet
 
-    # Test with plan_id
-    python scripts/test_ml_data.py diabetes_features "Create features" pidd --plan-id diabetes-plan-v1
+    # Load JSON file
+    python scripts/test_ml_data.py events_import "Load event logs" json /path/to/events.json
+
+    # Transform existing table
+    python scripts/test_ml_data.py diabetes_processed "Split into train/validation with 80/20 split" table pidd
+
+    # Join multiple tables
+    python scripts/test_ml_data.py merged_data "Join users and transactions" table users,transactions
+
+    # With plan_id
+    python scripts/test_ml_data.py diabetes_features "Create features" table pidd --plan-id diabetes-plan-v1
 """
 
 import argparse
@@ -55,8 +64,14 @@ def parse_args():
     )
 
     parser.add_argument(
-        "source_tables",
-        help="Comma-separated list of source tables (e.g., 'pidd' or 'users,transactions')",
+        "data_source_type",
+        choices=["csv", "parquet", "json", "table"],
+        help="Type of data sources: 'csv', 'parquet', 'json' for external files, 'table' for database tables",
+    )
+
+    parser.add_argument(
+        "data_sources",
+        help="Comma-separated list of data sources (file paths/URLs or table names)",
     )
 
     parser.add_argument(
@@ -140,14 +155,15 @@ async def main():
         # Initialize service container
         services = ServiceContainer(db_manager)
 
-        # Parse source tables
-        source_tables = [t.strip() for t in args.source_tables.split(",")]
+        # Parse data sources
+        data_sources = [s.strip() for s in args.data_sources.split(",")]
 
         # Display test info
         logger.info("=" * 80)
         logger.info(f"Name: {args.name}")
         logger.info(f"Instruction: {args.instruction}")
-        logger.info(f"Source tables: {source_tables}")
+        logger.info(f"Data source type: {args.data_source_type}")
+        logger.info(f"Data sources: {data_sources}")
         logger.info(f"Database: {args.database}")
         if args.plan_id:
             logger.info(f"Plan ID: {args.plan_id}")
@@ -168,7 +184,8 @@ async def main():
         result = await tool.generate(
             name=args.name,
             instruction=args.instruction,
-            source_tables=source_tables,
+            data_source_type=args.data_source_type,
+            data_sources=data_sources,
             database=args.database,
             auto_confirm=args.auto_confirm,
             plan_id=args.plan_id,

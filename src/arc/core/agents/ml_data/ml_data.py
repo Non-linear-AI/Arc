@@ -62,7 +62,8 @@ class MLDataAgent(BaseAgent):
         self,
         instruction: str,
         name: str,
-        source_tables: list[str] | None = None,
+        data_source_type: str,
+        data_sources: list[str],
         database: str = "user",
         existing_yaml: str | None = None,
         knowledge_references: list[str] | None = None,
@@ -77,7 +78,9 @@ class MLDataAgent(BaseAgent):
                 For editing: user feedback on what to change.
             name: Name for the data processor (provided by user/tool).
                 Used directly in YAML instead of asking LLM to generate it.
-            source_tables: List of source tables to read from (optional)
+            data_source_type: Type of data sources - "csv", "parquet",
+                "json", or "table"
+            data_sources: List of data sources (file paths/URLs or table names)
             database: Database to use for schema discovery
             existing_yaml: Existing YAML content to edit (optional).
                 If provided, switches to editing mode where instruction
@@ -101,7 +104,8 @@ class MLDataAgent(BaseAgent):
             return await self._generate_fresh(
                 instruction=instruction,
                 name=name,
-                source_tables=source_tables,
+                data_source_type=data_source_type,
+                data_sources=data_sources,
                 database=database,
                 existing_yaml=existing_yaml,
                 knowledge_references=knowledge_references,
@@ -119,7 +123,8 @@ class MLDataAgent(BaseAgent):
         self,
         instruction: str,
         name: str,
-        source_tables: list[str] | None = None,
+        data_source_type: str,
+        data_sources: list[str],
         database: str = "user",
         existing_yaml: str | None = None,
         knowledge_references: list[str] | None = None,
@@ -134,8 +139,9 @@ class MLDataAgent(BaseAgent):
         try:
             # Get schema information for available tables
             # Skip row counts by default - agent can query if needed
+            # Only fetch schema for table sources, not file sources
             schema_info = await self._get_schema_context(
-                source_tables, database, include_row_counts=False
+                data_source_type, data_sources, database, include_row_counts=False
             )
 
             # Build system message with all context
@@ -145,7 +151,8 @@ class MLDataAgent(BaseAgent):
                     "processor_name": name,
                     "user_instruction": instruction,
                     "schema_info": schema_info,
-                    "source_tables": source_tables or [],
+                    "data_source_type": data_source_type,
+                    "data_sources": data_sources,
                     "existing_yaml": existing_yaml,
                 },
             )
@@ -252,14 +259,17 @@ class MLDataAgent(BaseAgent):
 
     async def _get_schema_context(
         self,
-        source_tables: list[str] | None,
+        data_source_type: str,
+        data_sources: list[str],
         database: str,
         include_row_counts: bool = True,
     ) -> dict:
         """Get schema information with statistics for context.
 
         Args:
-            source_tables: Specific source tables to analyze
+            data_source_type: Type of data sources - "csv", "parquet",
+                "json", or "table"
+            data_sources: List of data sources (file paths/URLs or table names)
             database: Database to use
             include_row_counts: Whether to fetch row counts (default: True).
                 Set to False to skip potentially slow COUNT(*) queries.
@@ -267,6 +277,17 @@ class MLDataAgent(BaseAgent):
         Returns:
             Dictionary with schema information and table statistics
         """
+        # For file sources (csv, parquet, json), return minimal context
+        # (no tables to analyze)
+        if data_source_type in ["csv", "parquet", "json"]:
+            return {
+                "database": database,
+                "tables": [],
+                "total_tables": 0,
+                "data_source_type": data_source_type,
+            }
+
+        # For table sources, fetch schema information
         try:
             schema_service = self.services.schema
             schema_info = schema_service.get_schema_info(database)
@@ -275,11 +296,12 @@ class MLDataAgent(BaseAgent):
                 "database": database,
                 "tables": [],
                 "total_tables": len(schema_info.tables),
+                "data_source_type": "table",
             }
 
             # If specific tables requested, get detailed info with statistics
-            if source_tables:
-                for table_name in source_tables:
+            if data_sources:
+                for table_name in data_sources:
                     if schema_info.table_exists(table_name):
                         # Get schema columns
                         columns = schema_info.get_columns_for_table(table_name)

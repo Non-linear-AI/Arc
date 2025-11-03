@@ -32,12 +32,15 @@ class InteractiveQueryService(BaseService):
         super().__init__(db_manager)
         self._schema_service = schema_service
 
-    def execute_query(self, query: str, target_db: str = "system") -> QueryResult:
+    def execute_query(
+        self, query: str, target_db: str = "system", read_only: bool = False
+    ) -> QueryResult:
         """Execute SQL query against the specified database.
 
         Args:
             query: SQL query to execute
             target_db: Target database ("system" or "user")
+            read_only: If True, only SELECT queries are allowed (default: False)
 
         Returns:
             QueryResult with execution time tracking
@@ -55,7 +58,7 @@ class InteractiveQueryService(BaseService):
             )
 
         # Validate query for safety
-        self._validate_query(query, target_db)
+        self._validate_query(query, target_db, read_only=read_only)
 
         # Check if user database is configured when needed
         if target_db == "user" and not self.db_manager.has_user_database():
@@ -87,12 +90,15 @@ class InteractiveQueryService(BaseService):
             else:
                 raise DatabaseError(f"Unexpected error: {str(e)}") from e
 
-    def _validate_query(self, query: str, target_db: str) -> None:
+    def _validate_query(
+        self, query: str, target_db: str, read_only: bool = False
+    ) -> None:
         """Validate query for safety and correctness based on target database.
 
         Args:
             query: SQL query to validate
             target_db: Target database ("system" or "user")
+            read_only: If True, only SELECT queries are allowed
 
         Raises:
             QueryValidationError: If query is invalid
@@ -102,8 +108,8 @@ class InteractiveQueryService(BaseService):
 
         query_upper = query.upper().strip()
 
-        if target_db == "system":
-            # System database: read-only access (SELECT only)
+        # System database is always read-only
+        if target_db == "system" or read_only:
             # Block modification SQL commands
             modification_commands = {
                 "INSERT",
@@ -112,16 +118,23 @@ class InteractiveQueryService(BaseService):
                 "CREATE",
                 "DROP",
                 "ALTER",
+                "TRUNCATE",
             }
             first_word = query_upper.split()[0] if query_upper.split() else ""
             if first_word in modification_commands:
-                msg = (
-                    "System database is read-only. Supported: SELECT statements. "
-                    "Not supported: INSERT, UPDATE, DELETE, CREATE, DROP, etc."
-                )
+                if target_db == "system":
+                    msg = (
+                        "System database is read-only. "
+                        "Supported: SELECT, SHOW, DESCRIBE. "
+                        "Not supported: INSERT, UPDATE, DELETE, CREATE, DROP, etc."
+                    )
+                else:
+                    msg = (
+                        "Read-only mode enforced. "
+                        "Supported: SELECT, SHOW, DESCRIBE. "
+                        "For data loading or transformations, use ml_data tool instead."
+                    )
                 raise QueryValidationError(msg)
         elif target_db == "user":
-            # User database: full SQL access allowed
-            # We could add specific validations here if needed in the future
-            # For now, allow all SQL operations on user database
+            # User database: full SQL access allowed when not in read-only mode
             pass

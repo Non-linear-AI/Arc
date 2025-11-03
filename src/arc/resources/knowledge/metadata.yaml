@@ -8,7 +8,12 @@ dcn:
   description: "Combines explicit feature crossing with deep representation learning for CTR prediction and recommendations"
   phases: ["model"]
 
+data_loading:
+  name: "Data Loading with DuckDB"
+  description: "Generic data loading patterns for CSV, Parquet, JSON files using DuckDB's native functions. Covers schema detection, file formats, and best practices"
+  phases: ["data"]
+
 ml_data_preparation:
   name: "ML Data Preparation"
-  description: "Comprehensive guide for ML training dataset creation: output schema, stratified splits, data leakage prevention, and feature engineering patterns"
+  description: "ML-specific data preparation: output schema requirements, stratified train/validation splits, data leakage prevention, and feature engineering patterns"
   phases: ["data"]

@@ -217,3 +217,14 @@ outputs: [diabetes_training_data]
 - StandardScaler implementation: `(value - mean) / stddev` with NULLIF for division-by-zero protection
 - Proper output schema: numeric features + `outcome` target + `split` column
 - Idempotency: DROP statements for all created objects
+
+## Summary
+
+This guide focuses on ML-specific data preparation tasks:
+
+1. **Output Schema Requirements**: Training datasets must have numeric features, a target column, and a `split` column
+2. **Train/Validation Splits**: Use stratified splitting to maintain class distribution
+3. **Data Leakage Prevention**: Fit preprocessing parameters on training set only, then apply to both sets
+4. **Feature Engineering**: StandardScaler, MinMaxScaler, one-hot encoding, and imputation patterns
+
+For **loading external data files** (CSV, Parquet, JSON) into the database, see the separate [Data Loading](data_loading.md) guide.

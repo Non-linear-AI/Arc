@@ -91,7 +91,7 @@ User: "Can we predict customer churn from the users table?"
 3. database_query → "SELECT churned, COUNT(*) FROM users GROUP BY churned" → 7000 active, 3000 churned (30% churn rate)
 4. list_available_knowledge → See available knowledge documents
 5. read_knowledge('ml_data_preparation') → Learn about feature engineering, scaling, train/val splits
-6. ml_data(name='churn-data', instruction='Create standardized features with train/val split...', source_tables=['users'], knowledge_references=['ml_data_preparation']) → Creates `users_processed` table → Returns JSON with data_processing_id
+6. ml_data(name='churn-data', data_source_type='table', data_sources=['users'], instruction='Create standardized features with train/val split...', knowledge_references=['ml_data_preparation']) → Creates `users_processed` table → Returns JSON with data_processing_id
 7. Parse ml_data JSON, extract data_processing_id and output_tables
 8. read_knowledge('mlp') → Learn about multi-layer perceptron architecture for tabular data
 9. ml_model(name='churn-model', data_table='users_processed', target_column='churned', data_processing_id='...', knowledge_references=['mlp']) → Generates model + training spec, launches training → Returns JSON with model_id and job_id

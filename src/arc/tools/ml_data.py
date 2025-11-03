@@ -166,7 +166,8 @@ class MLDataTool(BaseTool):
     async def generate(
         self,
         name: str,
-        source_tables: list[str],
+        data_source_type: str,
+        data_sources: list[str],
         instruction: str | None = None,
         database: str = "user",
         auto_confirm: bool = False,
@@ -176,8 +177,8 @@ class MLDataTool(BaseTool):
 
         Args:
             name: Name for the data processor (will be registered in database)
-            source_tables: List of source tables to read from (required to narrow
-                scope of data exploration)
+            data_source_type: Type of data sources - "csv", "parquet", "json", or "table"
+            data_sources: List of data sources (file paths/URLs or table names)
             instruction: Detailed instruction for data processing
             database: Database to use - "system" or "user"
             auto_confirm: Skip interactive confirmation workflow
@@ -220,11 +221,33 @@ class MLDataTool(BaseTool):
                     "Provide a detailed instruction for your data processing needs."
                 )
 
-            if not source_tables or len(source_tables) == 0:
+            # Validate data_source_type
+            if not data_source_type:
                 return _error_in_section(
-                    "source_tables is required to narrow the scope of data "
-                    "exploration. Specify which tables to read from "
-                    "(e.g., ['users', 'transactions'])."
+                    "data_source_type is required. "
+                    "Specify 'csv', 'parquet', 'json', or 'table'."
+                )
+
+            valid_types = ["csv", "parquet", "json", "table"]
+            if data_source_type not in valid_types:
+                return _error_in_section(
+                    f"Invalid data_source_type: {data_source_type}. "
+                    f"Must be one of: {', '.join(valid_types)}."
+                )
+
+            # Validate data_sources with type-specific hints
+            if not data_sources or len(data_sources) == 0:
+                hints = {
+                    "csv": "CSV file paths or URLs (e.g., ['data.csv', 'https://example.com/data.csv'])",
+                    "parquet": "Parquet file paths or URLs (e.g., ['data.parquet', 'https://...'])",
+                    "json": "JSON file paths or URLs (e.g., ['data.json', 'https://...'])",
+                    "table": "table names (e.g., ['users', 'transactions'])",
+                }
+                hint = hints.get(data_source_type, "data sources")
+
+                return _error_in_section(
+                    "data_sources is required to narrow the scope of data exploration. "
+                    f"For data_source_type='{data_source_type}', specify {hint}."
                 )
 
             # Validate database
@@ -262,7 +285,8 @@ class MLDataTool(BaseTool):
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=enhanced_instruction,
                     name=name,
-                    source_tables=source_tables,
+                    data_source_type=data_source_type,
+                    data_sources=data_sources,
                     database=database,
                     knowledge_references=knowledge_references,
                 )
@@ -293,7 +317,8 @@ class MLDataTool(BaseTool):
                     context_dict = {
                         "name": name,
                         "instruction": str(enhanced_instruction),
-                        "source_tables": source_tables,
+                        "data_source_type": data_source_type,
+                        "data_sources": data_sources,
                         "database": database,
                     }
 
@@ -538,7 +563,8 @@ class MLDataTool(BaseTool):
                 ) = await self.generator_agent.generate_data_processing_yaml(
                     instruction=feedback,  # User's change request
                     name=context.get("name", ""),
-                    source_tables=context.get("source_tables"),
+                    data_source_type=context.get("data_source_type", "table"),
+                    data_sources=context.get("data_sources", []),
                     database=context.get("database", "user"),
                     existing_yaml=yaml_content,
                     knowledge_references=None,  # Editing uses conversation_history

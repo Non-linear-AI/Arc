@@ -616,7 +616,8 @@ async def _ml_data_processing(
         {
             "name": True,
             "instruction": True,
-            "source-tables": True,
+            "data-source-type": True,
+            "data-sources": True,
             "plan-id": True,
             "target-db": True,
         },
@@ -625,7 +626,8 @@ async def _ml_data_processing(
 
     name = options.get("name")
     instruction = options.get("instruction")
-    data_tables_str = options.get("source-tables")
+    data_source_type = options.get("data-source-type")
+    data_sources_str = options.get("data-sources")
     plan_id = options.get("plan-id")
     database = options.get("target-db", "user")  # Keep CLI option as --target-db
 
@@ -636,9 +638,30 @@ async def _ml_data_processing(
     if not instruction:
         raise CommandError("/ml data requires --instruction")
 
-    if not data_tables_str:
+    if not data_source_type:
         raise CommandError(
-            "/ml data requires --source-tables to narrow the scope of data exploration"
+            "/ml data requires --data-source-type "
+            "('csv', 'parquet', 'json', or 'table')"
+        )
+
+    valid_types = ["csv", "parquet", "json", "table"]
+    if data_source_type not in valid_types:
+        raise CommandError(
+            f"Invalid data-source-type: {data_source_type}. "
+            f"Must be one of: {', '.join(valid_types)}"
+        )
+
+    if not data_sources_str:
+        hints = {
+            "csv": "CSV file paths or URLs (e.g., 'data.csv,https://example.com/data.csv')",
+            "parquet": "Parquet file paths or URLs (e.g., 'data.parquet')",
+            "json": "JSON file paths or URLs (e.g., 'data.json')",
+            "table": "table names (e.g., 'users,transactions')",
+        }
+        hint = hints.get(data_source_type, "data sources")
+        raise CommandError(
+            f"/ml data requires --data-sources to narrow the scope. "
+            f"For data-source-type='{data_source_type}', provide {hint}"
         )
 
     # Validate database
@@ -647,10 +670,8 @@ async def _ml_data_processing(
             "Invalid database. Use --target-db system or --target-db user"
         )
 
-    # Parse data tables if provided
-    data_tables = None
-    if data_tables_str:
-        data_tables = [t.strip() for t in str(data_tables_str).split(",")]
+    # Parse data sources (comma-separated list)
+    data_sources = [s.strip() for s in str(data_sources_str).split(",")]
 
     # If plan-id is provided, fetch the plan from database
     ml_plan = None
@@ -684,7 +705,8 @@ async def _ml_data_processing(
         result = await tool.execute(
             name=name,
             instruction=instruction,
-            source_tables=data_tables,
+            data_source_type=data_source_type,
+            data_sources=data_sources,
             database=database,
             plan_id=plan_id if ml_plan else None,
         )
