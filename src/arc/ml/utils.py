@@ -209,7 +209,7 @@ class ShapeValidator:
 
         Args:
             layer_name: Name of the layer
-            layer_type: Type of the layer (e.g., 'core.Linear')
+            layer_type: Type of the layer (e.g., 'core.Linear', 'torch.nn.Linear')
             layer_params: Layer parameters
             input_shapes: Shapes of input tensors
 
@@ -222,26 +222,92 @@ class ShapeValidator:
         # Resolve parameters first
         resolved_params = resolve_variable_references(layer_params, self.var_registry)
 
-        if layer_type == "core.Linear":
+        # Linear layers
+        if layer_type in ["core.Linear", "torch.nn.Linear"]:
             return self._infer_linear_shape(resolved_params, input_shapes)
-        elif layer_type in ["core.ReLU", "core.Sigmoid", "core.Dropout"]:
+
+        # Activation layers (shape-preserving)
+        elif layer_type in [
+            "core.ReLU", "core.Sigmoid", "core.Dropout",
+            "torch.nn.ReLU", "torch.nn.Sigmoid", "torch.nn.Dropout",
+            "torch.nn.functional.relu", "torch.nn.functional.sigmoid",
+            "torch.nn.functional.gelu", "torch.nn.functional.tanh",
+            "torch.nn.Tanh", "torch.nn.GELU",
+        ]:
             return self._infer_activation_shape(input_shapes)
-        elif layer_type == "core.Embedding":
+
+        # Embedding layers
+        elif layer_type in ["core.Embedding", "torch.nn.Embedding"]:
             return self._infer_embedding_shape(resolved_params, input_shapes)
-        elif layer_type == "core.MultiHeadAttention":
+
+        # Attention layers
+        elif layer_type in ["core.MultiHeadAttention", "torch.nn.MultiheadAttention"]:
             return self._infer_attention_shape(resolved_params, input_shapes)
-        elif layer_type == "core.TransformerEncoderLayer":
+
+        # Transformer layers
+        elif layer_type in [
+            "core.TransformerEncoderLayer",
+            "torch.nn.TransformerEncoderLayer",
+            "torch.nn.TransformerEncoder",
+        ]:
             return self._infer_transformer_shape(resolved_params, input_shapes)
+
+        # Positional encoding
         elif layer_type == "core.PositionalEncoding":
             return self._infer_positional_encoding_shape(input_shapes)
-        elif layer_type in ["core.LayerNorm", "core.BatchNorm1d"]:
+
+        # Normalization layers
+        elif layer_type in [
+            "core.LayerNorm", "core.BatchNorm1d",
+            "torch.nn.LayerNorm", "torch.nn.BatchNorm1d",
+        ]:
             return self._infer_normalization_shape(input_shapes)
-        elif layer_type == "core.Concatenate":
+
+        # Concatenation
+        elif layer_type in ["core.Concatenate", "torch.cat"]:
             return self._infer_concatenate_shape(resolved_params, input_shapes)
-        elif layer_type == "core.Add":
+
+        # Stack (similar to concat but adds new dimension)
+        elif layer_type == "torch.stack":
+            return self._infer_stack_shape(resolved_params, input_shapes)
+
+        # Element-wise addition
+        elif layer_type in ["core.Add", "torch.add"]:
             return self._infer_add_shape(input_shapes)
-        elif layer_type in ["core.LSTM", "core.GRU"]:
+
+        # RNN layers
+        elif layer_type in [
+            "core.LSTM", "core.GRU",
+            "torch.nn.LSTM", "torch.nn.GRU",
+        ]:
             return self._infer_rnn_shape(resolved_params, input_shapes)
+
+        # Squeeze/unsqueeze operations
+        elif layer_type == "torch.squeeze":
+            return self._infer_squeeze_shape(resolved_params, input_shapes)
+        elif layer_type == "torch.unsqueeze":
+            return self._infer_unsqueeze_shape(resolved_params, input_shapes)
+
+        # Flatten
+        elif layer_type == "torch.nn.Flatten":
+            return self._infer_flatten_shape(resolved_params, input_shapes)
+
+        # Reduction operations (mean, sum, max, min)
+        elif layer_type in ["torch.mean", "torch.sum", "torch.max", "torch.min"]:
+            return self._infer_reduction_shape(resolved_params, input_shapes)
+
+        # Matrix operations
+        elif layer_type == "torch.matmul":
+            return self._infer_matmul_shape(input_shapes)
+
+        # Reshape
+        elif layer_type == "torch.reshape":
+            return self._infer_reshape_shape(resolved_params, input_shapes)
+
+        # Multiplication (element-wise)
+        elif layer_type == "torch.mul":
+            return self._infer_add_shape(input_shapes)  # Same logic as add
+
         else:
             # Unknown layer type - return first input shape as fallback
             if input_shapes:
@@ -426,6 +492,195 @@ class ShapeValidator:
         output_hidden_size = hidden_size * (2 if bidirectional else 1)
         output_shape = input_shape[:-1] + [output_hidden_size]
         return output_shape
+
+    def _infer_stack_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer torch.stack output shape.
+
+        Stack concatenates tensors along a NEW dimension.
+        """
+        if len(input_shapes) < 2:
+            raise ShapeInferenceError("Stack operation expects at least 2 inputs")
+
+        shapes = list(input_shapes.values())
+        first_shape = shapes[0]
+
+        # All input shapes must be identical
+        for _i, shape in enumerate(shapes[1:], 1):
+            if shape != first_shape:
+                raise ShapeInferenceError(
+                    f"Cannot stack tensors with different shapes: "
+                    f"{first_shape} vs {shape}"
+                )
+
+        # Get stack dimension (default is 0)
+        dim = params.get("dim", 0)
+
+        # Normalize negative dimension
+        if dim < 0:
+            dim = len(first_shape) + dim + 1
+
+        # Insert new dimension at specified position
+        output_shape = first_shape[:dim] + [len(shapes)] + first_shape[dim:]
+        return output_shape
+
+    def _infer_squeeze_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer torch.squeeze output shape.
+
+        Squeeze removes dimensions of size 1.
+        """
+        if len(input_shapes) != 1:
+            raise ShapeInferenceError("Squeeze operation expects exactly one input")
+
+        input_shape = next(iter(input_shapes.values()))
+        dim = params.get("dim")
+
+        if dim is None:
+            # Remove all dimensions of size 1
+            output_shape = [d for d in input_shape if d != 1]
+        else:
+            # Remove specific dimension if it's size 1
+            if dim < 0:
+                dim = len(input_shape) + dim
+            output_shape = input_shape[:dim] + input_shape[dim + 1:]
+
+        return output_shape if output_shape else [1]  # At least 1D
+
+    def _infer_unsqueeze_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer torch.unsqueeze output shape.
+
+        Unsqueeze adds a dimension of size 1.
+        """
+        if len(input_shapes) != 1:
+            raise ShapeInferenceError("Unsqueeze operation expects exactly one input")
+
+        input_shape = next(iter(input_shapes.values()))
+        dim = params.get("dim", 0)
+
+        # Normalize negative dimension
+        if dim < 0:
+            dim = len(input_shape) + dim + 1
+
+        # Insert dimension of size 1
+        output_shape = input_shape[:dim] + [1] + input_shape[dim:]
+        return output_shape
+
+    def _infer_flatten_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer torch.nn.Flatten output shape.
+
+        Flattens dimensions from start_dim to end_dim (inclusive).
+        """
+        if len(input_shapes) != 1:
+            raise ShapeInferenceError("Flatten operation expects exactly one input")
+
+        input_shape = next(iter(input_shapes.values()))
+        start_dim = params.get("start_dim", 1)
+        end_dim = params.get("end_dim", -1)
+
+        # Normalize negative dimensions
+        if start_dim < 0:
+            start_dim = len(input_shape) + start_dim
+        if end_dim < 0:
+            end_dim = len(input_shape) + end_dim
+
+        # Calculate flattened size
+        flattened_size = 1
+        for i in range(start_dim, end_dim + 1):
+            if input_shape[i] is not None:
+                flattened_size *= input_shape[i]
+            else:
+                flattened_size = None  # Dynamic
+                break
+
+        # Build output shape
+        output_shape = (
+            input_shape[:start_dim] + [flattened_size] + input_shape[end_dim + 1:]
+        )
+        return output_shape
+
+    def _infer_reduction_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer shape for reduction operations (mean, sum, max, min).
+
+        These operations reduce along specified dimensions.
+        """
+        if len(input_shapes) != 1:
+            raise ShapeInferenceError("Reduction operation expects exactly one input")
+
+        input_shape = next(iter(input_shapes.values()))
+        dim = params.get("dim")
+        keepdim = params.get("keepdim", False)
+
+        if dim is None:
+            # Reduce all dimensions
+            return [1] if keepdim else []
+
+        # Normalize negative dimension
+        if isinstance(dim, int):
+            if dim < 0:
+                dim = len(input_shape) + dim
+
+            if keepdim:
+                output_shape = input_shape[:dim] + [1] + input_shape[dim + 1:]
+            else:
+                output_shape = input_shape[:dim] + input_shape[dim + 1:]
+        else:
+            # Multiple dimensions - more complex, use fallback
+            output_shape = input_shape
+
+        return output_shape if output_shape else [1]
+
+    def _infer_matmul_shape(
+        self, input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer torch.matmul output shape.
+
+        Matrix multiplication shape inference.
+        """
+        if len(input_shapes) != 2:
+            raise ShapeInferenceError("Matmul operation expects exactly 2 inputs")
+
+        shapes = list(input_shapes.values())
+        shape_a, shape_b = shapes[0], shapes[1]
+
+        # Simplified matmul: assume standard matrix multiplication
+        # [batch, m, k] @ [batch, k, n] -> [batch, m, n]
+        if len(shape_a) >= 2 and len(shape_b) >= 2:
+            # Take batch dims from first input, m from first, n from second
+            output_shape = shape_a[:-1] + [shape_b[-1]]
+            return output_shape
+        else:
+            # Fallback for vector cases
+            return shape_a
+
+    def _infer_reshape_shape(
+        self, params: dict[str, Any], input_shapes: dict[str, list[int | None]]
+    ) -> list[int | None]:
+        """Infer torch.reshape output shape.
+
+        Reshape explicitly specifies the output shape.
+        """
+        if len(input_shapes) != 1:
+            raise ShapeInferenceError("Reshape operation expects exactly one input")
+
+        # Shape is explicitly provided in params
+        shape = params.get("shape")
+        if shape is None:
+            raise ShapeInferenceError("Reshape operation missing 'shape' parameter")
+
+        # Convert to list if needed
+        if isinstance(shape, (list, tuple)):
+            return list(shape)
+        else:
+            return [shape]
 
     def validate_model_shapes(
         self,
