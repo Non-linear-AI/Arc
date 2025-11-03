@@ -164,7 +164,6 @@ class FileEditorTool(BaseTool):
 
                 confirmation_result = await self.confirmation_service.request_confirmation(  # noqa
                     operation="Create file",
-                    target=path,
                     operation_type="file",
                     content=f"Creating new file: {path}\nContent preview:\n{preview}",
                 )
@@ -349,7 +348,6 @@ class FileEditorTool(BaseTool):
             ):
                 confirmation_result = await self.confirmation_service.request_confirmation(  # noqa
                     operation="Edit file",
-                    target=path,
                     operation_type="file",
                     content=(
                         f"Editing file: {path}\n"

@@ -351,6 +351,16 @@ class InteractiveInterface:
         if tool_name in TOOLS_WITH_OWN_SECTIONS:
             return
 
+        # Special handling for bash tool - parse JSON and show formatted output
+        if tool_name == "bash" and result.output:
+            self._show_bash_result(result)
+            return
+
+        # Special handling for file operations - parse JSON and show formatted output
+        if tool_name in ["create_file", "edit_file"] and result.output:
+            self._show_file_result(tool_name, result)
+            return
+
         # Special handling for schema_discovery - label depends on what's being shown
         if tool_name == "schema_discovery" and result.metadata:
             label = "Columns" if "table_name" in result.metadata else "Tables"
@@ -470,6 +480,169 @@ class InteractiveInterface:
             else:
                 p.print(f"{label}")
                 if content.strip():
+                    self._print_details_block(content, printer=p)
+
+    def _show_bash_result(self, result) -> None:
+        """Display bash tool result with formatted output."""
+        try:
+            # Parse JSON result from bash tool
+            data = json.loads(result.output)
+            status = data.get("status", "unknown")
+            execution = data.get("execution", {})
+
+            command = execution.get("command", "")
+            stdout = execution.get("stdout", "")
+            stderr = execution.get("stderr", "")
+            exit_code = execution.get("exit_code")
+            working_directory = execution.get("working_directory", "")
+            error_message = execution.get("error")
+
+            # Check if there's an active confirmation section
+            active_section = getattr(
+                self._printer, "_active_confirmation_section", None
+            )
+
+            if active_section:
+                # Continue the existing section from confirmation
+                # Use the stored printer
+                p = self._printer._active_confirmation_printer
+                # Clear the active section flags - we'll close it at the end
+                self._printer._active_confirmation_section = None
+                self._printer._active_confirmation_printer = None
+                section_to_close = active_section
+            else:
+                # No confirmation - create new section as normal
+                tool_shape = self._get_tool_shape("bash")
+                section_to_close = self._printer.section(shape=tool_shape)
+                p = section_to_close.__enter__()
+                p.print("Run")
+
+            # Always show command (dimmed) - but skip if already shown in confirmation
+            if not active_section and command:
+                p.print(f"[dim]{command}[/dim]")
+
+            # Handle based on status
+            if status == "completed":
+                # Success - show stdout only (first 10 lines)
+                if stdout:
+                    lines = stdout.splitlines()
+                    for line in lines[:10]:
+                        p.print(f"[dim]{line}[/dim]")
+                    if len(lines) > 10:
+                        p.print(f"[dim]… +{len(lines) - 10} more lines[/dim]")
+                else:
+                    # No output - show success indicator
+                    p.print("[dim]✓ Command completed successfully[/dim]")
+
+            elif status == "failed":
+                # Failure - show error indicator, exit code, working dir, stderr
+                if exit_code is not None:
+                    p.print(f"✗ Command failed (exit code {exit_code})")
+                elif error_message:
+                    p.print(f"✗ {error_message}")
+                else:
+                    p.print("✗ Command failed")
+
+                # Show working directory on failure
+                if working_directory:
+                    p.print()
+                    p.print(f"Working directory: {working_directory}")
+
+                # Show stderr on failure
+                if stderr:
+                    p.print()
+                    p.print(stderr)
+
+            elif status == "cancelled":
+                # Cancelled - show cancellation message
+                p.print("[dim]Operation cancelled[/dim]")
+
+            # Close the section
+            section_to_close.__exit__(None, None, None)
+
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # Fallback to default display if JSON parsing fails
+            content = result.output if result.success else result.error
+            if content:
+                with self._printer.section(shape=self._get_tool_shape("bash")) as p:
+                    p.print("Run")
+                    self._print_details_block(content, printer=p)
+
+    def _show_file_result(self, tool_name: str, result) -> None:
+        """Display file operation result with formatted output."""
+        try:
+            # Parse JSON result from file tool
+            data = json.loads(result.output)
+            status = data.get("status", "unknown")
+            operation = data.get("operation", {})
+
+            operation_type = operation.get("type", "")
+            file_path = operation.get("file_path", "")
+            message = operation.get("message", "")
+            error = operation.get("error", "")
+
+            # Determine title based on operation type
+            title = "Create" if "create" in operation_type else "Edit"
+
+            # Check if there's an active confirmation section
+            active_section = getattr(
+                self._printer, "_active_confirmation_section", None
+            )
+
+            if active_section:
+                # Continue the existing section from confirmation
+                p = self._printer._active_confirmation_printer
+                # Clear the active section flags - we'll close it at the end
+                self._printer._active_confirmation_section = None
+                self._printer._active_confirmation_printer = None
+                section_to_close = active_section
+            else:
+                # No confirmation - create new section as normal
+                tool_shape = self._get_tool_shape(tool_name)
+                section_to_close = self._printer.section(shape=tool_shape)
+                p = section_to_close.__enter__()
+                p.print(title)
+
+            # Always show file path (dimmed) - but skip if already shown in confirmation
+            if not active_section and file_path:
+                p.print(f"[dim]{file_path}[/dim]")
+
+            # Handle based on status
+            if status == "completed":
+                # Success - show success message
+                if message:
+                    p.print(f"[dim]✓ {message}[/dim]")
+                else:
+                    op_name = operation_type.replace("_", " ")
+                    p.print(f"[dim]✓ File {op_name} successful[/dim]")
+
+            elif status == "failed":
+                # Failure - show error message
+                if error:
+                    p.print(f"✗ {error}")
+                else:
+                    p.print(f"✗ File {operation_type.replace('_', ' ')} failed")
+
+                # Show file path on failure if not already shown
+                if not active_section and file_path:
+                    p.print()
+                    p.print(f"File: {file_path}")
+
+            elif status == "cancelled":
+                # Cancelled - show cancellation message
+                p.print("[dim]Operation cancelled[/dim]")
+
+            # Close the section
+            section_to_close.__exit__(None, None, None)
+
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # Fallback to default display if JSON parsing fails
+            content = result.output if result.success else result.error
+            if content:
+                tool_shape = self._get_tool_shape(tool_name)
+                label = self._action_label(tool_name)
+                with self._printer.section(shape=tool_shape) as p:
+                    p.print(label)
                     self._print_details_block(content, printer=p)
 
     def _print_todo_with_inline_progress(
