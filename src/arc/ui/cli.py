@@ -1165,20 +1165,10 @@ async def run_interactive_mode(
                                 if esc_task in done:
                                     interrupted = True
                                     next_task.cancel()
-                                    # Try to get cancellation chunks from generator
-                                    with suppress(StopAsyncIteration, GeneratorExit):
-                                        # Generator will yield cancellation message chunks
-                                        while True:
-                                            try:
-                                                chunk = await asyncio.wait_for(
-                                                    agen.__anext__(), timeout=0.5
-                                                )
-                                                handler.handle_chunk(chunk)
-                                                # Stop after "done" chunk
-                                                if chunk.type == "done":
-                                                    break
-                                            except asyncio.TimeoutError:
-                                                break
+                                    # Wait for cancelled task to complete
+                                    with suppress(asyncio.CancelledError):
+                                        await next_task
+                                    # Close generator (triggers GeneratorExit handler which adds message to history)
                                     with suppress(Exception):
                                         await agen.aclose()
                                     break
@@ -1192,8 +1182,19 @@ async def run_interactive_mode(
                             if not esc_task.done():
                                 esc_task.cancel()
 
-                # Don't manually display cancellation message - it was already
-                # streamed through the handler above
+                if interrupted:
+                    # Generator added cancellation message to chat history
+                    # Display it through the stream handler for consistency
+                    from arc.core.agent import StreamingChunk
+
+                    if agent and agent.chat_history:
+                        last_entry = agent.chat_history[-1]
+                        if last_entry.type == "assistant" and last_entry.content:
+                            # Create a content chunk and flow it through the handler
+                            chunk = StreamingChunk(type="content", content=last_entry.content)
+                            handler.handle_chunk(chunk)
+                            chunk = StreamingChunk(type="done")
+                            handler.handle_chunk(chunk)
 
             except KeyboardInterrupt:
                 ui.show_goodbye()
