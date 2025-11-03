@@ -366,8 +366,10 @@ class FileEditorTool(BaseTool):
                         status="cancelled",
                         operation_type="edit_file",
                         file_path=path,
-                        old_string_preview=old_str[:100] + ("..." if len(old_str) > 100 else ""),
-                        new_string_preview=new_str[:100] + ("..." if len(new_str) > 100 else ""),
+                        old_string_preview=old_str[:100]
+                        + ("..." if len(old_str) > 100 else ""),
+                        new_string_preview=new_str[:100]
+                        + ("..." if len(new_str) > 100 else ""),
                         occurrence_count=count,
                     )
                     return ToolResult(

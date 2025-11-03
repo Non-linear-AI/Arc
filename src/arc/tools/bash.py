@@ -163,7 +163,10 @@ class BashTool(BaseTool):
                 return ToolResult(
                     success=False,
                     output=output_json,
-                    metadata={"exit_code": process.returncode, "error": "non_zero_exit"},
+                    metadata={
+                        "exit_code": process.returncode,
+                        "error": "non_zero_exit",
+                    },
                 )
 
         except Exception as e:

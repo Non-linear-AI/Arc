@@ -1168,7 +1168,8 @@ async def run_interactive_mode(
                                     # Wait for cancelled task to complete
                                     with suppress(asyncio.CancelledError):
                                         await next_task
-                                    # Close generator (triggers GeneratorExit handler which adds message to history)
+                                    # Close generator (triggers GeneratorExit handler)
+                                    # This adds the cancellation message to chat history
                                     with suppress(Exception):
                                         await agen.aclose()
                                     break
@@ -1191,7 +1192,9 @@ async def run_interactive_mode(
                         last_entry = agent.chat_history[-1]
                         if last_entry.type == "assistant" and last_entry.content:
                             # Create a content chunk and flow it through the handler
-                            chunk = StreamingChunk(type="content", content=last_entry.content)
+                            chunk = StreamingChunk(
+                                type="content", content=last_entry.content
+                            )
                             handler.handle_chunk(chunk)
                             chunk = StreamingChunk(type="done")
                             handler.handle_chunk(chunk)
