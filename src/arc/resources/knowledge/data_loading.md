@@ -25,6 +25,38 @@ After loading data, use data transformation pipelines (also via ml_data tool) fo
 - Normalizing/scaling features
 - Joining multiple tables
 
+## SQL Examples vs YAML Pipelines
+
+**CRITICAL:** This document contains two types of examples:
+
+### 1. Standalone SQL Examples (with CREATE)
+
+SQL code blocks showing DuckDB commands for exploration or interactive use:
+
+```sql
+CREATE TABLE data AS
+SELECT * FROM read_csv('file.csv');
+```
+
+These are for understanding DuckDB functions and can be run directly in a SQL console.
+
+### 2. YAML Pipeline Examples (without CREATE)
+
+YAML specifications for the ml_data tool, where CREATE is added automatically:
+
+```yaml
+- name: data
+  type: table  # ← Executor adds CREATE TABLE automatically
+  sql: SELECT * FROM read_csv('file.csv')  # ← No CREATE here!
+```
+
+**When generating YAML for ml_data:**
+- For `type: table` → SQL must be SELECT only (CREATE TABLE added by executor)
+- For `type: view` → SQL must be SELECT only (CREATE VIEW added by executor)
+- For `type: execute` → SQL can be any DDL/DML (DROP TABLE, INSERT, etc.)
+
+**Common mistake:** Including CREATE in the SQL field when type is table/view will cause parser errors like "syntax error at or near CREATE".
+
 ## CSV Loading
 
 ### Basic CSV Loading (Auto-detection)
@@ -256,7 +288,6 @@ steps:
     type: table
     depends_on: [drop_old_ratings]
     sql: |
-      CREATE TABLE ratings AS
       SELECT * FROM read_csv('ml-latest-small/ratings.csv',
           header=true,
           columns={
@@ -271,7 +302,6 @@ steps:
     type: table
     depends_on: [drop_old_movies]
     sql: |
-      CREATE TABLE movies AS
       SELECT * FROM read_csv('ml-latest-small/movies.csv',
           header=true,
           columns={
@@ -283,6 +313,8 @@ steps:
 
 outputs: [ratings, movies]
 ```
+
+**Important:** When `type: table` or `type: view`, the SQL field should contain ONLY the SELECT query. The CREATE TABLE/VIEW wrapper is added automatically by the executor. Including CREATE in the SQL field will cause parser errors.
 
 ## Complete Example: Pima Indians Diabetes Dataset
 
@@ -299,7 +331,6 @@ steps:
     type: table
     depends_on: [drop_old_diabetes]
     sql: |
-      CREATE TABLE diabetes AS
       SELECT
         column0 as pregnancies,
         column1 as glucose,
@@ -317,7 +348,7 @@ steps:
 outputs: [diabetes]
 ```
 
-**Note:** Since the Pima dataset has no header, DuckDB assigns generic column names (`column0`, `column1`, etc.). We use SELECT to rename them to meaningful names.
+**Note:** Since the Pima dataset has no header, DuckDB assigns generic column names (`column0`, `column1`, etc.). We use SELECT to rename them to meaningful names. The CREATE TABLE wrapper is added automatically by the executor.
 
 ## Best Practices for Data Loading
 
@@ -363,9 +394,7 @@ steps:
   - name: data
     type: table
     depends_on: [drop_old_data]
-    sql: |
-      CREATE TABLE data AS
-      SELECT * FROM read_csv_auto('data.csv')
+    sql: SELECT * FROM read_csv_auto('data.csv')
 ```
 
 ### 4. Validate Data After Loading
