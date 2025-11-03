@@ -1165,6 +1165,11 @@ async def run_interactive_mode(
                                 if esc_task in done:
                                     interrupted = True
                                     next_task.cancel()
+                                    # Wait for cancelled task to complete
+                                    with suppress(asyncio.CancelledError):
+                                        await next_task
+                                    # Close generator (triggers GeneratorExit handler)
+                                    # This adds the cancellation message to chat history
                                     with suppress(Exception):
                                         await agen.aclose()
                                     break
@@ -1179,24 +1184,20 @@ async def run_interactive_mode(
                                 esc_task.cancel()
 
                 if interrupted:
-                    # Check if agent added an interruption message to chat history
-                    # If so, display it; otherwise show default message
-                    last_message = None
+                    # Generator added cancellation message to chat history
+                    # Display it through the stream handler for consistency
+                    from arc.core.agent import StreamingChunk
+
                     if agent and agent.chat_history:
                         last_entry = agent.chat_history[-1]
-                        if last_entry.type == "assistant":
-                            last_message = last_entry.content
-
-                    # Add blank line before message
-                    ui._printer.print("")
-                    if last_message:
-                        # Display agent's interruption message
-                        ui.show_assistant_step(last_message)
-                    else:
-                        # Fallback to default message if agent didn't add one
-                        ui.show_info("⏹ Interrupted.")
-                    # Add blank line after message
-                    ui._printer.print("")
+                        if last_entry.type == "assistant" and last_entry.content:
+                            # Create a content chunk and flow it through the handler
+                            chunk = StreamingChunk(
+                                type="content", content=last_entry.content
+                            )
+                            handler.handle_chunk(chunk)
+                            chunk = StreamingChunk(type="done")
+                            handler.handle_chunk(chunk)
 
             except KeyboardInterrupt:
                 ui.show_goodbye()

@@ -449,13 +449,13 @@ class ArcAgent:
             self._add_cancelled_tool_results(
                 pending_tool_call_ids, exception_type="CancelledError"
             )
-            # Add interruption message for user
-            interruption_msg = "Operation interrupted. What would you like to do next?"
-            interruption_entry = ChatEntry(type="assistant", content=interruption_msg)
-            self.chat_history.append(interruption_entry)
+            # Add cancellation message for user (consistent with tool cancellations)
+            cancellation_msg = "Operation cancelled. What would you like to do next?"
+            cancellation_entry = ChatEntry(type="assistant", content=cancellation_msg)
+            self.chat_history.append(cancellation_entry)
             # Add to API conversation history so LLM sees it in next turn
-            self.messages.append({"role": "assistant", "content": interruption_msg})
-            yield StreamingChunk(type="content", content=interruption_msg)
+            self.messages.append({"role": "assistant", "content": cancellation_msg})
+            yield StreamingChunk(type="content", content=cancellation_msg)
             yield StreamingChunk(type="done")
             # Don't re-raise - we've handled it gracefully
         except GeneratorExit:
@@ -463,13 +463,13 @@ class ArcAgent:
             self._add_cancelled_tool_results(
                 pending_tool_call_ids, exception_type="GeneratorExit"
             )
-            # Add interruption message to conversation history
+            # Add cancellation message to conversation history
             # Note: Can't yield chunks since generator is closing, but we can
             # still add to history for next turn and for CLI to display
-            interruption_msg = "Operation interrupted. What would you like to do next?"
-            interruption_entry = ChatEntry(type="assistant", content=interruption_msg)
-            self.chat_history.append(interruption_entry)
-            self.messages.append({"role": "assistant", "content": interruption_msg})
+            cancellation_msg = "Operation cancelled. What would you like to do next?"
+            cancellation_entry = ChatEntry(type="assistant", content=cancellation_msg)
+            self.chat_history.append(cancellation_entry)
+            self.messages.append({"role": "assistant", "content": cancellation_msg})
             raise  # Must re-raise GeneratorExit
         except Exception as e:
             error_entry = ChatEntry(
@@ -643,12 +643,12 @@ class ArcAgent:
                     }
                 )
             # This is less common but can happen during tool execution
-            interruption_msg = "Operation interrupted. What would you like to do next?"
-            interruption_entry = ChatEntry(type="assistant", content=interruption_msg)
-            self.chat_history.append(interruption_entry)
-            new_entries.append(interruption_entry)
+            cancellation_msg = "Operation cancelled. What would you like to do next?"
+            cancellation_entry = ChatEntry(type="assistant", content=cancellation_msg)
+            self.chat_history.append(cancellation_entry)
+            new_entries.append(cancellation_entry)
             # Add to API conversation history so LLM sees it in next turn
-            self.messages.append({"role": "assistant", "content": interruption_msg})
+            self.messages.append({"role": "assistant", "content": cancellation_msg})
             return new_entries
         except Exception as e:
             error_entry = ChatEntry(
