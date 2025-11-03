@@ -1165,6 +1165,20 @@ async def run_interactive_mode(
                                 if esc_task in done:
                                     interrupted = True
                                     next_task.cancel()
+                                    # Try to get cancellation chunks from generator
+                                    with suppress(StopAsyncIteration, GeneratorExit):
+                                        # Generator will yield cancellation message chunks
+                                        while True:
+                                            try:
+                                                chunk = await asyncio.wait_for(
+                                                    agen.__anext__(), timeout=0.5
+                                                )
+                                                handler.handle_chunk(chunk)
+                                                # Stop after "done" chunk
+                                                if chunk.type == "done":
+                                                    break
+                                            except asyncio.TimeoutError:
+                                                break
                                     with suppress(Exception):
                                         await agen.aclose()
                                     break
@@ -1178,26 +1192,8 @@ async def run_interactive_mode(
                             if not esc_task.done():
                                 esc_task.cancel()
 
-                if interrupted:
-                    # Check if agent added a cancellation message to chat history
-                    # If so, display it; otherwise show default message
-                    last_message = None
-                    if agent and agent.chat_history:
-                        last_entry = agent.chat_history[-1]
-                        if last_entry.type == "assistant":
-                            last_message = last_entry.content
-
-                    # Add blank line before message
-                    ui._printer.print("")
-                    if last_message:
-                        # Display agent's cancellation message
-                        ui.show_assistant_step(last_message)
-                    else:
-                        # Fallback to default message if agent didn't add one
-                        # Use same message as agent for consistency
-                        ui.show_assistant_step("Operation cancelled. What would you like to do next?")
-                    # Add blank line after message
-                    ui._printer.print("")
+                # Don't manually display cancellation message - it was already
+                # streamed through the handler above
 
             except KeyboardInterrupt:
                 ui.show_goodbye()
