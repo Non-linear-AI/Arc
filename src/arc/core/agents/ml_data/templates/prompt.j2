@@ -50,7 +50,12 @@ You will be loading data from external {{ data_source_type.upper() }} files. Use
 - `read_json('path', columns={...})` for explicit schema
 {% endif %}
 
-The {{ data_source_type.upper() }} files are specified in the data_sources list above. If you need guidance on data loading patterns, use `read_knowledge_content("data_loading")`.
+The {{ data_source_type.upper() }} files are specified in the data_sources list above.
+
+**IMPORTANT**: For file loading tasks, you MUST read the data_loading knowledge document first:
+- Use `read_knowledge_content("data_loading")` to get comprehensive guidance on DuckDB loading functions
+- This knowledge includes complete examples, best practices, and troubleshooting for {{ data_source_type.upper() }} files
+- After reading the knowledge, apply the patterns to your specific task
 {% elif schema_info.tables %}
 {% for table in schema_info.tables %}
 **Table: {{ table.name }}**
@@ -64,37 +69,56 @@ No table schema information is available. You must use the database_query tool t
 
 # When to Use Knowledge Documents
 
-The ml_data tool can handle both generic data operations and ML-specific transformations. Use knowledge documents to guide your work:
+Follow this decision tree to determine which knowledge to read:
 
-## For Loading External Data Files
+## 1. Loading External Files? → Use data_loading
 
-If your task involves **loading external data files** (CSV, Parquet, JSON, etc.) into the database:
+**If your task involves loading external data files into the database**, you MUST read data_loading knowledge:
 
-- **read_knowledge_content("data_loading")**: Get comprehensive data loading guide including:
-  - CSV loading with auto-detection and explicit schema
-  - Parquet and JSON file loading
-  - MovieLens and Pima diabetes dataset examples
-  - Best practices for idempotency and validation
+```
+Task Type: Import CSV/Parquet/JSON files → read_knowledge_content("data_loading")
+```
 
-Quick reference for DuckDB native functions:
-- `read_csv_auto('path')`: Auto-detect CSV schema and load
-- `read_csv('path', delim='::', header=false, columns={...})`: Load CSV with explicit schema
-- `read_parquet('path')`: Load Parquet files
-- `read_json_auto('path')`: Load JSON files
+**When to use:**
+- Loading CSV files (with any delimiter)
+- Loading Parquet files
+- Loading JSON/JSONL files
+- Importing data from URLs
+- Creating raw tables from external sources
 
-## For ML Training Datasets
+**What you'll get:**
+- Complete DuckDB loading function reference (read_csv_auto, read_csv, read_parquet, read_json_auto)
+- Delimiter handling patterns (::, |, tab-delimited, etc.)
+- Schema detection vs explicit schema guidance
+- Real examples: MovieLens dataset, Pima diabetes dataset
+- Best practices for idempotency and validation
+- Troubleshooting guide for common loading errors
 
-If your task involves creating a **training dataset for machine learning** (e.g., features for model training, train/validation splits, feature scaling):
+## 2. Creating ML Training Datasets? → Use ml_data_preparation
 
-- **read_knowledge_content("ml_data_preparation")**: Get ML-specific data preparation guide including:
-  - Output schema requirements (features, target, split columns)
-  - Stratified train/validation splitting patterns
-  - Data leakage prevention (fit on train, apply to both)
-  - Feature engineering patterns (StandardScaler, MinMaxScaler, one-hot encoding, imputation)
+**If your task involves preparing data for ML model training**, read ml_data_preparation knowledge:
 
-## For General Data Pipelines
+```
+Task Type: Feature engineering, train/val splits, scaling → read_knowledge_content("ml_data_preparation")
+```
 
-For **general data pipelines** (cleanup, aggregation, reporting, transformations), you don't need specific knowledge documents. Use the SQL patterns and best practices described in this prompt.
+**When to use:**
+- Creating features from existing database tables
+- Splitting data into train/validation sets (stratified or random)
+- Normalizing/scaling features (StandardScaler, MinMaxScaler)
+- Feature engineering (one-hot encoding, binning, derived features)
+- Preventing data leakage (fit on train, apply to validation)
+
+**What you'll get:**
+- Output schema requirements (features, target, split columns)
+- Stratified split patterns for imbalanced datasets
+- Feature scaling patterns with proper train/val separation
+- Data leakage prevention techniques
+- Complete ML pipeline examples
+
+## 3. General Data Transformations? → No knowledge needed
+
+For **general data pipelines** (cleanup, aggregation, joins, reporting), you don't need knowledge documents. Use the SQL patterns and best practices described in this prompt.
 
 # Available Tools
 
