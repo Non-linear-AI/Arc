@@ -88,6 +88,8 @@ When using `read_csv()`, you can specify these options:
 | `quote` | TEXT | `"` | Quote character |
 | `escape` | TEXT | `"` | Escape character |
 | `null_padding` | BOOLEAN | `false` | Pad missing fields with NULL |
+| `encoding` | TEXT | `'UTF-8'` | File encoding (e.g., `'UTF-8'`, `'ISO-8859-1'`, `'UTF-16'`) |
+| `ignore_errors` | BOOLEAN | `false` | Skip rows with parsing errors instead of failing |
 
 ### CSV Loading Examples
 
@@ -118,6 +120,63 @@ SELECT * FROM read_csv('measurements.csv',
     }
 );
 ```
+
+### Handling Encoding Issues
+
+CSV files may have different character encodings. If you encounter Unicode errors like "Invalid unicode (byte sequence mismatch)", use the `encoding` parameter:
+
+**Non-UTF-8 encoded file:**
+```sql
+CREATE TABLE data AS
+SELECT * FROM read_csv('data.csv',
+    encoding='ISO-8859-1'  -- Latin-1 encoding
+);
+```
+
+**Common encoding values:**
+- `'UTF-8'` (default): Standard Unicode encoding
+- `'ISO-8859-1'` or `'LATIN1'`: Western European characters
+- `'UTF-16'`: 16-bit Unicode encoding
+- `'WINDOWS-1252'`: Windows Western European encoding
+
+**Skipping malformed rows with ignore_errors:**
+
+When loading real-world data files that may have inconsistent formatting or corrupted rows, use `ignore_errors=true` to skip problematic rows instead of failing:
+
+```sql
+CREATE TABLE movies AS
+SELECT * FROM read_csv('ml-1m/movies.dat',
+    delim='::',
+    header=false,
+    columns={
+        'movie_id': 'INTEGER',
+        'title': 'VARCHAR',
+        'genres': 'VARCHAR'
+    },
+    ignore_errors=true  -- Skip rows with parsing errors
+);
+```
+
+**Combining encoding and error handling:**
+
+For files with both encoding issues and potential malformed rows:
+
+```sql
+CREATE TABLE data AS
+SELECT * FROM read_csv('legacy_data.csv',
+    encoding='ISO-8859-1',
+    ignore_errors=true,
+    header=true
+);
+```
+
+**When to use ignore_errors:**
+- Loading legacy data with inconsistent formatting
+- Files from external sources with unknown quality
+- Data migration from other systems
+- When you want to load "best effort" and handle validation downstream
+
+**Important:** When using `ignore_errors=true`, always validate the loaded data to check how many rows were skipped and ensure data quality.
 
 ## Parquet Loading
 
@@ -382,7 +441,42 @@ If `read_csv_auto()` fails or produces incorrect results:
 1. **Check delimiter:** Specify with `delim` parameter
 2. **Check header:** Set `header=false` if no header row
 3. **Check quotes:** Adjust `quote` and `escape` parameters
-4. **Check encoding:** DuckDB assumes UTF-8; convert files if needed
+4. **Check encoding:** Use `encoding` parameter if file is not UTF-8 (see "Handling Encoding Issues" section)
+
+### Encoding Errors
+
+**Error: "Invalid unicode (byte sequence mismatch) detected"**
+
+This means the file is not UTF-8 encoded. Solutions:
+
+1. **Specify correct encoding:**
+   ```sql
+   SELECT * FROM read_csv('file.csv', encoding='ISO-8859-1')
+   ```
+
+2. **Use ignore_errors to skip problematic rows:**
+   ```sql
+   SELECT * FROM read_csv('file.csv', ignore_errors=true)
+   ```
+
+3. **Try common encodings:** `'ISO-8859-1'`, `'WINDOWS-1252'`, `'UTF-16'`
+
+### Malformed Data Errors
+
+**Error: "Parser Error: syntax error at or near..."**
+
+This usually means rows have inconsistent number of fields or invalid formatting:
+
+1. **Use ignore_errors to skip bad rows:**
+   ```sql
+   SELECT * FROM read_csv('file.csv', ignore_errors=true)
+   ```
+
+2. **Validate after loading:**
+   ```sql
+   SELECT COUNT(*) FROM read_csv('file.csv', ignore_errors=true)
+   ```
+   Compare with expected row count to see how many rows were skipped
 
 ### Type Inference Issues
 
