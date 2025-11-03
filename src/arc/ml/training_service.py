@@ -627,6 +627,146 @@ class TrainingService:
 
         return "\n".join(lines)
 
+    def validate_model_spec_for_training(
+        self,
+        *,
+        model_spec: ModelSpec,
+        training_config: dict[str, Any],
+        train_table: str,
+        target_column: str,
+        feature_columns: list[str],
+        batch_size: int = 32,
+        learning_rate: float = 0.001,
+    ) -> ValidationReport:
+        """Validate that a model spec can be trained with given data.
+
+        This is a lighter version of validate_job_config that doesn't require
+        a full TrainingJobConfig. Used during model registration to validate
+        BEFORE saving the model to the database.
+
+        Args:
+            model_spec: Model specification
+            training_config: Training configuration dict from model YAML
+            train_table: Training table name
+            target_column: Target column name
+            feature_columns: List of feature columns
+            batch_size: Batch size for validation (default: 32)
+            learning_rate: Learning rate for validation (default: 0.001)
+
+        Returns:
+            ValidationReport with success status and detailed diagnostics
+
+        Raises:
+            ValidationError: If validation fails with details about what went wrong
+        """
+        from types import SimpleNamespace
+
+        logger.info("Validating model spec for training...")
+
+        # Extract loss configuration
+        loss_config = training_config.get("loss", {})
+        if not loss_config or not loss_config.get("type"):
+            raise ValueError("Training config must define a loss function")
+
+        # Create loss object
+        model_loss = SimpleNamespace(
+            type=loss_config.get("type"), params=loss_config.get("params", {})
+        )
+
+        # Extract optimizer configuration
+        optimizer_config = training_config.get("optimizer", {"type": "adam"})
+
+        # Extract target output key from loss function input reference
+        # This tells training which model output to use for loss calculation
+        loss_inputs = loss_config.get("inputs", {})
+        target_output_key = loss_inputs.get(
+            "input"
+        )  # e.g., 'rating_prediction', 'logits', etc.
+
+        # Build training config SimpleNamespace from dict
+        training_config_ns = SimpleNamespace(
+            # Basic training parameters
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            validation_split=training_config.get("validation_split", 0.2),
+            device=training_config.get("device", "cpu"),
+            early_stopping_patience=training_config.get("early_stopping_patience"),
+            # Training config parameters with defaults
+            shuffle=training_config.get("shuffle", True),
+            num_workers=training_config.get("num_workers", 0),
+            pin_memory=training_config.get("pin_memory", False),
+            # Optimizer config
+            optimizer=optimizer_config.get("type", "adam"),
+            optimizer_params=_sanitize_optimizer_params(
+                optimizer_config.get("params", {})
+            ),
+            # Loss config
+            loss_function=model_loss.type,
+            loss_params=model_loss.params,
+            # Additional trainer-specific fields (with defaults)
+            reshape_targets=True,  # Default for binary classification
+            target_output_key=target_output_key,  # Extract from model YAML, not hardcoded
+        )
+
+        # Create data processor with ML data service
+        ml_data_service = MLDataService(self.job_service.db_manager)
+        data_processor = DataProcessor(ml_data_service=ml_data_service)
+
+        # Run inspection processors to get vars for model building
+        features_dict = {
+            "feature_columns": feature_columns,
+            "target_columns": [target_column],
+        }
+        inspection_context = data_processor.run_feature_pipeline(
+            table_name=train_table,
+            features_spec=features_dict,
+            training=True,
+        )[0]  # Get context only, ignore features and targets
+
+        # Build model from Arc Graph with vars context
+        logger.info("Building model for validation...")
+        builder = ModelBuilder()
+        # Pass vars to builder for variable resolution
+        if "vars" in inspection_context:
+            for var_name, var_value in inspection_context["vars"].items():
+                builder.set_variable(f"vars.{var_name}", var_value)
+        model = builder.build_model(model_spec)
+
+        # Create data loader
+        logger.info("Creating data loader for validation...")
+        try:
+            # First try as a registered dataset
+            train_loader = data_processor.create_dataloader_from_dataset(
+                dataset_name=train_table,
+                feature_columns=feature_columns,
+                target_columns=[target_column],
+                batch_size=training_config_ns.batch_size,
+                shuffle=training_config_ns.shuffle,
+                input_spec=model_spec.inputs,
+            )
+        except ValueError:
+            # Fallback to direct table access
+            train_loader = data_processor.create_dataloader_from_table(
+                ml_data_service=ml_data_service,
+                table_name=train_table,
+                feature_columns=feature_columns,
+                target_columns=[target_column],
+                batch_size=training_config_ns.batch_size,
+                shuffle=training_config_ns.shuffle,
+                input_spec=model_spec.inputs,
+            )
+
+        # Run validation
+        report = self._validate_training_setup(
+            model=model,
+            train_loader=train_loader,
+            training_config=training_config_ns,
+            model_loss=model_loss,
+        )
+
+        logger.info("✓ Model spec validation for training completed successfully")
+        return report
+
     def validate_job_config(self, config: TrainingJobConfig) -> None:
         """Validate training job configuration by running a dry-run setup.
 
@@ -663,6 +803,13 @@ class TrainingService:
         # Extract optimizer configuration
         optimizer_config = tc.get("optimizer", {"type": "adam"})
 
+        # Extract target output key from loss function input reference
+        # This tells training which model output to use for loss calculation
+        loss_inputs = loss_config.get("inputs", {})
+        target_output_key = loss_inputs.get(
+            "input"
+        )  # e.g., 'rating_prediction', 'logits', etc.
+
         # Build training config SimpleNamespace from dict
         training_config = SimpleNamespace(
             # Basic training parameters (use config overrides if provided)
@@ -698,7 +845,7 @@ class TrainingService:
             loss_params=model_loss.params,
             # Additional trainer-specific fields (with defaults)
             reshape_targets=True,  # Default for binary classification
-            target_output_key="logits",  # Use logits for BCEWithLogitsLoss
+            target_output_key=target_output_key,  # Extract from model YAML, not hardcoded
         )
 
         # Create data processor with ML data service
@@ -735,6 +882,7 @@ class TrainingService:
                 target_columns=[config.target_column],
                 batch_size=training_config.batch_size,
                 shuffle=training_config.shuffle,
+                input_spec=config.model_spec.inputs,
             )
         except ValueError:
             # Fallback to direct table access
@@ -745,6 +893,7 @@ class TrainingService:
                 target_columns=[config.target_column],
                 batch_size=training_config.batch_size,
                 shuffle=training_config.shuffle,
+                input_spec=config.model_spec.inputs,
             )
 
         # Run validation
@@ -799,6 +948,13 @@ class TrainingService:
             # Extract optimizer configuration
             optimizer_config = tc.get("optimizer", {"type": "adam"})
 
+            # Extract target output key from loss function input reference
+            # This tells training which model output to use for loss calculation
+            loss_inputs = loss_config.get("inputs", {})
+            target_output_key = loss_inputs.get(
+                "input"
+            )  # e.g., 'rating_prediction', 'logits', etc.
+
             # Build training config SimpleNamespace from dict
             training_config = SimpleNamespace(
                 # Basic training parameters (use config overrides if provided)
@@ -834,7 +990,7 @@ class TrainingService:
                 loss_params=model_loss.params,
                 # Additional trainer-specific fields (with defaults)
                 reshape_targets=True,  # Default for binary classification
-                target_output_key="logits",  # Use logits for BCEWithLogitsLoss
+                target_output_key=target_output_key,  # Extract from model YAML, not hardcoded
             )
 
             logger.info(f"Training config ready for job {job_id}")
@@ -879,6 +1035,7 @@ class TrainingService:
                     target_columns=[config.target_column],
                     batch_size=training_config.batch_size,
                     shuffle=training_config.shuffle,
+                    input_spec=config.model_spec.inputs,
                 )
                 logger.info(
                     f"Train data loader created from dataset "
@@ -897,6 +1054,7 @@ class TrainingService:
                     target_columns=[config.target_column],
                     batch_size=training_config.batch_size,
                     shuffle=training_config.shuffle,
+                    input_spec=config.model_spec.inputs,
                 )
                 logger.info(
                     f"Train data loader created from table "
@@ -928,6 +1086,7 @@ class TrainingService:
                     target_columns=[config.target_column],
                     batch_size=training_config.batch_size,
                     shuffle=False,
+                    input_spec=config.model_spec.inputs,
                 )
                 logger.info(
                     f"Validation data loader created from dataset "
@@ -946,6 +1105,7 @@ class TrainingService:
                     target_columns=[config.target_column],
                     batch_size=training_config.batch_size,
                     shuffle=False,
+                    input_spec=config.model_spec.inputs,
                 )
                 logger.info(
                     f"Validation data loader created from table "

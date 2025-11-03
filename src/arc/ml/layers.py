@@ -14,19 +14,92 @@ class FunctionalWrapper(nn.Module):
 
     This allows functional operations to be used in ModuleDict/Sequential
     and properly participate in the model graph.
+
+    Supports both single-input functions (like F.relu) and multi-input
+    functions (like torch.add, torch.mul, torch.cat, torch.stack).
     """
+
+    # Functions that expect a tuple/list of tensors as first argument
+    TUPLE_INPUT_FUNCTIONS = {
+        torch.cat,
+        torch.stack,
+        torch.vstack,
+        torch.hstack,
+        torch.dstack,
+        torch.column_stack,
+        torch.row_stack,
+    }
 
     def __init__(self, func: Callable, **params):
         super().__init__()
         self.func = func
         self.params = params
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        """Apply the functional operation."""
-        if self.params:
-            return self.func(input, **self.params)
+    def forward(self, *inputs: torch.Tensor, **kwargs: torch.Tensor) -> torch.Tensor:
+        """Apply the functional operation.
+
+        Supports both single and multiple inputs:
+        - Single input: forward(x) for functions like relu
+        - Multiple inputs: forward(x, y) for functions like add, mul
+        - Tuple inputs: forward(x, y, z) for functions like cat, stack
+        - Keyword args: forward(input=x) or forward(x=a, y=b)
+        """
+        # Handle keyword args with numeric keys (e.g., input_0, input_1)
+        if kwargs and not inputs:
+            numeric_keys = [k for k in kwargs if k.startswith("input_")]
+            if numeric_keys:
+                # Collect inputs in numeric order
+                sorted_keys = sorted(numeric_keys, key=lambda k: int(k.split("_")[1]))
+                collected_inputs = tuple(kwargs[k] for k in sorted_keys)
+                # Remove numeric keys from kwargs
+                remaining_kwargs = {
+                    k: v for k, v in kwargs.items() if k not in numeric_keys
+                }
+
+                # Check if function expects tuple as first arg (like torch.cat)
+                if self.func in self.TUPLE_INPUT_FUNCTIONS:
+                    # Call with tuple as first arg: func((t1, t2, ...), **params)
+                    if remaining_kwargs or self.params:
+                        merged_params = {
+                            **(remaining_kwargs or {}),
+                            **(self.params or {}),
+                        }
+                        return self.func(collected_inputs, **merged_params)
+                    else:
+                        return self.func(collected_inputs)
+                else:
+                    # Binary/multi-arg function: unpack tuple as args
+                    # func(t1, t2, **params)
+                    if remaining_kwargs or self.params:
+                        merged_params = {
+                            **(remaining_kwargs or {}),
+                            **(self.params or {}),
+                        }
+                        return self.func(*collected_inputs, **merged_params)
+                    else:
+                        return self.func(*collected_inputs)
+
+        # Merge positional and keyword arguments
+        if inputs and kwargs:
+            # Both positional and keyword args - call with both
+            if self.params:
+                return self.func(*inputs, **kwargs, **self.params)
+            else:
+                return self.func(*inputs, **kwargs)
+        elif inputs:
+            # Only positional args
+            if self.params:
+                return self.func(*inputs, **self.params)
+            else:
+                return self.func(*inputs)
+        elif kwargs:
+            # Only keyword args (no numeric keys)
+            if self.params:
+                return self.func(**kwargs, **self.params)
+            else:
+                return self.func(**kwargs)
         else:
-            return self.func(input)
+            raise ValueError("No input arguments provided to FunctionalWrapper")
 
 
 class ArcLayerBase(nn.Module):

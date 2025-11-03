@@ -29,6 +29,51 @@ class TestModelInput:
         assert input_spec.shape == [None]
         assert input_spec.columns is None
 
+    def test_model_input_with_embedding(self):
+        """Test ModelInput with embedding parameters for categorical features."""
+        input_spec = ModelInput(
+            dtype="long",
+            shape=[None],
+            embedding_dim=32,
+            vocab_size=100,
+            categorical=True,
+        )
+
+        assert input_spec.dtype == "long"
+        assert input_spec.shape == [None]
+        assert input_spec.embedding_dim == 32
+        assert input_spec.vocab_size == 100
+        assert input_spec.categorical is True
+
+    def test_model_input_embedding_defaults(self):
+        """Test ModelInput with embedding fields defaulting to None."""
+        input_spec = ModelInput(dtype="float32", shape=[None, 10])
+
+        assert input_spec.embedding_dim is None
+        assert input_spec.vocab_size is None
+        assert input_spec.categorical is False  # Default to False
+
+    def test_model_input_partial_embedding_spec(self):
+        """Test ModelInput with only some embedding parameters."""
+        # Categorical flag alone
+        input_spec1 = ModelInput(
+            dtype="long",
+            shape=[None],
+            categorical=True,
+        )
+        assert input_spec1.categorical is True
+        assert input_spec1.embedding_dim is None
+
+        # With embedding dim but no vocab size
+        input_spec2 = ModelInput(
+            dtype="long",
+            shape=[None],
+            embedding_dim=64,
+            categorical=True,
+        )
+        assert input_spec2.embedding_dim == 64
+        assert input_spec2.vocab_size is None
+
 
 class TestGraphNode:
     """Test GraphNode dataclass."""
@@ -668,3 +713,174 @@ class TestModelSpecValidation:
 
         with pytest.raises(ModelValidationError, match="references undefined node"):
             validate_model_dict(invalid_dict)
+
+
+class TestModelInputEmbedding:
+    """Test ModelInput embedding support for categorical features."""
+
+    def test_parse_yaml_with_categorical_input(self):
+        """Test parsing YAML with categorical input and embedding spec."""
+        yaml_content = """
+        inputs:
+          user_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 32
+            vocab_size: 1000
+          features:
+            dtype: float32
+            shape: [null, 10]
+
+        graph:
+          - name: classifier
+            type: torch.nn.Linear
+            params:
+              in_features: 10
+              out_features: 1
+            inputs:
+              input: features
+
+        outputs:
+          prediction: classifier.output
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check categorical input parsed correctly
+        assert "user_id" in model_spec.inputs
+        user_input = model_spec.inputs["user_id"]
+        assert user_input.dtype == "long"
+        assert user_input.shape == [None]
+        assert user_input.categorical is True
+        assert user_input.embedding_dim == 32
+        assert user_input.vocab_size == 1000
+
+        # Check regular input still works
+        assert "features" in model_spec.inputs
+        features_input = model_spec.inputs["features"]
+        assert features_input.dtype == "float32"
+        assert features_input.categorical is False
+        assert features_input.embedding_dim is None
+
+    def test_parse_yaml_categorical_minimal(self):
+        """Test parsing YAML with minimal categorical specification."""
+        yaml_content = """
+        inputs:
+          category:
+            dtype: long
+            shape: [null]
+            categorical: true
+
+        graph:
+          - name: dense
+            type: torch.nn.Linear
+            params:
+              in_features: 1
+              out_features: 1
+            inputs:
+              input: category
+
+        outputs:
+          result: dense.output
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        category_input = model_spec.inputs["category"]
+        assert category_input.categorical is True
+        assert category_input.embedding_dim is None
+        assert category_input.vocab_size is None
+
+    def test_yaml_round_trip_with_embedding(self):
+        """Test YAML round-trip preserves embedding parameters."""
+        original_yaml = """
+        inputs:
+          genre_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 16
+            vocab_size: 50
+            columns: [genre_encoded]
+
+        graph:
+          - name: output
+            type: torch.nn.Linear
+            params:
+              in_features: 1
+              out_features: 1
+            inputs:
+              input: genre_id
+
+        outputs:
+          prediction: output.output
+        """
+
+        # Parse
+        model_spec = ModelSpec.from_yaml(original_yaml)
+
+        # Convert back to YAML
+        regenerated_yaml = model_spec.to_yaml()
+
+        # Parse again
+        model_spec2 = ModelSpec.from_yaml(regenerated_yaml)
+
+        # Check embedding parameters preserved
+        genre_input = model_spec2.inputs["genre_id"]
+        assert genre_input.categorical is True
+        assert genre_input.embedding_dim == 16
+        assert genre_input.vocab_size == 50
+        assert genre_input.columns == ["genre_encoded"]
+
+    def test_multiple_categorical_inputs(self):
+        """Test model with multiple categorical inputs."""
+        yaml_content = """
+        inputs:
+          user_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 64
+            vocab_size: 10000
+          movie_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 128
+            vocab_size: 5000
+          rating:
+            dtype: float32
+            shape: [null]
+
+        graph:
+          - name: classifier
+            type: torch.nn.Linear
+            params:
+              in_features: 1
+              out_features: 1
+            inputs:
+              input: rating
+
+        outputs:
+          prediction: classifier.output
+        """
+
+        model_spec = ModelSpec.from_yaml(yaml_content)
+
+        # Check first categorical input
+        user_input = model_spec.inputs["user_id"]
+        assert user_input.categorical is True
+        assert user_input.embedding_dim == 64
+        assert user_input.vocab_size == 10000
+
+        # Check second categorical input
+        movie_input = model_spec.inputs["movie_id"]
+        assert movie_input.categorical is True
+        assert movie_input.embedding_dim == 128
+        assert movie_input.vocab_size == 5000
+
+        # Check regular input
+        rating_input = model_spec.inputs["rating"]
+        assert rating_input.categorical is False
+        assert rating_input.embedding_dim is None

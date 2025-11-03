@@ -315,6 +315,38 @@ class MLDataService(BaseService):
         Raises:
             ValueError: If dataset/columns don't exist or data isn't numeric
         """
+        # Validate that feature columns are numeric (not categorical)
+        dataset_info = self.get_dataset_info(dataset_name, include_row_count=False)
+        if dataset_info:
+            categorical_cols = set(dataset_info.categorical_columns)
+            categorical_features = [
+                col for col in feature_columns if col in categorical_cols
+            ]
+
+            if categorical_features:
+                # Get column type for better error message
+                col_info = next(
+                    (
+                        c
+                        for c in dataset_info.columns
+                        if c["name"] == categorical_features[0]
+                    ),
+                    None,
+                )
+                col_type = col_info["type"] if col_info else "VARCHAR"
+
+                raise ValueError(
+                    f"Cannot convert categorical column '{categorical_features[0]}' "
+                    f"(type: {col_type}) to tensor. Categorical features must be "
+                    f"encoded as integers before training. Solutions:\n"
+                    f"1. Use label encoding in ml_data tool with fit.label_encoder + "
+                    f"transform.label_encode operators\n"
+                    f"2. Use hash bucketing with transform.hash_bucket operator for "
+                    f"high-cardinality features\n"
+                    f"3. Use embeddings in model specification "
+                    f"(requires encoded integers)"
+                )
+
         features_df, targets_df = self.get_features_and_targets(
             dataset_name, feature_columns, target_columns, limit, sample_fraction
         )

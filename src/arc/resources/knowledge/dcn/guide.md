@@ -81,15 +81,28 @@ modules:
 
 ### Main Graph Pattern
 
+**Note**: Cross layers require two inputs (current and original), so they must be defined manually. The `arc.stack` operator only supports single-input sequential modules.
+
 ```yaml
 graph:
-  # Cross Network - stacked cross layers
-  - name: cross_network
-    type: arc.stack
-    params:
-      module: cross_layer
-      count: 3  # Typically 3-6 layers
-    inputs: [features, features]  # Current and original
+  # Cross Network - manually stacked cross layers (cannot use arc.stack with multi-input modules)
+  - name: cross_layer1
+    type: module.cross_layer
+    inputs:
+      x_current: features
+      x_original: features
+
+  - name: cross_layer2
+    type: module.cross_layer
+    inputs:
+      x_current: cross_layer1.cross_output
+      x_original: features
+
+  - name: cross_layer3
+    type: module.cross_layer
+    inputs:
+      x_current: cross_layer2.cross_output
+      x_original: features
 
   # Deep Network
   - name: deep_branch
@@ -100,7 +113,7 @@ graph:
   - name: combined_features
     type: torch.cat
     params: { dim: 1 }
-    inputs: [cross_network.output, deep_branch.output]
+    inputs: [cross_layer3.cross_output, deep_branch.deep_output]
 
   # Final prediction
   - name: output_layer

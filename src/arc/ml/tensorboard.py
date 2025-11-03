@@ -82,6 +82,9 @@ class TensorBoardManager:
 
         # Launch TensorBoard process with live update settings
         try:
+            import time
+
+            # Capture stderr to show errors if launch fails
             process = subprocess.Popen(
                 [
                     "tensorboard",
@@ -95,10 +98,27 @@ class TensorBoardManager:
                     "--reload_multifile",
                     "true",  # Enable multifile reload
                 ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 start_new_session=True,  # Detach from parent
+                text=True,
             )
+
+            # Give TensorBoard a moment to start and check if it crashes immediately
+            time.sleep(0.5)
+            poll_result = process.poll()
+
+            if poll_result is not None:
+                # Process exited immediately - read error message
+                try:
+                    stdout_output, stderr_output = process.communicate(timeout=1)
+                    error_msg = (
+                        stderr_output.strip() if stderr_output else "Unknown error"
+                    )
+                except (ValueError, AttributeError):
+                    # Handle mocked processes in tests
+                    error_msg = "Process exited immediately"
+                raise TensorBoardError(f"TensorBoard failed to start: {error_msg}")
 
             url = f"http://localhost:{actual_port}"
             self._processes[job_id] = {
@@ -115,6 +135,9 @@ class TensorBoardManager:
             raise TensorBoardError(
                 "TensorBoard not found. Install with: pip install tensorboard"
             ) from exc
+        except TensorBoardError:
+            # Re-raise TensorBoardError as-is (already has good message)
+            raise
         except Exception as exc:
             raise TensorBoardError(f"Failed to launch TensorBoard: {exc}") from exc
 

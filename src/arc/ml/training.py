@@ -142,7 +142,7 @@ def _get_loss_function(loss_type: str, **kwargs) -> nn.Module:
     }
     loss_type = class_to_functional.get(loss_type, loss_type)
 
-    if loss_type in ("mse", "mean_squared_error"):
+    if loss_type in ("mse", "mse_loss", "mean_squared_error"):
         return nn.MSELoss(**kwargs)
     elif loss_type in ("mae", "l1", "mean_absolute_error"):
         return nn.L1Loss(**kwargs)
@@ -299,7 +299,10 @@ def train_model(
             # Check if model outputs a dict (which causes tracing issues)
             model.eval()
             with torch.no_grad():
-                test_output = model(sample_features)
+                if isinstance(sample_features, dict):
+                    test_output = model(**sample_features)
+                else:
+                    test_output = model(sample_features)
             model.train()
 
             # Only log graph if output is not a dict (TensorBoard tracing doesn't support dicts well)
@@ -423,11 +426,23 @@ def train_model(
 
                 # Forward pass
                 optimizer.zero_grad()
-                outputs = model(features)
+                if isinstance(features, dict):
+                    outputs = model(**features)
+                else:
+                    outputs = model(features)
 
                 # Extract specific output if needed
                 if target_output_key and isinstance(outputs, dict):
-                    outputs = outputs[target_output_key]
+                    if target_output_key in outputs:
+                        outputs = outputs[target_output_key]
+                    else:
+                        # Use first available output if specified key doesn't exist
+                        available_keys = list(outputs.keys())
+                        logger.warning(
+                            f"Target output key '{target_output_key}' not found in model outputs. "
+                            f"Available keys: {available_keys}. Using '{available_keys[0]}'."
+                        )
+                        outputs = outputs[available_keys[0]]
 
                 # Compute loss
                 loss = loss_fn(outputs, targets)
@@ -542,7 +557,10 @@ def train_model(
                             targets = targets.unsqueeze(1)
 
                         # Forward pass
-                        outputs = model(features)
+                        if isinstance(features, dict):
+                            outputs = model(**features)
+                        else:
+                            outputs = model(features)
 
                         # Extract specific output if needed
                         if target_output_key and isinstance(outputs, dict):

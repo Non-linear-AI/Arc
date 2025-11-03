@@ -31,6 +31,7 @@ def test_tensorboard_log_dir_project_local(tb_manager):
     with patch("arc.ml.tensorboard.subprocess.Popen") as mock_popen:
         mock_process = MagicMock()
         mock_process.pid = 12345
+        mock_process.poll.return_value = None  # Process is running
         mock_popen.return_value = mock_process
 
         # Launch for job (uses default path)
@@ -61,6 +62,7 @@ def test_tensorboard_log_dir_custom_path(tb_manager, tmp_path):
     with patch("arc.ml.tensorboard.subprocess.Popen") as mock_popen:
         mock_process = MagicMock()
         mock_process.pid = 67890
+        mock_process.poll.return_value = None  # Process is running
         mock_popen.return_value = mock_process
 
         # Launch with custom path
@@ -86,6 +88,7 @@ def test_tensorboard_creates_logdir_if_missing(tb_manager, tmp_path):
     with patch("arc.ml.tensorboard.subprocess.Popen") as mock_popen:
         mock_process = MagicMock()
         mock_process.pid = 11111
+        mock_process.poll.return_value = None  # Process is running
         mock_popen.return_value = mock_process
 
         tb_manager.launch(job_id, logdir=logdir, port=6008)
@@ -150,6 +153,7 @@ def test_tensorboard_not_in_home_directory(tb_manager):
     with patch("arc.ml.tensorboard.subprocess.Popen") as mock_popen:
         mock_process = MagicMock()
         mock_process.pid = 44444
+        mock_process.poll.return_value = None  # Process is running
         mock_popen.return_value = mock_process
 
         tb_manager.launch_for_job(job_id, port=6011)
@@ -199,6 +203,7 @@ def test_tensorboard_port_allocation(tb_manager):
     with patch("arc.ml.tensorboard.subprocess.Popen") as mock_popen:
         mock_process = MagicMock()
         mock_process.pid = 66666
+        mock_process.poll.return_value = None  # Process is running
         mock_popen.return_value = mock_process
 
         # Mock port availability check to always return True

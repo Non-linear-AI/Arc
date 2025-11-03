@@ -75,6 +75,7 @@ class MLModelAgent(BaseAgent):
         preloaded_knowledge: list[dict[str, str]] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
         data_processing_id: str | None = None,
+        train_table: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Generate unified model + training specification.
 
@@ -95,6 +96,7 @@ class MLModelAgent(BaseAgent):
                 workflow
             data_processing_id: Optional execution ID to load data processing
                 context
+            train_table: Optional training table for dry-run validation
 
         Returns:
             Tuple of (ModelSpec, unified YAML, conversation_history)
@@ -119,12 +121,14 @@ class MLModelAgent(BaseAgent):
                 knowledge_references=knowledge_references,
                 preloaded_knowledge=preloaded_knowledge,
                 data_processing_id=data_processing_id,
+                train_table=train_table,
             )
         else:
             # Continue conversation - just append feedback
             return await self._continue_conversation(
                 feedback=editing_instructions or "",
                 conversation_history=conversation_history,
+                train_table=train_table,
             )
 
     async def _generate_fresh(
@@ -139,6 +143,7 @@ class MLModelAgent(BaseAgent):
         knowledge_references: list[str] | None = None,
         preloaded_knowledge: list[dict[str, str]] | None = None,
         data_processing_id: str | None = None,
+        train_table: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Fresh generation with full context building.
 
@@ -249,6 +254,8 @@ class MLModelAgent(BaseAgent):
                 validation_context={
                     "data_profile": data_profile,
                     "available_components": self._get_model_components(),
+                    "train_table": train_table or table_name,
+                    "target_column": target_column,
                 },
                 max_iterations=3,
                 conversation_history=None,  # Fresh start
@@ -264,6 +271,7 @@ class MLModelAgent(BaseAgent):
         self,
         feedback: str,
         conversation_history: list[dict[str, str]],
+        train_table: str | None = None,
     ) -> tuple[ModelSpec, str, list[dict[str, str]]]:
         """Continue existing conversation with user feedback.
 
@@ -285,6 +293,8 @@ class MLModelAgent(BaseAgent):
                 validation_context={
                     "data_profile": None,  # Already in conversation history
                     "available_components": self._get_model_components(),
+                    "train_table": train_table,
+                    "target_column": None,  # Already in conversation history
                 },
                 max_iterations=3,
                 conversation_history=conversation_history,
@@ -296,14 +306,16 @@ class MLModelAgent(BaseAgent):
         except AgentError as e:
             raise MLModelError(str(e)) from e
 
-    def _validate_model_comprehensive(
+    async def _validate_model_comprehensive(
         self, model_yaml: str, context: dict[str, Any]
     ) -> dict[str, Any]:
         """Comprehensive validation of generated model with detailed error reporting.
 
         Args:
-            model_yaml: Generated YAML model string (unified spec with training section)
-            context: Generation context for validation
+            model_yaml: Generated YAML model string (unified spec with training
+                section)
+            context: Generation context for validation (includes train_table,
+                target_column)
 
         Returns:
             Dictionary with validation results:
@@ -356,6 +368,14 @@ class MLModelAgent(BaseAgent):
                         "error": f"Column validation errors: {column_errors}",
                     }
 
+            # Validate loss function references valid model outputs
+            loss_errors = self._validate_loss_function_references(model_dict)
+            if loss_errors:
+                return {
+                    "valid": False,
+                    "error": f"Loss function validation errors: {loss_errors}",
+                }
+
             # Parse into ModelSpec object (from model-only portion)
             try:
                 import yaml
@@ -369,6 +389,65 @@ class MLModelAgent(BaseAgent):
                     "valid": False,
                     "error": f"Failed to parse into ModelSpec: {str(e)}",
                 }
+
+            # Dry-run validation: Test that the model can be trained with actual data
+            train_table = context.get("train_table")
+            target_column = context.get("target_column")
+
+            if train_table and target_column:
+                # Import here to avoid circular imports
+                from arc.ml.training_service import TrainingService
+
+                try:
+                    training_service = TrainingService(self.services)
+
+                    # Extract feature columns from model inputs (only columns
+                    # model actually uses)
+                    feature_columns = []
+                    for _input_name, input_spec in model_dict["inputs"].items():
+                        columns = input_spec.get("columns", [])
+                        if isinstance(columns, list):
+                            feature_columns.extend(columns)
+
+                    if not feature_columns:
+                        return {
+                            "valid": False,
+                            "error": (
+                                "Model inputs do not specify any columns. "
+                                "Each input must have a 'columns' field listing "
+                                "the feature column names it uses."
+                            ),
+                        }
+
+                    # Run dry-run validation with ONLY the columns the model uses
+                    training_service.validate_model_spec_for_training(
+                        model_spec=model_spec,
+                        training_config=training,
+                        train_table=train_table,
+                        target_column=target_column,
+                        feature_columns=feature_columns,
+                        batch_size=32,
+                        learning_rate=0.001,
+                    )
+                except Exception as e:
+                    # Dry-run validation failed - return detailed error
+                    error_msg = str(e)
+                    # Extract meaningful error from ValidationError if present
+                    if (
+                        "ValidationError" in error_msg
+                        or "Dry-run validation failed" in error_msg
+                    ):
+                        return {
+                            "valid": False,
+                            "error": (
+                                f"Dry-run training validation failed:\n{error_msg}"
+                            ),
+                        }
+                    else:
+                        return {
+                            "valid": False,
+                            "error": f"Model validation failed:\n{error_msg}",
+                        }
 
             return {"valid": True, "object": model_spec, "error": None}
 
@@ -468,6 +547,49 @@ class MLModelAgent(BaseAgent):
                     errors.append(
                         f"Input '{input_name}' references unknown column: {col}"
                     )
+
+        return errors
+
+    def _validate_loss_function_references(self, model_dict: dict) -> list[str]:
+        """Validate that loss function input references exist in model outputs.
+
+        Args:
+            model_dict: The parsed YAML model dictionary
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+
+        # Get outputs section
+        outputs = model_dict.get("outputs", {})
+        if not outputs:
+            # This should be caught by earlier validation
+            return []
+
+        available_outputs = list(outputs.keys())
+
+        # Get loss function configuration
+        training = model_dict.get("training", {})
+        loss_config = training.get("loss", {})
+
+        if not loss_config:
+            # This should be caught by earlier validation
+            return []
+
+        # Check loss function inputs
+        loss_inputs = loss_config.get("inputs", {})
+
+        # The 'input' field should reference a model output
+        loss_input_ref = loss_inputs.get("input")
+        if loss_input_ref and loss_input_ref not in available_outputs:
+            errors.append(
+                f"Loss function references output '{loss_input_ref}' "
+                f"which does not exist. "
+                f"Available outputs: {available_outputs}. "
+                f"The loss 'input' field must reference one of the model "
+                f"outputs defined in the 'outputs' section."
+            )
 
         return errors
 

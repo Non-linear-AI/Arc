@@ -38,11 +38,45 @@ class ArcGraphModel(nn.Module):
         self.input_names = list(spec.inputs.keys())
         self.output_names = list(spec.outputs.keys())
 
+        # Build embedding layers for categorical inputs
+        self.embeddings = self._build_embedding_layers(spec.inputs)
+
         # Build the model from the specification
         self.custom_modules = self._build_custom_modules(spec.modules or {})
         component_dict, self.execution_order = self._build_main_graph(spec.graph)
         self.graph_modules = component_dict["modules"]
         self.graph_functions = component_dict["functions"]
+
+    def _build_embedding_layers(self, inputs: dict) -> nn.ModuleDict:
+        """Build embedding layers for categorical inputs.
+
+        Args:
+            inputs: Dictionary of model inputs from spec
+
+        Returns:
+            ModuleDict containing embedding layers for categorical inputs
+
+        Raises:
+            ValueError: If categorical input missing embedding_dim or vocab_size
+        """
+        embeddings = nn.ModuleDict()
+
+        for input_name, input_spec in inputs.items():
+            if input_spec.categorical:
+                # Validate that required embedding parameters are present
+                if input_spec.embedding_dim is None or input_spec.vocab_size is None:
+                    raise ValueError(
+                        f"Categorical input '{input_name}' must specify both "
+                        f"'embedding_dim' and 'vocab_size'"
+                    )
+
+                # Create embedding layer
+                embeddings[input_name] = nn.Embedding(
+                    num_embeddings=input_spec.vocab_size,
+                    embedding_dim=input_spec.embedding_dim,
+                )
+
+        return embeddings
 
     def _build_custom_modules(
         self, modules: dict[str, ModuleDefinition]
@@ -348,8 +382,15 @@ class ArcGraphModel(nn.Module):
             if input_name not in inputs:
                 raise ValueError(f"Missing required input: {input_name}")
 
+        # Apply embeddings to categorical inputs
+        embedded_inputs = inputs.copy()
+        for input_name, embedding_layer in self.embeddings.items():
+            categorical_input = embedded_inputs[input_name]
+            # Apply embedding (handles both 1D and 2D+ inputs)
+            embedded_inputs[input_name] = embedding_layer(categorical_input)
+
         # Execute the computation graph
-        node_outputs = inputs.copy()  # Start with model inputs
+        node_outputs = embedded_inputs  # Start with embedded inputs
 
         for node_name in self.execution_order:
             node_def = next(n for n in self.spec.graph if n.name == node_name)

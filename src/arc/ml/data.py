@@ -45,6 +45,119 @@ class ArcDataset(Dataset):
         return self.features[idx]
 
 
+class MultiInputDataset(Dataset):
+    """PyTorch Dataset for models with multiple named inputs.
+
+    This dataset splits a single feature tensor into multiple input tensors
+    according to the model's input specification, enabling models with
+    separate inputs (e.g., user_id, item_id, features) to work correctly.
+    """
+
+    def __init__(
+        self,
+        features: torch.Tensor,
+        targets: torch.Tensor | None,
+        input_spec: dict[str, dict],
+        feature_columns: list[str],
+    ):
+        """Initialize multi-input dataset.
+
+        Args:
+            features: Feature tensor of shape [num_samples, num_features]
+            targets: Optional target tensor of shape [num_samples, ...]
+            input_spec: Model input specification (from model_spec.inputs)
+                Each input should have 'columns', 'dtype', and 'shape' fields
+            feature_columns: Ordered list of column names in features tensor
+
+        Example:
+            >>> input_spec = {
+            ...     'user_id': {'columns': ['UserID'], 'dtype': 'long', 'shape': [None, 1]},
+            ...     'features': {'columns': ['age', 'income'], 'dtype': 'float32', 'shape': [None, 2]}
+            ... }
+            >>> dataset = MultiInputDataset(features, targets, input_spec, ['UserID', 'age', 'income'])
+        """
+        self.features = features
+        self.targets = targets
+        self.feature_columns = feature_columns
+
+        if targets is not None and len(features) != len(targets):
+            raise ValueError(
+                f"Features and targets must have same length: "
+                f"{len(features)} vs {len(targets)}"
+            )
+
+        # Compute column indices for each input
+        self.input_slices = {}
+        self.input_dtypes = {}
+
+        for input_name, spec in input_spec.items():
+            input_columns = spec.get("columns", [])
+            if not input_columns:
+                raise ValueError(
+                    f"Input '{input_name}' has no columns specified in model spec"
+                )
+
+            # Find indices of these columns in the feature tensor
+            try:
+                indices = [feature_columns.index(col) for col in input_columns]
+            except ValueError as e:
+                missing_col = str(e).split("'")[1]
+                raise ValueError(
+                    f"Input '{input_name}' expects column '{missing_col}' which is not in feature_columns. "
+                    f"Available columns: {feature_columns}"
+                ) from e
+
+            self.input_slices[input_name] = indices
+
+            # Store target dtype for this input
+            dtype_str = spec.get("dtype", "float32")
+            self.input_dtypes[input_name] = self._parse_dtype(dtype_str)
+
+    def _parse_dtype(self, dtype_str: str) -> torch.dtype:
+        """Parse dtype string to torch.dtype."""
+        dtype_map = {
+            "float32": torch.float32,
+            "float64": torch.float64,
+            "float": torch.float32,
+            "double": torch.float64,
+            "int32": torch.int32,
+            "int64": torch.int64,
+            "long": torch.long,
+            "int": torch.int32,
+            "bool": torch.bool,
+        }
+        return dtype_map.get(dtype_str, torch.float32)
+
+    def __len__(self) -> int:
+        return len(self.features)
+
+    def __getitem__(
+        self, idx: int
+    ) -> dict[str, torch.Tensor] | tuple[dict[str, torch.Tensor], torch.Tensor]:
+        """Get a sample with features split into named inputs.
+
+        Returns:
+            If targets is None: dict mapping input names to tensors
+            If targets exists: (input_dict, target_tensor)
+        """
+        # Split features according to input specs
+        input_dict = {}
+        for input_name, indices in self.input_slices.items():
+            # Extract columns for this input
+            input_tensor = self.features[idx, indices]
+
+            # Convert to appropriate dtype
+            target_dtype = self.input_dtypes[input_name]
+            if input_tensor.dtype != target_dtype:
+                input_tensor = input_tensor.to(target_dtype)
+
+            input_dict[input_name] = input_tensor
+
+        if self.targets is not None:
+            return input_dict, self.targets[idx]
+        return input_dict
+
+
 class DataProcessor:
     """Processes data for Arc-Graph models with plugin support."""
 
@@ -102,6 +215,8 @@ class DataProcessor:
         targets: torch.Tensor | None = None,
         batch_size: int = 32,
         shuffle: bool = True,
+        input_spec: dict[str, dict] | None = None,
+        feature_columns: list[str] | None = None,
         **dataloader_kwargs,
     ) -> DataLoader:
         """Create PyTorch DataLoader from tensors.
@@ -111,12 +226,23 @@ class DataProcessor:
             targets: Optional target tensor
             batch_size: Batch size for DataLoader
             shuffle: Whether to shuffle data
+            input_spec: Optional model input specification for multi-input models
+            feature_columns: Optional ordered list of column names (required for multi-input)
             **dataloader_kwargs: Additional arguments for DataLoader
 
         Returns:
             PyTorch DataLoader
+
+        Note:
+            If input_spec and feature_columns are provided, creates a MultiInputDataset
+            that splits features according to the model's input specification.
         """
-        dataset = ArcDataset(features, targets)
+        # Use MultiInputDataset if we have input spec with multiple inputs
+        if input_spec and feature_columns and len(input_spec) > 1:
+            dataset = MultiInputDataset(features, targets, input_spec, feature_columns)
+        else:
+            dataset = ArcDataset(features, targets)
+
         return DataLoader(
             dataset, batch_size=batch_size, shuffle=shuffle, **dataloader_kwargs
         )
@@ -700,6 +826,12 @@ class DataProcessor:
         # Fit operators (train-only)
         if op == "fit.standard_scaler":
             return self._op_fit_standard_scaler(inputs)
+        if op == "fit.label_encoder":
+            return self._op_fit_label_encoder(inputs)
+
+        # Label encoding transform
+        if op == "transform.label_encode":
+            return self._op_transform_label_encode(inputs)
 
         raise ProcessorError(f"Unsupported operator: {op}")
 
@@ -849,6 +981,106 @@ class DataProcessor:
         output = torch.stack(rows)
         return {"output": output}
 
+    def _op_fit_label_encoder(self, inputs: Mapping[str, Any]) -> dict[str, Any]:
+        """Fit a label encoder to build vocabulary from categorical data.
+
+        Args:
+            inputs: { x: list of categorical values (strings or None) }
+
+        Returns:
+            { state: { vocabulary: dict, vocab_size: int } }
+        """
+        x = inputs.get("x")
+        if x is None:
+            raise ProcessorError("fit.label_encoder requires 'x' input")
+
+        if not isinstance(x, list):
+            raise ProcessorError(
+                f"fit.label_encoder expects list input, got {type(x).__name__}"
+            )
+
+        # Build vocabulary: map unique values to sequential indices
+        # Use sorted order for deterministic vocabulary
+        unique_values = sorted(set(x), key=lambda v: (v is None, v))
+
+        vocabulary = {val: idx for idx, val in enumerate(unique_values)}
+        vocab_size = len(vocabulary)
+
+        return {"state": {"vocabulary": vocabulary, "vocab_size": vocab_size}}
+
+    def _op_transform_label_encode(self, inputs: Mapping[str, Any]) -> dict[str, Any]:
+        """Transform categorical data to integer indices using fitted vocabulary.
+
+        Args:
+            inputs: {
+                x: list of categorical values,
+                state: { vocabulary: dict, vocab_size: int },
+                handle_unknown: "use_unknown_value" (default) | "error",
+                unknown_value: int (defaults to vocab_size)
+            }
+
+        Returns:
+            { output: torch.Tensor (long) }
+
+        Raises:
+            ProcessorError: If unknown category found and handle_unknown="error"
+        """
+        x = inputs.get("x")
+        state = inputs.get("state")
+        handle_unknown = inputs.get("handle_unknown", "use_unknown_value")
+        unknown_value = inputs.get("unknown_value")
+
+        if x is None:
+            raise ProcessorError("transform.label_encode requires 'x' input")
+        if state is None or not isinstance(state, dict):
+            raise ProcessorError(
+                "transform.label_encode requires 'state' with vocabulary"
+            )
+
+        vocabulary = state.get("vocabulary")
+        if vocabulary is None or not isinstance(vocabulary, dict):
+            raise ProcessorError(
+                "transform.label_encode state must contain 'vocabulary' dict"
+            )
+
+        vocab_size = state.get("vocab_size")
+        if vocab_size is None:
+            raise ProcessorError(
+                "transform.label_encode state must contain 'vocab_size'"
+            )
+
+        if not isinstance(x, list):
+            raise ProcessorError(
+                f"transform.label_encode expects list input, got {type(x).__name__}"
+            )
+
+        # Default unknown_value to vocab_size if not specified
+        if unknown_value is None:
+            unknown_value = vocab_size
+
+        # Encode values to indices
+        indices = []
+        for val in x:
+            if val in vocabulary:
+                indices.append(vocabulary[val])
+            else:
+                # Handle unknown category
+                if handle_unknown == "error":
+                    # Provide helpful error with available categories
+                    available = list(vocabulary.keys())[:10]  # Show first 10
+                    available_str = ", ".join(repr(k) for k in available)
+                    if len(vocabulary) > 10:
+                        available_str += f", ... ({len(vocabulary)} total)"
+                    raise ProcessorError(
+                        f"Unknown category {repr(val)} not in vocabulary. "
+                        f"Available categories: {available_str}"
+                    )
+                else:
+                    # Use unknown_value for unknown categories
+                    indices.append(unknown_value)
+
+        return {"output": torch.tensor(indices, dtype=torch.long)}
+
     # High-level convenience methods for training integration
 
     def create_dataloader_from_dataset(
@@ -858,6 +1090,7 @@ class DataProcessor:
         target_columns: list[str] | None = None,
         batch_size: int = 32,
         shuffle: bool = True,
+        input_spec: dict[str, dict] | None = None,
         **dataloader_kwargs,
     ) -> DataLoader:
         """Create PyTorch DataLoader from dataset using integrated MLDataService.
@@ -868,6 +1101,7 @@ class DataProcessor:
             target_columns: Optional list of target column names
             batch_size: Batch size for DataLoader
             shuffle: Whether to shuffle data
+            input_spec: Optional model input specification for multi-input models
             **dataloader_kwargs: Additional arguments for DataLoader
 
         Returns:
@@ -890,6 +1124,8 @@ class DataProcessor:
             targets=targets,
             batch_size=batch_size,
             shuffle=shuffle,
+            input_spec=input_spec,
+            feature_columns=feature_columns,
             **dataloader_kwargs,
         )
 
@@ -902,6 +1138,7 @@ class DataProcessor:
         batch_size: int = 32,
         shuffle: bool = True,
         chunk_size: int = 10000,
+        input_spec: dict[str, dict] | None = None,
         **dataloader_kwargs,
     ) -> DataLoader:
         """Create PyTorch DataLoader from database table using incremental loading.
@@ -914,6 +1151,7 @@ class DataProcessor:
             batch_size: Batch size for DataLoader
             shuffle: Whether to shuffle data
             chunk_size: Number of rows to load per chunk for streaming
+            input_spec: Optional model input specification for multi-input models
             **dataloader_kwargs: Additional arguments for DataLoader
 
         Returns:
@@ -921,6 +1159,12 @@ class DataProcessor:
 
         Raises:
             ValueError: If table or columns don't exist
+
+        Note:
+            For multi-input models, input_spec should be provided to split features
+            according to the model's input specification. The streaming dataset
+            will load all data as a single tensor and wrap it in MultiInputDataset
+            via a custom collate function.
         """
         # Check if table exists as a dataset
         if not ml_data_service.dataset_exists(table_name):
@@ -954,6 +1198,7 @@ class DataProcessor:
             target_columns=target_columns,
             total_rows=dataset_info.row_count,
             chunk_size=chunk_size,
+            input_spec=input_spec,
         )
 
         return DataLoader(
@@ -975,6 +1220,7 @@ class StreamingTableDataset(Dataset):
         target_columns: list[str] | None,
         total_rows: int,
         chunk_size: int = 10000,
+        input_spec: dict[str, dict] | None = None,
     ):
         """Initialize streaming dataset.
 
@@ -985,6 +1231,7 @@ class StreamingTableDataset(Dataset):
             target_columns: Optional list of target column names
             total_rows: Total number of rows in the dataset
             chunk_size: Number of rows to load per chunk
+            input_spec: Optional model input specification for multi-input models
         """
         self.ml_data_service = ml_data_service
         self.table_name = table_name
@@ -992,6 +1239,7 @@ class StreamingTableDataset(Dataset):
         self.target_columns = target_columns
         self.total_rows = total_rows
         self.chunk_size = chunk_size
+        self.input_spec = input_spec
 
         # Cache for loaded chunks
         self._chunk_cache = {}
@@ -999,11 +1247,60 @@ class StreamingTableDataset(Dataset):
         self._current_chunk_data = None
         self._max_cached_chunks = 3  # Keep max 3 chunks in memory
 
+        # For multi-input models, prepare column index mappings
+        self.is_multi_input = input_spec is not None and len(input_spec) > 1
+        if self.is_multi_input:
+            # Borrow logic from MultiInputDataset
+            self.input_slices = {}
+            self.input_dtypes = {}
+            for input_name, spec in input_spec.items():
+                input_columns = spec.get("columns", [])
+                if not input_columns:
+                    raise ValueError(
+                        f"Input '{input_name}' has no columns specified in model spec"
+                    )
+                try:
+                    indices = [feature_columns.index(col) for col in input_columns]
+                except ValueError as e:
+                    missing_col = str(e).split("'")[1]
+                    raise ValueError(
+                        f"Input '{input_name}' expects column '{missing_col}' which is not in feature_columns. "
+                        f"Available columns: {feature_columns}"
+                    ) from e
+                self.input_slices[input_name] = indices
+                dtype_str = spec.get("dtype", "float32")
+                self.input_dtypes[input_name] = self._parse_dtype(dtype_str)
+
+    def _parse_dtype(self, dtype_str: str) -> torch.dtype:
+        """Parse dtype string to torch.dtype."""
+        dtype_map = {
+            "float32": torch.float32,
+            "float64": torch.float64,
+            "float": torch.float32,
+            "double": torch.float64,
+            "int32": torch.int32,
+            "int64": torch.int64,
+            "long": torch.long,
+            "int": torch.int32,
+            "bool": torch.bool,
+        }
+        return dtype_map.get(dtype_str, torch.float32)
+
     def __len__(self) -> int:
         return self.total_rows
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Get a single sample by index."""
+    def __getitem__(
+        self, idx: int
+    ) -> (
+        tuple[torch.Tensor, torch.Tensor | None]
+        | tuple[dict[str, torch.Tensor], torch.Tensor | None]
+    ):
+        """Get a single sample by index.
+
+        Returns:
+            For single-input models: (features_tensor, targets_tensor)
+            For multi-input models: (input_dict, targets_tensor)
+        """
         if idx >= self.total_rows:
             raise IndexError(
                 f"Index {idx} out of range for dataset of size {self.total_rows}"
@@ -1032,6 +1329,21 @@ class StreamingTableDataset(Dataset):
         sample_features = features[idx_in_chunk]
         sample_targets = targets[idx_in_chunk] if targets is not None else None
 
+        # For multi-input models, split features into named inputs
+        if self.is_multi_input:
+            input_dict = {}
+            for input_name, indices in self.input_slices.items():
+                input_tensor = sample_features[indices]
+                target_dtype = self.input_dtypes[input_name]
+                if input_tensor.dtype != target_dtype:
+                    input_tensor = input_tensor.to(target_dtype)
+                input_dict[input_name] = input_tensor
+
+            if sample_targets is not None:
+                return input_dict, sample_targets
+            return input_dict, None
+
+        # For single-input models, return tensor directly
         return sample_features, sample_targets
 
     def _load_chunk(self, chunk_id: int) -> None:

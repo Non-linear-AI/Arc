@@ -15,7 +15,6 @@ from arc.core.agents.ml_model import MLModelAgent
 from arc.graph.model import ModelValidationError, validate_model_dict
 from arc.ml.runtime import MLRuntime, MLRuntimeError
 from arc.tools.base import BaseTool, ToolResult
-from arc.tools.ml._utils import _load_ml_plan
 from arc.utils.yaml_workflow import YamlConfirmationWorkflow
 
 
@@ -92,7 +91,7 @@ class MLModelTool(BaseTool):
         train_table: str | None = None,
         target_column: str | None = None,
         auto_confirm: bool = False,
-        plan_id: str | None = None,
+        knowledge_references: list[str] | None = None,
         data_processing_id: str | None = None,
     ) -> ToolResult:
         """Generate unified model + training specification and launch training.
@@ -104,7 +103,7 @@ class MLModelTool(BaseTool):
             train_table: Training data table (defaults to data_table if not provided)
             target_column: Target column for prediction
             auto_confirm: Skip confirmation workflows (for testing only)
-            plan_id: Optional ML plan ID containing unified model_plan guidance
+            knowledge_references: Optional list of knowledge document IDs to provide context
             data_processing_id: Optional execution ID to load data processing context
 
         Note: This tool now generates BOTH model architecture AND training configuration
@@ -117,15 +116,9 @@ class MLModelTool(BaseTool):
         if not train_table:
             train_table = data_table
 
-        # Show section title first, before any validation
-        # Build metadata for section title
-        metadata_parts = []
-        if plan_id:
-            metadata_parts.append(plan_id)
-
         # Use context manager for section printing
         with self._section_printer(
-            self.ui, "ML Model + Training", metadata=metadata_parts
+            self.ui, "ML Model + Training", metadata=[]
         ) as printer:
             # Show task description only in verbose mode
             if printer:
@@ -161,46 +154,11 @@ class MLModelTool(BaseTool):
                     "Database services not initialized."
                 )
 
-            # Validate: either plan_id or instruction must be provided
-            if not plan_id and not instruction:
+            # Validate: instruction must be provided
+            if not instruction:
                 return _error_in_section(
-                    "Either 'plan_id' or 'instruction' must be provided. "
-                    "ML plan is recommended for full ML workflows."
+                    "Parameter 'instruction' must be provided to generate a model."
                 )
-
-            # Validate: if plan_id provided, data_processing_id must be provided
-            if plan_id and not data_processing_id:
-                return _error_in_section(
-                    "Parameter 'data_processing_id' is required when 'plan_id' is provided. "
-                    "This links the model to the specific data processing execution. "
-                    "Extract 'data_processing_id' from the ml_data tool result JSON."
-                )
-
-            # Load plan from database if plan_id is provided
-            ml_plan = None
-            model_plan = None
-            knowledge_references = None
-            if plan_id:
-                ml_plan, plan = _load_ml_plan(self.services, plan_id)
-                if ml_plan is None:
-                    # plan contains error message
-                    return _error_in_section(plan)
-
-                # Use plan data if parameters not explicitly provided
-                if not instruction:
-                    instruction = plan.summary
-                if not data_table:
-                    data_table = ml_plan.get("data_table")
-                if not target_column:
-                    target_column = ml_plan.get("target_column")
-                if not train_table:
-                    train_table = ml_plan.get("train_table") or data_table
-
-                # CRITICAL: Extract unified model plan (architecture + training) and knowledge
-                model_plan = plan.model_plan
-
-                # Extract stage-specific knowledge IDs from plan
-                knowledge_references = plan.knowledge.get("model", [])
 
             # Validate required parameters
             if not name or not data_table or not target_column:
@@ -231,6 +189,7 @@ class MLModelTool(BaseTool):
                 agent.progress_callback = None
 
             # Generate unified model + training specification
+            # The agent handles validation retries automatically via _generate_with_tools
             try:
                 (
                     model_spec,
@@ -238,12 +197,12 @@ class MLModelTool(BaseTool):
                     conversation_history,
                 ) = await agent.generate_model(
                     name=str(name),
-                    user_context=instruction,  # Use instruction as user_context
+                    user_context=instruction,
                     table_name=str(data_table),
                     target_column=target_column,
-                    model_plan=model_plan,
                     knowledge_references=knowledge_references,
                     data_processing_id=data_processing_id,
+                    train_table=str(train_table),  # Pass train_table for validation
                 )
 
                 # Inject metadata fields into unified YAML
@@ -251,16 +210,12 @@ class MLModelTool(BaseTool):
                 full_spec = yaml.safe_load(unified_yaml)
                 full_spec["name"] = name
                 full_spec["data_table"] = data_table
-                if plan_id:
-                    full_spec["plan_id"] = plan_id
 
                 # Reconstruct YAML with metadata fields at the top
                 # Build dict with specific field order for clean YAML output
                 ordered_spec = {}
                 ordered_spec["name"] = full_spec.pop("name")
                 ordered_spec["data_table"] = full_spec.pop("data_table")
-                if "plan_id" in full_spec:
-                    ordered_spec["plan_id"] = full_spec.pop("plan_id")
                 # Add remaining fields
                 ordered_spec.update(full_spec)
 
@@ -377,15 +332,11 @@ class MLModelTool(BaseTool):
                     # Re-inject metadata fields (in case they were removed during editing)
                     full_spec["name"] = name
                     full_spec["data_table"] = data_table
-                    if plan_id:
-                        full_spec["plan_id"] = plan_id
 
                     # Reconstruct YAML with metadata fields at the top
                     ordered_spec = {}
                     ordered_spec["name"] = full_spec.pop("name")
                     ordered_spec["data_table"] = full_spec.pop("data_table")
-                    if "plan_id" in full_spec:
-                        ordered_spec["plan_id"] = full_spec.pop("plan_id")
                     ordered_spec.update(full_spec)
 
                     unified_yaml = yaml.dump(
@@ -406,15 +357,13 @@ class MLModelTool(BaseTool):
                 finally:
                     workflow.cleanup()
 
-            # Save model to DB with plan_id if using ML plan
+            # Save model to DB
             # IMPORTANT: Save unified_yaml (with training config) not model_yaml (without training)
             try:
-                plan_id = ml_plan.get("plan_id") if ml_plan else None
                 model = self._save_model_to_db(
                     name=str(name),
                     yaml_content=unified_yaml,
                     description=instruction[:200] if instruction else "Generated model",
-                    plan_id=plan_id,
                 )
                 model_id = model.id
             except Exception as exc:
@@ -438,7 +387,6 @@ class MLModelTool(BaseTool):
                 "model_id": model_id,
                 "model_name": name,
                 "yaml_content": unified_yaml,  # Store unified YAML (with training)
-                "from_ml_plan": ml_plan is not None,
                 "training_launched": False,  # Will update if training launches
             }
 
@@ -453,6 +401,7 @@ class MLModelTool(BaseTool):
                     self.runtime.train_model,
                     model_name=name,
                     train_table=str(train_table),
+                    skip_validation=True,  # Already validated during registration
                 )
 
                 lines.append("")
@@ -628,6 +577,7 @@ class MLModelTool(BaseTool):
                     target_column=context.get("target_column"),
                     existing_yaml=yaml_content,
                     editing_instructions=feedback,
+                    knowledge_references=None,  # Editing uses conversation_history
                     conversation_history=conversation_history,
                 )
 
@@ -644,7 +594,6 @@ class MLModelTool(BaseTool):
         name: str,
         yaml_content: str,
         description: str,
-        plan_id: str | None = None,
     ) -> Model:
         """Save generated model directly to DB (no file needed).
 
@@ -652,7 +601,6 @@ class MLModelTool(BaseTool):
             name: Model name
             yaml_content: Unified YAML specification (includes training section)
             description: Model description
-            plan_id: Optional ML plan ID that guided this model generation
 
         Returns:
             Created Model object with model_id
@@ -701,7 +649,6 @@ class MLModelTool(BaseTool):
             spec=yaml_content,
             created_at=now,
             updated_at=now,
-            plan_id=plan_id,  # Link to ML plan if provided
         )
 
         # Save to DB
@@ -806,7 +753,7 @@ class MLModelTool(BaseTool):
 
         # Fallback to default if not found in database
         if logdir is None:
-            logdir = Path(f"tensorboard/run_{job_id}")
+            logdir = Path(f".arc/tensorboard/run_{job_id}")
 
         try:
             settings = SettingsManager()
@@ -867,7 +814,7 @@ class MLModelTool(BaseTool):
 
         # Fallback to default if not found in database
         if logdir is None:
-            logdir = f"tensorboard/run_{job_id}"
+            logdir = f".arc/tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
             section_printer.print("[dim]ℹ View training results[/dim]")

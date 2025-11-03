@@ -92,6 +92,7 @@ class ModelArtifactManager:
         optimizer: torch.optim.Optimizer | None = None,
         training_history: dict[str, Any] | None = None,
         model_spec: dict[str, Any] | None = None,
+        vocabularies: dict[str, dict[str, Any]] | None = None,
         overwrite: bool = False,
     ) -> Path:
         """Save a complete model artifact.
@@ -102,6 +103,7 @@ class ModelArtifactManager:
             optimizer: Optional optimizer state to save
             training_history: Optional training history data
             model_spec: Optional Arc Graph specification
+            vocabularies: Optional vocabularies for categorical features
             overwrite: Whether to overwrite existing artifacts
 
         Returns:
@@ -138,6 +140,12 @@ class ModelArtifactManager:
             with open(graph_path, "w") as f:
                 json.dump(asdict(model_spec), f, indent=2, default=str)
             artifact.model_spec = asdict(model_spec)
+
+        # Save vocabularies if provided (for categorical features)
+        if vocabularies is not None:
+            vocab_path = artifact_dir / "vocabularies.json"
+            with open(vocab_path, "w") as f:
+                json.dump(vocabularies, f, indent=2, default=str)
 
         # Update timestamps
         artifact.updated_at = datetime.now().isoformat()
@@ -218,6 +226,37 @@ class ModelArtifactManager:
         )
 
         return state_dict, artifact
+
+    def load_vocabularies(
+        self,
+        model_id: str,
+        version: int | None = None,
+    ) -> dict[str, dict[str, Any]] | None:
+        """Load vocabularies for categorical features.
+
+        Args:
+            model_id: Model identifier
+            version: Specific version to load (latest if None)
+
+        Returns:
+            Dictionary of vocabularies for categorical inputs, or None if no vocabularies
+        """
+        if version is None:
+            version = self.get_latest_version(model_id)
+
+        artifact_dir = self.get_artifact_path(model_id, version)
+        if not artifact_dir.exists():
+            raise FileNotFoundError(f"Artifact not found: {artifact_dir}")
+
+        # Load vocabularies if file exists
+        vocab_path = artifact_dir / "vocabularies.json"
+        if not vocab_path.exists():
+            return None
+
+        with open(vocab_path) as f:
+            vocabularies = json.load(f)
+
+        return vocabularies
 
     def list_artifacts(self, model_id: str | None = None) -> list[ModelArtifact]:
         """List available artifacts.

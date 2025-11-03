@@ -361,7 +361,7 @@ class MLEvaluateTool(BaseTool):
                 # Setup TensorBoard logging directory
                 from pathlib import Path
 
-                tensorboard_log_dir = Path(f"tensorboard/run_{job.job_id}")
+                tensorboard_log_dir = Path(f".arc/tensorboard/run_{job.job_id}")
 
                 # Launch evaluation in background and return immediately
                 async def run_evaluation_background():
@@ -610,7 +610,7 @@ class MLEvaluateTool(BaseTool):
 
         from arc.core.config import SettingsManager
 
-        logdir = Path(f"tensorboard/run_{job_id}")
+        logdir = Path(f".arc/tensorboard/run_{job_id}")
 
         try:
             settings = SettingsManager()
@@ -666,7 +666,7 @@ class MLEvaluateTool(BaseTool):
             job_id: Evaluation job identifier
             section_printer: Section printer for indented output
         """
-        logdir = f"tensorboard/run_{job_id}"
+        logdir = f".arc/tensorboard/run_{job_id}"
         if section_printer:
             section_printer.print("")
             section_printer.print("[dim][cyan]ℹ View evaluation results:[/cyan][/dim]")

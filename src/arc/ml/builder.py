@@ -15,6 +15,207 @@ from arc.ml.utils import (
 )
 
 
+class CustomModuleWrapper(nn.Module):
+    """Wrapper for custom module definitions.
+
+    This class wraps a custom module definition (from the modules: section)
+    and executes its internal graph.
+    """
+
+    def __init__(
+        self,
+        module_def: Any,
+        input_names: list[str],
+        builder: ModelBuilder,
+        model_spec: ModelSpec | None = None,
+    ):
+        super().__init__()
+        self.module_def = module_def
+        self.input_names = input_names
+
+        # Build internal layers
+        self.layers = nn.ModuleDict()
+        for node in module_def.graph:
+            layer = builder._build_layer(node, model_spec)
+            self.layers[node.name] = layer
+
+        # Compute execution order for module's internal graph
+        self.execution_order, self.input_mappings = self._compute_execution_order()
+
+        # Store output mapping
+        self.output_mapping = (
+            module_def.outputs if hasattr(module_def, "outputs") else {}
+        )
+
+    def get_output_names(self) -> list[str]:
+        """Get list of custom output names defined by this module."""
+        return list(self.output_mapping.keys()) if self.output_mapping else []
+
+    def _compute_execution_order(self) -> tuple[list[str], dict[str, Any]]:
+        """Compute execution order for module's internal graph."""
+        dependencies = {}
+        input_mappings = {}
+
+        for node in self.module_def.graph:
+            node_deps = set()
+
+            if hasattr(node, "inputs") and node.inputs:
+                input_mappings[node.name] = node.inputs
+
+                # Extract dependencies
+                if isinstance(node.inputs, dict):
+                    for tensor_ref in node.inputs.values():
+                        if isinstance(tensor_ref, str):
+                            dep = self._extract_dependency(tensor_ref)
+                            if dep:
+                                node_deps.add(dep)
+                elif isinstance(node.inputs, list):
+                    for tensor_ref in node.inputs:
+                        if isinstance(tensor_ref, str):
+                            dep = self._extract_dependency(tensor_ref)
+                            if dep:
+                                node_deps.add(dep)
+                elif isinstance(node.inputs, str):
+                    dep = self._extract_dependency(node.inputs)
+                    if dep:
+                        node_deps.add(dep)
+
+            dependencies[node.name] = node_deps
+
+        # Topological sort
+        execution_order = []
+        remaining = {node.name for node in self.module_def.graph}
+        declaration_index = {
+            node.name: idx for idx, node in enumerate(self.module_def.graph)
+        }
+
+        while remaining:
+            ready = [node for node in remaining if not (dependencies[node] & remaining)]
+            if not ready:
+                raise ValueError(f"Circular dependency in module {self.module_def}")
+            next_node = min(ready, key=lambda n: declaration_index.get(n, float("inf")))
+            execution_order.append(next_node)
+            remaining.remove(next_node)
+
+        return execution_order, input_mappings
+
+    def _extract_dependency(self, tensor_ref: str) -> str | None:
+        """Extract node dependency from tensor reference."""
+        if "." in tensor_ref:
+            node_name = tensor_ref.split(".")[0]
+            if any(node.name == node_name for node in self.module_def.graph):
+                return node_name
+
+        if any(node.name == tensor_ref for node in self.module_def.graph):
+            return tensor_ref
+
+        return None
+
+    def forward(self, **inputs: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]:
+        """Forward pass through the custom module."""
+        # Initialize tensor cache with module inputs
+        tensor_cache = {}
+        for input_name, tensor in inputs.items():
+            tensor_cache[input_name] = tensor
+
+        # Execute internal graph
+        for layer_name in self.execution_order:
+            layer = self.layers[layer_name]
+            layer_inputs = self._resolve_layer_inputs(layer_name, tensor_cache)
+
+            if isinstance(layer_inputs, dict):
+                # Unpack dict as keyword arguments
+                layer_output = layer(**layer_inputs)
+            else:
+                # Single input
+                layer_output = layer(layer_inputs)
+
+            tensor_cache[layer_name] = layer_output
+            tensor_cache[f"{layer_name}.output"] = layer_output
+
+        # Return outputs based on output mapping
+        if self.output_mapping:
+            if len(self.output_mapping) == 1:
+                # Single output - return tensor directly
+                output_ref = next(iter(self.output_mapping.values()))
+                return self._resolve_tensor_reference(output_ref, tensor_cache)
+            else:
+                # Multiple outputs - return dict
+                outputs = {}
+                for output_name, output_ref in self.output_mapping.items():
+                    outputs[output_name] = self._resolve_tensor_reference(
+                        output_ref, tensor_cache
+                    )
+                return outputs
+        else:
+            # No output mapping - return last layer output
+            last_layer = self.execution_order[-1]
+            return tensor_cache[last_layer]
+
+    def _resolve_layer_inputs(
+        self, layer_name: str, tensor_cache: dict[str, torch.Tensor]
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
+        """Resolve input tensors for a layer."""
+        input_spec = self.input_mappings.get(layer_name)
+
+        if input_spec is None:
+            return self._sequential_fallback(tensor_cache)
+
+        if isinstance(input_spec, str):
+            return self._resolve_tensor_reference(input_spec, tensor_cache)
+
+        if isinstance(input_spec, list):
+            # For list inputs, convert to dict with numeric keys (input_0, input_1, etc.)
+            # FunctionalWrapper will handle both binary ops (add, mul) and tuple ops (cat, stack)
+            resolved_inputs = {}
+            for i, tensor_ref in enumerate(input_spec):
+                resolved_inputs[f"input_{i}"] = self._resolve_tensor_reference(
+                    tensor_ref, tensor_cache
+                )
+            return resolved_inputs
+
+        if isinstance(input_spec, dict):
+            resolved_inputs = {}
+            for input_port, tensor_ref in input_spec.items():
+                resolved_inputs[input_port] = self._resolve_tensor_reference(
+                    tensor_ref, tensor_cache
+                )
+            return resolved_inputs
+
+        raise ValueError(f"Invalid input spec for {layer_name}: {input_spec}")
+
+    def _resolve_tensor_reference(
+        self, reference: str, tensor_cache: dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """Resolve a tensor reference to an actual tensor."""
+        if reference in tensor_cache:
+            return tensor_cache[reference]
+
+        if not reference.endswith(".output"):
+            output_ref = f"{reference}.output"
+            if output_ref in tensor_cache:
+                return tensor_cache[output_ref]
+
+        raise ValueError(f"Cannot resolve tensor reference: {reference}")
+
+    def _sequential_fallback(
+        self, tensor_cache: dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """Fallback for sequential execution."""
+        non_input_tensors = [
+            (k, v)
+            for k, v in tensor_cache.items()
+            if k not in self.input_names and not k.endswith(".output")
+        ]
+
+        if not non_input_tensors:
+            # Use first module input
+            first_input = self.input_names[0]
+            return tensor_cache[first_input]
+
+        return non_input_tensors[-1][1]
+
+
 class ArcModel(nn.Module):
     """PyTorch model built from Arc-Graph specification."""
 
@@ -79,6 +280,20 @@ class ArcModel(nn.Module):
             tensor_cache[layer_name] = layer_output
             tensor_cache[f"{layer_name}.output"] = layer_output
 
+            # If layer returns a dict (custom module with multiple outputs),
+            # cache each named output separately
+            if isinstance(layer_output, dict):
+                for output_name, output_tensor in layer_output.items():
+                    tensor_cache[f"{layer_name}.{output_name}"] = output_tensor
+            # If layer is a CustomModuleWrapper with single custom output,
+            # cache it with the custom output name too
+            elif isinstance(layer, CustomModuleWrapper):
+                output_names = layer.get_output_names()
+                if len(output_names) == 1:
+                    # Single custom output - also cache with custom name
+                    custom_name = output_names[0]
+                    tensor_cache[f"{layer_name}.{custom_name}"] = layer_output
+
         # Map to final model outputs
         final_outputs = {}
         for output_name, source in self.output_mapping.items():
@@ -108,6 +323,36 @@ class ArcModel(nn.Module):
         if isinstance(input_spec, str):
             # Single input reference
             return self._resolve_tensor_reference(input_spec, tensor_cache)
+
+        if isinstance(input_spec, list):
+            # List of inputs - convert to dict keyed by module's expected input names
+            layer = self.layers[layer_name]
+            if isinstance(layer, CustomModuleWrapper):
+                # Custom module - use its defined input names
+                if len(input_spec) != len(layer.input_names):
+                    raise ValueError(
+                        f"Layer {layer_name} expects {len(layer.input_names)} inputs "
+                        f"but got {len(input_spec)}"
+                    )
+                resolved_inputs = {}
+                for input_name, tensor_ref in zip(
+                    layer.input_names, input_spec, strict=False
+                ):
+                    resolved_inputs[input_name] = self._resolve_tensor_reference(
+                        tensor_ref, tensor_cache
+                    )
+                return resolved_inputs
+            elif len(input_spec) == 1:
+                # Single input in list form - unwrap to single tensor
+                return self._resolve_tensor_reference(input_spec[0], tensor_cache)
+            else:
+                # Multiple inputs without defined names - use numeric keys
+                resolved_inputs = {}
+                for i, tensor_ref in enumerate(input_spec):
+                    resolved_inputs[f"input_{i}"] = self._resolve_tensor_reference(
+                        tensor_ref, tensor_cache
+                    )
+                return resolved_inputs
 
         if isinstance(input_spec, dict):
             # Multi-input mapping
@@ -203,7 +448,7 @@ class ModelBuilder:
 
         # Initialize shape validator
         if self.enable_shape_validation:
-            self.shape_validator = ShapeValidator(self.var_registry)
+            self.shape_validator = ShapeValidator(self.var_registry, graph.modules)
 
         # Compute execution order and input mappings
         execution_order, input_mappings = self._compute_execution_order(graph)
@@ -259,12 +504,14 @@ class ModelBuilder:
         layers = nn.ModuleDict()
 
         for node in model_spec.graph:
-            layer = self._build_layer(node)
+            layer = self._build_layer(node, model_spec)
             layers[node.name] = layer
 
         return layers
 
-    def _build_layer(self, node: GraphNode) -> nn.Module:
+    def _build_layer(
+        self, node: GraphNode, model_spec: ModelSpec | None = None
+    ) -> nn.Module:
         """Build a single PyTorch layer from graph node."""
         # Get component (layer class or function)
         from arc.graph.model.components import get_component_class_or_function
@@ -285,6 +532,45 @@ class ModelBuilder:
                 from arc.ml.layers import FunctionalWrapper
 
                 return FunctionalWrapper(component, **resolved_params)
+            elif component_kind == "custom_module":
+                # Build custom module from module definition
+                # Extract module name from type (e.g., "module.cross_layer" -> "cross_layer")
+                module_name = node.type.split(".", 1)[1]
+
+                # Get module definition from model spec
+                if model_spec is None:
+                    raise ValueError(
+                        f"Cannot build custom module '{node.name}': model_spec not provided"
+                    )
+
+                if (
+                    not hasattr(model_spec, "modules")
+                    or module_name not in model_spec.modules
+                ):
+                    # Show available modules in error message
+                    available = []
+                    if hasattr(model_spec, "modules") and model_spec.modules:
+                        available = sorted(model_spec.modules.keys())
+
+                    if available:
+                        available_str = ", ".join(available)
+                        raise ValueError(
+                            f"Custom module '{module_name}' not found in model specification. "
+                            f"Available modules: {available_str}"
+                        )
+                    else:
+                        raise ValueError(
+                            f"Custom module '{module_name}' not found. "
+                            f"No modules defined in model specification."
+                        )
+
+                module_def = model_spec.modules[module_name]
+
+                # Get input names from module definition
+                input_names = module_def.inputs if hasattr(module_def, "inputs") else []
+
+                # Create custom module wrapper
+                return CustomModuleWrapper(module_def, input_names, self, model_spec)
             else:
                 raise ValueError(
                     f"Unsupported component kind '{component_kind}' "
@@ -449,6 +735,6 @@ class ModelBuilder:
         if not self.enable_shape_validation:
             return inputs
 
-        validator = ShapeValidator(self.var_registry)
+        validator = ShapeValidator(self.var_registry, graph.modules)
         validator.validate_input_shapes(inputs, graph.model.inputs)
         return inputs

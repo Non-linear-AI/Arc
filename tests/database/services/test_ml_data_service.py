@@ -296,3 +296,104 @@ class TestMLDataService:
         assert not ml_data_service._is_valid_column_name("")
         assert not ml_data_service._is_valid_column_name("123invalid")
         assert not ml_data_service._is_valid_column_name("col;drop")
+
+    # Phase 1: Categorical Column Validation Tests
+
+    def test_get_features_as_tensors_rejects_categorical_columns(
+        self, ml_data_service, sample_dataset
+    ):
+        """Test that categorical columns are rejected when converting to tensors."""
+        with pytest.raises(
+            ValueError,
+            match=r"Cannot convert categorical column 'category'.*VARCHAR",
+        ):
+            ml_data_service.get_features_as_tensors(
+                sample_dataset,
+                feature_columns=["feature1", "category"],  # category is VARCHAR
+                target_columns=["target"],
+            )
+
+    def test_get_features_as_tensors_rejects_multiple_categorical_columns(
+        self, ml_data_service
+    ):
+        """Test that multiple categorical columns are all reported in error."""
+        # Create dataset with multiple categorical columns
+        create_sql = """
+        CREATE TABLE multi_cat_dataset (
+            id INTEGER,
+            num_feature DOUBLE,
+            cat1 VARCHAR(10),
+            cat2 TEXT,
+            target INTEGER
+        )
+        """
+        ml_data_service.db_manager.user_execute(create_sql)
+
+        ml_data_service.db_manager.user_execute(
+            "INSERT INTO multi_cat_dataset VALUES (1, 1.0, 'A', 'X', 0)"
+        )
+
+        # Should raise error mentioning first categorical column
+        with pytest.raises(ValueError, match="Cannot convert categorical column"):
+            ml_data_service.get_features_as_tensors(
+                "multi_cat_dataset",
+                feature_columns=["num_feature", "cat1", "cat2"],
+                target_columns=["target"],
+            )
+
+    def test_get_features_as_tensors_allows_categorical_targets(self, ml_data_service):
+        """Test that categorical columns are allowed as targets (will fail at conversion)."""
+        # Create dataset with categorical target
+        create_sql = """
+        CREATE TABLE cat_target_dataset (
+            id INTEGER,
+            feature DOUBLE,
+            cat_target VARCHAR(10)
+        )
+        """
+        ml_data_service.db_manager.user_execute(create_sql)
+
+        ml_data_service.db_manager.user_execute(
+            "INSERT INTO cat_target_dataset VALUES (1, 1.0, 'Class_A')"
+        )
+
+        # Target validation should fail at tensor conversion (not at our validation)
+        with pytest.raises(ValueError, match="Failed to convert data to tensors"):
+            ml_data_service.get_features_as_tensors(
+                "cat_target_dataset",
+                feature_columns=["feature"],
+                target_columns=["cat_target"],  # categorical target
+            )
+
+    def test_get_features_as_tensors_accepts_all_numeric_features(
+        self, ml_data_service, sample_dataset
+    ):
+        """Test that all-numeric features work correctly."""
+        features_tensor, targets_tensor = ml_data_service.get_features_as_tensors(
+            sample_dataset,
+            feature_columns=["feature1", "feature2", "id"],  # all numeric
+            target_columns=["target"],
+        )
+
+        assert isinstance(features_tensor, torch.Tensor)
+        assert features_tensor.shape == (5, 3)  # 5 samples, 3 features
+        assert features_tensor.dtype == torch.float32
+
+    def test_get_features_as_tensors_error_message_quality(
+        self, ml_data_service, sample_dataset
+    ):
+        """Test that error message provides helpful guidance."""
+        with pytest.raises(ValueError) as exc_info:
+            ml_data_service.get_features_as_tensors(
+                sample_dataset,
+                feature_columns=["category"],  # VARCHAR column
+                target_columns=["target"],
+            )
+
+        error_msg = str(exc_info.value)
+        # Check error message contains helpful information
+        assert "category" in error_msg  # mentions column name
+        assert "VARCHAR" in error_msg or "categorical" in error_msg  # mentions type
+        assert (
+            "encoding" in error_msg.lower() or "embed" in error_msg.lower()
+        )  # suggests solution

@@ -735,3 +735,317 @@ class TestRealWorldExamples:
 
         assert outputs["sequence_representation"].shape == (2, 100, 512)
         assert outputs["classification_logits"].shape == (2, 2)
+
+
+class TestEmbeddingGeneration:
+    """Test automatic embedding layer generation for categorical inputs."""
+
+    def test_single_categorical_input_with_embedding(self):
+        """Test that embedding layer is auto-generated for categorical input."""
+        yaml_content = """
+        inputs:
+          user_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 16
+            vocab_size: 100
+
+          features:
+            dtype: float32
+            shape: [null, 8]
+
+        graph:
+          - name: concat
+            type: torch.cat
+            params:
+              dim: 1
+            inputs: [user_id, features]
+
+          - name: classifier
+            type: torch.nn.Linear
+            params:
+              in_features: 24  # 16 (embedding) + 8 (features)
+              out_features: 2
+            inputs:
+              input: concat
+
+        outputs:
+          logits: classifier.output
+        """
+
+        model = build_model_from_yaml(yaml_content)
+
+        # Check that embedding layer was created
+        assert hasattr(model, "embeddings")
+        assert "user_id" in model.embeddings
+        embedding_layer = model.embeddings["user_id"]
+        assert isinstance(embedding_layer, torch.nn.Embedding)
+        assert embedding_layer.num_embeddings == 100
+        assert embedding_layer.embedding_dim == 16
+
+        # Test forward pass
+        user_ids = torch.tensor([5, 10, 15])  # Categorical indices
+        features = torch.randn(3, 8)
+        output = model(user_id=user_ids, features=features)
+        assert output.shape == (3, 2)
+
+    def test_multiple_categorical_inputs(self):
+        """Test multiple categorical inputs with different embedding dimensions."""
+        yaml_content = """
+        inputs:
+          user_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 32
+            vocab_size: 1000
+
+          item_id:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 64
+            vocab_size: 5000
+
+          numerical_features:
+            dtype: float32
+            shape: [null, 10]
+
+        graph:
+          - name: concat_all
+            type: torch.cat
+            params:
+              dim: 1
+            inputs: [user_id, item_id, numerical_features]
+
+          - name: hidden
+            type: torch.nn.Linear
+            params:
+              in_features: 106  # 32 + 64 + 10
+              out_features: 64
+            inputs:
+              input: concat_all
+
+          - name: activation
+            type: torch.nn.functional.relu
+            inputs: [hidden.output]
+
+          - name: output
+            type: torch.nn.Linear
+            params:
+              in_features: 64
+              out_features: 1
+            inputs:
+              input: activation
+
+        outputs:
+          prediction: output.output
+        """
+
+        model = build_model_from_yaml(yaml_content)
+
+        # Check both embeddings were created
+        assert "user_id" in model.embeddings
+        assert "item_id" in model.embeddings
+
+        user_embedding = model.embeddings["user_id"]
+        assert user_embedding.num_embeddings == 1000
+        assert user_embedding.embedding_dim == 32
+
+        item_embedding = model.embeddings["item_id"]
+        assert item_embedding.num_embeddings == 5000
+        assert item_embedding.embedding_dim == 64
+
+        # Test forward pass
+        batch_size = 4
+        user_ids = torch.randint(0, 1000, (batch_size,))
+        item_ids = torch.randint(0, 5000, (batch_size,))
+        features = torch.randn(batch_size, 10)
+
+        output = model(user_id=user_ids, item_id=item_ids, numerical_features=features)
+        assert output.shape == (batch_size, 1)
+
+    def test_categorical_only_model(self):
+        """Test model with only categorical inputs."""
+        yaml_content = """
+        inputs:
+          category_a:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 8
+            vocab_size: 50
+
+          category_b:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 12
+            vocab_size: 30
+
+        graph:
+          - name: concat
+            type: torch.cat
+            params:
+              dim: 1
+            inputs: [category_a, category_b]
+
+          - name: mlp
+            type: torch.nn.Linear
+            params:
+              in_features: 20  # 8 + 12
+              out_features: 10
+            inputs:
+              input: concat
+
+        outputs:
+          output: mlp.output
+        """
+
+        model = build_model_from_yaml(yaml_content)
+
+        # Check embeddings
+        assert len(model.embeddings) == 2
+        assert "category_a" in model.embeddings
+        assert "category_b" in model.embeddings
+
+        # Test forward pass
+        cat_a = torch.randint(0, 50, (5,))
+        cat_b = torch.randint(0, 30, (5,))
+        output = model(category_a=cat_a, category_b=cat_b)
+        assert output.shape == (5, 10)
+
+    def test_non_categorical_inputs_unchanged(self):
+        """Test that non-categorical inputs work as before."""
+        yaml_content = """
+        inputs:
+          regular_features:
+            dtype: float32
+            shape: [null, 20]
+
+        graph:
+          - name: linear
+            type: torch.nn.Linear
+            params:
+              in_features: 20
+              out_features: 5
+            inputs:
+              input: regular_features
+
+        outputs:
+          result: linear.output
+        """
+
+        model = build_model_from_yaml(yaml_content)
+
+        # No embeddings should be created
+        assert not hasattr(model, "embeddings") or len(model.embeddings) == 0
+
+        # Test forward pass
+        features = torch.randn(3, 20)
+        output = model(regular_features=features)
+        assert output.shape == (3, 5)
+
+    def test_embedding_with_2d_categorical_input(self):
+        """Test embedding with 2D categorical input (batch_size, seq_len)."""
+        yaml_content = """
+        inputs:
+          token_ids:
+            dtype: long
+            shape: [null, 10]  # Batch of sequences
+            categorical: true
+            embedding_dim: 128
+            vocab_size: 10000
+
+        graph:
+          - name: pooled
+            type: torch.mean
+            params:
+              dim: 1
+            inputs: [token_ids]
+
+          - name: classifier
+            type: torch.nn.Linear
+            params:
+              in_features: 128
+              out_features: 3
+            inputs:
+              input: pooled
+
+        outputs:
+          class_logits: classifier.output
+        """
+
+        model = build_model_from_yaml(yaml_content)
+
+        # Check embedding
+        assert "token_ids" in model.embeddings
+        embedding = model.embeddings["token_ids"]
+        assert embedding.num_embeddings == 10000
+        assert embedding.embedding_dim == 128
+
+        # Test forward pass with 2D input
+        batch_size = 4
+        seq_len = 10
+        token_ids = torch.randint(0, 10000, (batch_size, seq_len))
+        output = model(token_ids=token_ids)
+        assert output.shape == (batch_size, 3)
+
+    def test_embedding_parameters_required(self):
+        """Test that embedding_dim and vocab_size are required for categorical."""
+        # Missing embedding_dim
+        yaml_missing_dim = """
+        inputs:
+          category:
+            dtype: long
+            shape: [null]
+            categorical: true
+            vocab_size: 100
+
+        graph:
+          - name: linear
+            type: torch.nn.Linear
+            params:
+              in_features: 1
+              out_features: 1
+            inputs:
+              input: category
+
+        outputs:
+          result: linear.output
+        """
+
+        with pytest.raises(
+            ValueError,
+            match="Categorical input.*must specify.*embedding_dim.*vocab_size",
+        ):
+            build_model_from_yaml(yaml_missing_dim)
+
+        # Missing vocab_size
+        yaml_missing_vocab = """
+        inputs:
+          category:
+            dtype: long
+            shape: [null]
+            categorical: true
+            embedding_dim: 32
+
+        graph:
+          - name: linear
+            type: torch.nn.Linear
+            params:
+              in_features: 1
+              out_features: 1
+            inputs:
+              input: category
+
+        outputs:
+          result: linear.output
+        """
+
+        with pytest.raises(
+            ValueError,
+            match="Categorical input.*must specify.*embedding_dim.*vocab_size",
+        ):
+            build_model_from_yaml(yaml_missing_vocab)

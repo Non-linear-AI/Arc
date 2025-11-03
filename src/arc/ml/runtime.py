@@ -290,6 +290,7 @@ class MLRuntime:
         checkpoint_dir: str | None = None,
         description: str | None = None,
         tags: list[str] | None = None,
+        skip_validation: bool = False,
     ) -> str:
         """Submit a training job using a registered model with unified YAML spec.
 
@@ -308,6 +309,7 @@ class MLRuntime:
             checkpoint_dir: Optional checkpoint directory
             description: Optional job description
             tags: Optional job tags
+            skip_validation: Skip dry-run validation if already done (default: False)
 
         Returns:
             Job ID
@@ -461,20 +463,22 @@ class MLRuntime:
 
         # Run validation synchronously BEFORE submitting job to catch errors
         # early. Validates model building, data loading, forward pass, loss.
-        try:
-            self.training_service.validate_job_config(job_config)
-        except ValueError as validation_error:
-            # Extract validation report if available
-            from arc.ml.dry_run_validator import ValidationError
+        # Skip if validation was already done (e.g., during model registration)
+        if not skip_validation:
+            try:
+                self.training_service.validate_job_config(job_config)
+            except ValueError as validation_error:
+                # Extract validation report if available
+                from arc.ml.dry_run_validator import ValidationError
 
-            validation_report = None
-            if isinstance(validation_error, ValidationError):
-                validation_report = validation_error.validation_report.to_dict()
+                validation_report = None
+                if isinstance(validation_error, ValidationError):
+                    validation_report = validation_error.validation_report.to_dict()
 
-            # Convert validation errors to MLRuntimeError with report attached
-            raise MLRuntimeError(
-                str(validation_error), validation_report=validation_report
-            ) from validation_error
+                # Convert validation errors to MLRuntimeError with report attached
+                raise MLRuntimeError(
+                    str(validation_error), validation_report=validation_report
+                ) from validation_error
 
         job_id = self.training_service.submit_training_job(job_config)
         return job_id

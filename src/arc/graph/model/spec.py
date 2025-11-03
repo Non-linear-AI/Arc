@@ -21,6 +21,9 @@ class ModelInput:
     dtype: str
     shape: list[int | None | str]
     columns: list[str] | None = None  # Direct column references for data mapping
+    categorical: bool = False  # Whether this is a categorical feature
+    embedding_dim: int | None = None  # Embedding dim for categorical
+    vocab_size: int | None = None  # Vocabulary size for categorical features
 
 
 @dataclass
@@ -95,6 +98,9 @@ class ModelSpec:
                 dtype=input_spec["dtype"],
                 shape=input_spec["shape"],
                 columns=input_spec.get("columns"),
+                categorical=input_spec.get("categorical", False),
+                embedding_dim=input_spec.get("embedding_dim"),
+                vocab_size=input_spec.get("vocab_size"),
             )
 
         # Parse modules section if present

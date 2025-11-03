@@ -582,20 +582,74 @@ class DryRunValidator:
                 }
             )
 
-        # Non-numeric data errors
+        # Non-numeric data errors (categorical columns)
         elif "can't convert np.ndarray of type numpy.object_" in error_msg:
             self.report.root_cause_analysis.append(
-                "Data contains non-numeric columns that cannot be converted to tensors"
+                "Data contains categorical columns (VARCHAR/TEXT) that cannot be "
+                "converted to tensors. Categorical features must be encoded as "
+                "integers before training."
             )
 
             self.report.suggested_fixes.append(
                 {
                     "priority": 1,
-                    "description": "Remove non-numeric columns from feature list",
+                    "description": "Encode categorical features using ml_data tool",
                     "details": (
-                        "Features include string/text columns that need "
-                        "preprocessing. Update model spec to exclude these "
-                        "columns or add preprocessing."
+                        "Use label encoding in the ml_data pipeline:\n"
+                        "1. Add fit.label_encoder step to create vocabulary from "
+                        "training data\n"
+                        "2. Add transform.label_encode step to convert strings to "
+                        "integer indices\n"
+                        "3. Use the encoded columns as features in your model spec"
+                    ),
+                    "yaml_change": (
+                        "# In ml_data pipeline:\n"
+                        "- name: genre_encoder\n"
+                        "  type: fit.label_encoder\n"
+                        "  params:\n"
+                        "    input_table: train_data\n"
+                        "    column: genre\n"
+                        "    output_table: genre_vocab\n\n"
+                        "- name: train_encoded\n"
+                        "  type: transform.label_encode\n"
+                        "  params:\n"
+                        "    input_table: train_data\n"
+                        "    column: genre\n"
+                        "    vocabulary_table: genre_vocab\n"
+                        "    output_column: genre_encoded"
+                    ),
+                }
+            )
+
+            self.report.suggested_fixes.append(
+                {
+                    "priority": 2,
+                    "description": "Use hash bucketing for high-cardinality features",
+                    "details": (
+                        "For categorical features with many unique values, use "
+                        "transform.hash_bucket to hash strings into fixed-size "
+                        "integer buckets. This works without fitting a vocabulary."
+                    ),
+                    "yaml_change": (
+                        "# In ml_data pipeline:\n"
+                        "- name: train_hashed\n"
+                        "  type: transform.hash_bucket\n"
+                        "  params:\n"
+                        "    input_table: train_data\n"
+                        "    column: user_id\n"
+                        "    num_buckets: 10000\n"
+                        "    output_column: user_id_hashed"
+                    ),
+                }
+            )
+
+            self.report.suggested_fixes.append(
+                {
+                    "priority": 3,
+                    "description": "Remove categorical columns from features",
+                    "details": (
+                        "If you don't need the categorical features, exclude them "
+                        "from the feature list in your model spec inputs."
                     ),
                 }
             )
