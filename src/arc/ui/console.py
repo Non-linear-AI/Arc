@@ -62,7 +62,7 @@ class InteractiveInterface:
 
         # Tagline dimmed, manually centered (28 chars, center in 80 = 26 space padding)
         self._printer.print(
-            "[dim]                          From Question to Prediction[/dim]"
+            "[dim]                         From Question to Prediction[/dim]"
         )
 
         # Bottom border - thin dim line with 2-space padding  # noqa: E501
