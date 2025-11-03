@@ -1179,7 +1179,7 @@ async def run_interactive_mode(
                                 esc_task.cancel()
 
                 if interrupted:
-                    # Check if agent added an interruption message to chat history
+                    # Check if agent added a cancellation message to chat history
                     # If so, display it; otherwise show default message
                     last_message = None
                     if agent and agent.chat_history:
@@ -1190,11 +1190,12 @@ async def run_interactive_mode(
                     # Add blank line before message
                     ui._printer.print("")
                     if last_message:
-                        # Display agent's interruption message
+                        # Display agent's cancellation message
                         ui.show_assistant_step(last_message)
                     else:
                         # Fallback to default message if agent didn't add one
-                        ui.show_info("⏹ Interrupted.")
+                        # Use same message as agent for consistency
+                        ui.show_assistant_step("Operation cancelled. What would you like to do next?")
                     # Add blank line after message
                     ui._printer.print("")
 
