@@ -170,9 +170,8 @@ For more details, see the [Arc-Graph Specification Guide](docs/concepts/arc-grap
 - **[Model Evaluation](docs/guides/model-evaluation.md)** - Evaluate performance
 - **[Making Predictions](docs/guides/making-predictions.md)** - Use trained models
 
-**Examples & Tutorials:**
-- **[Diabetes Prediction Tutorial](docs/examples/diabetes-prediction.md)** - Complete end-to-end example
-- **[Custom Architectures](docs/examples/custom-architecture.md)** - Advanced model patterns
+**Examples:**
+- **[Logistic Regression Example](docs/examples/logistic_regression_console/)** - Complete working example
 
 **Integrations:**
 - **[AWS S3](docs/integrations/s3.md)** - Load data from S3 buckets
