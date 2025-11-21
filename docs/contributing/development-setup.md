@@ -81,6 +81,51 @@ make ci               # Run all CI checks locally
 make clean            # Remove build artifacts
 ```
 
+## Testing
+
+### Run Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov
+
+# Run tests in watch mode
+uv run pytest-watcher .
+
+# Or use Make
+make test
+make test-watch
+```
+
+### Run Specific Tests
+
+```bash
+# Specific module
+uv run pytest tests/test_core/
+
+# Specific file
+uv run pytest tests/test_core/test_agent.py
+
+# Specific test
+uv run pytest tests/test_core/test_agent.py::test_agent_initialization
+
+# Match pattern
+uv run pytest -k "test_agent"
+```
+
+### Coverage Report
+
+```bash
+# Generate HTML coverage report
+uv run pytest --cov --cov-report=html
+
+# View report
+open htmlcov/index.html  # macOS
+```
+
 ## Project Structure
 
 ```
@@ -106,15 +151,11 @@ tests/
 
 ## Next Steps
 
-For detailed information, see:
-
-- **[Testing Guide](testing.md)** - Comprehensive testing practices
 - **[Architecture Overview](architecture.md)** - Understand the codebase structure
 - **[Contributing Guidelines](../../CONTRIBUTING.md)** - Complete contribution workflow
 
 ## Getting Help
 
 - Read the [Architecture Overview](architecture.md) to understand the codebase
-- Check [Testing Guide](testing.md) for testing practices
 - Ask in [GitHub Discussions](https://github.com/non-linear-ai/arc/discussions)
-- Look at existing code for examples
+- Look at existing tests for examples

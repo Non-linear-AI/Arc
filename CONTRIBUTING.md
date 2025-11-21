@@ -172,7 +172,7 @@ async def test_async_operation():
     assert result is not None
 ```
 
-For detailed testing guidelines, see [Testing Guide](docs/contributing/testing.md).
+See [Development Setup](docs/contributing/development-setup.md#testing) for testing commands.
 
 ## Documentation
 
@@ -293,9 +293,8 @@ Contributors are recognized in:
 
 ## Additional Resources
 
-- [Development Setup Guide](docs/contributing/development-setup.md) - Detailed setup instructions
+- [Development Setup Guide](docs/contributing/development-setup.md) - Detailed setup and testing
 - [Architecture Overview](docs/contributing/architecture.md) - Understand the codebase
-- [Testing Guide](docs/contributing/testing.md) - Testing practices
 - [Publishing Guide](docs/contributing/publishing.md) - For maintainers
 
 ## Questions?

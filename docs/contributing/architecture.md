@@ -404,6 +404,5 @@ Add logging in tools to see execution flow
 
 ## Next Steps
 
-- **[Development Setup](development-setup.md)** - Set up dev environment
-- **[Testing Guide](testing.md)** - Learn testing practices
+- **[Development Setup](development-setup.md)** - Set up dev environment and run tests
 - **[Contributing Guidelines](../../CONTRIBUTING.md)** - Contribution workflow

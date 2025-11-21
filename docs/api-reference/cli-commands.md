@@ -170,13 +170,6 @@ You can also use plain English instead of commands:
 "Evaluate my model on test data"
 ```
 
-## Keyboard Shortcuts
-
-- **Ctrl+C**: Cancel operation
-- **Ctrl+D**: Exit Arc
-- **Esc**: Interrupt streaming
-- **Up/Down**: Command history
-
 ## Quick Examples
 
 ### Complete Workflow

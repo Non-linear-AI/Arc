@@ -50,9 +50,8 @@ Learn by example:
 
 Help improve Arc:
 
-- **[Development Setup](contributing/development-setup.md)** - Set up your development environment
+- **[Development Setup](contributing/development-setup.md)** - Set up dev environment and run tests
 - **[Architecture Overview](contributing/architecture.md)** - Understanding Arc's codebase
-- **[Testing Guide](contributing/testing.md)** - Running and writing tests
 - **[Publishing Guide](contributing/publishing.md)** - Publishing releases to PyPI
 - **[Contributing Guidelines](../CONTRIBUTING.md)** - How to contribute
 
