@@ -44,10 +44,7 @@ Learn by example:
 
 ## 📖 API Reference
 
-Detailed reference documentation:
-
-- **[CLI Commands](api-reference/cli-commands.md)** - Complete command reference (`/ml`, `/sql`, `/config`)
-- **[Arc-Graph Specification](api-reference/arc-graph-spec.md)** - Complete Arc-Graph spec
+- **[CLI Commands](api-reference/cli-commands.md)** - Quick command reference
 
 ## 🤝 Contributing
 
