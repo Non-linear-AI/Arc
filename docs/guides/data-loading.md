@@ -32,8 +32,6 @@ You can verify with:
 
 ## Loading CSV Files
 
-### From Local File
-
 ```
 Load users.csv into a table called users
 ```
@@ -41,30 +39,6 @@ Load users.csv into a table called users
 Or use SQL directly:
 ```sql
 /sql CREATE TABLE users AS SELECT * FROM 'users.csv'
-```
-
-### With Custom Delimiter
-
-For files with non-standard delimiters (e.g., tab-separated or pipe-delimited):
-
-```
-Load the tab-separated file data.tsv into table data
-```
-
-### Large CSV Files
-
-Arc handles large CSV files efficiently. For very large files (GB+), consider:
-
-```
-Load large_data.csv into table data using streaming mode
-```
-
-### CSV with No Header
-
-If your CSV lacks a header row:
-
-```
-Load data.csv (no header) with columns: id, name, age, email
 ```
 
 ## Loading Parquet Files
@@ -80,33 +54,12 @@ Or with SQL:
 /sql CREATE TABLE sales AS SELECT * FROM 'sales_data.parquet'
 ```
 
-### Loading Multiple Parquet Files
-
-Use glob patterns to load multiple files:
-
-```
-Load all parquet files from the data/ directory into table combined_data
-```
-
-Or with SQL:
-```sql
-/sql CREATE TABLE combined_data AS SELECT * FROM 'data/*.parquet'
-```
-
 ## Loading JSON Files
 
-### Standard JSON
+Arc supports JSON and JSONL formats:
 
 ```
 Load products.json into table products
-```
-
-### Newline-Delimited JSON (JSONL)
-
-For streaming JSON data:
-
-```
-Load events.jsonl into table events
 ```
 
 ## Loading from URLs
@@ -143,15 +96,6 @@ After [configuring S3 credentials](../integrations/s3.md):
 Load data from s3://my-private-bucket/data.parquet
 ```
 
-### S3 Glob Patterns
-
-Load multiple files from S3:
-
-```sql
-/sql CREATE TABLE all_data AS
-     SELECT * FROM 's3://my-bucket/data/*.parquet'
-```
-
 ## Loading from Snowflake
 
 Arc can query Snowflake data warehouses. See the [Snowflake Integration Guide](../integrations/snowflake.md) for setup.
@@ -169,55 +113,7 @@ Or with SQL:
 
 ## Checking Loaded Data
 
-After loading data, verify it:
-
-```sql
--- List all tables
-/sql SHOW TABLES
-
--- View table structure
-/sql DESCRIBE users
-
--- Preview data
-/sql SELECT * FROM users LIMIT 10
-
--- Count rows
-/sql SELECT COUNT(*) FROM users
-
--- Check for nulls
-/sql SELECT COUNT(*) as null_count
-     FROM users
-     WHERE column_name IS NULL
-```
-
-## Common Data Loading Patterns
-
-### Pattern 1: Load and Explore
-
-```
-Load data.csv and show me the first 10 rows
-```
-
-### Pattern 2: Load and Transform
-
-```
-Load sales.csv, then create a processed_sales table with:
-- Convert dates to proper format
-- Filter out invalid entries
-- Add a month column
-```
-
-### Pattern 3: Load Multiple Sources
-
-```
-Load customers.csv and orders.csv, then join them on customer_id
-```
-
-### Pattern 4: Incremental Loading
-
-```
-Load new_data.csv and append it to the existing data table
-```
+Verify data with `/sql SHOW TABLES` and `/sql SELECT * FROM table_name LIMIT 10`.
 
 ## Data Loading via /ml data Command
 
