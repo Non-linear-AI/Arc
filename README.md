@@ -180,7 +180,6 @@ For more details, see the [Arc-Graph Specification Guide](docs/concepts/arc-grap
 **For Contributors:**
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
 - **[Development Setup](docs/contributing/development-setup.md)** - Set up dev environment
-- **[Architecture Overview](docs/contributing/architecture.md)** - Understand the codebase
 
 ## Development
 

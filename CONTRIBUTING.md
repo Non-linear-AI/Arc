@@ -6,7 +6,6 @@ Thank you for your interest in contributing to Arc! This document provides guide
 
 For detailed technical information, see:
 - **[Development Setup Guide](docs/contributing/development-setup.md)** - Setup, testing, commands
-- **[Architecture Overview](docs/contributing/architecture.md)** - Understand the codebase
 - **[Publishing Guide](docs/contributing/publishing.md)** - For maintainers
 
 ## Getting Started
@@ -142,7 +141,6 @@ High-priority areas:
 ## Getting Help
 
 - Check the [documentation](docs/)
-- Read the [Architecture Overview](docs/contributing/architecture.md)
 - Search [GitHub Issues](https://github.com/non-linear-ai/arc/issues)
 - Ask in [GitHub Discussions](https://github.com/non-linear-ai/arc/discussions)
 

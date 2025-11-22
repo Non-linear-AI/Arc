@@ -151,11 +151,9 @@ tests/
 
 ## Next Steps
 
-- **[Architecture Overview](architecture.md)** - Understand the codebase structure
 - **[Contributing Guidelines](../../CONTRIBUTING.md)** - Complete contribution workflow
 
 ## Getting Help
 
-- Read the [Architecture Overview](architecture.md) to understand the codebase
 - Ask in [GitHub Discussions](https://github.com/non-linear-ai/arc/discussions)
 - Look at existing tests for examples

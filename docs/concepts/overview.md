@@ -41,16 +41,9 @@ graph:
     params:
       in_features: 10
       out_features: 64
-    inputs:
-      input: user_features
-
-  - name: relu
-    type: torch.nn.ReLU
-    inputs:
-      input: hidden.output
 
 outputs:
-  prediction: relu.output
+  prediction: hidden.output
 ```
 
 [Learn more about Arc-Graph →](arc-graph.md)
@@ -71,7 +64,6 @@ outputs:
 **Example**:
 ```yaml
 name: user_features_pipeline
-version: 1.0
 
 sources:
   - name: raw_users
@@ -83,12 +75,9 @@ transforms:
   - name: normalize_age
     type: min_max_scaler
     input: raw_users.age
-    params:
-      feature_range: [0, 1]
 
 outputs:
   - name: processed_users
-    type: duckdb_table
 ```
 
 [Learn more about Arc-Pipeline →](arc-pipeline.md)
@@ -147,61 +136,6 @@ outputs:
    - Portable YAML specifications for reproducibility
    - TensorBoard logs for analysis
 
-## Key Benefits
-
-### Declarative & Portable
-
-Arc-Graph and Arc-Pipeline are declarative YAML files:
-- **Version controlled**: Track changes in Git
-- **Portable**: Run anywhere PyTorch runs
-- **Reproducible**: Same specs = same results
-- **Human-readable**: Understand and modify easily
-
-### AI-Native
-
-Arc's AI generates specifications using Arc-Knowledge:
-- **No ML coding**: Describe what you want in plain English
-- **Best practices**: AI applies expert knowledge automatically
-- **Iterative**: Easily revise and refine specifications
-
-### Extensible
-
-Customize Arc for your needs:
-- **Custom layers**: Use any PyTorch layer in Arc-Graph
-- **Custom processors**: Add data processors in Arc-Pipeline
-- **Custom knowledge**: Extend Arc-Knowledge with your patterns
-
-### Train/Serve Parity
-
-The same Arc-Graph used for training is used for inference:
-- **No translation**: Same spec for train and serve
-- **No drift**: Architecture guaranteed to match
-- **Easy deployment**: Load spec and model weights
-
-## Design Philosophy
-
-Arc's Three Pillars embody several design principles:
-
-### Separation of Concerns
-- **Arc-Graph**: WHAT to compute (model architecture)
-- **Arc-Pipeline**: HOW to prepare data (feature engineering)
-- **Arc-Knowledge**: WHY these choices (best practices)
-
-### Declarative Over Imperative
-- Specify WHAT you want, not HOW to do it
-- Let Arc handle implementation details
-- Focus on high-level design decisions
-
-### AI-Assisted, Human-Controlled
-- AI generates specifications from natural language
-- Humans review and approve before execution
-- Specifications are transparent and editable
-
-### Composability
-- Mix and match components
-- Reuse pipelines across projects
-- Build libraries of specifications
-
 ## Getting Started with the Three Pillars
 
 Ready to dive deeper? Explore each pillar:
@@ -231,20 +165,11 @@ You can:
 
 ### How is this different from writing PyTorch?
 
-| Aspect | PyTorch Code | Arc |
-|--------|--------------|-----|
-| **Format** | Python code | Declarative YAML |
-| **Creation** | Manual coding | AI-generated |
-| **Portability** | Code dependencies | Self-contained YAML |
-| **Versioning** | Full codebase | Single YAML file |
-| **Train/Serve** | Separate implementations | Same specification |
-| **Learning Curve** | Deep ML knowledge | Natural language |
-
-Arc complements PyTorch - it generates PyTorch models but from a higher-level specification.
+Arc uses declarative YAML specifications instead of Python code. The AI generates these specifications from natural language, making ML accessible without deep coding knowledge. Arc generates and uses PyTorch models internally, but you work at a higher level of abstraction.
 
 ## Next Steps
 
 - **[Arc-Graph Specification](arc-graph.md)** - Deep dive into model architecture specs
 - **[Arc-Pipeline Specification](arc-pipeline.md)** - Deep dive into data processing specs
 - **[Arc-Knowledge System](arc-knowledge.md)** - Learn to extend Arc's knowledge
-- **[Examples](../examples/diabetes-prediction.md)** - See complete end-to-end examples
+- **[Examples](../examples/logistic_regression_console/)** - See complete end-to-end examples
