@@ -15,7 +15,6 @@ Quick reference for Arc commands.
 
 ```bash
 arc chat                      # Interactive mode
-arc chat --non-interactive    # Scripting mode
 arc --help                    # Show help
 arc --version                 # Show version
 ```
@@ -165,38 +164,9 @@ exit                 # Exit Arc
 You can also use plain English instead of commands:
 
 ```
-"Load customers.csv into a table"
+"Clean up data in customers table"
 "Build a model to predict churn"
 "Evaluate my model on test data"
-```
-
-## Quick Examples
-
-### Complete Workflow
-
-```bash
-# 1. Load data
-/sql CREATE TABLE data AS SELECT * FROM 'data.csv'
-
-# 2. Process
-/ml data --name processed --instruction "normalize and split" --source-tables data
-
-# 3. Train
-/ml model --name my_model --instruction "classifier" --data-table processed_train
-
-# 4. Evaluate
-/ml evaluate --model-id <id> --data-table processed_test
-
-# 5. Predict
-/ml predict --model my_model --data new_data
-```
-
-### Data Exploration
-
-```sql
-/sql SHOW TABLES
-/sql DESCRIBE my_table
-/sql SELECT COUNT(*), MIN(date), MAX(date) FROM my_table
 ```
 
 ## Need Help?

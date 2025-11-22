@@ -444,45 +444,54 @@ class ArcEvaluator:
             EvaluationError: If TensorBoard logging fails (non-fatal, logged as warning)
         """
         try:
+            import warnings
+
             from torch.utils.tensorboard import SummaryWriter
 
-            # Create log directory
-            log_path = Path(log_dir)
-            log_path.mkdir(parents=True, exist_ok=True)
-
-            # Create TensorBoard writer
-            writer = SummaryWriter(log_dir=str(log_path))
-
-            # Log scalar metrics directly
-            for metric_name, value in metrics_dict.items():
-                writer.add_scalar(f"evaluation/{metric_name}", value, 1)
-
-            # Determine task type for appropriate visualizations
-            task_type = self._infer_task_type()
-            logger.info(f"🔍 Task type detected: {task_type}")
-            logger.debug(
-                f"Predictions shape: {predictions.shape}, "
-                f"Targets shape: {targets.shape}"
-            )
-
-            if task_type == "classification":
-                logger.info(
-                    "📊 Logging classification visualizations (including PR curve)..."
-                )
-                # Log classification visualizations
-                self._log_classification_visualizations(
-                    writer, predictions, targets, step=1
-                )
-            elif task_type == "regression":
-                logger.warning("📊 Logging regression visualizations...")
-                # Log regression visualizations
-                self._log_regression_visualizations(
-                    writer, predictions, targets, step=1
+            # Suppress numpy warnings during TensorBoard operations
+            # This prevents RuntimeWarnings from disrupting CLI display
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=RuntimeWarning, module="numpy"
                 )
 
-            # Close writer
-            writer.flush()
-            writer.close()
+                # Create log directory
+                log_path = Path(log_dir)
+                log_path.mkdir(parents=True, exist_ok=True)
+
+                # Create TensorBoard writer
+                writer = SummaryWriter(log_dir=str(log_path))
+
+                # Log scalar metrics directly
+                for metric_name, value in metrics_dict.items():
+                    writer.add_scalar(f"evaluation/{metric_name}", value, 1)
+
+                # Determine task type for appropriate visualizations
+                task_type = self._infer_task_type()
+                logger.info(f"🔍 Task type detected: {task_type}")
+                logger.debug(
+                    f"Predictions shape: {predictions.shape}, "
+                    f"Targets shape: {targets.shape}"
+                )
+
+                if task_type == "classification":
+                    logger.info(
+                        "📊 Logging classification visualizations (including PR curve)..."
+                    )
+                    # Log classification visualizations
+                    self._log_classification_visualizations(
+                        writer, predictions, targets, step=1
+                    )
+                elif task_type == "regression":
+                    logger.warning("📊 Logging regression visualizations...")
+                    # Log regression visualizations
+                    self._log_regression_visualizations(
+                        writer, predictions, targets, step=1
+                    )
+
+                # Close writer
+                writer.flush()
+                writer.close()
 
         except Exception as e:
             # Don't fail the evaluation, just log a warning with full traceback
@@ -532,6 +541,27 @@ class ArcEvaluator:
 
                 # Ensure scores are float tensor on CPU
                 y_scores = y_scores.float().cpu()
+
+                # Filter out NaN/Inf values before logging to TensorBoard
+                if torch.isnan(y_scores).any() or torch.isinf(y_scores).any():
+                    nan_count = torch.isnan(y_scores).sum().item()
+                    inf_count = torch.isinf(y_scores).sum().item()
+                    logger.warning(
+                        f"⚠️  Warning: Predictions contain {nan_count} NaN and "
+                        f"{inf_count} Inf values. Filtering them out before logging to TensorBoard."
+                    )
+                    # Create mask for valid values
+                    valid_mask = ~(torch.isnan(y_scores) | torch.isinf(y_scores))
+                    y_scores = y_scores[valid_mask]
+                    y_true = y_true[valid_mask]
+
+                    # Check if we have enough data left
+                    if len(y_scores) < 10:
+                        logger.error(
+                            f"Too few valid predictions remaining ({len(y_scores)}). "
+                            "Skipping TensorBoard visualization logging."
+                        )
+                        return
 
                 # Validate scores are in [0, 1] range
                 if y_scores.min() < -0.01 or y_scores.max() > 1.01:

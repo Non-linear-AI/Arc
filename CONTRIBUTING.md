@@ -111,7 +111,7 @@ When adding features:
 Before submitting:
 - [ ] Code follows style guidelines (Ruff passes)
 - [ ] All tests pass
-- [ ] New code has tests (80%+ coverage)
+- [ ] New code has tests
 - [ ] Documentation is updated
 - [ ] Branch is up to date with main
 
@@ -119,41 +119,12 @@ Before submitting:
 
 1. Create PR with clear title and description
 2. CI checks run automatically
-3. Code review by maintainers (initial review within 3-5 business days)
+3. Code review by maintainers
 4. Address feedback if requested
 5. Merge once approved
-
-## What to Contribute
-
-Look for issues labeled `good-first-issue` for:
-- Documentation improvements
-- Bug fixes
-- Test coverage improvements
-
-High-priority areas:
-- Built-in knowledge expansion
-- Data processor implementations
-- Model architecture templates
-- Integration examples
-- Windows compatibility testing
-- Performance optimizations
 
 ## Getting Help
 
 - Check the [documentation](docs/)
 - Search [GitHub Issues](https://github.com/non-linear-ai/arc/issues)
 - Ask in [GitHub Discussions](https://github.com/non-linear-ai/arc/discussions)
-
-## Code of Conduct
-
-Be respectful and constructive:
-- Use welcoming and inclusive language
-- Respect differing viewpoints
-- Accept constructive criticism gracefully
-- Focus on what's best for the community
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
-
-Thank you for contributing to Arc!

@@ -115,18 +115,6 @@ Or with SQL:
 
 Verify data with `/sql SHOW TABLES` and `/sql SELECT * FROM table_name LIMIT 10`.
 
-## Data Loading via /ml data Command
-
-For ML workflows, use the `/ml data` command:
-
-```
-/ml data --name processed_customers
-         --instruction "Load customers.csv and normalize the age and income columns"
-         --source-tables customers
-```
-
-This creates an Arc-Pipeline specification that can be reused and version-controlled.
-
 ## Next Steps
 
 - **[Feature Engineering Guide](feature-engineering.md)** - Transform your loaded data

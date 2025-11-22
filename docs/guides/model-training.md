@@ -59,40 +59,6 @@ Arc automatically launches TensorBoard at `http://localhost:6006` to view traini
 
 Trained models are saved to `~/.arc/models/<model_name>/` with model weights, Arc-Graph specification, and metadata.
 
-## Model Types
-
-### Binary Classification
-
-Predict one of two classes:
-
-```
-Build a binary classifier to predict customer churn
-```
-
-### Multi-Class Classification
-
-Predict one of many classes:
-
-```
-Build a classifier to predict movie genres (action, comedy, drama, etc.)
-```
-
-### Regression
-
-Predict continuous values:
-
-```
-Build a regression model to predict house prices
-```
-
-### Multi-Output Models
-
-Predict multiple targets:
-
-```
-Build a model to predict both price and demand
-```
-
 ## Check Training Jobs
 
 View all training jobs:

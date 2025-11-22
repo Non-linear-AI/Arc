@@ -4,7 +4,7 @@ Quick guide to set up Arc for development.
 
 ## Prerequisites
 
-- **Python 3.12 or higher** (Python 3.13 also supported)
+- **Python 3.12 or higher**
 - **Git** for version control
 - **uv** for dependency management
 
@@ -36,9 +36,6 @@ uv sync --dev
 ```bash
 # Run Arc
 uv run arc chat
-
-# Run tests
-uv run pytest
 
 # Show help
 uv run arc --help

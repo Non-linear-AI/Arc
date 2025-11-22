@@ -56,6 +56,44 @@ UV_CACHE_DIR=.uv-cache ARC_API_KEY=your_key \
 
 The script streams the required slash commands into `uv run arc chat`, creating the dataset, registering the model, starting a training job, and printing job status. Override `UV_CACHE_DIR` if your environment restricts access to the default cache path.
 
+## Troubleshooting
+
+### CPR Warning or Arrow Keys Not Working
+
+If you see:
+```
+WARNING: your terminal doesn't support cursor position requests (CPR).
+```
+
+Or arrow keys show as escape sequences (`^[[A`), this is a terminal compatibility issue. The demo script handles this automatically by:
+- Auto-accepting prompts with `yes "1"`
+- Filtering out CPR warnings
+
+**If the script still doesn't work**, try these alternatives:
+
+**Option 1: Run in a fully interactive terminal**
+```bash
+uv run arc chat
+# Then manually paste the commands from the script
+```
+
+**Option 2: Use a different terminal**
+Try running the script in:
+- Native Terminal.app (macOS)
+- iTerm2 (macOS)
+- gnome-terminal or konsole (Linux)
+- Windows Terminal (Windows)
+
+**Option 3: Force non-interactive mode**
+```bash
+# Bypass TTY detection entirely
+yes "1" | bash run_logistic_regression_console_demo.sh < /dev/null
+```
+
+### Interactive Prompts During Automated Demo
+
+Arc may show interactive prompts asking you to review generated specifications. The updated script automatically accepts these with option "1" (Accept). If you want to review specs manually, run the commands interactively in `arc chat` instead of using the automated script.
+
 ## Files
 
 - `model.yaml` – Arc-Graph specification for the logistic regression model.
