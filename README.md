@@ -21,7 +21,7 @@ Arc is built on three foundational pillars:
 
 - **Arc-Graph** - Declarative YAML schema for ML model architecture and training configuration
 - **Arc-Pipeline** - Declarative YAML schema for feature engineering and data processing pipelines
-- **Arc-Knowledge** - Curated best practices and patterns (extendable via `.arc/knowledge/`)
+- **Arc-Knowledge** - Curated best practices and patterns (extendable via `~/.arc/knowledge/`)
 
 When you give a command in natural language, Arc's AI consults the Arc-Knowledge to generate optimal specifications:
 
@@ -35,7 +35,7 @@ Your Question → Arc AI (+ Arc-Knowledge) → Arc-Graph + Arc-Pipeline → Trai
 - Model architectures (DCN, MMOE, Transformers, etc.)
 - Best practices and proven patterns
 
-**Extensibility:** Add your own patterns and project-specific knowledge to `.arc/knowledge/` to guide Arc's AI for your use case.
+**Extensibility:** Add your own patterns and project-specific knowledge to `~/.arc/knowledge/` to guide Arc's AI for your use case.
 
 This approach provides the best of both worlds:
 
@@ -48,7 +48,7 @@ This approach provides the best of both worlds:
 
   - 🤖 **Natural Language to Model** - Go from a question in plain English to a trained predictive model without writing a single line of ML code.
   - 📜 **Declarative Schemas (Arc-Graph & Arc-Pipeline)** - Arc's AI generates complete specifications in human-readable YAML. Arc-Graph defines your model architecture, Arc-Pipeline defines your feature engineering workflows. You review and approve; the AI handles the implementation.
-  - 🧠 **Extensible Arc-Knowledge** - Built-in curated knowledge of ML best practices, data patterns, and model architectures. Extend it with your own project-specific patterns in `.arc/knowledge/` to customize Arc's AI for your domain.
+  - 🧠 **Extensible Arc-Knowledge** - Built-in curated knowledge of ML best practices, data patterns, and model architectures. Extend it with your own project-specific patterns in `~/.arc/knowledge/` to customize Arc's AI for your domain.
   - 🗄️ **Unified Data & ML with SQL** - Connect your data sources via standard SQL. Arc manages your ML assets (models, features, results) in a dedicated database that you can query using standard SQL.
   - ⚡ **End-to-End & Portable** - Arc-Graph and Arc-Pipeline files contain your complete ML workflow, ensuring train/serve parity and making your models easy to version, share, and reproduce.
   - 🎯 **Smart & Interactive** - AI-powered guidance and a user-friendly interactive mode are enabled by default to help you get started quickly.
