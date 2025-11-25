@@ -2,6 +2,12 @@
 
 Welcome to Arc's comprehensive documentation! Arc is an AI-native machine learning tool that bridges natural language questions and predictive models using declarative schemas.
 
+## Demo
+
+<video controls width="100%">
+  <source src="assets/demo.mp4" type="video/mp4">
+</video>
+
 ## 🚀 Getting Started
 
 New to Arc? Start here to get up and running quickly:
