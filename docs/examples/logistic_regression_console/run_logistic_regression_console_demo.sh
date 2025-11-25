@@ -26,8 +26,6 @@ UV_CACHE_DIR="${UV_CACHE_DIR:-$PROJECT_ROOT/.uv-cache}"
 mkdir -p "$UV_CACHE_DIR"
 
 echo "🚀 Streaming commands through arc chat"
-# Use 'yes' to auto-accept any interactive prompts (answer "1" = Accept)
-# Redirect stderr to /dev/null to suppress CPR warnings
-yes "1" 2>/dev/null | UV_CACHE_DIR="$UV_CACHE_DIR" uv run arc chat < "$COMMAND_FILE" 2>&1 | grep -v "CPR" || true
+UV_CACHE_DIR="$UV_CACHE_DIR" uv run arc chat < "$COMMAND_FILE"
 
 echo "✅ Demo complete. Review the output above for training status and job ID."
