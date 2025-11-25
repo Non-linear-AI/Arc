@@ -172,4 +172,3 @@ Arc uses declarative YAML specifications instead of Python code. The AI generate
 - **[Arc-Graph Specification](arc-graph.md)** - Deep dive into model architecture specs
 - **[Arc-Pipeline Specification](arc-pipeline.md)** - Deep dive into data processing specs
 - **[Arc-Knowledge System](arc-knowledge.md)** - Learn to extend Arc's knowledge
-- **[Examples](../examples/logistic_regression_console/)** - See complete end-to-end examples

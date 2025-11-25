@@ -36,12 +36,6 @@ Connect Arc to your data sources and tools:
 - **[AWS S3](integrations/s3.md)** - Load data from S3 buckets
 - **[Snowflake](integrations/snowflake.md)** - Query Snowflake data warehouses
 
-## 💡 Examples
-
-Learn by example:
-
-- **[Logistic Regression Example](examples/logistic_regression_console/)** - Complete working example with console interface
-
 ## 📖 API Reference
 
 - **[CLI Commands](api-reference/cli-commands.md)** - Quick command reference

@@ -92,7 +92,6 @@ Compare models using SQL queries on the `evaluations` table, grouping by `model_
 
 - **[Making Predictions](making-predictions.md)** - Use your model for inference
 - **[Model Training Guide](model-training.md)** - Improve your model based on evaluation
-- **[Examples](../examples/logistic_regression_console/)** - See complete evaluation examples
 
 ## Related Documentation
 

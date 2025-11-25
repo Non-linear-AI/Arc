@@ -151,4 +151,3 @@ Now that you've built your first model, explore more:
 - **[Model Training Guide](../guides/model-training.md)** - Learn about training workflows
 - **[Feature Engineering](../guides/feature-engineering.md)** - Advanced data preparation
 - **[Making Predictions](../guides/making-predictions.md)** - Use your model for inference
-- **[Examples](../examples/logistic_regression_console/)** - More detailed examples
