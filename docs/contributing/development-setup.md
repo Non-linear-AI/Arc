@@ -148,7 +148,7 @@ tests/
 
 ## Next Steps
 
-- **[Contributing Guidelines](../../CONTRIBUTING.md)** - Complete contribution workflow
+- **[Contributing Guidelines](https://github.com/non-linear-ai/arc/blob/main/CONTRIBUTING.md)** - Complete contribution workflow
 
 ## Getting Help
 

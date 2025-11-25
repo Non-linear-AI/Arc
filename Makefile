@@ -1,4 +1,4 @@
-.PHONY: help install install-dev run test test-watch lint format clean
+.PHONY: help install install-dev run test test-watch lint format clean docs docs-serve
 
 help:  ## Show this help message
 	@echo "Usage: make [target]"
@@ -43,3 +43,9 @@ clean:  ## Clean build artifacts
 all: format lint test  ## Run all checks
 
 ci: lint-all test  ## Run CI checks locally (non-modifying)
+
+docs:
+	uv run --group docs mkdocs build
+
+docs-serve:
+	uv run --group docs mkdocs serve

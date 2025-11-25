@@ -125,4 +125,4 @@ Verify data with `/sql SHOW TABLES` and `/sql SELECT * FROM table_name LIMIT 10`
 ## Related Documentation
 
 - [Arc-Pipeline Specification](../concepts/arc-pipeline.md) - Declarative data processing
-- [Arc Knowledge: Data Loading](../../src/arc/resources/knowledge/data_loading.md) - Technical details for Arc's AI
+- [Arc-Knowledge](../concepts/arc-knowledge.md) - Built-in ML knowledge system

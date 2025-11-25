@@ -1,0 +1,70 @@
+site_name: Arc Documentation
+site_description: AI-native machine learning tool that bridges natural language questions and predictive models
+site_url: https://github.com/non-linear-ai/arc
+repo_url: https://github.com/non-linear-ai/arc
+repo_name: non-linear-ai/arc
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Concepts:
+      - Overview: concepts/overview.md
+      - Arc-Graph: concepts/arc-graph.md
+      - Arc-Pipeline: concepts/arc-pipeline.md
+      - Arc-Knowledge: concepts/arc-knowledge.md
+  - Guides:
+      - Data Loading: guides/data-loading.md
+      - Feature Engineering: guides/feature-engineering.md
+      - Model Training: guides/model-training.md
+      - Model Evaluation: guides/model-evaluation.md
+      - Making Predictions: guides/making-predictions.md
+  - Integrations:
+      - AWS S3: integrations/s3.md
+      - Snowflake: integrations/snowflake.md
+  - API Reference:
+      - CLI Commands: api-reference/cli-commands.md
+  - Contributing:
+      - Development Setup: contributing/development-setup.md
+      - Publishing: contributing/publishing.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search

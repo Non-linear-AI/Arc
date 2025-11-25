@@ -46,14 +46,14 @@ Help improve Arc:
 
 - **[Development Setup](contributing/development-setup.md)** - Set up dev environment and run tests
 - **[Publishing Guide](contributing/publishing.md)** - Publishing releases to PyPI
-- **[Contributing Guidelines](../CONTRIBUTING.md)** - How to contribute
+- **[Contributing Guidelines](https://github.com/non-linear-ai/arc/blob/main/CONTRIBUTING.md)** - How to contribute
 
 ## 🔗 Quick Links
 
 - [GitHub Repository](https://github.com/non-linear-ai/arc)
 - [PyPI Package](https://pypi.org/project/nl-arc/)
 - [Issue Tracker](https://github.com/non-linear-ai/arc/issues)
-- [Main README](../README.md)
+- [Main README](https://github.com/non-linear-ai/arc/blob/main/README.md)
 
 ## 💬 Need Help?
 

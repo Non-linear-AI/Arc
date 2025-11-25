@@ -393,11 +393,11 @@ The pipeline ensures that the features match the model's input specification.
 
 ## 8. Data Loading Integration
 
-Arc-Pipeline integrates with various data sources. See the built-in knowledge guides for details:
+Arc-Pipeline integrates with various data sources. See the guides for details:
 
-- **[Data Loading Patterns](../src/arc/resources/knowledge/data_loading.md)** - CSV, Parquet, JSON
-- **[S3 Integration](s3-setup.md)** - Load from S3 buckets
-- **[Snowflake Integration](snowflake-setup.md)** - Query Snowflake tables
+- **[Data Loading Guide](../guides/data-loading.md)** - CSV, Parquet, JSON, and more
+- **[S3 Integration](../integrations/s3.md)** - Load from S3 buckets
+- **[Snowflake Integration](../integrations/snowflake.md)** - Query Snowflake tables
 
 ## 9. Extending with ML Knowledge
 
@@ -424,4 +424,4 @@ See **[Arc-Knowledge](arc-knowledge.md)** for complete details on extending the 
 
 - **[Arc-Graph Specification](arc-graph.md)** - Model architecture YAML schema
 - **[Arc-Knowledge](arc-knowledge.md)** - How to extend Arc with your own patterns
-- **[Feature Engineering Guide](../src/arc/resources/knowledge/ml_data_preparation.md)** - ML-specific transformation patterns
+- **[Feature Engineering Guide](../guides/feature-engineering.md)** - ML-specific transformation patterns

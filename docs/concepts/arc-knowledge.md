@@ -355,5 +355,5 @@ git commit -m "Add domain-specific knowledge"
 
 - **[Arc-Graph Specification](arc-graph.md)** - Model architecture YAML schema
 - **[Arc-Pipeline Specification](arc-pipeline.md)** - Feature engineering YAML schema
-- **[Built-in Data Patterns](../src/arc/resources/knowledge/data_loading.md)** - Data loading knowledge
-- **[Built-in ML Preparation](../src/arc/resources/knowledge/ml_data_preparation.md)** - Feature engineering knowledge
+- **[Data Loading Guide](../guides/data-loading.md)** - How to load data from various sources
+- **[Feature Engineering Guide](../guides/feature-engineering.md)** - How to prepare data for ML
