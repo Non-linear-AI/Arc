@@ -132,5 +132,6 @@ This creates an **Arc-Pipeline** specification that:
 
 ## Related Documentation
 
-- [Arc Knowledge: ML Data Preparation](../../src/arc/resources/knowledge/ml_data_preparation.md) - Technical details
+- [Arc-Pipeline Specification](../concepts/arc-pipeline.md) - Declarative data processing
+- [Arc-Knowledge](../concepts/arc-knowledge.md) - Built-in ML knowledge system
 - [Data Loading Guide](data-loading.md) - Load data before feature engineering
