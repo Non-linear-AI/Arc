@@ -21,7 +21,7 @@ Arc is built on three foundational pillars:
 
 - **Arc-Graph** - Declarative YAML schema for ML model architecture and training configuration
 - **Arc-Pipeline** - Declarative YAML schema for feature engineering and data processing pipelines
-- **Arc-Knowledge** - Curated best practices and patterns (extendable via `.arc/knowledge/`)
+- **Arc-Knowledge** - Curated best practices and patterns (extendable via `~/.arc/knowledge/`)
 
 When you give a command in natural language, Arc's AI consults the Arc-Knowledge to generate optimal specifications:
 
@@ -35,7 +35,7 @@ Your Question → Arc AI (+ Arc-Knowledge) → Arc-Graph + Arc-Pipeline → Trai
 - Model architectures (DCN, MMOE, Transformers, etc.)
 - Best practices and proven patterns
 
-**Extensibility:** Add your own patterns and project-specific knowledge to `.arc/knowledge/` to guide Arc's AI for your use case.
+**Extensibility:** Add your own patterns and project-specific knowledge to `~/.arc/knowledge/` to guide Arc's AI for your use case.
 
 This approach provides the best of both worlds:
 
@@ -48,7 +48,7 @@ This approach provides the best of both worlds:
 
   - 🤖 **Natural Language to Model** - Go from a question in plain English to a trained predictive model without writing a single line of ML code.
   - 📜 **Declarative Schemas (Arc-Graph & Arc-Pipeline)** - Arc's AI generates complete specifications in human-readable YAML. Arc-Graph defines your model architecture, Arc-Pipeline defines your feature engineering workflows. You review and approve; the AI handles the implementation.
-  - 🧠 **Extensible Arc-Knowledge** - Built-in curated knowledge of ML best practices, data patterns, and model architectures. Extend it with your own project-specific patterns in `.arc/knowledge/` to customize Arc's AI for your domain.
+  - 🧠 **Extensible Arc-Knowledge** - Built-in curated knowledge of ML best practices, data patterns, and model architectures. Extend it with your own project-specific patterns in `~/.arc/knowledge/` to customize Arc's AI for your domain.
   - 🗄️ **Unified Data & ML with SQL** - Connect your data sources via standard SQL. Arc manages your ML assets (models, features, results) in a dedicated database that you can query using standard SQL.
   - ⚡ **End-to-End & Portable** - Arc-Graph and Arc-Pipeline files contain your complete ML workflow, ensuring train/serve parity and making your models easy to version, share, and reproduce.
   - 🎯 **Smart & Interactive** - AI-powered guidance and a user-friendly interactive mode are enabled by default to help you get started quickly.
@@ -144,173 +144,69 @@ This Arc-Graph specification is:
 - **Versionable** - Track changes in Git
 - **Reproducible** - Guarantees train/serve parity
 
-For more details, see the [Arc-Graph Specification Guide](docs/arc-graph.md).
+For more details, see the [Arc-Graph Specification Guide](docs/concepts/arc-graph.md).
 
 ## 📚 Documentation
 
-### The Three Pillars
-- **[Arc-Graph Specification](docs/arc-graph.md)** - Define ML model architecture and training in YAML
-- **[Arc-Pipeline Specification](docs/arc-pipeline.md)** - Define feature engineering and data processing workflows
-- **[Arc-Knowledge](docs/arc-knowledge.md)** - Built-in best practices and how to extend with your own
+**📖 [Complete Documentation](docs/index.md)** - Start here for comprehensive guides, examples, and API reference.
 
-### Built-in Knowledge Guides
-- **[Data Loading Patterns](src/arc/resources/knowledge/data_loading.md)** - CSV, Parquet, JSON, S3, Snowflake
-- **[Feature Engineering](src/arc/resources/knowledge/ml_data_preparation.md)** - ML-specific transformations and splits
-- **[Model Architectures](src/arc/resources/knowledge/)** - DCN, MMOE, Transformers, and more
+### Quick Links
 
-### Integrations
-- **[S3 Data Loading](docs/s3-setup.md)** - Connect to S3 buckets (public and private)
-- **[Snowflake Integration](docs/snowflake-setup.md)** - Query Snowflake data warehouses
+**Getting Started:**
+- **[Installation Guide](docs/getting-started/installation.md)** - Set up Arc
+- **[Quick Start Tutorial](docs/getting-started/quickstart.md)** - Build your first model
+- **[Configuration Guide](docs/getting-started/configuration.md)** - Configure API keys
+
+**Core Concepts:**
+- **[The Three Pillars](docs/concepts/overview.md)** - Understand Arc's architecture
+- **[Arc-Graph](docs/concepts/arc-graph.md)** - Model architecture specification
+- **[Arc-Pipeline](docs/concepts/arc-pipeline.md)** - Feature engineering workflows
+- **[Arc-Knowledge](docs/concepts/arc-knowledge.md)** - ML best practices system
+
+**User Guides:**
+- **[Data Loading](docs/guides/data-loading.md)** - Load data from CSV, Parquet, S3, Snowflake
+- **[Feature Engineering](docs/guides/feature-engineering.md)** - Transform and prepare data
+- **[Model Training](docs/guides/model-training.md)** - Train ML models
+- **[Model Evaluation](docs/guides/model-evaluation.md)** - Evaluate performance
+- **[Making Predictions](docs/guides/making-predictions.md)** - Use trained models
+
+**Integrations:**
+- **[AWS S3](docs/integrations/s3.md)** - Load data from S3 buckets
+- **[Snowflake](docs/integrations/snowflake.md)** - Query Snowflake warehouses
+
+**For Contributors:**
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- **[Development Setup](docs/contributing/development-setup.md)** - Set up dev environment
 
 ## Development
 
-### Installation
+Want to contribute? See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-This project uses `uv` for dependency management. If you don't have `uv` installed:
+### Quick Dev Setup
 
 ```bash
+# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-```
 
-Then install the project and its dependencies:
-
-```bash
-# Clone the repository
+# Clone and install
+git clone https://github.com/non-linear-ai/arc
 cd arc
-
-# Install dependencies
-uv sync
-
-# Install in editable mode with development dependencies
 uv sync --dev
-```
 
-### Running the Application
-
-```bash
-# Start interactive chat session
-uv run arc chat
-
-# Or use the Makefile
-make run
-
-# Show available commands
-uv run arc --help
-```
-
-### Running Tests
-
-```bash
 # Run tests
 uv run pytest
 
-# Run tests with coverage
-uv run pytest --cov
-
-# Run tests in watch mode (automatically reruns tests when files change)
-uv run pytest-watcher .
-```
-
-### Using Make Commands (Alternative)
-
-For convenience, you can also use the provided Make targets:
-
-```bash
-# Install and run
-make install-dev          # Install development dependencies
-make run                  # Start Arc CLI in interactive mode
-
-# Testing and quality
-make test                 # Run tests with coverage
-make test-watch          # Run tests in watch mode
-make lint                # Run linting checks
-make format              # Format code and fix linting issues
-make clean               # Clean build artifacts
-
-# Run all quality checks
-make all                 # Equivalent to: make format lint test
-```
-
-### Code Quality
-
-```bash
-# Run linting
-uv run ruff check .
-
-# Fix linting issues
-uv run ruff check . --fix
-
-# Format code
+# Format and lint
 uv run ruff format .
-
+uv run ruff check . --fix
 ```
 
-## Configuration
+For detailed instructions, see [Development Setup Guide](docs/contributing/development-setup.md).
 
-Project configuration is managed through `pyproject.toml`. Key sections include:
+## Project Configuration
 
-- `[project]` - Project metadata and dependencies
-- `[tool.uv]` - Development dependencies
-- `[tool.ruff]` - Linting and formatting configuration
-- `[tool.pytest.ini_options]` - Test configuration
+Project settings are in `pyproject.toml`. For API configuration, see [Configuration Guide](docs/getting-started/configuration.md).
 
-### S3 Data Loading
-
-Arc supports loading data from S3 buckets (public and private) using DuckDB's S3 extensions. Public buckets and IAM roles work immediately without configuration. Private buckets require credentials.
-
-**Quick example:**
-
-```bash
-uv run arc chat
-```
-
-```sql
--- Public S3 bucket (no setup)
-/sql CREATE TABLE taxi AS
-     SELECT * FROM 's3://nyc-tlc/trip data/yellow_tripdata_2023-01.parquet'
-
--- Private S3 bucket (requires credentials)
-/sql CREATE TABLE data AS
-     SELECT * FROM 's3://my-private-bucket/data.parquet'
-```
-
-**Supported formats**: CSV, Parquet, JSON, Apache Iceberg
-
-**📖 For complete setup instructions, see [docs/s3-setup.md](docs/s3-setup.md)**
-
-This includes:
-- Configuration for public buckets, IAM roles, and private buckets
-- S3-compatible storage (MinIO, Wasabi)
-- Usage patterns and best practices
-- Troubleshooting guide
-
-### Snowflake Data Loading
-
-Arc supports loading data from Snowflake data warehouses using DuckDB's Snowflake extension. Query Snowflake tables directly, join them with S3 and local data, and extract data for cost-efficient local feature engineering.
-
-**Quick example:**
-
-```bash
-uv run arc chat
-```
-
-```sql
--- Query Snowflake directly
-/sql SELECT * FROM snowflake.public.customers
-     WHERE state = 'CA' LIMIT 10
-
--- Extract for local feature engineering (recommended)
-/sql CREATE TABLE local_customers AS
-     SELECT * FROM snowflake.public.customers
-     WHERE signup_date >= '2024-01-01'
-```
-
-**Supported workflows**: Direct queries, data extraction, cross-database joins
-
-**📖 For complete setup instructions, see [docs/snowflake-setup.md](docs/snowflake-setup.md)**
-
-This includes:
-- Credential configuration (settings file and environment variables)
-- Library path setup for Linux/macOS/Windows
-- Startup scripts for easy launch
-- Best practices and troubleshooting
+For S3 and Snowflake setup, see:
+- **[S3 Integration Guide](docs/integrations/s3.md)**
+- **[Snowflake Integration Guide](docs/integrations/snowflake.md)**
