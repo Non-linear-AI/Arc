@@ -1,6 +1,6 @@
 [project]
 name = "nl-arc"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-native machine learning tool that bridges natural language questions and predictive models using declarative Arc-Graph schemas"
 readme = "README.md"
 license = "MIT"

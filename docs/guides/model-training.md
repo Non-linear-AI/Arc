@@ -36,17 +36,6 @@ For more control, use the `/ml model` command:
           --data-table processed_diabetes_data
 ```
 
-### With a Plan
-
-If you've already created an ML plan:
-
-```
-/ml model --name diabetes_predictor
-          --instruction "Build the model according to the plan"
-          --data-table processed_diabetes_data
-          --plan-id <plan_id>
-```
-
 ## Understanding the Training Process
 
 Arc generates an Arc-Graph specification defining inputs, model architecture, and training configuration. See [Arc-Graph Specification](../concepts/arc-graph.md) for details.
