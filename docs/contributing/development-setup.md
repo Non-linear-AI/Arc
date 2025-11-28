@@ -152,5 +152,5 @@ tests/
 
 ## Getting Help
 
-- Ask in [GitHub Discussions](https://github.com/non-linear-ai/arc/discussions)
+- Ask in [GitHub Issues](https://github.com/non-linear-ai/arc/issues)
 - Look at existing tests for examples
