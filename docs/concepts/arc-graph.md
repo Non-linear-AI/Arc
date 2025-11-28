@@ -651,7 +651,6 @@ Optional metadata fields for tracking:
 ```yaml
 name: diabetes_classifier  # Model name
 data_table: patients  # Training data table
-plan_id: abc123  # ML plan ID for lineage
 
 inputs: {...}
 graph: [...]

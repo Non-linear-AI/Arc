@@ -4,7 +4,7 @@ Quick reference for Arc commands.
 
 ## Command Overview
 
-- `/ml` - Machine learning operations (plan, data, model, evaluate, predict, jobs)
+- `/ml` - Machine learning operations (data, model, evaluate, predict, jobs)
 - `/sql` - SQL queries
 - `/config` - Configuration
 - `/report` - Generate reports
@@ -20,31 +20,6 @@ arc --version                 # Show version
 ```
 
 ## ML Commands
-
-### /ml plan
-
-Generate ML workflow plan.
-
-```bash
-/ml plan --name <name>
-         --instruction "<description>"
-         --source-tables <tables>
-```
-
-Example:
-```bash
-/ml plan --name customer_churn
-         --instruction "Predict churn"
-         --source-tables customers,transactions
-```
-
-### /ml revise-plan
-
-Revise existing plan.
-
-```bash
-/ml revise-plan --instruction "<changes>"
-```
 
 ### /ml data
 
